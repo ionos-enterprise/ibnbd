@@ -1,0 +1,3 @@
+source "drivers/infiniband/ulp/ibtrs/core/Kconfig"
+source "drivers/infiniband/ulp/ibtrs/client/Kconfig"
+source "drivers/infiniband/ulp/ibtrs/server/Kconfig"

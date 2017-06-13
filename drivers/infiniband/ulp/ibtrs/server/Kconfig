@@ -1,0 +1,6 @@
+config INFINIBAND_IBTRS_SERVER
+	tristate "InfiniBand IBTRS server"
+	select INFINIBAND_IBTRS
+	help
+	  Support for the simplified data transfer over InfiniBand.
+	  The IBTRS protocol is defined by the ProfitBricks GmbH.
