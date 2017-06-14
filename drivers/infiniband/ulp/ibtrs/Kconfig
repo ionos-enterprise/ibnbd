@@ -1,3 +1,17 @@
-source "drivers/infiniband/ulp/ibtrs/core/Kconfig"
-source "drivers/infiniband/ulp/ibtrs/client/Kconfig"
-source "drivers/infiniband/ulp/ibtrs/server/Kconfig"
+config INFINIBAND_IBTRS
+	tristate
+	depends on INFINIBAND_ADDR_TRANS
+
+config INFINIBAND_IBTRS_CLIENT
+	tristate "InfiniBand IBTRS client"
+	select INFINIBAND_IBTRS
+	help
+	  Support for the simplified data transfer over InfiniBand.
+	  The IBTRS protocol is defined by the ProfitBricks GmbH.
+
+config INFINIBAND_IBTRS_SERVER
+	tristate "InfiniBand IBTRS server"
+	select INFINIBAND_IBTRS
+	help
+	  Support for the simplified data transfer over InfiniBand.
+	  The IBTRS protocol is defined by the ProfitBricks GmbH.

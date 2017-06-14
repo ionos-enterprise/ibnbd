@@ -1,3 +1,0 @@
-config INFINIBAND_IBTRS
-	tristate
-	depends on INFINIBAND_ADDR_TRANS
