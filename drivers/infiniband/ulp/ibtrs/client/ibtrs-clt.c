@@ -11,11 +11,12 @@
 #include <rdma/ib_fmr_pool.h>
 #include <rdma/ib.h>
 #include <rdma/ibtrs_clt.h>
-#include "ibtrs_clt_internal.h"
-#include "ibtrs_clt_sysfs.h"
 #include <rdma/ibtrs.h>
 #include <rdma/ibtrs_log.h>
 #include <linux/list.h>
+
+#include "ibtrs-clt-internal.h"
+#include "ibtrs-clt-sysfs.h"
 
 #define CONS_PER_SESSION (nr_cpu_ids + 1)
 #define RECONNECT_SEED 8

@@ -1,10 +1,11 @@
 #define pr_fmt(fmt) KBUILD_MODNAME " L" __stringify(__LINE__) ": " fmt
 
-#include "ibtrs_srv_sysfs.h"
-#include "ibtrs_srv_internal.h"
 #include <rdma/ibtrs_srv.h>
 #include <rdma/ibtrs.h>
 #include <rdma/ibtrs_log.h>
+
+#include "ibtrs-srv-sysfs.h"
+#include "ibtrs-srv-internal.h"
 
 static struct kobject *ibtrs_srv_kobj;
 static struct kobject *ibtrs_srv_sessions_kobj;

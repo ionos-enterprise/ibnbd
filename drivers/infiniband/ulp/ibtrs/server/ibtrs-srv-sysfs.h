@@ -2,7 +2,7 @@
 #define _IBTRS_SRV_SYFS_H
 
 #include <linux/kobject.h>
-#include "ibtrs_srv_internal.h"
+#include "ibtrs-srv-internal.h"
 
 int ibtrs_srv_create_sysfs_files(void);
 
