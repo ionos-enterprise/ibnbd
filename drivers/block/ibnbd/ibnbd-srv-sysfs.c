@@ -15,13 +15,6 @@
 
 static struct kobject *ibnbd_srv_kobj;
 static struct kobject *ibnbd_srv_devices_kobj;
-#define IBNBD_SYSFS_DIR "ibnbd"
-static char ibnbd_sysfs_dir[64] = IBNBD_SYSFS_DIR;
-
-module_param_string(sysfs_dir, ibnbd_sysfs_dir,
-		    sizeof(ibnbd_sysfs_dir), 0444);
-MODULE_PARM_DESC(sysfs_dir, "IBNBD sysfs directory, default is '"
-		 IBNBD_SYSFS_DIR "'");
 
 static ssize_t ibnbd_srv_revalidate_dev_show(struct kobject *kobj,
 					     struct kobj_attribute *attr,
@@ -254,7 +247,7 @@ int ibnbd_srv_create_sysfs_files(void)
 {
 	int err;
 
-	ibnbd_srv_kobj = kobject_create_and_add(ibnbd_sysfs_dir, kernel_kobj);
+	ibnbd_srv_kobj = kobject_create_and_add(KBUILD_MODNAME, kernel_kobj);
 	if (!ibnbd_srv_kobj)
 		return -ENOMEM;
 

@@ -782,7 +782,7 @@ int ibnbd_clt_create_sysfs_files(void)
 {
 	int err = 0;
 
-	ibnbd_kobject = kobject_create_and_add("ibnbd", kernel_kobj);
+	ibnbd_kobject = kobject_create_and_add(KBUILD_MODNAME, kernel_kobj);
 	if (!ibnbd_kobject) {
 		err = -ENOMEM;
 		goto err1;
