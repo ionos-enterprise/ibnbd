@@ -3,7 +3,7 @@
 #include <linux/errno.h>
 #include <linux/printk.h>
 #include <rdma/ibtrs.h>
-#include <rdma/ibtrs_log.h>
+#include "ibtrs-log.h"
 
 static int
 ibtrs_validate_msg_sess_open_resp(const struct ibtrs_msg_sess_open_resp *msg)

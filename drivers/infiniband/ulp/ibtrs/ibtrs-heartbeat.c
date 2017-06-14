@@ -1,7 +1,7 @@
 #define pr_fmt(fmt) KBUILD_MODNAME " L" __stringify(__LINE__) ": " fmt
 
 #include <rdma/ibtrs.h>
-#include <rdma/ibtrs_log.h>
+#include "ibtrs-log.h"
 
 void ibtrs_heartbeat_set_send_ts(struct ibtrs_heartbeat *h)
 {

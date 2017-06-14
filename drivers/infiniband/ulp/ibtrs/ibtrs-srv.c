@@ -10,8 +10,8 @@
 #include <rdma/ib.h>
 #include <rdma/ibtrs_srv.h>
 #include <rdma/ibtrs.h>
-#include <rdma/ibtrs_log.h>
 
+#include "ibtrs-log.h"
 #include "ibtrs-srv-sysfs.h"
 #include "ibtrs-srv-internal.h"
 

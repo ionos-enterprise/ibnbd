@@ -2,10 +2,10 @@
 
 #include <rdma/ibtrs_srv.h>
 #include <rdma/ibtrs.h>
-#include <rdma/ibtrs_log.h>
 
 #include "ibtrs-srv-sysfs.h"
 #include "ibtrs-srv-internal.h"
+#include "ibtrs-log.h"
 
 static struct kobject *ibtrs_srv_kobj;
 static struct kobject *ibtrs_srv_sessions_kobj;
