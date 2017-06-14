@@ -1,7 +1,7 @@
 #define pr_fmt(fmt) KBUILD_MODNAME " L" __stringify(__LINE__) ": " fmt
 
 #include <rdma/ibtrs.h>
-#include <rdma/ib.h>
+#include "ibtrs.h"
 #include "ibtrs-log.h"
 
 int ibtrs_write_empty_imm(struct ib_qp *qp, u32 imm_data,

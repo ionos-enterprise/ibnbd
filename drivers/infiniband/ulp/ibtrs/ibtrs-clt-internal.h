@@ -1,7 +1,7 @@
 #if !defined(IBTRS_CLT_INTERNAL_H)
 #define IBTRS_CLT_INTERNAL_H
 
-#include <rdma/ibtrs.h>
+#include "ibtrs.h"
 
 enum ssm_state {
 	_SSM_STATE_MIN,

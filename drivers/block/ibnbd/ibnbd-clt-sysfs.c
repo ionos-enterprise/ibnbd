@@ -4,8 +4,11 @@
 #include <linux/ctype.h>
 #include <linux/parser.h>
 #include <linux/module.h>
-#include <rdma/ibtrs.h>
+#include <linux/in6.h>
+#include <linux/fs.h>
+#include <asm/uaccess.h>
 #include <rdma/ib.h>
+#include <rdma/rdma_cm.h>
 
 #include "ibnbd-clt-sysfs.h"
 #include "ibnbd-clt.h"

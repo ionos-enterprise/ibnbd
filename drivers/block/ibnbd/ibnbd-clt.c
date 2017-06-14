@@ -9,11 +9,6 @@
 #include <linux/hdreg.h>		/* for hd_geometry */
 #include <linux/scatterlist.h>
 #include <linux/idr.h>
-#include <linux/fs.h>
-#include <linux/uaccess.h>
-#include <rdma/ib.h>
-#include <uapi/linux/in6.h>
-#include <rdma/ibtrs.h>
 
 #include "ibnbd.h"
 #include "ibnbd-clt.h"

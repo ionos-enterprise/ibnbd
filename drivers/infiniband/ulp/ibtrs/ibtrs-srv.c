@@ -7,10 +7,9 @@
 #include <linux/debugfs.h>
 #include <rdma/ib_verbs.h>
 #include <rdma/rdma_cm.h>
-#include <rdma/ib.h>
-#include <rdma/ibtrs_srv.h>
 #include <rdma/ibtrs.h>
 
+#include "ibtrs.h"
 #include "ibtrs-log.h"
 #include "ibtrs-srv-sysfs.h"
 #include "ibtrs-srv-internal.h"

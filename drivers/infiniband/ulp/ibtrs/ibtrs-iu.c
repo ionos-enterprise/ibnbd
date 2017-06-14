@@ -1,5 +1,5 @@
 #include <linux/slab.h>
-#include <rdma/ibtrs.h>
+#include "ibtrs.h"
 
 /*
  * Return an IU  to the free pool

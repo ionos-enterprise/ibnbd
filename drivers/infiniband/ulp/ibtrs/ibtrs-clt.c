@@ -9,11 +9,10 @@
 #include <rdma/rdma_cm.h>
 #include <rdma/ib_cm.h>
 #include <rdma/ib_fmr_pool.h>
-#include <rdma/ib.h>
-#include <rdma/ibtrs_clt.h>
 #include <rdma/ibtrs.h>
 #include <linux/list.h>
 
+#include "ibtrs.h"
 #include "ibtrs-clt-internal.h"
 #include "ibtrs-clt-sysfs.h"
 #include "ibtrs-log.h"

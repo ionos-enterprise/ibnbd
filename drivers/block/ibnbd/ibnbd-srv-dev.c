@@ -1,6 +1,9 @@
 #define pr_fmt(fmt) KBUILD_MODNAME " L" __stringify(__LINE__) ": " fmt
 
+//XXX SHOULD BE REMOVED, only for strerror
 #include <rdma/ibtrs.h>
+
+
 #include "ibnbd-srv-dev.h"
 #include "ibnbd-srv-log.h"
 

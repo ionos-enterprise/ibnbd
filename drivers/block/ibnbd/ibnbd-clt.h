@@ -1,11 +1,11 @@
 #ifndef _IBNBD_CLT_H
 #define _IBNBD_CLT_H
+
 #include <linux/blkdev.h>
 #include <linux/wait.h>			/* for wait_queue_head_t */
 #include <linux/in.h>			/* for sockaddr_in */
 #include <linux/inet.h>			/* for sockaddr_in */
 #include <linux/blk-mq.h>
-#include <rdma/ibtrs_clt.h>	/* for ibtrs api */
 #include <rdma/ibtrs.h>
 
 #include "ibnbd-clt-log.h"

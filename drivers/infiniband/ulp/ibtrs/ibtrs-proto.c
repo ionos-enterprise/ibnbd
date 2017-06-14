@@ -2,7 +2,7 @@
 
 #include <linux/errno.h>
 #include <linux/printk.h>
-#include <rdma/ibtrs.h>
+#include "ibtrs.h"
 #include "ibtrs-log.h"
 
 static int

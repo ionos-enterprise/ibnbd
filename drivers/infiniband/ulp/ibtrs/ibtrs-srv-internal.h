@@ -1,7 +1,7 @@
 #ifndef _IBTRS_SRV_INTERNAL_H
 #define _IBTRS_SRV_INTERNAL_H
 
-#include <rdma/ibtrs.h>
+#include "ibtrs.h"
 
 enum ssm_state {
 	SSM_STATE_IDLE,
