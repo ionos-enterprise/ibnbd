@@ -237,7 +237,7 @@ err:
 
 int ibtrs_srv_create_sysfs_files(void)
 {
-	ibtrs_srv_kobj = kobject_create_and_add("ibtrs", kernel_kobj);
+	ibtrs_srv_kobj = kobject_create_and_add(KBUILD_MODNAME, kernel_kobj);
 	if (!ibtrs_srv_kobj)
 		return -ENOMEM;
 

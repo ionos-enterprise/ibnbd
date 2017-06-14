@@ -345,11 +345,9 @@ void ibtrs_clt_destroy_sess_files(struct kobject *kobj,
 
 int ibtrs_clt_create_sysfs_files(void)
 {
-	ibtrs_kobj = kobject_create_and_add("ibtrs", kernel_kobj);
-	if (!ibtrs_kobj) {
-		pr_err("Failed to create 'ibtrs' kobject\n");
+	ibtrs_kobj = kobject_create_and_add(KBUILD_MODNAME, kernel_kobj);
+	if (!ibtrs_kobj)
 		return -ENOMEM;
-	}
 
 	sessions_kobj = kobject_create_and_add("sessions", ibtrs_kobj);
 	if (!sessions_kobj) {
