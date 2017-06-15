@@ -1,9 +1,5 @@
 #define pr_fmt(fmt) KBUILD_MODNAME " L" __stringify(__LINE__) ": " fmt
 
-//XXX SHOULD BE REMOVED, only for strerror
-#include <rdma/ibtrs.h>
-
-
 #include "ibnbd-srv-dev.h"
 #include "ibnbd-log.h"
 
@@ -246,8 +242,8 @@ static int ibnbd_dev_file_handle_flush(struct ibnbd_dev_file_io_work *w,
 
 	ret = vfs_fsync_range(w->dev->file, start, end, 1);
 	if (unlikely(ret))
-		pr_info_ratelimited("I/O FLUSH failed on %s, vfs_sync err: %s\n",
-			   w->dev->name, strerror(ret));
+		pr_info_ratelimited("I/O FLUSH failed on %s, vfs_sync err: %d\n",
+			   w->dev->name, ret);
 	return ret;
 }
 
@@ -265,8 +261,8 @@ static int ibnbd_dev_file_handle_fua(struct ibnbd_dev_file_io_work *w,
 
 	ret = vfs_fsync_range(w->dev->file, start, end, 1);
 	if (unlikely(ret))
-		pr_info_ratelimited("I/O FUA failed on %s, vfs_sync err: %s\n",
-			   w->dev->name, strerror(ret));
+		pr_info_ratelimited("I/O FUA failed on %s, vfs_sync err: %d\n",
+			   w->dev->name, ret);
 	return ret;
 }
 

@@ -121,8 +121,8 @@ static void ibnbd_clt_revalidate_disk(struct ibnbd_clt_dev *dev,
 	err = revalidate_disk(dev->gd);
 	if (err)
 		ibnbd_err(dev, "Failed to change device size from"
-		    " %zu to %zu, err: %s\n", dev->nsectors,
-		     new_nsectors, strerror(err));
+		    " %zu to %zu, err: %d\n", dev->nsectors,
+		     new_nsectors, err);
 }
 
 static void process_msg_sess_info_rsp(struct ibnbd_clt_session *sess,
@@ -166,7 +166,7 @@ static int process_msg_open_rsp(struct ibnbd_clt_session *sess,
 
 	if (rsp->result) {
 		ibnbd_err(dev, "Server failed to open device for mapping, err:"
-		    " %s\n", strerror(rsp->result));
+			  " %d\n", rsp->result);
 		dev->open_errno = rsp->result;
 		if (dev->open_compl)
 			complete(dev->open_compl);
@@ -284,8 +284,8 @@ static void ibnbd_clt_recv(void *priv, const void *msg, size_t len)
 			err = send_msg_close(sess->sess, rsp->device_id);
 			if (err)
 				pr_err("Failed to send close msg for device"
-				       " with id: %u, err: %s\n",
-				       rsp->device_id, strerror(err));
+				       " with id: %u, err: %d\n",
+				       rsp->device_id, err);
 		}
 
 		break;
@@ -636,8 +636,8 @@ static void ibnbd_clt_rdma_ev(void *priv, enum ibtrs_clt_rdma_ev ev, int errno)
 	}
 
 	if (errno)
-		ibnbd_info_rl(dev, "%s I/O failed with err: %s, flags: 0x%x\n",
-			is_read ? "read" : "write", strerror(errno), flags);
+		ibnbd_info_rl(dev, "%s I/O failed with err: %d, flags: 0x%x\n",
+			is_read ? "read" : "write", errno, flags);
 }
 
 static int send_msg_open(struct ibnbd_clt_dev *dev)
@@ -680,7 +680,7 @@ int open_remote_device(struct ibnbd_clt_dev *dev)
 
 	err = send_msg_open(dev);
 	if (unlikely(err)) {
-		ibnbd_err(dev, "Failed to send open msg, err: %s\n", strerror(err));
+		ibnbd_err(dev, "Failed to send open msg, err: %d\n", err);
 		return err;
 	}
 	return 0;
@@ -1199,8 +1199,8 @@ static int ibnbd_client_xfer_request(struct ibnbd_clt_dev *dev,
 		err = ibtrs_clt_rdma_write(sess, tag, iu, &vec, 1, size, sg,
 					   sg_cnt);
 	if (unlikely(err)) {
-		ibnbd_err_rl(dev, "IBTRS failed to transfer IO, err: %s\n",
-		       strerror(err));
+		ibnbd_err_rl(dev, "IBTRS failed to transfer IO, err: %d\n",
+			     err);
 		return err;
 	}
 
@@ -1444,8 +1444,8 @@ static int setup_mq_dev(struct ibnbd_clt_dev *dev)
 {
 	dev->queue = blk_mq_init_queue(&dev->sess->tag_set);
 	if (IS_ERR(dev->queue)) {
-		ibnbd_err(dev, "Initializing multiqueue queue failed, err: %s\n",
-		    strerror(PTR_ERR(dev->queue)));
+		ibnbd_err(dev, "Initializing multiqueue queue failed, err: %ld\n",
+			  PTR_ERR(dev->queue));
 		return PTR_ERR(dev->queue);
 	}
 	ibnbd_init_mq_hw_queues(dev);
@@ -1458,7 +1458,7 @@ static int setup_rq_dev(struct ibnbd_clt_dev *dev)
 	if (IS_ERR_OR_NULL(dev->queue)) {
 		if (IS_ERR(dev->queue)) {
 			ibnbd_err(dev, "Initializing request queue failed, "
-			    "err: %s\n", strerror(PTR_ERR(dev->queue)));
+				  "err: %ld\n", PTR_ERR(dev->queue));
 			return PTR_ERR(dev->queue);
 		}
 		ibnbd_err(dev, "Initializing request queue failed\n");
@@ -1609,8 +1609,8 @@ static struct ibnbd_clt_dev *init_dev(struct ibnbd_clt_session *sess,
 	idr_preload_end();
 	if (ret < 0) {
 		pr_err("Failed to initialize device '%s' from session %s,"
-		       " allocating idr failed, err: %s\n", pathname,
-		       sess->str_addr, strerror(ret));
+		       " allocating idr failed, err: %d\n", pathname,
+		       sess->str_addr, ret);
 		goto out_queues;
 	}
 
@@ -1619,8 +1619,8 @@ static struct ibnbd_clt_dev *init_dev(struct ibnbd_clt_session *sess,
 					  GFP_KERNEL);
 	if (!dev->close_compl) {
 		pr_err("Failed to initialize device '%s' from session %s,"
-		       " allocating close completion failed, err: %s\n",
-		       pathname, sess->str_addr, strerror(ret));
+		       " allocating close completion failed, err: %d\n",
+		       pathname, sess->str_addr, ret);
 		ret = -ENOMEM;
 		goto out_idr;
 	}
@@ -1712,8 +1712,8 @@ struct ibnbd_clt_dev *ibnbd_client_add_device(struct ibnbd_clt_session *sess,
 	dev = init_dev(sess, access_mode, queue_mode, pathname);
 	if (IS_ERR(dev)) {
 		pr_err("map_device: failed to map device '%s' from session %s,"
-		       " can't initialize device, err: %s\n", pathname,
-		       sess->str_addr, strerror(PTR_ERR(dev)));
+		       " can't initialize device, err: %ld\n", pathname,
+		       sess->str_addr, PTR_ERR(dev));
 		return dev;
 	}
 
@@ -1733,8 +1733,7 @@ struct ibnbd_clt_dev *ibnbd_client_add_device(struct ibnbd_clt_session *sess,
 	ret = open_remote_device(dev);
 	if (ret) {
 		ibnbd_err(dev, "map_device: failed, can't open remote device,"
-		    " err: %s\n",
-		     strerror(ret));
+			  " err: %d\n", ret);
 		kfree(open_compl);
 		dev->open_compl = NULL;
 		ret = -EINVAL;
@@ -1749,7 +1748,7 @@ struct ibnbd_clt_dev *ibnbd_client_add_device(struct ibnbd_clt_session *sess,
 	if (!ibnbd_clt_dev_is_open(dev)) {
 		mutex_unlock(&dev->lock);
 		ret = dev->open_errno;
-		ibnbd_err(dev, "map_device: failed err: %s\n", strerror(ret));
+		ibnbd_err(dev, "map_device: failed err: %d\n", ret);
 		goto out;
 	}
 
@@ -1765,8 +1764,8 @@ struct ibnbd_clt_dev *ibnbd_client_add_device(struct ibnbd_clt_session *sess,
 	    pathname);
 	ret = ibnbd_client_setup_device(sess, dev, dev->clt_device_id);
 	if (ret) {
-		ibnbd_err(dev, "map_device: Failed to configure device, err: %s\n",
-		    strerror(ret));
+		ibnbd_err(dev, "map_device: Failed to configure device, err: %d\n",
+			  ret);
 		mutex_unlock(&dev->lock);
 		ret = -EINVAL;
 		goto out_close;
@@ -1894,8 +1893,8 @@ static void ibnbd_destroy_sessions(void)
 				continue;
 			ret = __close_device(dev, true);
 			if (ret)
-				ibnbd_wrn(dev, "Closing device failed, err: %s\n",
-				    strerror(ret));
+				ibnbd_wrn(dev, "Closing device failed, err: %d\n",
+					  ret);
 			else
 				wait_for_completion(dev->close_compl);
 			ibnbd_clt_schedule_dev_destroy(dev);
@@ -1928,15 +1927,15 @@ static int __init ibnbd_client_init(void)
 	ops.sess_ev	= ibnbd_clt_sess_ev;
 	err = ibtrs_clt_register(&ops);
 	if (err) {
-		pr_err("Failed to load module, IBTRS registration failed,"
-		       " err: %s\n", strerror(err));
+		pr_err("Failed to load module, IBTRS registration failed, "
+		       "err: %d\n", err);
 		goto out_unregister_blk;
 	}
 	err = ibnbd_clt_create_sysfs_files();
 	if (err) {
 		pr_err("Failed to load module,"
-		       " creating sysfs device files failed, err: %s\n",
-		       strerror(err));
+		       " creating sysfs device files failed, err: %d\n",
+		       err);
 		goto out_unregister;
 	}
 

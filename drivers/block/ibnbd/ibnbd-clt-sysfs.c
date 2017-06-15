@@ -373,8 +373,8 @@ static ssize_t ibnbd_clt_unmap_dev_store(struct kobject *kobj,
 
 	err = ibnbd_close_device(dev, force);
 	if (err) {
-		ibnbd_err(dev, "unmap_device: Failed to close device, err: %s\n",
-		    strerror(err));
+		ibnbd_err(dev, "unmap_device: Failed to close device, err: %d\n",
+			  err);
 		goto out;
 	}
 
@@ -439,7 +439,7 @@ static ssize_t ibnbd_clt_remap_dev_store(struct kobject *kobj,
 		err = open_remote_device(dev);
 		if (err) {
 			ibnbd_err(dev, "remap_device: Failed to remap device,"
-			    " err: %s\n", strerror(err));
+				  " err: %d\n", err);
 			goto out;
 		}
 	}
@@ -522,8 +522,8 @@ static int ibnbd_clt_add_dev_kobj(struct ibnbd_clt_dev *dev)
 	ret = kobject_init_and_add(&dev->kobj, &ibnbd_dev_ktype, gd_kobj, "%s",
 				   "ibnbd");
 	if (ret)
-		ibnbd_err(dev, "Failed to create device sysfs dir, err: %s\n",
-		    strerror(ret));
+		ibnbd_err(dev, "Failed to create device sysfs dir, err: %d\n",
+			  ret);
 
 	return ret;
 }
@@ -674,16 +674,16 @@ static int ibnbd_clt_add_dev_symlink(struct ibnbd_clt_dev *dev)
 	ret = ibnbd_clt_get_path_name(dev, dev->blk_symlink_name,
 				      sizeof(dev->blk_symlink_name));
 	if (ret) {
-		ibnbd_err(dev, "Failed to get /sys/block symlink path, err: %s.\n",
-		    strerror(ret));
+		ibnbd_err(dev, "Failed to get /sys/block symlink path, err: %d\n",
+			  ret);
 		goto out_err;
 	}
 
 	ret = sysfs_create_link(ibnbd_devices_kobject, gd_kobj,
 				dev->blk_symlink_name);
 	if (ret) {
-		ibnbd_err(dev, "Creating /sys/block symlink failed, err: %s.\n",
-		    strerror(ret));
+		ibnbd_err(dev, "Creating /sys/block symlink failed, err: %d\n",
+			  ret);
 		goto out_err;
 	}
 

@@ -102,8 +102,8 @@ static void ibnbd_endio(void *priv, int error)
 
 	ret = ibtrs_srv_resp_rdma(ibnbd_priv->id, error);
 	if (unlikely(ret))
-		ibnbd_err_rl(sess_dev, "Sending I/O response failed, err: %s\n",
-		       strerror(ret));
+		ibnbd_err_rl(sess_dev, "Sending I/O response failed, err: %d\n",
+			     ret);
 
 	kfree(priv);
 }
@@ -161,8 +161,8 @@ static int process_rdma(struct ibtrs_session *sess,
 	err = ibnbd_dev_submit_io(sess_dev->ibnbd_dev, msg->sector, data,
 				  data_len, msg->bi_size, msg->rw, priv);
 	if (unlikely(err)) {
-		ibnbd_err(sess_dev, "Submitting I/O to device failed, err: %s\n",
-		    strerror(err));
+		ibnbd_err(sess_dev, "Submitting I/O to device failed, err: %d\n",
+			  err);
 		goto sess_dev_put;
 	}
 
@@ -384,7 +384,7 @@ static struct ibnbd_srv_sess_dev
 
 	error = idr_alloc(&srv_sess->index_idr, sess_dev, 0, -1, GFP_NOWAIT);
 	if (error < 0) {
-		pr_warn("Allocating idr failed, err: %s\n", strerror(error));
+		pr_warn("Allocating idr failed, err: %d\n", error);
 		goto out_unlock;
 	}
 
@@ -705,8 +705,8 @@ static void process_msg_open(struct ibtrs_session *s,
 	if (IS_ERR(full_path)) {
 		ret = PTR_ERR(full_path);
 		pr_err("Opening device '%s' for client %s failed,"
-		       " failed to get device full path, err: %s\n",
-		       open_msg->dev_name, srv_sess->str_addr, strerror(ret));
+		       " failed to get device full path, err: %d\n",
+		       open_msg->dev_name, srv_sess->str_addr, ret);
 		goto reject;
 	}
 
@@ -721,9 +721,8 @@ static void process_msg_open(struct ibtrs_session *s,
 				   srv_sess->sess_bio_set, ibnbd_endio);
 	if (IS_ERR(ibnbd_dev)) {
 		pr_err("Opening device '%s' for client %s failed,"
-		       " failed to open the block device, err:"
-		       " %s\n", full_path, srv_sess->str_addr,
-		       strerror(PTR_ERR(ibnbd_dev)));
+		       " failed to open the block device, err: %ld\n",
+		       full_path, srv_sess->str_addr, PTR_ERR(ibnbd_dev));
 		ret = PTR_ERR(ibnbd_dev);
 		goto free_path;
 	}
@@ -732,8 +731,8 @@ static void process_msg_open(struct ibtrs_session *s,
 						  open_msg->access_mode);
 	if (IS_ERR(srv_dev)) {
 		pr_err("Opening device '%s' for client %s failed,"
-		       " creating srv_dev failed, err: %s\n", full_path,
-		       srv_sess->str_addr, strerror(PTR_ERR(srv_dev)));
+		       " creating srv_dev failed, err: %ld\n",
+		       full_path, srv_sess->str_addr, PTR_ERR(srv_dev));
 		ret = PTR_ERR(srv_dev);
 		goto ibnbd_dev_close;
 	}
@@ -743,8 +742,8 @@ static void process_msg_open(struct ibtrs_session *s,
 						     srv_dev);
 	if (IS_ERR(srv_sess_dev)) {
 		pr_err("Opening device '%s' for client %s failed,"
-		       " creating sess_dev failed, err: %s\n", full_path,
-		       srv_sess->str_addr, strerror(PTR_ERR(srv_sess_dev)));
+		       " creating sess_dev failed, err: %ld\n",
+		       full_path, srv_sess->str_addr, PTR_ERR(srv_sess_dev));
 		ret = PTR_ERR(srv_sess_dev);
 		goto srv_dev_put;
 	}
@@ -761,8 +760,8 @@ static void process_msg_open(struct ibtrs_session *s,
 		if (ret) {
 			mutex_unlock(&srv_dev->lock);
 			ibnbd_err(srv_sess_dev, "Opening device failed, failed to"
-			    " create device sysfs files, err: %s\n",
-			    strerror(ret));
+			    " create device sysfs files, err: %d\n",
+			    ret);
 			goto free_srv_sess_dev;
 		}
 	}
@@ -771,7 +770,7 @@ static void process_msg_open(struct ibtrs_session *s,
 	if (ret) {
 		mutex_unlock(&srv_dev->lock);
 		ibnbd_err(srv_sess_dev, "Opening device failed, failed to create"
-		    " dev client sysfs files, err: %s\n", strerror(ret));
+		    " dev client sysfs files, err: %d\n", ret);
 		goto free_srv_sess_dev;
 	}
 
@@ -791,14 +790,14 @@ static void process_msg_open(struct ibtrs_session *s,
 	if (unlikely(srv_sess->state == SRV_SESS_STATE_DISCONNECTED)) {
 		ret = -ENODEV;
 		ibnbd_err(srv_sess_dev, "Opening device failed, session"
-		    " is disconnected, err: %s\n", strerror(ret));
+		    " is disconnected, err: %d\n", ret);
 		goto remove_srv_sess_dev;
 	}
 
 	ret = ibtrs_srv_send(s, &vec, 1);
 	if (unlikely(ret)) {
 		ibnbd_err(srv_sess_dev, "Opening device failed, sending open"
-		    " response msg failed, err: %s\n", strerror(ret));
+		    " response msg failed, err: %d\n", ret);
 		goto remove_srv_sess_dev;
 	}
 	srv_sess_dev->is_visible = true;
@@ -834,8 +833,8 @@ ibnbd_dev_close:
 free_path:
 	kfree(full_path);
 reject:
-	pr_debug("Sending negative response to client %s for device '%s' err: %s\n",
-	    srv_sess->str_addr, open_msg->dev_name, strerror(ret));
+	pr_debug("Sending negative response to client %s for device '%s' err: %d\n",
+	    srv_sess->str_addr, open_msg->dev_name, ret);
 	ibnbd_srv_fill_msg_open_rsp_header(&rsp, open_msg->clt_device_id);
 	rsp.result = ret;
 	if (unlikely(srv_sess->state == SRV_SESS_STATE_DISCONNECTED))
@@ -843,8 +842,8 @@ reject:
 	ret = ibtrs_srv_send(s, &vec, 1);
 	if (ret)
 		pr_err("Rejecting mapping request of device '%s' from client %s"
-		       " failed, err: %s\n", open_msg->dev_name,
-		       srv_sess->str_addr, strerror(ret));
+		       " failed, err: %d\n", open_msg->dev_name,
+		       srv_sess->str_addr, ret);
 }
 
 static int send_msg_close_rsp(struct ibtrs_session *sess, u32 clt_device_id)
@@ -946,7 +945,7 @@ static int ibnbd_srv_revalidate_sess_dev(struct ibnbd_srv_sess_dev *sess_dev)
 	ret = ibtrs_srv_send(sess_dev->sess->ibtrs_sess, &vec, 1);
 	if (unlikely(ret)) {
 		ibnbd_err(sess_dev, "revalidate: Sending new device size"
-		    " to client failed, err: %s\n", strerror(ret));
+		    " to client failed, err: %d\n", ret);
 	} else {
 		ibnbd_info(sess_dev, "notified client about device size change"
 		     " (old nsectors: %lu, new nsectors: %lu)\n",
@@ -989,21 +988,21 @@ static int __init ibnbd_srv_init_module(void)
 	err = ibtrs_srv_register(&ibnbd_srv_ops);
 	if (err) {
 		pr_err("Failed to load module, IBTRS registration failed,"
-		       " err: %s\n", strerror(err));
+		       " err: %d\n", err);
 		goto out;
 	}
 
 	err = ibnbd_dev_init();
 	if (err) {
 		pr_err("Failed to load module, init device resources failed,"
-		       " err: %s\n", strerror(err));
+		       " err: %d\n", err);
 		goto unreg;
 	}
 
 	err = ibnbd_srv_create_sysfs_files();
 	if (err) {
 		pr_err("Failed to load module, create sysfs files failed,"
-		       " err: %s\n", strerror(err));
+		       " err: %d\n", err);
 		goto dev_destroy;
 	}
 
