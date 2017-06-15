@@ -1,20 +1,32 @@
-#ifndef __IBNBD_CLT_LOG_H__
-#define __IBNBD_CLT_LOG_H__
+#ifndef __IBNBD_LOG_H__
+#define __IBNBD_LOG_H__
 
-#define ibnbd_diskname(dev) ((dev)->gd ? (dev)->gd->disk_name : "<no dev>")
+#include "ibnbd-clt.h"
+#include "ibnbd-srv.h"
+
+#define ibnbd_diskname(dev) ({						\
+	struct gendisk *gd = ((struct ibnbd_clt_dev *)dev)->gd;		\
+	gd ? gd->disk_name : "<no dev>";				\
+})
+
 #define ibnbd_prefix(dev) ((dev)->sess->hostname[0] ? (dev)->sess->hostname : \
 			   (dev)->sess->str_addr)
 
+void unknown_type(void);
+
 #define ibnbd_log(lvl, fn, dev, fmt, ...) ({				\
-	if (__builtin_types_compatible_p(typeof(dev),			\
-					 struct ibnbd_dev *))		\
+	__builtin_choose_expr(						\
+		__builtin_types_compatible_p(				\
+			typeof(dev), struct ibnbd_clt_dev *),		\
 		fn(lvl "<%s@%s> %s: " fmt, (dev)->pathname,		\
 		   ibnbd_prefix(dev), ibnbd_diskname(dev),		\
-		   ##__VA_ARGS__);					\
-	else if (__builtin_types_compatible_p(typeof(dev),		\
-					      struct ibnbd_srv_dev *))	\
-		fn(lvl "<%s@%s>: " fmt, (dev)->pathname,		\
-		   ibnbd_prefix(dev), ##__VA_ARGS__);			\
+		   ##__VA_ARGS__),					\
+		__builtin_choose_expr(					\
+			__builtin_types_compatible_p(typeof(dev),	\
+					struct ibnbd_srv_sess_dev *),	\
+			fn(lvl "<%s@%s>: " fmt, (dev)->pathname,	\
+			   ibnbd_prefix(dev), ##__VA_ARGS__),		\
+			unknown_type()));				\
 })
 
 #define ERR(dev, fmt, ...)	\
@@ -30,4 +42,4 @@
 #define INFO_RL(dev, fmt, ...) \
 	ibnbd_log(KERN_INFO, printk_ratelimited, dev, fmt, ##__VA_ARGS__)
 
-#endif /*__IBNBD_CLT_LOG_H__*/
+#endif /*__IBNBD_LOG_H__*/

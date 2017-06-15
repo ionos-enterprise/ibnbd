@@ -6,7 +6,6 @@
 #include <rdma/ibtrs.h>
 
 #include "ibnbd-srv.h"
-#include "ibnbd-srv-log.h"
 #include "ibnbd-srv-sysfs.h"
 #include "ibnbd-srv-dev.h"
 #include "ibnbd.h"

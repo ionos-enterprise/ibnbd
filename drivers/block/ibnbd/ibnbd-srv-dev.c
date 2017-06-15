@@ -5,7 +5,7 @@
 
 
 #include "ibnbd-srv-dev.h"
-#include "ibnbd-srv-log.h"
+#include "ibnbd-log.h"
 
 #define IBNBD_DEV_MAX_FILEIO_ACTIVE_WORKERS 0
 

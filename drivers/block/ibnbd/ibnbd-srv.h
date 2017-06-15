@@ -8,6 +8,7 @@
 
 #include "ibnbd.h"
 #include "ibnbd-proto.h"
+#include "ibnbd-log.h"
 
 enum ibnbd_srv_sess_state {
 	SRV_SESS_STATE_CONNECTED,

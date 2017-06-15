@@ -8,10 +8,9 @@
 #include <linux/blk-mq.h>
 #include <rdma/ibtrs.h>
 
-#include "ibnbd-clt-log.h"
 #include "ibnbd.h"
 #include "ibnbd-proto.h"
-
+#include "ibnbd-log.h"
 
 #define IP_PREFIX "ip:"
 #define IP_PREFIX_LEN strlen(IP_PREFIX)
