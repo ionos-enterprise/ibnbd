@@ -112,7 +112,7 @@ static void ibnbd_clt_revalidate_disk(struct ibnbd_clt_dev *dev,
 {
 	int err = 0;
 
-	INFO(dev, "Device size changed from %zu to %zu sectors\n",
+	ibnbd_info(dev, "Device size changed from %zu to %zu sectors\n",
 	     dev->nsectors, new_nsectors);
 	dev->nsectors = new_nsectors;
 	set_capacity(dev->gd,
@@ -120,7 +120,7 @@ static void ibnbd_clt_revalidate_disk(struct ibnbd_clt_dev *dev,
 				      KERNEL_SECTOR_SIZE));
 	err = revalidate_disk(dev->gd);
 	if (err)
-		ERR(dev, "Failed to change device size from"
+		ibnbd_err(dev, "Failed to change device size from"
 		    " %zu to %zu, err: %s\n", dev->nsectors,
 		     new_nsectors, strerror(err));
 }
@@ -158,14 +158,14 @@ static int process_msg_open_rsp(struct ibnbd_clt_session *sess,
 	mutex_lock(&dev->lock);
 
 	if (dev->dev_state == DEV_STATE_UNMAPPED) {
-		INFO(dev, "Ignoring Open-Response message from server for "
+		ibnbd_info(dev, "Ignoring Open-Response message from server for "
 		     " unmapped device\n");
 		err = -ENOENT;
 		goto out;
 	}
 
 	if (rsp->result) {
-		ERR(dev, "Server failed to open device for mapping, err:"
+		ibnbd_err(dev, "Server failed to open device for mapping, err:"
 		    " %s\n", strerror(rsp->result));
 		dev->open_errno = rsp->result;
 		if (dev->open_compl)
@@ -179,7 +179,7 @@ static int process_msg_open_rsp(struct ibnbd_clt_session *sess,
 		 */
 		if (dev->nsectors != rsp->nsectors)
 			ibnbd_clt_revalidate_disk(dev, (size_t)rsp->nsectors);
-		INFO(dev, "Device online, device remapped successfully\n");
+		ibnbd_info(dev, "Device online, device remapped successfully\n");
 	}
 
 	ibnbd_clt_set_dev_attr(dev, rsp);
@@ -218,7 +218,7 @@ static void process_msg_revalidate(struct ibnbd_clt_session *sess,
 	mutex_lock(&dev->lock);
 
 	if (dev->dev_state == DEV_STATE_UNMAPPED) {
-		ERR(dev, "Received device revalidation message"
+		ibnbd_err(dev, "Received device revalidation message"
 		    " for unmapped device\n");
 		goto out;
 	}
@@ -227,7 +227,7 @@ static void process_msg_revalidate(struct ibnbd_clt_session *sess,
 	    dev->dev_state == DEV_STATE_OPEN) {
 		ibnbd_clt_revalidate_disk(dev, (size_t)msg->nsectors);
 	} else {
-		INFO(dev, "Ignoring device revalidate message, "
+		ibnbd_info(dev, "Ignoring device revalidate message, "
 		     "current device size is the same as in the "
 		     "revalidate message, %llu sectors\n", msg->nsectors);
 	}
@@ -636,7 +636,7 @@ static void ibnbd_clt_rdma_ev(void *priv, enum ibtrs_clt_rdma_ev ev, int errno)
 	}
 
 	if (errno)
-		INFO_RL(dev, "%s I/O failed with err: %s, flags: 0x%x\n",
+		ibnbd_info_rl(dev, "%s I/O failed with err: %s, flags: 0x%x\n",
 			is_read ? "read" : "write", strerror(errno), flags);
 }
 
@@ -680,7 +680,7 @@ int open_remote_device(struct ibnbd_clt_dev *dev)
 
 	err = send_msg_open(dev);
 	if (unlikely(err)) {
-		ERR(dev, "Failed to send open msg, err: %s\n", strerror(err));
+		ibnbd_err(dev, "Failed to send open msg, err: %s\n", strerror(err));
 		return err;
 	}
 	return 0;
@@ -696,11 +696,11 @@ static int find_dev_cb(int id, void *ptr, void *data)
 		dev->dev_state = DEV_STATE_INIT_CLOSED;
 		dev->open_errno = -ECOMM;
 		complete(dev->open_compl);
-		ERR(dev, "Device offline, session disconnected.\n");
+		ibnbd_err(dev, "Device offline, session disconnected.\n");
 	} else if (dev->sess == sess && dev->dev_state == DEV_STATE_UNMAPPED &&
 	    dev->close_compl) {
 		complete(dev->close_compl);
-		ERR(dev, "Device closed, session disconnected.\n");
+		ibnbd_err(dev, "Device closed, session disconnected.\n");
 	}
 
 	return 0;
@@ -716,7 +716,7 @@ static void __set_dev_states_closed(struct ibnbd_clt_session *sess)
 		dev->open_errno = -ECOMM;
 		if (dev->open_compl)
 			complete(dev->open_compl);
-		ERR(dev, "Device offline, session disconnected.\n");
+		ibnbd_err(dev, "Device offline, session disconnected.\n");
 		mutex_unlock(&dev->lock);
 	}
 	read_lock(&g_index_lock);
@@ -774,7 +774,7 @@ static void reopen_worker(struct work_struct *work)
 	if (unlikely(err))
 		goto out;
 	list_for_each_entry(dev, &sess->devs_list, list) {
-		INFO(dev, "session reconnected, remapping device\n");
+		ibnbd_info(dev, "session reconnected, remapping device\n");
 		open_remote_device(dev);
 	}
 out:
@@ -1199,7 +1199,7 @@ static int ibnbd_client_xfer_request(struct ibnbd_clt_dev *dev,
 		err = ibtrs_clt_rdma_write(sess, tag, iu, &vec, 1, size, sg,
 					   sg_cnt);
 	if (unlikely(err)) {
-		ERR_RL(dev, "IBTRS failed to transfer IO, err: %s\n",
+		ibnbd_err_rl(dev, "IBTRS failed to transfer IO, err: %s\n",
 		       strerror(err));
 		return err;
 	}
@@ -1444,7 +1444,7 @@ static int setup_mq_dev(struct ibnbd_clt_dev *dev)
 {
 	dev->queue = blk_mq_init_queue(&dev->sess->tag_set);
 	if (IS_ERR(dev->queue)) {
-		ERR(dev, "Initializing multiqueue queue failed, err: %s\n",
+		ibnbd_err(dev, "Initializing multiqueue queue failed, err: %s\n",
 		    strerror(PTR_ERR(dev->queue)));
 		return PTR_ERR(dev->queue);
 	}
@@ -1457,11 +1457,11 @@ static int setup_rq_dev(struct ibnbd_clt_dev *dev)
 	dev->queue = blk_init_queue(ibnbd_clt_request, NULL);
 	if (IS_ERR_OR_NULL(dev->queue)) {
 		if (IS_ERR(dev->queue)) {
-			ERR(dev, "Initializing request queue failed, "
+			ibnbd_err(dev, "Initializing request queue failed, "
 			    "err: %s\n", strerror(PTR_ERR(dev->queue)));
 			return PTR_ERR(dev->queue);
 		}
-		ERR(dev, "Initializing request queue failed\n");
+		ibnbd_err(dev, "Initializing request queue failed\n");
 		return -ENOMEM;
 	}
 
@@ -1555,7 +1555,7 @@ static int ibnbd_client_setup_device(struct ibnbd_clt_session *sess,
 
 	dev->gd = alloc_disk_node(1 << IBNBD_PART_BITS,	NUMA_NO_NODE);
 	if (!dev->gd) {
-		ERR(dev, "Failed to allocate disk node\n");
+		ibnbd_err(dev, "Failed to allocate disk node\n");
 		blk_cleanup_queue(dev->queue);
 		return -ENOMEM;
 	}
@@ -1721,7 +1721,7 @@ struct ibnbd_clt_dev *ibnbd_client_add_device(struct ibnbd_clt_session *sess,
 
 	open_compl = kmalloc(sizeof(*open_compl), GFP_KERNEL);
 	if (!open_compl) {
-		ERR(dev, "map_device: failed, Can't allocate memory for"
+		ibnbd_err(dev, "map_device: failed, Can't allocate memory for"
 		    " completion\n");
 		ret = -ENOMEM;
 		goto out;
@@ -1732,7 +1732,7 @@ struct ibnbd_clt_dev *ibnbd_client_add_device(struct ibnbd_clt_session *sess,
 
 	ret = open_remote_device(dev);
 	if (ret) {
-		ERR(dev, "map_device: failed, can't open remote device,"
+		ibnbd_err(dev, "map_device: failed, can't open remote device,"
 		    " err: %s\n",
 		     strerror(ret));
 		kfree(open_compl);
@@ -1749,7 +1749,7 @@ struct ibnbd_clt_dev *ibnbd_client_add_device(struct ibnbd_clt_session *sess,
 	if (!ibnbd_clt_dev_is_open(dev)) {
 		mutex_unlock(&dev->lock);
 		ret = dev->open_errno;
-		ERR(dev, "map_device: failed err: %s\n", strerror(ret));
+		ibnbd_err(dev, "map_device: failed err: %s\n", strerror(ret));
 		goto out;
 	}
 
@@ -1765,14 +1765,14 @@ struct ibnbd_clt_dev *ibnbd_client_add_device(struct ibnbd_clt_session *sess,
 	    pathname);
 	ret = ibnbd_client_setup_device(sess, dev, dev->clt_device_id);
 	if (ret) {
-		ERR(dev, "map_device: Failed to configure device, err: %s\n",
+		ibnbd_err(dev, "map_device: Failed to configure device, err: %s\n",
 		    strerror(ret));
 		mutex_unlock(&dev->lock);
 		ret = -EINVAL;
 		goto out_close;
 	}
 
-	INFO(dev, "map_device: Device mapped as %s (nsectors: %zu,"
+	ibnbd_info(dev, "map_device: Device mapped as %s (nsectors: %zu,"
 	     " logical_block_size: %d, physical_block_size: %d,"
 	     " max_write_same_sectors: %d, max_discard_sectors: %d,"
 	     " discard_zeroes_data: %d, discard_granularity: %d,"
@@ -1823,14 +1823,14 @@ __must_hold(&dev->sess->lock)
 	mutex_lock(&dev->lock);
 
 	if (dev->dev_state == DEV_STATE_UNMAPPED) {
-		INFO(dev, "Device is already being unmapped\n");
+		ibnbd_info(dev, "Device is already being unmapped\n");
 		ret = -EALREADY;
 		goto out;
 	}
 
 	refcount = atomic_read(&dev->refcount);
 	if (!force && refcount > 1) {
-		ERR(dev, "Closing device failed, device is in use,"
+		ibnbd_err(dev, "Closing device failed, device is in use,"
 		    " (%d device users)\n", refcount - 1);
 		ret = -EBUSY;
 		goto out;
@@ -1858,9 +1858,9 @@ __must_hold(&dev->sess->lock)
 
 	mutex_lock(&dev->sess->lock);
 	if (dev->gd)
-		INFO(dev, "Device is unmapped\n");
+		ibnbd_info(dev, "Device is unmapped\n");
 	else
-		INFO(dev, "Device is unmapped\n");
+		ibnbd_info(dev, "Device is unmapped\n");
 	return 0;
 out:
 	mutex_unlock(&dev->lock);
@@ -1894,7 +1894,7 @@ static void ibnbd_destroy_sessions(void)
 				continue;
 			ret = __close_device(dev, true);
 			if (ret)
-				WRN(dev, "Closing device failed, err: %s\n",
+				ibnbd_wrn(dev, "Closing device failed, err: %s\n",
 				    strerror(ret));
 			else
 				wait_for_completion(dev->close_compl);

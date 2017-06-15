@@ -102,7 +102,7 @@ static void ibnbd_endio(void *priv, int error)
 
 	ret = ibtrs_srv_resp_rdma(ibnbd_priv->id, error);
 	if (unlikely(ret))
-		ERR_RL(sess_dev, "Sending I/O response failed, err: %s\n",
+		ibnbd_err_rl(sess_dev, "Sending I/O response failed, err: %s\n",
 		       strerror(ret));
 
 	kfree(priv);
@@ -161,7 +161,7 @@ static int process_rdma(struct ibtrs_session *sess,
 	err = ibnbd_dev_submit_io(sess_dev->ibnbd_dev, msg->sector, data,
 				  data_len, msg->bi_size, msg->rw, priv);
 	if (unlikely(err)) {
-		ERR(sess_dev, "Submitting I/O to device failed, err: %s\n",
+		ibnbd_err(sess_dev, "Submitting I/O to device failed, err: %s\n",
 		    strerror(err));
 		goto sess_dev_put;
 	}
@@ -239,7 +239,7 @@ static void ibnbd_destroy_sess_dev(struct ibnbd_srv_sess_dev *sess_dev,
 
 	ibnbd_put_srv_dev(sess_dev->dev);
 
-	INFO(sess_dev, "Device closed\n");
+	ibnbd_info(sess_dev, "Device closed\n");
 	kfree(sess_dev);
 }
 
@@ -760,7 +760,7 @@ static void process_msg_open(struct ibtrs_session *s,
 						 ibnbd_dev_get_name(ibnbd_dev));
 		if (ret) {
 			mutex_unlock(&srv_dev->lock);
-			ERR(srv_sess_dev, "Opening device failed, failed to"
+			ibnbd_err(srv_sess_dev, "Opening device failed, failed to"
 			    " create device sysfs files, err: %s\n",
 			    strerror(ret));
 			goto free_srv_sess_dev;
@@ -770,7 +770,7 @@ static void process_msg_open(struct ibtrs_session *s,
 	ret = ibnbd_srv_create_dev_client_sysfs(srv_sess_dev);
 	if (ret) {
 		mutex_unlock(&srv_dev->lock);
-		ERR(srv_sess_dev, "Opening device failed, failed to create"
+		ibnbd_err(srv_sess_dev, "Opening device failed, failed to create"
 		    " dev client sysfs files, err: %s\n", strerror(ret));
 		goto free_srv_sess_dev;
 	}
@@ -790,19 +790,19 @@ static void process_msg_open(struct ibtrs_session *s,
 
 	if (unlikely(srv_sess->state == SRV_SESS_STATE_DISCONNECTED)) {
 		ret = -ENODEV;
-		ERR(srv_sess_dev, "Opening device failed, session"
+		ibnbd_err(srv_sess_dev, "Opening device failed, session"
 		    " is disconnected, err: %s\n", strerror(ret));
 		goto remove_srv_sess_dev;
 	}
 
 	ret = ibtrs_srv_send(s, &vec, 1);
 	if (unlikely(ret)) {
-		ERR(srv_sess_dev, "Opening device failed, sending open"
+		ibnbd_err(srv_sess_dev, "Opening device failed, sending open"
 		    " response msg failed, err: %s\n", strerror(ret));
 		goto remove_srv_sess_dev;
 	}
 	srv_sess_dev->is_visible = true;
-	INFO(srv_sess_dev, "Opened device '%s' in %s mode\n",
+	ibnbd_info(srv_sess_dev, "Opened device '%s' in %s mode\n",
 	     srv_dev->id, ibnbd_io_mode_str(io_mode));
 
 	kfree(full_path);
@@ -938,17 +938,17 @@ static int ibnbd_srv_revalidate_sess_dev(struct ibnbd_srv_sess_dev *sess_dev)
 		return -ENODEV;
 
 	if (!sess_dev->is_visible) {
-		INFO(sess_dev, "revalidate device failed, wait for sending "
+		ibnbd_info(sess_dev, "revalidate device failed, wait for sending "
 		     "open reply first\n");
 		return -EAGAIN;
 	}
 
 	ret = ibtrs_srv_send(sess_dev->sess->ibtrs_sess, &vec, 1);
 	if (unlikely(ret)) {
-		ERR(sess_dev, "revalidate: Sending new device size"
+		ibnbd_err(sess_dev, "revalidate: Sending new device size"
 		    " to client failed, err: %s\n", strerror(ret));
 	} else {
-		INFO(sess_dev, "notified client about device size change"
+		ibnbd_info(sess_dev, "notified client about device size change"
 		     " (old nsectors: %lu, new nsectors: %lu)\n",
 		     sess_dev->nsectors, nsectors);
 		sess_dev->nsectors = nsectors;

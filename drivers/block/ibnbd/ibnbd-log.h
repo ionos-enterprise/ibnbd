@@ -29,17 +29,17 @@ void unknown_type(void);
 			unknown_type()));				\
 })
 
-#define ERR(dev, fmt, ...)	\
+#define ibnbd_err(dev, fmt, ...)	\
 	ibnbd_log(KERN_ERR, printk, dev, fmt, ##__VA_ARGS__)
-#define ERR_RL(dev, fmt, ...)	\
+#define ibnbd_err_rl(dev, fmt, ...)	\
 	ibnbd_log(KERN_ERR, printk_ratelimited, dev, fmt, ##__VA_ARGS__)
-#define WRN(dev, fmt, ...)	\
+#define ibnbd_wrn(dev, fmt, ...)	\
 	ibnbd_log(KERN_WARNING, printk, dev, fmt, ##__VA_ARGS__)
-#define WRN_RL(dev, fmt, ...) \
+#define ibnbd_wrn_rl(dev, fmt, ...) \
 	ibnbd_log(KERN_WARNING, printk_ratelimited, dev, fmt, ##__VA_ARGS__)
-#define INFO(dev, fmt, ...) \
+#define ibnbd_info(dev, fmt, ...) \
 	ibnbd_log(KERN_INFO, printk, dev, fmt, ##__VA_ARGS__)
-#define INFO_RL(dev, fmt, ...) \
+#define ibnbd_info_rl(dev, fmt, ...) \
 	ibnbd_log(KERN_INFO, printk_ratelimited, dev, fmt, ##__VA_ARGS__)
 
 #endif /*__IBNBD_LOG_H__*/
