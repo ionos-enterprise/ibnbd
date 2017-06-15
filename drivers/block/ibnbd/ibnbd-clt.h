@@ -50,13 +50,13 @@ struct ibnbd_cpu_qlist {
 	unsigned int		cpu;
 };
 
-enum sess_state {
-	SESS_STATE_READY,
-	SESS_STATE_DISCONNECTED,
-	SESS_STATE_DESTROYED,
+enum ibnbd_clt_sess_state {
+	CLT_SESS_STATE_READY,
+	CLT_SESS_STATE_DISCONNECTED,
+	CLT_SESS_STATE_DESTROYED,
 };
 
-struct ibnbd_session {
+struct ibnbd_clt_session {
 	struct list_head        list;
 	struct ibtrs_session    *sess;
 	struct ibnbd_cpu_qlist	__percpu
@@ -73,14 +73,14 @@ struct ibnbd_session {
 	struct sockaddr_storage addr;
 	char			str_addr[IBTRS_ADDRLEN];
 	char			hostname[MAXHOSTNAMELEN];
-	enum sess_state		state;
+	enum ibnbd_clt_sess_state state;
 	u8			ver; /* protocol version */
 	struct completion	*sess_info_compl;
 };
 
 struct ibnbd_work {
 	struct work_struct	work;
-	struct ibnbd_session	*sess;
+	struct ibnbd_clt_session	*sess;
 };
 
 /**
@@ -95,7 +95,7 @@ struct ibnbd_queue {
 
 struct ibnbd_clt_dev {
 	struct list_head        g_list;
-	struct ibnbd_session	*sess;
+	struct ibnbd_clt_session	*sess;
 	struct request_queue	*queue;
 	struct ibnbd_queue	*hw_queues;
 	struct delayed_work	rq_delay_work;
@@ -146,10 +146,10 @@ static inline const char *ibnbd_queue_mode_str(enum ibnbd_queue_mode mode)
 }
 
 int ibnbd_close_device(struct ibnbd_clt_dev *dev, bool force);
-struct ibnbd_session *ibnbd_create_session(const struct sockaddr_storage *addr);
-struct ibnbd_session *ibnbd_clt_find_sess(const struct sockaddr_storage *addr);
+struct ibnbd_clt_session *ibnbd_create_session(const struct sockaddr_storage *addr);
+struct ibnbd_clt_session *ibnbd_clt_find_sess(const struct sockaddr_storage *addr);
 void ibnbd_clt_sess_release(struct kref *ref);
-struct ibnbd_clt_dev *ibnbd_client_add_device(struct ibnbd_session *sess,
+struct ibnbd_clt_dev *ibnbd_client_add_device(struct ibnbd_clt_session *sess,
 					      const char *pathname,
 					      enum ibnbd_access_mode access_mode,
 					      enum ibnbd_queue_mode queue_mode,

@@ -9,9 +9,9 @@
 #include "ibnbd.h"
 #include "ibnbd-proto.h"
 
-enum sess_state {
-	SESS_STATE_CONNECTED,
-	SESS_STATE_DISCONNECTED
+enum ibnbd_srv_sess_state {
+	SRV_SESS_STATE_CONNECTED,
+	SRV_SESS_STATE_DISCONNECTED
 };
 
 struct ibnbd_srv_session {
@@ -20,7 +20,7 @@ struct ibnbd_srv_session {
 	char			str_addr[IBTRS_ADDRLEN];
 	char			hostname[MAXHOSTNAMELEN];
 	int			queue_depth;
-	enum sess_state         state;
+	enum ibnbd_srv_sess_state state;
 	struct bio_set		*sess_bio_set;
 
 	rwlock_t                index_lock ____cacheline_aligned;

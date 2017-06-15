@@ -125,7 +125,7 @@ static void ibnbd_clt_revalidate_disk(struct ibnbd_clt_dev *dev,
 		     new_nsectors, strerror(err));
 }
 
-static void process_msg_sess_info_rsp(struct ibnbd_session *sess,
+static void process_msg_sess_info_rsp(struct ibnbd_clt_session *sess,
 				      struct ibnbd_msg_sess_info_rsp *msg)
 {
 	sess->ver = min_t(u8, msg->ver, IBNBD_VERSION);
@@ -134,7 +134,7 @@ static void process_msg_sess_info_rsp(struct ibnbd_session *sess,
 	    IBNBD_VERSION, msg->ver);
 }
 
-static int process_msg_open_rsp(struct ibnbd_session *sess,
+static int process_msg_open_rsp(struct ibnbd_clt_session *sess,
 				struct ibnbd_msg_open_rsp *rsp)
 {
 	struct ibnbd_clt_dev *dev;
@@ -195,7 +195,7 @@ out:
 	return err;
 }
 
-static void process_msg_revalidate(struct ibnbd_session *sess,
+static void process_msg_revalidate(struct ibnbd_clt_session *sess,
 				   struct ibnbd_msg_revalidate *msg)
 {
 	struct ibnbd_clt_dev *dev;
@@ -254,7 +254,7 @@ static int send_msg_close(struct ibtrs_session *sess, u32 device_id)
 static void ibnbd_clt_recv(void *priv, const void *msg, size_t len)
 {
 	const struct ibnbd_msg_hdr *hdr = msg;
-	struct ibnbd_session *sess = priv;
+	struct ibnbd_clt_session *sess = priv;
 
 	if (unlikely(WARN_ON(!hdr) || ibnbd_validate_message(msg, len)))
 		return;
@@ -369,8 +369,8 @@ enum {
  *     is not empty - it is marked with a bit.  This function finds first
  *     set bit in a bitmap and returns corresponding CPU list.
  */
-static struct ibnbd_cpu_qlist *ibnbd_get_cpu_qlist(struct ibnbd_session *sess,
-						   int cpu)
+static struct ibnbd_cpu_qlist *
+ibnbd_get_cpu_qlist(struct ibnbd_clt_session *sess, int cpu)
 {
 	int bit;
 
@@ -423,7 +423,7 @@ static inline int nxt_cpu(int cpu)
  * Context:
  *     Does not matter.
  */
-static inline bool ibnbd_requeue_if_needed(struct ibnbd_session *sess)
+static inline bool ibnbd_requeue_if_needed(struct ibnbd_clt_session *sess)
 {
 	struct ibnbd_queue *q = NULL;
 	struct ibnbd_cpu_qlist *cpu_q;
@@ -503,7 +503,7 @@ clear_bit:
  * Context:
  *     Does not matter.
  */
-static inline void ibnbd_requeue_all_if_idle(struct ibnbd_session *sess)
+static inline void ibnbd_requeue_all_if_idle(struct ibnbd_clt_session *sess)
 {
 	bool requeued;
 
@@ -512,7 +512,7 @@ static inline void ibnbd_requeue_all_if_idle(struct ibnbd_session *sess)
 	} while (atomic_read(&sess->busy) == 0 && requeued);
 }
 
-static struct ibtrs_tag *ibnbd_get_tag(struct ibnbd_session *sess, int cpu,
+static struct ibtrs_tag *ibnbd_get_tag(struct ibnbd_clt_session *sess, int cpu,
 				       size_t tag_bytes, int wait)
 {
 	struct ibtrs_tag *tag;
@@ -530,7 +530,7 @@ static struct ibtrs_tag *ibnbd_get_tag(struct ibnbd_session *sess, int cpu,
 	return tag;
 }
 
-static void ibnbd_put_tag(struct ibnbd_session *sess, struct ibtrs_tag *tag)
+static void ibnbd_put_tag(struct ibnbd_clt_session *sess, struct ibtrs_tag *tag)
 {
 	ibtrs_put_tag(sess->sess, tag);
 	atomic_dec(&sess->busy);
@@ -541,7 +541,7 @@ static void ibnbd_put_tag(struct ibnbd_session *sess, struct ibtrs_tag *tag)
 	ibnbd_requeue_all_if_idle(sess);
 }
 
-static struct ibnbd_iu *ibnbd_get_iu(struct ibnbd_session *sess,
+static struct ibnbd_iu *ibnbd_get_iu(struct ibnbd_clt_session *sess,
 				     size_t tag_bytes, int wait)
 {
 	struct ibnbd_iu *iu;
@@ -559,7 +559,7 @@ static struct ibnbd_iu *ibnbd_get_iu(struct ibnbd_session *sess,
 	return iu;
 }
 
-static void ibnbd_put_iu(struct ibnbd_session *sess, struct ibnbd_iu *iu)
+static void ibnbd_put_iu(struct ibnbd_clt_session *sess, struct ibnbd_iu *iu)
 {
 	ibnbd_put_tag(sess, iu->tag);
 }
@@ -567,7 +567,7 @@ static void ibnbd_put_iu(struct ibnbd_session *sess, struct ibnbd_iu *iu)
 static void ibnbd_softirq_done_fn(struct request *rq)
 {
 	struct ibnbd_clt_dev *dev	= rq->rq_disk->private_data;
-	struct ibnbd_session *sess	= dev->sess;
+	struct ibnbd_clt_session *sess	= dev->sess;
 	struct ibnbd_iu *iu;
 
 	switch (dev->queue_mode) {
@@ -660,7 +660,7 @@ static int send_msg_open(struct ibnbd_clt_dev *dev)
 	return err;
 }
 
-static int send_msg_sess_info(struct ibnbd_session *sess)
+static int send_msg_sess_info(struct ibnbd_clt_session *sess)
 {
 	struct ibnbd_msg_sess_info msg;
 	struct kvec vec = {
@@ -689,7 +689,7 @@ int open_remote_device(struct ibnbd_clt_dev *dev)
 static int find_dev_cb(int id, void *ptr, void *data)
 {
 	struct ibnbd_clt_dev *dev = ptr;
-	struct ibnbd_session *sess = data;
+	struct ibnbd_clt_session *sess = data;
 
 	if (dev->sess == sess && dev->dev_state == DEV_STATE_INIT &&
 	    dev->open_compl) {
@@ -706,7 +706,7 @@ static int find_dev_cb(int id, void *ptr, void *data)
 	return 0;
 }
 
-static void __set_dev_states_closed(struct ibnbd_session *sess)
+static void __set_dev_states_closed(struct ibnbd_clt_session *sess)
 {
 	struct ibnbd_clt_dev *dev;
 
@@ -724,7 +724,7 @@ static void __set_dev_states_closed(struct ibnbd_session *sess)
 	read_unlock(&g_index_lock);
 }
 
-static int update_sess_info(struct ibnbd_session *sess)
+static int update_sess_info(struct ibnbd_clt_session *sess)
 {
 	int err;
 
@@ -757,7 +757,7 @@ out:
 static void reopen_worker(struct work_struct *work)
 {
 	struct ibnbd_work *w;
-	struct ibnbd_session *sess;
+	struct ibnbd_clt_session *sess;
 	struct ibnbd_clt_dev *dev;
 	int err;
 
@@ -766,7 +766,7 @@ static void reopen_worker(struct work_struct *work)
 	kfree(w);
 
 	mutex_lock(&sess->lock);
-	if (sess->state == SESS_STATE_DESTROYED) {
+	if (sess->state == CLT_SESS_STATE_DESTROYED) {
 		mutex_unlock(&sess->lock);
 		return;
 	}
@@ -783,7 +783,7 @@ out:
 	ibnbd_clt_put_sess(sess);
 }
 
-static int ibnbd_schedule_reopen(struct ibnbd_session *sess)
+static int ibnbd_schedule_reopen(struct ibnbd_clt_session *sess)
 {
 	struct ibnbd_work *w;
 
@@ -808,7 +808,7 @@ static int ibnbd_schedule_reopen(struct ibnbd_session *sess)
 
 static void ibnbd_clt_sess_ev(void *priv, enum ibtrs_clt_sess_ev ev, int errno)
 {
-	struct ibnbd_session *sess = priv;
+	struct ibnbd_clt_session *sess = priv;
 	struct ibtrs_attrs attrs;
 
 	switch (ev) {
@@ -816,17 +816,17 @@ static void ibnbd_clt_sess_ev(void *priv, enum ibtrs_clt_sess_ev ev, int errno)
 		if (sess->sess_info_compl)
 			complete(sess->sess_info_compl);
 		mutex_lock(&sess->lock);
-		if (sess->state == SESS_STATE_DESTROYED) {
+		if (sess->state == CLT_SESS_STATE_DESTROYED) {
 			mutex_unlock(&sess->lock);
 			return;
 		}
-		sess->state = SESS_STATE_DISCONNECTED;
+		sess->state = CLT_SESS_STATE_DISCONNECTED;
 		__set_dev_states_closed(sess);
 		mutex_unlock(&sess->lock);
 		break;
 	case IBTRS_CLT_SESS_EV_RECONNECT:
 		mutex_lock(&sess->lock);
-		if (sess->state == SESS_STATE_DESTROYED) {
+		if (sess->state == CLT_SESS_STATE_DESTROYED) {
 			/* This may happen if the session started to be closed
 			 * before the reconnect event arrived. In this case, we
 			 * just return and the session will be closed later
@@ -834,7 +834,7 @@ static void ibnbd_clt_sess_ev(void *priv, enum ibtrs_clt_sess_ev ev, int errno)
 			mutex_unlock(&sess->lock);
 			return;
 		}
-		sess->state = SESS_STATE_READY;
+		sess->state = CLT_SESS_STATE_READY;
 
 		mutex_unlock(&sess->lock);
 		memset(&attrs, 0, sizeof(attrs));
@@ -879,9 +879,10 @@ static int ibnbd_cmp_sock_addr(const struct sockaddr_storage *a,
 	}
 }
 
-struct ibnbd_session *ibnbd_clt_find_sess(const struct sockaddr_storage *addr)
+struct ibnbd_clt_session *
+ibnbd_clt_find_sess(const struct sockaddr_storage *addr)
 {
-	struct ibnbd_session *sess;
+	struct ibnbd_clt_session *sess;
 
 	spin_lock(&sess_lock);
 	list_for_each_entry(sess, &session_list, list)
@@ -909,7 +910,7 @@ static void ibnbd_init_cpu_qlists(struct ibnbd_cpu_qlist __percpu *cpu_queues)
 }
 
 static struct blk_mq_ops ibnbd_mq_ops;
-static int setup_mq_tags(struct ibnbd_session *sess)
+static int setup_mq_tags(struct ibnbd_clt_session *sess)
 {
 	struct blk_mq_tag_set *tags = &sess->tag_set;
 
@@ -926,14 +927,14 @@ static int setup_mq_tags(struct ibnbd_session *sess)
 	return blk_mq_alloc_tag_set(tags);
 }
 
-static void destroy_mq_tags(struct ibnbd_session *sess)
+static void destroy_mq_tags(struct ibnbd_clt_session *sess)
 {
 	blk_mq_free_tag_set(&sess->tag_set);
 }
 
-struct ibnbd_session *ibnbd_create_session(const struct sockaddr_storage *addr)
+struct ibnbd_clt_session *ibnbd_create_session(const struct sockaddr_storage *addr)
 {
-	struct ibnbd_session *sess;
+	struct ibnbd_clt_session *sess;
 	struct ibtrs_attrs attrs;
 	char str_addr[IBTRS_ADDRLEN];
 	int err;
@@ -998,14 +999,14 @@ struct ibnbd_session *ibnbd_create_session(const struct sockaddr_storage *addr)
 	INIT_LIST_HEAD(&sess->devs_list);
 	bitmap_zero(sess->cpu_queues_bm, NR_CPUS);
 	kref_init(&sess->refcount);
-	sess->state = SESS_STATE_DISCONNECTED;
+	sess->state = CLT_SESS_STATE_DISCONNECTED;
 
 	sess->sess = ibtrs_clt_open(addr, sizeof(struct ibnbd_iu), sess,
 				    RECONNECT_DELAY, BMAX_SEGMENTS,
 				    MAX_RECONNECTS);
 	if (!IS_ERR(sess->sess)) {
 		mutex_lock(&sess->lock);
-		sess->state = SESS_STATE_READY;
+		sess->state = CLT_SESS_STATE_READY;
 		mutex_unlock(&sess->lock);
 	} else {
 		err = PTR_ERR(sess->sess);
@@ -1041,10 +1042,10 @@ out_free:
 	return ERR_PTR(err);
 }
 
-static void ibnbd_clt_destroy_session(struct ibnbd_session *sess)
+static void ibnbd_clt_destroy_session(struct ibnbd_clt_session *sess)
 {
 	mutex_lock(&sess->lock);
-	sess->state = SESS_STATE_DESTROYED;
+	sess->state = CLT_SESS_STATE_DESTROYED;
 
 	if (!list_empty(&sess->devs_list)) {
 		mutex_unlock(&sess->lock);
@@ -1068,7 +1069,7 @@ static void ibnbd_clt_destroy_session(struct ibnbd_session *sess)
 
 void ibnbd_clt_sess_release(struct kref *ref)
 {
-	struct ibnbd_session *sess = container_of(ref, struct ibnbd_session,
+	struct ibnbd_clt_session *sess = container_of(ref, struct ibnbd_clt_session,
 						  refcount);
 
 	ibnbd_clt_destroy_session(sess);
@@ -1217,7 +1218,7 @@ static int ibnbd_client_xfer_request(struct ibnbd_clt_dev *dev,
 static inline bool ibnbd_clt_dev_add_to_requeue(struct ibnbd_clt_dev *dev,
 						struct ibnbd_queue *q)
 {
-	struct ibnbd_session *sess = dev->sess;
+	struct ibnbd_clt_session *sess = dev->sess;
 	struct ibnbd_cpu_qlist *cpu_q;
 	unsigned long flags;
 	bool added = true;
@@ -1529,7 +1530,7 @@ static void ibnbd_clt_add_gen_disk(struct ibnbd_clt_dev *dev)
 	add_disk(dev->gd);
 }
 
-static int ibnbd_client_setup_device(struct ibnbd_session *sess,
+static int ibnbd_client_setup_device(struct ibnbd_clt_session *sess,
 				     struct ibnbd_clt_dev *dev, int idx)
 {
 	int err;
@@ -1564,7 +1565,7 @@ static int ibnbd_client_setup_device(struct ibnbd_session *sess,
 	return 0;
 }
 
-static struct ibnbd_clt_dev *init_dev(struct ibnbd_session *sess,
+static struct ibnbd_clt_dev *init_dev(struct ibnbd_clt_session *sess,
 				      enum ibnbd_access_mode access_mode,
 				      enum ibnbd_queue_mode queue_mode,
 				      const char *pathname)
@@ -1663,8 +1664,9 @@ bool ibnbd_clt_dev_is_mapped(const char *pathname)
 	return false;
 }
 
-static struct ibnbd_clt_dev *__find_sess_dev(const struct ibnbd_session *sess,
-					 const char *pathname)
+static struct ibnbd_clt_dev *
+__find_sess_dev(const struct ibnbd_clt_session *sess,
+		const char *pathname)
 {
 	struct ibnbd_clt_dev *dev;
 
@@ -1675,11 +1677,11 @@ static struct ibnbd_clt_dev *__find_sess_dev(const struct ibnbd_session *sess,
 	return NULL;
 }
 
-struct ibnbd_clt_dev *ibnbd_client_add_device(struct ibnbd_session *sess,
-					  const char *pathname,
-					  enum ibnbd_access_mode access_mode,
-					  enum ibnbd_queue_mode queue_mode,
-					  enum ibnbd_io_mode io_mode)
+struct ibnbd_clt_dev *ibnbd_client_add_device(struct ibnbd_clt_session *sess,
+					      const char *pathname,
+					      enum ibnbd_access_mode access_mode,
+					      enum ibnbd_queue_mode queue_mode,
+					      enum ibnbd_io_mode io_mode)
 {
 	int ret;
 	struct ibnbd_clt_dev *dev;
@@ -1691,7 +1693,7 @@ struct ibnbd_clt_dev *ibnbd_client_add_device(struct ibnbd_session *sess,
 
 	mutex_lock(&sess->lock);
 
-	if (sess->state != SESS_STATE_READY) {
+	if (sess->state != CLT_SESS_STATE_READY) {
 		mutex_unlock(&sess->lock);
 		pr_err("map_device: failed to map device '%s' from session %s,"
 		       " session is not connected\n", pathname, sess->str_addr);
@@ -1878,7 +1880,7 @@ int ibnbd_close_device(struct ibnbd_clt_dev *dev, bool force)
 
 static void ibnbd_destroy_sessions(void)
 {
-	struct ibnbd_session *sess, *sn;
+	struct ibnbd_clt_session *sess, *sn;
 	struct ibnbd_clt_dev *dev, *tn;
 	int ret;
 
@@ -1886,7 +1888,7 @@ static void ibnbd_destroy_sessions(void)
 		if (!ibnbd_clt_get_sess(sess))
 			continue;
 		mutex_lock(&sess->lock);
-		sess->state = SESS_STATE_DESTROYED;
+		sess->state = CLT_SESS_STATE_DESTROYED;
 		list_for_each_entry_safe(dev, tn, &sess->devs_list, list) {
 			if (!kobject_get(&dev->kobj))
 				continue;

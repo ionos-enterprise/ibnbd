@@ -11,8 +11,8 @@ void ibnbd_clt_schedule_dev_destroy(struct ibnbd_clt_dev *dev);
 
 void ibnbd_clt_remove_dev_symlink(struct ibnbd_clt_dev *dev);
 
-int ibnbd_clt_get_sess(struct ibnbd_session *sess);
+int ibnbd_clt_get_sess(struct ibnbd_clt_session *sess);
 
-void ibnbd_clt_put_sess(struct ibnbd_session *sess);
+void ibnbd_clt_put_sess(struct ibnbd_clt_session *sess);
 
 #endif

@@ -248,7 +248,7 @@ static void destroy_sess(struct ibnbd_srv_session *srv_sess)
 {
 	struct ibnbd_srv_sess_dev *sess_dev, *tmp;
 
-	srv_sess->state = SESS_STATE_DISCONNECTED;
+	srv_sess->state = SRV_SESS_STATE_DISCONNECTED;
 
 	if (list_empty(&srv_sess->sess_dev_list))
 		goto out;
@@ -297,7 +297,7 @@ static int create_sess(struct ibtrs_session *sess)
 	rwlock_init(&srv_sess->index_lock);
 	INIT_LIST_HEAD(&srv_sess->sess_dev_list);
 	mutex_init(&srv_sess->lock);
-	srv_sess->state = SESS_STATE_CONNECTED;
+	srv_sess->state = SRV_SESS_STATE_CONNECTED;
 	mutex_lock(&sess_lock);
 	list_add(&srv_sess->list, &sess_list);
 	mutex_unlock(&sess_lock);
@@ -325,12 +325,12 @@ static int ibnbd_srv_sess_ev(struct ibtrs_session *sess,
 
 	case IBTRS_SRV_SESS_EV_DISCONNECTING:
 		if (WARN_ON(!priv ||
-			    srv_sess->state != SESS_STATE_CONNECTED))
+			    srv_sess->state != SRV_SESS_STATE_CONNECTED))
 			return -EINVAL;
 
 		pr_info("IBTRS Session to %s will be disconnected.\n",
 			srv_sess->str_addr);
-		srv_sess->state = SESS_STATE_DISCONNECTED;
+		srv_sess->state = SRV_SESS_STATE_DISCONNECTED;
 
 		return 0;
 
@@ -355,7 +355,7 @@ static int ibnbd_srv_rdma_ev(struct ibtrs_session *sess, void *priv,
 	struct ibnbd_srv_session *srv_sess = priv;
 
 	if (unlikely(WARN_ON(!srv_sess) ||
-		     srv_sess->state == SESS_STATE_DISCONNECTED))
+		     srv_sess->state == SRV_SESS_STATE_DISCONNECTED))
 		return -ENODEV;
 
 	switch (ev) {
@@ -789,7 +789,7 @@ static void process_msg_open(struct ibtrs_session *s,
 				    open_msg->clt_device_id,
 				    srv_sess_dev->nsectors, ibnbd_dev);
 
-	if (unlikely(srv_sess->state == SESS_STATE_DISCONNECTED)) {
+	if (unlikely(srv_sess->state == SRV_SESS_STATE_DISCONNECTED)) {
 		ret = -ENODEV;
 		ERR(srv_sess_dev, "Opening device failed, session"
 		    " is disconnected, err: %s\n", strerror(ret));
@@ -839,7 +839,7 @@ reject:
 	    srv_sess->str_addr, open_msg->dev_name, strerror(ret));
 	ibnbd_srv_fill_msg_open_rsp_header(&rsp, open_msg->clt_device_id);
 	rsp.result = ret;
-	if (unlikely(srv_sess->state == SESS_STATE_DISCONNECTED))
+	if (unlikely(srv_sess->state == SRV_SESS_STATE_DISCONNECTED))
 		return;
 	ret = ibtrs_srv_send(s, &vec, 1);
 	if (ret)
@@ -935,7 +935,7 @@ static int ibnbd_srv_revalidate_sess_dev(struct ibnbd_srv_sess_dev *sess_dev)
 	msg.clt_device_id	= sess_dev->clt_device_id;
 	msg.nsectors		= nsectors;
 
-	if (unlikely(sess_dev->sess->state == SESS_STATE_DISCONNECTED))
+	if (unlikely(sess_dev->sess->state == SRV_SESS_STATE_DISCONNECTED))
 		return -ENODEV;
 
 	if (!sess_dev->is_visible) {

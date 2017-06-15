@@ -205,12 +205,12 @@ out:
 	return ret;
 }
 
-int ibnbd_clt_get_sess(struct ibnbd_session *sess)
+int ibnbd_clt_get_sess(struct ibnbd_clt_session *sess)
 {
 	return kref_get_unless_zero(&sess->refcount);
 }
 
-void ibnbd_clt_put_sess(struct ibnbd_session *sess)
+void ibnbd_clt_put_sess(struct ibnbd_clt_session *sess)
 {
 	mutex_lock(&sess_lock);
 	kref_put(&sess->refcount, ibnbd_clt_sess_release);
@@ -614,15 +614,15 @@ static int ibnbd_clt_str_to_sockaddr(char *addr,
 	return -EPROTONOSUPPORT;
 }
 
-static struct ibnbd_session *
+static struct ibnbd_clt_session *
 ibnbd_clt_get_create_sess(struct sockaddr_storage *sockaddr)
 {
-	struct ibnbd_session *sess;
+	struct ibnbd_clt_session *sess;
 
 	mutex_lock(&sess_lock);
 	sess = ibnbd_clt_find_sess(sockaddr);
 	if (sess) {
-		if (sess->state != SESS_STATE_READY ||
+		if (sess->state != CLT_SESS_STATE_READY ||
 		    !ibnbd_clt_get_sess(sess)) {
 			pr_err("Session is not connected or "
 			       "is being destroyed\n");
@@ -698,7 +698,7 @@ static ssize_t ibnbd_clt_map_device_store(struct kobject *kobj,
 					  struct kobj_attribute *attr,
 					  const char *buf, size_t count)
 {
-	struct ibnbd_session *sess;
+	struct ibnbd_clt_session *sess;
 	struct ibnbd_clt_dev *dev;
 	int ret;
 	char pathname[NAME_MAX];
