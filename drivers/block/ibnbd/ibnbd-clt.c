@@ -40,12 +40,12 @@ MODULE_PARM_DESC(softirq_enable, "finish request in softirq_fn."
 #define IBNBD_PART_BITS		6
 #define KERNEL_SECTOR_SIZE      512
 
-inline bool ibnbd_clt_dev_is_open(struct ibnbd_dev *dev)
+inline bool ibnbd_clt_dev_is_open(struct ibnbd_clt_dev *dev)
 {
 	return dev->dev_state == DEV_STATE_OPEN;
 }
 
-static void ibnbd_clt_put_dev(struct ibnbd_dev *dev)
+static void ibnbd_clt_put_dev(struct ibnbd_clt_dev *dev)
 {
 	if (!atomic_dec_if_positive(&dev->refcount)) {
 		write_lock(&g_index_lock);
@@ -58,14 +58,14 @@ static void ibnbd_clt_put_dev(struct ibnbd_dev *dev)
 	}
 }
 
-static int ibnbd_clt_get_dev(struct ibnbd_dev *dev)
+static int ibnbd_clt_get_dev(struct ibnbd_clt_dev *dev)
 {
 	return atomic_inc_not_zero(&dev->refcount);
 }
 
-static struct ibnbd_dev *g_get_dev(int dev_id)
+static struct ibnbd_clt_dev *g_get_dev(int dev_id)
 {
-	struct ibnbd_dev *dev;
+	struct ibnbd_clt_dev *dev;
 
 	read_lock(&g_index_lock);
 	dev = idr_find(&g_index_idr, dev_id);
@@ -76,7 +76,7 @@ static struct ibnbd_dev *g_get_dev(int dev_id)
 	return dev;
 }
 
-static void ibnbd_clt_set_dev_attr(struct ibnbd_dev *dev,
+static void ibnbd_clt_set_dev_attr(struct ibnbd_clt_dev *dev,
 				   const struct ibnbd_msg_open_rsp *rsp)
 {
 	dev->device_id			= rsp->device_id;
@@ -107,7 +107,7 @@ static void ibnbd_clt_set_dev_attr(struct ibnbd_dev *dev,
 	}
 }
 
-static void ibnbd_clt_revalidate_disk(struct ibnbd_dev *dev,
+static void ibnbd_clt_revalidate_disk(struct ibnbd_clt_dev *dev,
 				      size_t new_nsectors)
 {
 	int err = 0;
@@ -137,7 +137,7 @@ static void process_msg_sess_info_rsp(struct ibnbd_session *sess,
 static int process_msg_open_rsp(struct ibnbd_session *sess,
 				struct ibnbd_msg_open_rsp *rsp)
 {
-	struct ibnbd_dev *dev;
+	struct ibnbd_clt_dev *dev;
 	int err = 0;
 
 	dev = g_get_dev(rsp->clt_device_id);
@@ -198,7 +198,7 @@ out:
 static void process_msg_revalidate(struct ibnbd_session *sess,
 				   struct ibnbd_msg_revalidate *msg)
 {
-	struct ibnbd_dev *dev;
+	struct ibnbd_clt_dev *dev;
 
 	dev = g_get_dev(msg->clt_device_id);
 	if (IS_ERR(dev)) {
@@ -291,7 +291,7 @@ static void ibnbd_clt_recv(void *priv, const void *msg, size_t len)
 		break;
 	}
 	case IBNBD_MSG_CLOSE_RSP: {
-		struct ibnbd_dev *dev;
+		struct ibnbd_clt_dev *dev;
 		struct ibnbd_msg_close_rsp *rsp =
 			(struct ibnbd_msg_close_rsp *)msg;
 
@@ -320,9 +320,9 @@ static void ibnbd_clt_recv(void *priv, const void *msg, size_t len)
 
 static void ibnbd_blk_delay_work(struct work_struct *work)
 {
-	struct ibnbd_dev *dev;
+	struct ibnbd_clt_dev *dev;
 
-	dev = container_of(work, struct ibnbd_dev, rq_delay_work.work);
+	dev = container_of(work, struct ibnbd_clt_dev, rq_delay_work.work);
 	spin_lock_irq(dev->queue->queue_lock);
 	blk_start_queue(dev->queue);
 	spin_unlock_irq(dev->queue->queue_lock);
@@ -332,7 +332,7 @@ static void ibnbd_blk_delay_work(struct work_struct *work)
  * What is the difference between this and original blk_delay_queue() ?
  * Here the stop queue flag is cleared, so we are like MQ.
  */
-static void ibnbd_blk_delay_queue(struct ibnbd_dev *dev, unsigned long msecs)
+static void ibnbd_blk_delay_queue(struct ibnbd_clt_dev *dev, unsigned long msecs)
 {
 	int cpu = get_cpu();
 
@@ -341,9 +341,9 @@ static void ibnbd_blk_delay_queue(struct ibnbd_dev *dev, unsigned long msecs)
 	put_cpu();
 }
 
-static inline void ibnbd_dev_requeue(struct ibnbd_queue *q)
+static inline void ibnbd_clt_dev_requeue(struct ibnbd_queue *q)
 {
-	struct ibnbd_dev *dev = q->dev;
+	struct ibnbd_clt_dev *dev = q->dev;
 
 	if (dev->queue_mode == BLK_MQ) {
 		if (WARN_ON(!q->hctx))
@@ -475,7 +475,7 @@ clear_bit:
 	put_cpu_var(sess->cpu_rr);
 
 	if (q)
-		ibnbd_dev_requeue(q);
+		ibnbd_clt_dev_requeue(q);
 
 	return !!q;
 }
@@ -534,7 +534,7 @@ static void ibnbd_put_tag(struct ibnbd_session *sess, struct ibtrs_tag *tag)
 {
 	ibtrs_put_tag(sess->sess, tag);
 	atomic_dec(&sess->busy);
-	/* Paired with ibnbd_dev_add_to_requeue().  Decrement first
+	/* Paired with ibnbd_clt_dev_add_to_requeue().  Decrement first
 	 * and then check queue bits.
 	 */
 	smp_mb__after_atomic();
@@ -566,7 +566,7 @@ static void ibnbd_put_iu(struct ibnbd_session *sess, struct ibnbd_iu *iu)
 
 static void ibnbd_softirq_done_fn(struct request *rq)
 {
-	struct ibnbd_dev *dev		= rq->rq_disk->private_data;
+	struct ibnbd_clt_dev *dev	= rq->rq_disk->private_data;
 	struct ibnbd_session *sess	= dev->sess;
 	struct ibnbd_iu *iu;
 
@@ -595,7 +595,7 @@ static void ibnbd_softirq_done_fn(struct request *rq)
 static void ibnbd_clt_rdma_ev(void *priv, enum ibtrs_clt_rdma_ev ev, int errno)
 {
 	struct ibnbd_iu *iu		= (struct ibnbd_iu *)priv;
-	struct ibnbd_dev *dev		= iu->dev;
+	struct ibnbd_clt_dev *dev	= iu->dev;
 	struct request *rq;
 	const int flags = iu->msg.rw;
 	bool is_read;
@@ -640,7 +640,7 @@ static void ibnbd_clt_rdma_ev(void *priv, enum ibtrs_clt_rdma_ev ev, int errno)
 			is_read ? "read" : "write", strerror(errno), flags);
 }
 
-static int send_msg_open(struct ibnbd_dev *dev)
+static int send_msg_open(struct ibnbd_clt_dev *dev)
 {
 	int err;
 	struct ibnbd_msg_open msg;
@@ -674,7 +674,7 @@ static int send_msg_sess_info(struct ibnbd_session *sess)
 	return ibtrs_clt_send(sess->sess, &vec, 1);
 }
 
-int open_remote_device(struct ibnbd_dev *dev)
+int open_remote_device(struct ibnbd_clt_dev *dev)
 {
 	int err;
 
@@ -688,7 +688,7 @@ int open_remote_device(struct ibnbd_dev *dev)
 
 static int find_dev_cb(int id, void *ptr, void *data)
 {
-	struct ibnbd_dev *dev = ptr;
+	struct ibnbd_clt_dev *dev = ptr;
 	struct ibnbd_session *sess = data;
 
 	if (dev->sess == sess && dev->dev_state == DEV_STATE_INIT &&
@@ -708,7 +708,7 @@ static int find_dev_cb(int id, void *ptr, void *data)
 
 static void __set_dev_states_closed(struct ibnbd_session *sess)
 {
-	struct ibnbd_dev *dev;
+	struct ibnbd_clt_dev *dev;
 
 	list_for_each_entry(dev, &sess->devs_list, list) {
 		mutex_lock(&dev->lock);
@@ -758,7 +758,7 @@ static void reopen_worker(struct work_struct *work)
 {
 	struct ibnbd_work *w;
 	struct ibnbd_session *sess;
-	struct ibnbd_dev *dev;
+	struct ibnbd_clt_dev *dev;
 	int err;
 
 	w = container_of(work, struct ibnbd_work, work);
@@ -1076,7 +1076,7 @@ void ibnbd_clt_sess_release(struct kref *ref)
 
 static int ibnbd_client_open(struct block_device *block_device, fmode_t mode)
 {
-	struct ibnbd_dev *dev = block_device->bd_disk->private_data;
+	struct ibnbd_clt_dev *dev = block_device->bd_disk->private_data;
 
 	if (dev->read_only && (mode & FMODE_WRITE))
 		return -EPERM;
@@ -1093,7 +1093,7 @@ static int ibnbd_client_open(struct block_device *block_device, fmode_t mode)
 
 static void ibnbd_client_release(struct gendisk *gen, fmode_t mode)
 {
-	struct ibnbd_dev *dev = gen->private_data;
+	struct ibnbd_clt_dev *dev = gen->private_data;
 
 	pr_debug("RELEASE, name=%s, open_cnt %d\n", dev->gd->disk_name,
 	    atomic_read(&dev->refcount) - 1);
@@ -1105,7 +1105,7 @@ static int ibnbd_client_getgeo(struct block_device *block_device,
 			       struct hd_geometry *geo)
 {
 	u64 size;
-	struct ibnbd_dev *dev;
+	struct ibnbd_clt_dev *dev;
 
 	dev = block_device->bd_disk->private_data;
 	size = dev->size * (dev->logical_block_size / KERNEL_SECTOR_SIZE);
@@ -1149,7 +1149,8 @@ static inline int ibnbd_clt_setup_discard(struct request *rq)
 	return 0;
 }
 
-static int ibnbd_client_xfer_request(struct ibnbd_dev *dev, struct request *rq,
+static int ibnbd_client_xfer_request(struct ibnbd_clt_dev *dev,
+				     struct request *rq,
 				     struct ibnbd_iu *iu)
 {
 	int err;
@@ -1206,15 +1207,15 @@ static int ibnbd_client_xfer_request(struct ibnbd_dev *dev, struct request *rq,
 }
 
 /**
- * ibnbd_dev_add_to_requeue() - add device to requeue if session is busy
+ * ibnbd_clt_dev_add_to_requeue() - add device to requeue if session is busy
  *
  * Description:
  *     If session is busy, that means someone will requeue us when resources
  *     are freed.  If session is not doing anything - device is not added to
  *     the list and @false is returned.
  */
-static inline bool ibnbd_dev_add_to_requeue(struct ibnbd_dev *dev,
-					    struct ibnbd_queue *q)
+static inline bool ibnbd_clt_dev_add_to_requeue(struct ibnbd_clt_dev *dev,
+						struct ibnbd_queue *q)
 {
 	struct ibnbd_session *sess = dev->sess;
 	struct ibnbd_cpu_qlist *cpu_q;
@@ -1257,9 +1258,9 @@ unlock:
 	return added;
 }
 
-static void ibnbd_dev_kick_mq_queue(struct ibnbd_dev *dev,
-				    struct blk_mq_hw_ctx *hctx,
-				    int delay)
+static void ibnbd_clt_dev_kick_mq_queue(struct ibnbd_clt_dev *dev,
+					struct blk_mq_hw_ctx *hctx,
+					int delay)
 {
 	struct ibnbd_queue *q = hctx->driver_data;
 
@@ -1269,14 +1270,14 @@ static void ibnbd_dev_kick_mq_queue(struct ibnbd_dev *dev,
 
 	if (delay != IBNBD_DELAY_IFBUSY)
 		blk_mq_delay_queue(hctx, delay);
-	else if (unlikely(!ibnbd_dev_add_to_requeue(dev, q)))
+	else if (unlikely(!ibnbd_clt_dev_add_to_requeue(dev, q)))
 		/* If session is not busy we have to restart
 		 * the queue ourselves.
 		 */
 		blk_mq_delay_queue(hctx, IBNBD_DELAY_10ms);
 }
 
-static void ibnbd_dev_kick_queue(struct ibnbd_dev *dev, int delay)
+static void ibnbd_clt_dev_kick_queue(struct ibnbd_clt_dev *dev, int delay)
 {
 	if (WARN_ON(dev->queue_mode != BLK_RQ))
 		return;
@@ -1284,7 +1285,7 @@ static void ibnbd_dev_kick_queue(struct ibnbd_dev *dev, int delay)
 
 	if (delay != IBNBD_DELAY_IFBUSY)
 		ibnbd_blk_delay_queue(dev, delay);
-	else if (unlikely(!ibnbd_dev_add_to_requeue(dev, dev->hw_queues)))
+	else if (unlikely(!ibnbd_clt_dev_add_to_requeue(dev, dev->hw_queues)))
 		/* If session is not busy we have to restart
 		 * the queue ourselves.
 		 */
@@ -1295,7 +1296,7 @@ static int ibnbd_queue_rq(struct blk_mq_hw_ctx *hctx,
 			  const struct blk_mq_queue_data *bd)
 {
 	struct request *rq = bd->rq;
-	struct ibnbd_dev *dev = rq->rq_disk->private_data;
+	struct ibnbd_clt_dev *dev = rq->rq_disk->private_data;
 	struct ibnbd_iu *iu = blk_mq_rq_to_pdu(rq);
 	int err;
 
@@ -1305,7 +1306,7 @@ static int ibnbd_queue_rq(struct blk_mq_hw_ctx *hctx,
 	iu->tag = ibnbd_get_tag(dev->sess, hctx->next_cpu, blk_rq_bytes(rq),
 				IBTRS_TAG_NOWAIT);
 	if (unlikely(!iu->tag)) {
-		ibnbd_dev_kick_mq_queue(dev, hctx, IBNBD_DELAY_IFBUSY);
+		ibnbd_clt_dev_kick_mq_queue(dev, hctx, IBNBD_DELAY_IFBUSY);
 		return BLK_MQ_RQ_QUEUE_BUSY;
 	}
 
@@ -1314,7 +1315,7 @@ static int ibnbd_queue_rq(struct blk_mq_hw_ctx *hctx,
 	if (likely(err == 0))
 		return BLK_MQ_RQ_QUEUE_OK;
 	if (unlikely(err == -EAGAIN || err == -ENOMEM)) {
-		ibnbd_dev_kick_mq_queue(dev, hctx, IBNBD_DELAY_10ms);
+		ibnbd_clt_dev_kick_mq_queue(dev, hctx, IBNBD_DELAY_10ms);
 		ibnbd_put_tag(dev->sess, iu->tag);
 		return BLK_MQ_RQ_QUEUE_BUSY;
 	}
@@ -1333,7 +1334,7 @@ static int ibnbd_init_request(void *data, struct request *rq,
 	return 0;
 }
 
-static inline void ibnbd_init_hw_queue(struct ibnbd_dev *dev,
+static inline void ibnbd_init_hw_queue(struct ibnbd_clt_dev *dev,
 				       struct ibnbd_queue *q,
 				       struct blk_mq_hw_ctx *hctx)
 {
@@ -1342,7 +1343,7 @@ static inline void ibnbd_init_hw_queue(struct ibnbd_dev *dev,
 	q->hctx = hctx;
 }
 
-static void ibnbd_init_mq_hw_queues(struct ibnbd_dev *dev)
+static void ibnbd_init_mq_hw_queues(struct ibnbd_clt_dev *dev)
 {
 	int i;
 	struct blk_mq_hw_ctx *hctx;
@@ -1373,7 +1374,7 @@ static int minor_to_index(int minor)
 
 static int ibnbd_rq_prep_fn(struct request_queue *q, struct request *rq)
 {
-	struct ibnbd_dev *dev = q->queuedata;
+	struct ibnbd_clt_dev *dev = q->queuedata;
 	struct ibnbd_iu *iu;
 
 	iu = ibnbd_get_iu(dev->sess, blk_rq_bytes(rq), IBTRS_TAG_NOWAIT);
@@ -1384,13 +1385,13 @@ static int ibnbd_rq_prep_fn(struct request_queue *q, struct request *rq)
 		return BLKPREP_OK;
 	}
 
-	ibnbd_dev_kick_queue(dev, IBNBD_DELAY_IFBUSY);
+	ibnbd_clt_dev_kick_queue(dev, IBNBD_DELAY_IFBUSY);
 	return BLKPREP_DEFER;
 }
 
 static void ibnbd_rq_unprep_fn(struct request_queue *q, struct request *rq)
 {
-	struct ibnbd_dev *dev = q->queuedata;
+	struct ibnbd_clt_dev *dev = q->queuedata;
 
 	if (WARN_ON(!rq->special))
 		return;
@@ -1405,7 +1406,7 @@ __must_hold(q->queue_lock)
 	int err;
 	struct request *req;
 	struct ibnbd_iu *iu;
-	struct ibnbd_dev *dev = q->queuedata;
+	struct ibnbd_clt_dev *dev = q->queuedata;
 
 	while ((req = blk_fetch_request(q)) != NULL) {
 		spin_unlock_irq(q->queue_lock);
@@ -1428,7 +1429,7 @@ next:
 			ibnbd_rq_unprep_fn(q, req);
 			spin_lock_irq(q->queue_lock);
 			blk_requeue_request(q, req);
-			ibnbd_dev_kick_queue(dev, IBNBD_DELAY_10ms);
+			ibnbd_clt_dev_kick_queue(dev, IBNBD_DELAY_10ms);
 			break;
 		} else if (err) {
 			blk_end_request_all(req, err);
@@ -1438,7 +1439,7 @@ next:
 	}
 }
 
-static int setup_mq_dev(struct ibnbd_dev *dev)
+static int setup_mq_dev(struct ibnbd_clt_dev *dev)
 {
 	dev->queue = blk_mq_init_queue(&dev->sess->tag_set);
 	if (IS_ERR(dev->queue)) {
@@ -1450,7 +1451,7 @@ static int setup_mq_dev(struct ibnbd_dev *dev)
 	return 0;
 }
 
-static int setup_rq_dev(struct ibnbd_dev *dev)
+static int setup_rq_dev(struct ibnbd_clt_dev *dev)
 {
 	dev->queue = blk_init_queue(ibnbd_clt_request, NULL);
 	if (IS_ERR_OR_NULL(dev->queue)) {
@@ -1470,7 +1471,7 @@ static int setup_rq_dev(struct ibnbd_dev *dev)
 	return 0;
 }
 
-static void setup_request_queue(struct ibnbd_dev *dev)
+static void setup_request_queue(struct ibnbd_clt_dev *dev)
 {
 	blk_queue_logical_block_size(dev->queue, dev->logical_block_size);
 	blk_queue_physical_block_size(dev->queue, dev->physical_block_size);
@@ -1496,7 +1497,7 @@ static void setup_request_queue(struct ibnbd_dev *dev)
 	dev->queue->queuedata = dev;
 }
 
-static void ibnbd_clt_setup_gen_disk(struct ibnbd_dev *dev, int idx)
+static void ibnbd_clt_setup_gen_disk(struct ibnbd_clt_dev *dev, int idx)
 {
 	dev->gd->major		= ibnbd_client_major;
 	dev->gd->first_minor	= index_to_minor(idx);
@@ -1523,13 +1524,13 @@ static void ibnbd_clt_setup_gen_disk(struct ibnbd_dev *dev, int idx)
 		queue_flag_set_unlocked(QUEUE_FLAG_NONROT, dev->queue);
 }
 
-static void ibnbd_clt_add_gen_disk(struct ibnbd_dev *dev)
+static void ibnbd_clt_add_gen_disk(struct ibnbd_clt_dev *dev)
 {
 	add_disk(dev->gd);
 }
 
 static int ibnbd_client_setup_device(struct ibnbd_session *sess,
-				     struct ibnbd_dev *dev, int idx)
+				     struct ibnbd_clt_dev *dev, int idx)
 {
 	int err;
 
@@ -1563,13 +1564,13 @@ static int ibnbd_client_setup_device(struct ibnbd_session *sess,
 	return 0;
 }
 
-static struct ibnbd_dev *init_dev(struct ibnbd_session *sess,
-				  enum ibnbd_access_mode access_mode,
-				  enum ibnbd_queue_mode queue_mode,
-				  const char *pathname)
+static struct ibnbd_clt_dev *init_dev(struct ibnbd_session *sess,
+				      enum ibnbd_access_mode access_mode,
+				      enum ibnbd_queue_mode queue_mode,
+				      const char *pathname)
 {
 	int ret;
-	struct ibnbd_dev *dev;
+	struct ibnbd_clt_dev *dev;
 	size_t nr;
 
 	dev = kzalloc_node(sizeof(*dev), GFP_KERNEL, NUMA_NO_NODE);
@@ -1649,7 +1650,7 @@ out_alloc:
 
 bool ibnbd_clt_dev_is_mapped(const char *pathname)
 {
-	struct ibnbd_dev *dev;
+	struct ibnbd_clt_dev *dev;
 
 	spin_lock(&dev_lock);
 	list_for_each_entry(dev, &devs_list, g_list)
@@ -1662,10 +1663,10 @@ bool ibnbd_clt_dev_is_mapped(const char *pathname)
 	return false;
 }
 
-static struct ibnbd_dev *__find_sess_dev(const struct ibnbd_session *sess,
+static struct ibnbd_clt_dev *__find_sess_dev(const struct ibnbd_session *sess,
 					 const char *pathname)
 {
-	struct ibnbd_dev *dev;
+	struct ibnbd_clt_dev *dev;
 
 	list_for_each_entry(dev, &sess->devs_list, list)
 		if (!strncmp(dev->pathname, pathname, sizeof(dev->pathname)))
@@ -1674,14 +1675,14 @@ static struct ibnbd_dev *__find_sess_dev(const struct ibnbd_session *sess,
 	return NULL;
 }
 
-struct ibnbd_dev *ibnbd_client_add_device(struct ibnbd_session *sess,
+struct ibnbd_clt_dev *ibnbd_client_add_device(struct ibnbd_session *sess,
 					  const char *pathname,
 					  enum ibnbd_access_mode access_mode,
 					  enum ibnbd_queue_mode queue_mode,
 					  enum ibnbd_io_mode io_mode)
 {
 	int ret;
-	struct ibnbd_dev *dev;
+	struct ibnbd_clt_dev *dev;
 	struct completion *open_compl;
 
 	pr_debug("Add remote device: server=%s, path='%s', access_mode=%d,"
@@ -1795,7 +1796,7 @@ out:
 	return ERR_PTR(ret);
 }
 
-void ibnbd_destroy_gen_disk(struct ibnbd_dev *dev)
+void ibnbd_destroy_gen_disk(struct ibnbd_clt_dev *dev)
 {
 	del_gendisk(dev->gd);
 	/*
@@ -1811,10 +1812,10 @@ void ibnbd_destroy_gen_disk(struct ibnbd_dev *dev)
 	ibnbd_clt_put_dev(dev);
 }
 
-static int __close_device(struct ibnbd_dev *dev, bool force)
+static int __close_device(struct ibnbd_clt_dev *dev, bool force)
 __must_hold(&dev->sess->lock)
 {
-	enum ibnbd_dev_state prev_state;
+	enum ibnbd_clt_dev_state prev_state;
 	int refcount, ret = 0;
 
 	mutex_lock(&dev->lock);
@@ -1864,7 +1865,7 @@ out:
 	return ret;
 }
 
-int ibnbd_close_device(struct ibnbd_dev *dev, bool force)
+int ibnbd_close_device(struct ibnbd_clt_dev *dev, bool force)
 {
 	int ret;
 
@@ -1878,7 +1879,7 @@ int ibnbd_close_device(struct ibnbd_dev *dev, bool force)
 static void ibnbd_destroy_sessions(void)
 {
 	struct ibnbd_session *sess, *sn;
-	struct ibnbd_dev *dev, *tn;
+	struct ibnbd_clt_dev *dev, *tn;
 	int ret;
 
 	list_for_each_entry_safe(sess, sn, &session_list, list) {

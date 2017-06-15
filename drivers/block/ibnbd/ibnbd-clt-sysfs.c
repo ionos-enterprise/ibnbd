@@ -18,7 +18,7 @@ static struct kobject *ibnbd_devices_kobject;
 static DEFINE_MUTEX(sess_lock);
 
 struct ibnbd_clt_dev_destroy_kobj_work {
-	struct ibnbd_dev	*dev;
+	struct ibnbd_clt_dev	*dev;
 	struct work_struct	work;
 };
 
@@ -217,7 +217,7 @@ void ibnbd_clt_put_sess(struct ibnbd_session *sess)
 	mutex_unlock(&sess_lock);
 }
 
-static void ibnbd_clt_dev_destroy_kobjs(struct ibnbd_dev *dev)
+static void ibnbd_clt_dev_destroy_kobjs(struct ibnbd_clt_dev *dev)
 {
 	kobject_del(&dev->kobj);
 	kobject_put(&dev->kobj);
@@ -226,7 +226,9 @@ static void ibnbd_clt_dev_destroy_kobjs(struct ibnbd_dev *dev)
 static ssize_t ibnbd_clt_state_show(struct kobject *kobj,
 				    struct kobj_attribute *attr, char *page)
 {
-	struct ibnbd_dev *dev = container_of(kobj, struct ibnbd_dev, kobj);
+	struct ibnbd_clt_dev *dev;
+
+	dev = container_of(kobj, struct ibnbd_clt_dev, kobj);
 
 	switch (dev->dev_state) {
 	case (DEV_STATE_INIT):
@@ -249,7 +251,9 @@ static ssize_t ibnbd_clt_input_mode_show(struct kobject *kobj,
 					 struct kobj_attribute *attr,
 					 char *page)
 {
-	struct ibnbd_dev *dev = container_of(kobj, struct ibnbd_dev, kobj);
+	struct ibnbd_clt_dev *dev;
+
+	dev = container_of(kobj, struct ibnbd_clt_dev, kobj);
 
 	return scnprintf(page, PAGE_SIZE, "%s\n",
 			 ibnbd_queue_mode_str(dev->queue_mode));
@@ -262,9 +266,9 @@ static ssize_t ibnbd_clt_mapping_path_show(struct kobject *kobj,
 					   struct kobj_attribute *attr,
 					   char *page)
 {
-	struct ibnbd_dev *dev;
+	struct ibnbd_clt_dev *dev;
 
-	dev = container_of(kobj, struct ibnbd_dev, kobj);
+	dev = container_of(kobj, struct ibnbd_clt_dev, kobj);
 
 	return scnprintf(page, PAGE_SIZE, "%s\n", dev->pathname);
 }
@@ -275,7 +279,9 @@ static struct kobj_attribute ibnbd_clt_mapping_path_attr =
 static ssize_t ibnbd_clt_io_mode_show(struct kobject *kobj,
 				      struct kobj_attribute *attr, char *page)
 {
-	struct ibnbd_dev *dev = container_of(kobj, struct ibnbd_dev, kobj);
+	struct ibnbd_clt_dev *dev;
+
+	dev = container_of(kobj, struct ibnbd_clt_dev, kobj);
 
 	return scnprintf(page, PAGE_SIZE, "%s\n",
 			 ibnbd_io_mode_str(dev->remote_io_mode));
@@ -294,7 +300,7 @@ static ssize_t ibnbd_clt_unmap_dev_show(struct kobject *kobj,
 static void ibnbd_clt_dev_kobj_destroy_worker(struct work_struct *work)
 {
 	struct ibnbd_clt_dev_destroy_kobj_work *destroy_work;
-	struct ibnbd_dev *dev;
+	struct ibnbd_clt_dev *dev;
 
 	destroy_work = container_of(work,
 				    struct ibnbd_clt_dev_destroy_kobj_work,
@@ -306,7 +312,7 @@ static void ibnbd_clt_dev_kobj_destroy_worker(struct work_struct *work)
 	kfree(destroy_work);
 }
 
-void ibnbd_clt_schedule_dev_destroy(struct ibnbd_dev *dev)
+void ibnbd_clt_schedule_dev_destroy(struct ibnbd_clt_dev *dev)
 {
 	struct ibnbd_clt_dev_destroy_kobj_work *destroy_work = NULL;
 
@@ -332,7 +338,7 @@ static ssize_t ibnbd_clt_unmap_dev_store(struct kobject *kobj,
 					 const char *buf, size_t count)
 {
 	int err;
-	struct ibnbd_dev *dev;
+	struct ibnbd_clt_dev *dev;
 	bool force;
 	char *options;
 
@@ -345,7 +351,7 @@ static ssize_t ibnbd_clt_unmap_dev_store(struct kobject *kobj,
 	options = strstrip(options);
 	strip(options);
 
-	dev = container_of(kobj, struct ibnbd_dev, kobj);
+	dev = container_of(kobj, struct ibnbd_clt_dev, kobj);
 
 	if (dev->dev_state == DEV_STATE_UNMAPPED) {
 		err = -EALREADY;
@@ -401,7 +407,7 @@ static ssize_t ibnbd_clt_remap_dev_store(struct kobject *kobj,
 					 const char *buf, size_t count)
 {
 	int err;
-	struct ibnbd_dev *dev;
+	struct ibnbd_clt_dev *dev;
 	char *options;
 
 	options = kstrdup(buf, GFP_KERNEL);
@@ -411,7 +417,7 @@ static ssize_t ibnbd_clt_remap_dev_store(struct kobject *kobj,
 	options = strstrip(options);
 	strip(options);
 
-	dev = container_of(kobj, struct ibnbd_dev, kobj);
+	dev = container_of(kobj, struct ibnbd_clt_dev, kobj);
 	if (!sysfs_streq(options, "1")) {
 		ERR(dev, "remap_device: Invalid value: %s\n", options);
 		err = -EINVAL;
@@ -454,9 +460,11 @@ static ssize_t ibnbd_clt_session_show(struct kobject *kobj,
 				      struct kobj_attribute *attr,
 				      char *page)
 {
-	struct ibnbd_dev *dev = container_of(kobj, struct ibnbd_dev, kobj);
+	struct ibnbd_clt_dev *dev;
 	char server_addr[IBTRS_ADDRLEN];
 	int ret;
+
+	dev = container_of(kobj, struct ibnbd_clt_dev, kobj);
 
 	if (dev->dev_state == DEV_STATE_UNMAPPED)
 		return -EIO;
@@ -486,7 +494,7 @@ static struct attribute *ibnbd_dev_attrs[] = {
 	NULL,
 };
 
-void ibnbd_clt_remove_dev_symlink(struct ibnbd_dev *dev)
+void ibnbd_clt_remove_dev_symlink(struct ibnbd_clt_dev *dev)
 {
 	if (strlen(dev->blk_symlink_name))
 		sysfs_remove_link(ibnbd_devices_kobject, dev->blk_symlink_name);
@@ -494,9 +502,9 @@ void ibnbd_clt_remove_dev_symlink(struct ibnbd_dev *dev)
 
 static void ibnbd_clt_dev_release(struct kobject *kobj)
 {
-	struct ibnbd_dev *dev;
+	struct ibnbd_clt_dev *dev;
 
-	dev = container_of(kobj, struct ibnbd_dev, kobj);
+	dev = container_of(kobj, struct ibnbd_clt_dev, kobj);
 	ibnbd_destroy_gen_disk(dev);
 }
 
@@ -506,7 +514,7 @@ static struct kobj_type ibnbd_dev_ktype = {
 	.release	= ibnbd_clt_dev_release,
 };
 
-static int ibnbd_clt_add_dev_kobj(struct ibnbd_dev *dev)
+static int ibnbd_clt_add_dev_kobj(struct ibnbd_clt_dev *dev)
 {
 	int ret;
 	struct kobject *gd_kobj = &disk_to_dev(dev->gd)->kobj;
@@ -641,7 +649,7 @@ static ssize_t ibnbd_clt_map_device_show(struct kobject *kobj,
 			 attr->attr.name);
 }
 
-static int ibnbd_clt_get_path_name(struct ibnbd_dev *dev, char *buf,
+static int ibnbd_clt_get_path_name(struct ibnbd_clt_dev *dev, char *buf,
 				   size_t len)
 {
 	int ret;
@@ -658,7 +666,7 @@ static int ibnbd_clt_get_path_name(struct ibnbd_dev *dev, char *buf,
 	return 0;
 }
 
-static int ibnbd_clt_add_dev_symlink(struct ibnbd_dev *dev)
+static int ibnbd_clt_add_dev_symlink(struct ibnbd_clt_dev *dev)
 {
 	struct kobject *gd_kobj = &disk_to_dev(dev->gd)->kobj;
 	int ret;
@@ -691,7 +699,7 @@ static ssize_t ibnbd_clt_map_device_store(struct kobject *kobj,
 					  const char *buf, size_t count)
 {
 	struct ibnbd_session *sess;
-	struct ibnbd_dev *dev;
+	struct ibnbd_clt_dev *dev;
 	int ret;
 	char pathname[NAME_MAX];
 	char server_addr[IBTRS_ADDRLEN];

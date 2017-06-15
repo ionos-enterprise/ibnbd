@@ -22,7 +22,7 @@
 #define RECONNECT_DELAY 30
 #define MAX_RECONNECTS -1
 
-enum ibnbd_dev_state {
+enum ibnbd_clt_dev_state {
 	DEV_STATE_INIT,
 	DEV_STATE_INIT_CLOSED,
 	DEV_STATE_CLOSED,
@@ -38,7 +38,7 @@ enum ibnbd_queue_mode {
 struct ibnbd_iu {
 	struct request		*rq;
 	struct ibtrs_tag	*tag;
-	struct ibnbd_dev	*dev;
+	struct ibnbd_clt_dev	*dev;
 	struct ibnbd_msg_io	msg;
 	int			errno;
 	struct scatterlist	sglist[BMAX_SEGMENTS];
@@ -68,7 +68,7 @@ struct ibnbd_session {
 	u32			max_io_size;
 	struct blk_mq_tag_set	tag_set;
 	struct mutex		lock; /* protects state and devs_list */
-	struct list_head        devs_list; /* list of struct ibnbd_dev */
+	struct list_head        devs_list; /* list of struct ibnbd_clt_dev */
 	struct kref		refcount;
 	struct sockaddr_storage addr;
 	char			str_addr[IBTRS_ADDRLEN];
@@ -89,11 +89,11 @@ struct ibnbd_work {
 struct ibnbd_queue {
 	struct list_head	requeue_list;
 	unsigned long		in_list;
-	struct ibnbd_dev	*dev;
+	struct ibnbd_clt_dev	*dev;
 	struct blk_mq_hw_ctx	*hctx;
 };
 
-struct ibnbd_dev {
+struct ibnbd_clt_dev {
 	struct list_head        g_list;
 	struct ibnbd_session	*sess;
 	struct request_queue	*queue;
@@ -104,7 +104,7 @@ struct ibnbd_dev {
 	struct completion	*open_compl;	/* completion for open msg */
 	int			open_errno;
 	struct mutex		lock;
-	enum ibnbd_dev_state	dev_state;
+	enum ibnbd_clt_dev_state	dev_state;
 	enum ibnbd_queue_mode	queue_mode;
 	enum ibnbd_io_mode	io_mode; /* user requested */
 	enum ibnbd_io_mode	remote_io_mode; /* server really used */
@@ -145,26 +145,26 @@ static inline const char *ibnbd_queue_mode_str(enum ibnbd_queue_mode mode)
 	}
 }
 
-int ibnbd_close_device(struct ibnbd_dev *dev, bool force);
+int ibnbd_close_device(struct ibnbd_clt_dev *dev, bool force);
 struct ibnbd_session *ibnbd_create_session(const struct sockaddr_storage *addr);
 struct ibnbd_session *ibnbd_clt_find_sess(const struct sockaddr_storage *addr);
 void ibnbd_clt_sess_release(struct kref *ref);
-struct ibnbd_dev *ibnbd_client_add_device(struct ibnbd_session *sess,
-					  const char *pathname,
-					  enum ibnbd_access_mode access_mode,
-					  enum ibnbd_queue_mode queue_mode,
-					  enum ibnbd_io_mode io_mode);
-void ibnbd_destroy_gen_disk(struct ibnbd_dev *dev);
+struct ibnbd_clt_dev *ibnbd_client_add_device(struct ibnbd_session *sess,
+					      const char *pathname,
+					      enum ibnbd_access_mode access_mode,
+					      enum ibnbd_queue_mode queue_mode,
+					      enum ibnbd_io_mode io_mode);
+void ibnbd_destroy_gen_disk(struct ibnbd_clt_dev *dev);
 int ibnbd_addr_to_str(const struct sockaddr_storage *addr,
 		      char *buf, size_t len);
-bool ibnbd_clt_dev_is_open(struct ibnbd_dev *dev);
+bool ibnbd_clt_dev_is_open(struct ibnbd_clt_dev *dev);
 bool ibnbd_clt_dev_is_mapped(const char *pathname);
-int open_remote_device(struct ibnbd_dev *dev);
+int open_remote_device(struct ibnbd_clt_dev *dev);
 
-const char *ibnbd_clt_get_io_mode(const struct ibnbd_dev *dev);
+const char *ibnbd_clt_get_io_mode(const struct ibnbd_clt_dev *dev);
 
 #define ERR_DEVS(sess, fmt, ...)	\
-({	struct ibnbd_dev *dev;		\
+({	struct ibnbd_clt_dev *dev;	\
 					\
 	mutex_lock(&sess->lock);	\
 	list_for_each_entry(dev, &sess->devs_list, list) \
@@ -175,7 +175,7 @@ const char *ibnbd_clt_get_io_mode(const struct ibnbd_dev *dev);
 })
 
 #define INFO_DEVS(sess, fmt, ...)	\
-({	struct ibnbd_dev *dev;		\
+({	struct ibnbd_clt_dev *dev;	\
 					\
 	mutex_lock(&sess->lock);	\
 	list_for_each_entry(dev, &sess->devs_list, list) \
