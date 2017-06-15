@@ -149,8 +149,8 @@ static ssize_t ibtrs_clt_reconnect_store(struct kobject *kobj,
 
 	ret = ibtrs_clt_reconnect(sess);
 	if (ret) {
-		ERR(sess, "%s: failed to reconnect session, err: %s\n",
-		    attr->attr.name, strerror(ret));
+		ERR(sess, "%s: failed to reconnect session, err: %d\n",
+		    attr->attr.name, ret);
 		return ret;
 	}
 	return count;
@@ -191,8 +191,8 @@ static ssize_t ibtrs_clt_queue_store(struct kobject *kobj,
 		INFO(sess, "%s: changed value from %u to %u\n",
 		     attr->attr.name, old_queue_depth, queue_depth);
 	} else {
-		ERR(sess, "%s: failed to set queue depth, err: %s\n",
-		    attr->attr.name, strerror(res));
+		ERR(sess, "%s: failed to set queue depth, err: %d\n",
+		    attr->attr.name, res);
 		return res;
 	}
 	return count;
@@ -249,16 +249,16 @@ static int ibtrs_clt_create_stats_files(struct kobject *kobj,
 	ret = kobject_init_and_add(kobj_stats, &ibtrs_stats_ktype, kobj,
 				   "stats");
 	if (ret) {
-		pr_err("Failed to init and add stats kobject, err: %s\n",
-		       strerror(ret));
+		pr_err("Failed to init and add stats kobject, err: %d\n",
+		       ret);
 		return ret;
 	}
 
 	ret = sysfs_create_group(kobj_stats,
 				 &ibtrs_clt_default_stats_attr_group);
 	if (ret) {
-		pr_err("failed to create stats sysfs group, err: %s\n",
-		       strerror(ret));
+		pr_err("failed to create stats sysfs group, err: %d\n",
+		       ret);
 		goto err;
 	}
 
@@ -301,22 +301,22 @@ int ibtrs_clt_create_sess_files(struct kobject *kobj,
 	ret = kobject_init_and_add(kobj, &ibtrs_session_ktype, sessions_kobj,
 				   "%s", ip);
 	if (ret) {
-		pr_err("Failed to create session kobject, err: %s\n",
-		       strerror(ret));
+		pr_err("Failed to create session kobject, err: %d\n",
+		       ret);
 		return ret;
 	}
 
 	ret = sysfs_create_group(kobj, &ibtrs_clt_default_sess_attr_group);
 	if (ret) {
-		pr_err("Failed to create session sysfs group, err: %s\n",
-		       strerror(ret));
+		pr_err("Failed to create session sysfs group, err: %d\n",
+		       ret);
 		goto err;
 	}
 
 	ret = ibtrs_clt_create_stats_files(kobj, kobj_stats);
 	if (ret) {
-		pr_err("Failed to create stats files, err: %s\n",
-		       strerror(ret));
+		pr_err("Failed to create stats files, err: %d\n",
+		       ret);
 		goto err1;
 	}
 

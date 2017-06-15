@@ -176,7 +176,7 @@ static int ibtrs_srv_create_stats_files(struct ibtrs_session *sess)
 	if (ret) {
 		ERR(sess,
 		    "Failed to init and add sysfs directory for session stats,"
-		    " err: %s\n", strerror(ret));
+		    " err: %d\n", ret);
 		return ret;
 	}
 
@@ -184,7 +184,7 @@ static int ibtrs_srv_create_stats_files(struct ibtrs_session *sess)
 				 &ibtrs_srv_default_stats_attr_group);
 	if (ret) {
 		ERR(sess, "Failed to create sysfs group for session stats,"
-		    " err: %s\n", strerror(ret));
+		    " err: %d\n", ret);
 		goto err;
 	}
 
@@ -209,7 +209,7 @@ int ibtrs_srv_create_sess_files(struct ibtrs_session *sess)
 				   ibtrs_srv_sessions_kobj, "%s", sess->addr);
 	if (ret) {
 		ERR(sess, "Failed to init and add sysfs directory for session,"
-		    " err: %s\n", strerror(ret));
+		    " err: %d\n", ret);
 		ibtrs_srv_sess_put(sess);
 		return ret;
 	}
@@ -217,7 +217,7 @@ int ibtrs_srv_create_sess_files(struct ibtrs_session *sess)
 	ret = sysfs_create_group(&sess->kobj, &default_sess_attr_group);
 	if (ret) {
 		ERR(sess, "Failed to create sysfs group for session,"
-		    " err: %s\n", strerror(ret));
+		    " err: %d\n", ret);
 		goto err;
 	}
 

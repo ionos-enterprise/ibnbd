@@ -189,16 +189,16 @@ int ib_session_init(struct ib_device *dev, struct ib_session *s)
 
 	s->pd = ib_alloc_pd(dev, IB_PD_UNSAFE_GLOBAL_RKEY);
 	if (IS_ERR(s->pd)) {
-		pr_err("Allocating protection domain failed, err: %s\n",
-		       strerror(PTR_ERR(s->pd)));
+		pr_err("Allocating protection domain failed, err: %ld\n",
+		       PTR_ERR(s->pd));
 		return PTR_ERR(s->pd);
 	}
 	s->mr = s->pd->__internal_mr;
 	INIT_IB_EVENT_HANDLER(&s->event_handler, dev, ib_event_handler);
 	err = ib_register_event_handler(&s->event_handler);
 	if (err) {
-		pr_err("Registering IB event handler failed, err: %s\n",
-		       strerror(err));
+		pr_err("Registering IB event handler failed, err: %d\n",
+		       err);
 		goto err;
 	}
 
@@ -246,13 +246,11 @@ void ib_con_destroy(struct ib_con *con)
 
 	err = ib_destroy_qp(con->qp);
 	if (err)
-		ERR(con, "Destroying QP failed, err: %s\n",
-		    strerror(err));
+		ERR(con, "Destroying QP failed, err: %d\n", err);
 
 	err = ib_destroy_cq(con->cq);
 	if (err)
-		ERR(con, "Destroying CQ failed, err: %s\n",
-		    strerror(err));
+		ERR(con, "Destroying CQ failed, err: %d\n", err);
 }
 EXPORT_SYMBOL_GPL(ib_con_destroy);
 
@@ -276,7 +274,7 @@ static int create_qp(struct ib_con *con, struct rdma_cm_id *cm_id,
 
 	ret = rdma_create_qp(cm_id, pd, &init_attr);
 	if (ret) {
-		ERR(con, "Creating QP failed, err: %s\n", strerror(ret));
+		ERR(con, "Creating QP failed, err: %d\n", ret);
 		return ret;
 	}
 
@@ -308,8 +306,8 @@ int ib_con_init(struct ib_con *con, struct rdma_cm_id *cm_id,
 	if (err) {
 		ret = ib_destroy_cq(con->cq);
 		if (ret)
-			ERR(con, "Destroying CQ failed, err: %s\n",
-			    strerror(ret));
+			ERR(con, "Destroying CQ failed, err: %d\n",
+			    ret);
 		return err;
 	}
 	con->beacon.wr_id = (uintptr_t)&con->beacon;
