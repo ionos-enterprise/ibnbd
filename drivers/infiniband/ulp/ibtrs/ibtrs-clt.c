@@ -1914,7 +1914,6 @@ static int process_wcs(struct ibtrs_con *con, struct ib_wc *wcs, size_t len)
 			ibtrs_set_last_heartbeat(&con->sess->heartbeat);
 
 			hdr = (struct ibtrs_msg_hdr *)iu->buf;
-			ibtrs_deb_msg_hdr("Received: ", hdr);
 			ibtrs_handle_recv(con, iu);
 			break;
 
@@ -4233,7 +4232,6 @@ int ibtrs_clt_send(struct ibtrs_session *sess, const struct kvec *vec,
 	msg->hdr.tsize	= IBTRS_HDR_LEN + len;
 	copy_from_kvec(msg->payl, vec, len);
 
-	ibtrs_deb_msg_hdr("Sending: ", &msg->hdr);
 	err = ibtrs_post_send(con->ib_con.qp, con->sess->ib_sess.mr, iu,
 			      msg->hdr.tsize);
 	rcu_read_unlock();
