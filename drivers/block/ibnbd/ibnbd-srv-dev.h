@@ -16,7 +16,6 @@ struct ibnbd_dev {
 	ibnbd_dev_io_fn		*io_cb;
 };
 
-
 /** ibnbd_dev_init() - Initialize ibnbd_dev
  *
  * This functions initialized the ibnbd-dev component.

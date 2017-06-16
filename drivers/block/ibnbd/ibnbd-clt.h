@@ -154,33 +154,8 @@ struct ibnbd_clt_dev *ibnbd_client_add_device(struct ibnbd_clt_session *sess,
 					      enum ibnbd_queue_mode queue_mode,
 					      enum ibnbd_io_mode io_mode);
 void ibnbd_destroy_gen_disk(struct ibnbd_clt_dev *dev);
-int ibnbd_addr_to_str(const struct sockaddr_storage *addr,
-		      char *buf, size_t len);
 bool ibnbd_clt_dev_is_open(struct ibnbd_clt_dev *dev);
 bool ibnbd_clt_dev_is_mapped(const char *pathname);
 int open_remote_device(struct ibnbd_clt_dev *dev);
 
-const char *ibnbd_clt_get_io_mode(const struct ibnbd_clt_dev *dev);
-
-#define ERR_DEVS(sess, fmt, ...)	\
-({	struct ibnbd_clt_dev *dev;	\
-					\
-	mutex_lock(&sess->lock);	\
-	list_for_each_entry(dev, &sess->devs_list, list) \
-		pr_err("ibnbd L%d <%s@%s> ERR:" fmt, \
-			__LINE__, dev->pathname, dev->sess->str_addr,\
-			##__VA_ARGS__); \
-	mutex_unlock(&sess->lock);	\
-})
-
-#define INFO_DEVS(sess, fmt, ...)	\
-({	struct ibnbd_clt_dev *dev;	\
-					\
-	mutex_lock(&sess->lock);	\
-	list_for_each_entry(dev, &sess->devs_list, list) \
-		pr_info("ibnbd <%s@%s> ERR:" fmt, \
-			dev->pathname, dev->sess->str_addr,\
-			##__VA_ARGS__);	\
-	mutex_unlock(&sess->lock);	\
-})
 #endif /* _IBNBD_CLT_H */

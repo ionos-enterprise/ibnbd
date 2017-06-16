@@ -43,10 +43,9 @@ static ssize_t ibnbd_srv_revalidate_dev_store(struct kobject *kobj,
 }
 
 static struct kobj_attribute ibnbd_srv_revalidate_dev_attr =
-					__ATTR(revalidate,
-					       0644,
-					       ibnbd_srv_revalidate_dev_show,
-					       ibnbd_srv_revalidate_dev_store);
+	__ATTR(revalidate, 0644,
+	       ibnbd_srv_revalidate_dev_show,
+	       ibnbd_srv_revalidate_dev_store);
 
 static struct attribute *ibnbd_srv_default_dev_attrs[] = {
 	&ibnbd_srv_revalidate_dev_attr.attr,
@@ -160,14 +159,14 @@ static ssize_t ibnbd_srv_dev_client_ro_show(struct kobject *kobj,
 }
 
 static struct kobj_attribute ibnbd_srv_dev_client_ro_attr =
-					__ATTR(read_only, 0444,
-					       ibnbd_srv_dev_client_ro_show,
-					       NULL);
+	__ATTR(read_only, 0444,
+	       ibnbd_srv_dev_client_ro_show,
+	       NULL);
 
 static ssize_t ibnbd_srv_dev_client_mapping_path_show(
-						struct kobject *kobj,
-						struct kobj_attribute *attr,
-						char *page)
+	struct kobject *kobj,
+	struct kobj_attribute *attr,
+	char *page)
 {
 	struct ibnbd_srv_sess_dev *sess_dev;
 
@@ -177,9 +176,9 @@ static ssize_t ibnbd_srv_dev_client_mapping_path_show(
 }
 
 static struct kobj_attribute ibnbd_srv_dev_client_mapping_path_attr =
-				__ATTR(mapping_path, 0444,
-				       ibnbd_srv_dev_client_mapping_path_show,
-				       NULL);
+	__ATTR(mapping_path, 0444,
+	       ibnbd_srv_dev_client_mapping_path_show,
+	       NULL);
 
 static struct attribute *ibnbd_srv_default_dev_clients_attrs[] = {
 	&ibnbd_srv_dev_client_ro_attr.attr,
@@ -239,6 +238,7 @@ int ibnbd_srv_create_dev_client_sysfs(struct ibnbd_srv_sess_dev *sess_dev)
 err:
 	kobject_del(&sess_dev->kobj);
 	kobject_put(&sess_dev->kobj);
+
 	return ret;
 }
 

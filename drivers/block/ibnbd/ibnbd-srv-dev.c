@@ -243,7 +243,7 @@ static int ibnbd_dev_file_handle_flush(struct ibnbd_dev_file_io_work *w,
 	ret = vfs_fsync_range(w->dev->file, start, end, 1);
 	if (unlikely(ret))
 		pr_info_ratelimited("I/O FLUSH failed on %s, vfs_sync err: %d\n",
-			   w->dev->name, ret);
+				    w->dev->name, ret);
 	return ret;
 }
 
@@ -262,7 +262,7 @@ static int ibnbd_dev_file_handle_fua(struct ibnbd_dev_file_io_work *w,
 	ret = vfs_fsync_range(w->dev->file, start, end, 1);
 	if (unlikely(ret))
 		pr_info_ratelimited("I/O FUA failed on %s, vfs_sync err: %d\n",
-			   w->dev->name, ret);
+				    w->dev->name, ret);
 	return ret;
 }
 
@@ -349,8 +349,8 @@ static int ibnbd_dev_file_submit_io(struct ibnbd_dev *dev, sector_t sector,
 	struct ibnbd_dev_file_io_work *w;
 
 	if (!ibnbd_dev_file_io_flags_supported(flags)) {
-		pr_info_ratelimited("Unsupported I/O flags: 0x%x on device %s\n", flags,
-			   dev->name);
+		pr_info_ratelimited("Unsupported I/O flags: 0x%x on device "
+				    "%s\n", flags, dev->name);
 		return -ENOTSUPP;
 	}
 
@@ -387,6 +387,7 @@ int ibnbd_dev_submit_io(struct ibnbd_dev *dev, sector_t sector, void *data,
 					       flags, priv);
 
 	pr_warn("Submitting I/O to %s failed, dev->mode contains invalid "
-	       "value: '%d', memory corrupted?", dev->name, dev->mode);
+		"value: '%d', memory corrupted?", dev->name, dev->mode);
+
 	return -EINVAL;
 }

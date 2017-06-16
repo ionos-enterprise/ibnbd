@@ -369,7 +369,7 @@ static ssize_t ibnbd_clt_unmap_dev_store(struct kobject *kobj,
 	}
 
 	ibnbd_info(dev, "Unmapping device, option: %s.\n",
-	     force ? "force" : "normal");
+		   force ? "force" : "normal");
 
 	err = ibnbd_close_device(dev, force);
 	if (err) {
@@ -732,9 +732,9 @@ static ssize_t ibnbd_clt_map_device_store(struct kobject *kobj,
 	}
 
 	pr_info("Mapping device %s from server %s,"
-	      " (access_mode: %s, input_mode: %s, io_mode: %s)\n",
-	      pathname, server_addr, ibnbd_access_mode_str(access_mode),
-	      ibnbd_queue_mode_str(queue_mode), ibnbd_io_mode_str(io_mode));
+		" (access_mode: %s, input_mode: %s, io_mode: %s)\n",
+		pathname, server_addr, ibnbd_access_mode_str(access_mode),
+		ibnbd_queue_mode_str(queue_mode), ibnbd_io_mode_str(io_mode));
 
 	sess = ibnbd_clt_get_create_sess(&sockaddr);
 	if (IS_ERR(sess))

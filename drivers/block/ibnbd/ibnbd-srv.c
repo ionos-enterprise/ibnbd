@@ -149,8 +149,9 @@ static int process_rdma(struct ibtrs_session *sess,
 
 	sess_dev = ibnbd_get_sess_dev(dev_id, srv_sess);
 	if (unlikely(IS_ERR(sess_dev))) {
-		pr_err_ratelimited("Got I/O request from client %s for unknown device id"
-			  " %d\n", srv_sess->str_addr, dev_id);
+		pr_err_ratelimited("Got I/O request from client %s for "
+				   "unknown device id %d\n",
+				   srv_sess->str_addr, dev_id);
 		err = -ENOTCONN;
 		goto err;
 	}
@@ -161,8 +162,8 @@ static int process_rdma(struct ibtrs_session *sess,
 	err = ibnbd_dev_submit_io(sess_dev->ibnbd_dev, msg->sector, data,
 				  data_len, msg->bi_size, msg->rw, priv);
 	if (unlikely(err)) {
-		ibnbd_err(sess_dev, "Submitting I/O to device failed, err: %d\n",
-			  err);
+		ibnbd_err(sess_dev,
+			  "Submitting I/O to device failed, err: %d\n", err);
 		goto sess_dev_put;
 	}
 
@@ -342,7 +343,7 @@ static int ibnbd_srv_sess_ev(struct ibtrs_session *sess,
 
 	default:
 		pr_warn("Received unknown IBTRS session event %d from session"
-		       " %s\n", ev, srv_sess->str_addr);
+			" %s\n", ev, srv_sess->str_addr);
 		return -EINVAL;
 	}
 }
@@ -364,7 +365,7 @@ static int ibnbd_srv_rdma_ev(struct ibtrs_session *sess, void *priv,
 
 	default:
 		pr_warn("Received unexpected RDMA event %d from session %s\n",
-		       ev, srv_sess->str_addr);
+			ev, srv_sess->str_addr);
 		return -EINVAL;
 	}
 }
@@ -576,12 +577,15 @@ static void ibnbd_srv_fill_msg_open_rsp(struct ibnbd_msg_open_rsp *rsp,
 	rsp->io_mode	= ibnbd_dev->mode;
 
 	pr_debug("nsectors = %llu, logical_block_size = %d, "
-	    "physical_block_size = %d, max_segments = %d, "
-	    "max_hw_sectors = %d, max_write_same_sects = %d, "
-	    "max_discard_sectors = %d, rotational = %d, io_mode = %d\n",
-	    rsp->nsectors, rsp->logical_block_size, rsp->physical_block_size,
-	    rsp->max_segments, rsp->max_hw_sectors, rsp->max_write_same_sectors,
-	    rsp->max_discard_sectors, rsp->rotational, rsp->io_mode);
+		 "physical_block_size = %d, max_segments = %d, "
+		 "max_hw_sectors = %d, max_write_same_sects = %d, "
+		 "max_discard_sectors = %d, rotational = %d, io_mode = %d\n",
+		 rsp->nsectors, rsp->logical_block_size,
+		 rsp->physical_block_size,
+		 rsp->max_segments, rsp->max_hw_sectors,
+		 rsp->max_write_same_sectors,
+		 rsp->max_discard_sectors, rsp->rotational,
+		 rsp->io_mode);
 }
 
 static struct ibnbd_srv_sess_dev *
@@ -655,8 +659,8 @@ static void process_msg_sess_info(struct ibtrs_session *s,
 
 	srv_sess->ver = min_t(u8, sess_info_msg->ver, IBNBD_VERSION);
 	pr_debug("Session to %s (%s) using protocol version %d (client version: %d,"
-	    " server version: %d)\n", srv_sess->str_addr, srv_sess->hostname,
-	    srv_sess->ver, sess_info_msg->ver, IBNBD_VERSION);
+		 " server version: %d)\n", srv_sess->str_addr, srv_sess->hostname,
+		 srv_sess->ver, sess_info_msg->ver, IBNBD_VERSION);
 
 	rsp.hdr.type = IBNBD_MSG_SESS_INFO_RSP;
 	rsp.ver = srv_sess->ver;
@@ -686,8 +690,8 @@ static void process_msg_open(struct ibtrs_session *s,
 	};
 
 	pr_debug("Open message received: client='%s' path='%s' access_mode=%d"
-	    " io_mode=%d\n", srv_sess->str_addr, open_msg->dev_name,
-	    open_msg->access_mode, open_msg->io_mode);
+		 " io_mode=%d\n", srv_sess->str_addr, open_msg->dev_name,
+		 open_msg->access_mode, open_msg->io_mode);
 	open_flags = FMODE_READ;
 	if (open_msg->access_mode != IBNBD_ACCESS_RO)
 		open_flags |= FMODE_WRITE;
@@ -760,8 +764,8 @@ static void process_msg_open(struct ibtrs_session *s,
 		if (ret) {
 			mutex_unlock(&srv_dev->lock);
 			ibnbd_err(srv_sess_dev, "Opening device failed, failed to"
-			    " create device sysfs files, err: %d\n",
-			    ret);
+				  " create device sysfs files, err: %d\n",
+				  ret);
 			goto free_srv_sess_dev;
 		}
 	}
@@ -770,7 +774,7 @@ static void process_msg_open(struct ibtrs_session *s,
 	if (ret) {
 		mutex_unlock(&srv_dev->lock);
 		ibnbd_err(srv_sess_dev, "Opening device failed, failed to create"
-		    " dev client sysfs files, err: %d\n", ret);
+			  " dev client sysfs files, err: %d\n", ret);
 		goto free_srv_sess_dev;
 	}
 
@@ -790,19 +794,19 @@ static void process_msg_open(struct ibtrs_session *s,
 	if (unlikely(srv_sess->state == SRV_SESS_STATE_DISCONNECTED)) {
 		ret = -ENODEV;
 		ibnbd_err(srv_sess_dev, "Opening device failed, session"
-		    " is disconnected, err: %d\n", ret);
+			  " is disconnected, err: %d\n", ret);
 		goto remove_srv_sess_dev;
 	}
 
 	ret = ibtrs_srv_send(s, &vec, 1);
 	if (unlikely(ret)) {
 		ibnbd_err(srv_sess_dev, "Opening device failed, sending open"
-		    " response msg failed, err: %d\n", ret);
+			  " response msg failed, err: %d\n", ret);
 		goto remove_srv_sess_dev;
 	}
 	srv_sess_dev->is_visible = true;
 	ibnbd_info(srv_sess_dev, "Opened device '%s' in %s mode\n",
-	     srv_dev->id, ibnbd_io_mode_str(io_mode));
+		   srv_dev->id, ibnbd_io_mode_str(io_mode));
 
 	kfree(full_path);
 	return;
@@ -834,7 +838,7 @@ free_path:
 	kfree(full_path);
 reject:
 	pr_debug("Sending negative response to client %s for device '%s' err: %d\n",
-	    srv_sess->str_addr, open_msg->dev_name, ret);
+		 srv_sess->str_addr, open_msg->dev_name, ret);
 	ibnbd_srv_fill_msg_open_rsp_header(&rsp, open_msg->clt_device_id);
 	rsp.result = ret;
 	if (unlikely(srv_sess->state == SRV_SESS_STATE_DISCONNECTED))
@@ -912,7 +916,7 @@ static void ibnbd_srv_recv(struct ibtrs_session *sess, void *priv,
 		break;
 	default:
 		pr_warn("Message with unexpected type %d received from client"
-		       " %s\n", hdr->type, srv_sess->str_addr);
+			" %s\n", hdr->type, srv_sess->str_addr);
 		break;
 	}
 }
@@ -937,19 +941,22 @@ static int ibnbd_srv_revalidate_sess_dev(struct ibnbd_srv_sess_dev *sess_dev)
 		return -ENODEV;
 
 	if (!sess_dev->is_visible) {
-		ibnbd_info(sess_dev, "revalidate device failed, wait for sending "
-		     "open reply first\n");
+		ibnbd_info(sess_dev,
+			   "revalidate device failed, wait for sending "
+			   "open reply first\n");
 		return -EAGAIN;
 	}
 
 	ret = ibtrs_srv_send(sess_dev->sess->ibtrs_sess, &vec, 1);
 	if (unlikely(ret)) {
-		ibnbd_err(sess_dev, "revalidate: Sending new device size"
-		    " to client failed, err: %d\n", ret);
+		ibnbd_err(sess_dev,
+			  "revalidate: Sending new device size"
+			  " to client failed, err: %d\n", ret);
 	} else {
-		ibnbd_info(sess_dev, "notified client about device size change"
-		     " (old nsectors: %lu, new nsectors: %lu)\n",
-		     sess_dev->nsectors, nsectors);
+		ibnbd_info(sess_dev,
+			   "notified client about device size change"
+			   " (old nsectors: %lu, new nsectors: %lu)\n",
+			   sess_dev->nsectors, nsectors);
 		sess_dev->nsectors = nsectors;
 	}
 
