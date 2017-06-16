@@ -53,11 +53,11 @@ void ibtrs_heartbeat_warn(const struct ibtrs_heartbeat *h)
 	u64 diff = ibtrs_recv_ts_ms_diff_ms(h);
 
 	pr_debug("last heartbeat message from %s was received %lu, %llums"
-	    " ago\n", ibtrs_prefix(h), atomic64_read(&h->recv_ts_ms), diff);
+		 " ago\n", ibtrs_prefix(h), atomic64_read(&h->recv_ts_ms), diff);
 
 	if (diff >= h->warn_timeout_ms)
-		WRN(h, "Last Heartbeat message received %llums ago,"
-		       " timeout: %ums\n", diff, h->timeout_ms);
+		ibtrs_wrn(h, "Last Heartbeat message received %llums ago,"
+			  " timeout: %ums\n", diff, h->timeout_ms);
 }
 EXPORT_SYMBOL_GPL(ibtrs_heartbeat_warn);
 
@@ -71,12 +71,12 @@ bool ibtrs_heartbeat_timeout_is_expired(const struct ibtrs_heartbeat *h)
 	diff = ibtrs_recv_ts_ms_diff_ms(h);
 
 	pr_debug("last heartbeat message from %s received %lu, %llums ago\n",
-	    ibtrs_prefix(h), atomic64_read(&h->recv_ts_ms), diff);
+		 ibtrs_prefix(h), atomic64_read(&h->recv_ts_ms), diff);
 
 	if (diff >= h->timeout_ms) {
-		ERR(h, "Heartbeat timeout expired, no heartbeat received "
-		       "for %llums, timeout: %ums\n", diff,
-		       h->timeout_ms);
+		ibtrs_err(h, "Heartbeat timeout expired, no heartbeat received "
+			  "for %llums, timeout: %ums\n", diff,
+			  h->timeout_ms);
 		return true;
 	}
 

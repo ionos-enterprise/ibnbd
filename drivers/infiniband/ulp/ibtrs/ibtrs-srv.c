@@ -198,7 +198,7 @@ static const struct kernel_param_ops cq_affinity_list_ops = {
 module_param_cb(cq_affinity_list, &cq_affinity_list_ops,
 		&cq_affinity_list_kparam_str, 0644);
 MODULE_PARM_DESC(cq_affinity_list, "Sets the list of cpus to use as cq vectors."
-				   "(default: use all possible CPUs)");
+		 "(default: use all possible CPUs)");
 
 static char hostname[MAXHOSTNAMELEN] = "";
 
@@ -429,7 +429,7 @@ static void csm_set_state(struct ibtrs_con *con, enum csm_state s)
 {
 	if (con->state != s) {
 		pr_debug("changing con %p csm state from %s to %s\n", con,
-		    csm_state_str(con->state), csm_state_str(s));
+			 csm_state_str(con->state), csm_state_str(s));
 		con->state = s;
 	}
 }
@@ -438,7 +438,7 @@ static void ssm_set_state(struct ibtrs_session *sess, enum ssm_state state)
 {
 	if (sess->state != state) {
 		pr_debug("changing sess %p ssm state from %s to %s\n", sess,
-		    ssm_state_str(sess->state), ssm_state_str(state));
+			 ssm_state_str(sess->state), ssm_state_str(state));
 		sess->state = state;
 	}
 }
@@ -725,7 +725,7 @@ static int rdma_write_sg(struct ibtrs_ops_id *id)
 		 * if this is 0
 		 */
 		if (unlikely(list->length == 0)) {
-			ERR(sess, "Invalid RDMA-Write sg list length 0\n");
+			ibtrs_err(sess, "Invalid RDMA-Write sg list length 0\n");
 			return -EINVAL;
 		}
 
@@ -749,14 +749,14 @@ static int rdma_write_sg(struct ibtrs_ops_id *id)
 	wr->wr.opcode	= IB_WR_RDMA_WRITE_WITH_IMM;
 	wr->wr.next	= NULL;
 	wr->wr.send_flags	= atomic_inc_return(&id->con->wr_cnt) %
-				sess->queue_depth ? 0 : IB_SEND_SIGNALED;
+		sess->queue_depth ? 0 : IB_SEND_SIGNALED;
 	wr->wr.ex.imm_data	= cpu_to_be32(id->msg_id << 16);
 
 	err = ib_post_send(id->con->ib_con.qp, &id->tx_wr[0].wr, &bad_wr);
 	if (unlikely(err))
-		ERR(sess,
-		    "Posting RDMA-Write-Request to QP failed, err: %d\n",
-		    err);
+		ibtrs_err(sess,
+			  "Posting RDMA-Write-Request to QP failed, err: %d\n",
+			  err);
 
 	return err;
 }
@@ -770,8 +770,8 @@ static int send_io_resp_imm(struct ibtrs_con *con, int msg_id, s16 errno)
 				    con->sess->queue_depth ? 0 :
 				    IB_SEND_SIGNALED);
 	if (unlikely(err))
-		ERR_RL(con->sess, "Posting RDMA-Write-Request to QP failed,"
-		       " err: %d\n", err);
+		ibtrs_err_rl(con->sess, "Posting RDMA-Write-Request to QP failed,"
+			     " err: %d\n", err);
 
 	return err;
 }
@@ -782,9 +782,9 @@ static int send_heartbeat_raw(struct ibtrs_con *con)
 
 	err = ibtrs_write_empty_imm(con->ib_con.qp, UINT_MAX, IB_SEND_SIGNALED);
 	if (unlikely(err)) {
-		ERR(con->sess,
-		    "Sending heartbeat failed, posting msg to QP failed,"
-		    " err: %d\n", err);
+		ibtrs_err(con->sess,
+			  "Sending heartbeat failed, posting msg to QP failed,"
+			  " err: %d\n", err);
 		return err;
 	}
 
@@ -811,16 +811,16 @@ static int send_heartbeat(struct ibtrs_session *sess)
 static int ibtrs_srv_queue_resp_rdma(struct ibtrs_ops_id *id)
 {
 	if (unlikely(id->con->state != CSM_STATE_CONNECTED)) {
-		ERR_RL(id->con->sess, "Sending I/O response failed, "
-		       " session is disconnected, sess state %s,"
-		       " con state %s\n", ssm_state_str(id->con->sess->state),
-		       csm_state_str(id->con->state));
+		ibtrs_err_rl(id->con->sess, "Sending I/O response failed, "
+			     " session is disconnected, sess state %s,"
+			     " con state %s\n", ssm_state_str(id->con->sess->state),
+			     csm_state_str(id->con->state));
 		return -ECOMM;
 	}
 
 	if (WARN_ON(!queue_work(id->con->rdma_resp_wq, &id->work))) {
-		ERR_RL(id->con->sess, "Sending I/O response failed,"
-		       " couldn't queue work\n");
+		ibtrs_err_rl(id->con->sess, "Sending I/O response failed,"
+			     " couldn't queue work\n");
 		return -EPERM;
 	}
 
@@ -838,12 +838,12 @@ static void ibtrs_srv_resp_rdma_worker(struct work_struct *work)
 
 	if (id->status || id->dir == WRITE) {
 		pr_debug("err or write msg_id=%d, status=%d, sending response\n",
-		    id->msg_id, id->status);
+			 id->msg_id, id->status);
 
 		err = send_io_resp_imm(id->con, id->msg_id, id->status);
 		if (unlikely(err)) {
-			ERR_RL(sess, "Sending imm msg failed, err: %d\n",
-			       err);
+			ibtrs_err_rl(sess, "Sending imm msg failed, err: %d\n",
+				     err);
 			if (err == -ENOMEM && !ibtrs_srv_queue_resp_rdma(id))
 				return;
 			csm_schedule_event(id->con, CSM_EV_CON_ERROR);
@@ -857,8 +857,8 @@ static void ibtrs_srv_resp_rdma_worker(struct work_struct *work)
 	pr_debug("read req msg_id=%d completed, sending data\n", id->msg_id);
 	err = rdma_write_sg(id);
 	if (unlikely(err)) {
-		ERR_RL(sess, "Sending I/O read response failed, err: %d\n",
-		       err);
+		ibtrs_err_rl(sess, "Sending I/O read response failed, err: %d\n",
+			     err);
 		if (err == -ENOMEM && !ibtrs_srv_queue_resp_rdma(id))
 			return;
 		csm_schedule_event(id->con, CSM_EV_CON_ERROR);
@@ -912,16 +912,16 @@ int ibtrs_srv_send(struct ibtrs_session *sess, const struct kvec *vec,
 	con = ibtrs_srv_get_user_con(sess);
 
 	if (unlikely(!con)) {
-		WRN(sess,
-		    "Sending message failed, no user connection exists\n");
+		ibtrs_wrn(sess,
+			  "Sending message failed, no user connection exists\n");
 		return -ECOMM;
 	}
 
 	len = kvec_length(vec, nr);
 
 	if (unlikely(len + IBTRS_HDR_LEN > MAX_REQ_SIZE)) {
-		WRN_RL(sess, "Sending message failed, passed data too big,"
-		       " %zu > %lu\n", len, MAX_REQ_SIZE - IBTRS_HDR_LEN);
+		ibtrs_wrn_rl(sess, "Sending message failed, passed data too big,"
+			     " %zu > %lu\n", len, MAX_REQ_SIZE - IBTRS_HDR_LEN);
 		return -EMSGSIZE;
 	}
 
@@ -930,8 +930,8 @@ int ibtrs_srv_send(struct ibtrs_session *sess, const struct kvec *vec,
 		   ibtrs_srv_get_usr_msg_buf(sess));
 
 	if (unlikely(closed_st)) {
-		ERR_RL(sess, "Sending message failed, not connected (state"
-		       " %s)\n", csm_state_str(con->state));
+		ibtrs_err_rl(sess, "Sending message failed, not connected (state"
+			     " %s)\n", csm_state_str(con->state));
 		return -ECOMM;
 	}
 
@@ -940,8 +940,8 @@ int ibtrs_srv_send(struct ibtrs_session *sess, const struct kvec *vec,
 		   (iu = get_tx_iu(sess)) != NULL);
 
 	if (unlikely(closed_st)) {
-		ERR_RL(sess, "Sending message failed, not connected (state"
-		       " %s)\n", csm_state_str(con->state));
+		ibtrs_err_rl(sess, "Sending message failed, not connected (state"
+			     " %s)\n", csm_state_str(con->state));
 		err = -ECOMM;
 		goto err_iu;
 	}
@@ -955,8 +955,8 @@ int ibtrs_srv_send(struct ibtrs_session *sess, const struct kvec *vec,
 			      con->sess->dev->ib_sess.pd->__internal_mr, iu,
 			      msg->hdr.tsize);
 	if (unlikely(err)) {
-		ERR_RL(sess, "Sending message failed, posting message to QP"
-		       " failed, err: %d\n", err);
+		ibtrs_err_rl(sess, "Sending message failed, posting message to QP"
+			     " failed, err: %d\n", err);
 		goto err_post_send;
 	}
 	ibtrs_heartbeat_set_send_ts(&sess->heartbeat);
@@ -993,8 +993,8 @@ static int ibtrs_post_recv(struct ibtrs_con *con, struct ibtrs_iu *iu)
 	list.lkey   = con->sess->dev->ib_sess.pd->local_dma_lkey;
 
 	if (unlikely(list.length == 0)) {
-		ERR_RL(con->sess, "Posting recv buffer failed, invalid sg list"
-		       " length 0\n");
+		ibtrs_err_rl(con->sess, "Posting recv buffer failed, invalid sg list"
+			     " length 0\n");
 		return -EINVAL;
 	}
 
@@ -1005,8 +1005,8 @@ static int ibtrs_post_recv(struct ibtrs_con *con, struct ibtrs_iu *iu)
 
 	err = ib_post_recv(con->ib_con.qp, &wr, &bad_wr);
 	if (unlikely(err))
-		ERR_RL(con->sess, "Posting recv buffer failed, err: %d\n",
-		       err);
+		ibtrs_err_rl(con->sess, "Posting recv buffer failed, err: %d\n",
+			     err);
 
 	return err;
 }
@@ -1067,7 +1067,7 @@ static struct ibtrs_rcv_buf_pool *alloc_rcv_buf_pool(void)
 			alloced_size = (1 << alloc_order) * PAGE_SIZE;
 
 			pr_debug("Memory chunk size: %d, address: %p\n",
-			    alloced_size, mem_chunk->addr);
+				 alloced_size, mem_chunk->addr);
 
 			recv_buf_start = mem_chunk->addr;
 			while (alloced_size > rcv_buf_size &&
@@ -1095,7 +1095,7 @@ static struct ibtrs_rcv_buf_pool *alloc_rcv_buf_pool(void)
 			}
 
 			pr_debug("Alloced pages exact at %p for rcv_bufs[%d]\n",
-			    addr, alloced_bufs);
+				 addr, alloced_bufs);
 
 			mem_chunk->addr = addr;
 			mem_chunk->order = IBTRS_MEM_CHUNK_NOORDER;
@@ -1148,7 +1148,7 @@ static void __put_pool_on_list(struct ibtrs_rcv_buf_pool *pool)
 	list_add(&pool->list, &free_buf_pool_list);
 	nr_free_buf_pool++;
 	pr_debug("Put buf pool back to the free list (nr_free_buf_pool: %d)\n",
-	    nr_free_buf_pool);
+		 nr_free_buf_pool);
 }
 
 static struct ibtrs_rcv_buf_pool *get_alloc_rcv_buf_pool(void)
@@ -1159,15 +1159,15 @@ static struct ibtrs_rcv_buf_pool *get_alloc_rcv_buf_pool(void)
 	if (nr_active_sessions >= pool_size_hi_wm) {
 		WARN_ON(nr_free_buf_pool || !list_empty(&free_buf_pool_list));
 		pr_debug("current nr_active_sessions (%d), pool_size_hi_wm (%d),"
-		    ", allocating.\n", nr_active_sessions, pool_size_hi_wm);
+			 ", allocating.\n", nr_active_sessions, pool_size_hi_wm);
 		pool = alloc_rcv_buf_pool();
 	} else if (nr_total_buf_pool < pool_size_hi_wm) {
 		/* try to allocate new pool while used+free is less then
 		 * watermark
 		 */
 		pr_debug("nr_total_buf_pool (%d) smaller than pool_size_hi_wm (%d)"
-		    ", trying to allocate.\n", nr_total_buf_pool,
-		    pool_size_hi_wm);
+			 ", trying to allocate.\n", nr_total_buf_pool,
+			 pool_size_hi_wm);
 		pool = alloc_rcv_buf_pool();
 		if (pool)
 			nr_total_buf_pool++;
@@ -1181,7 +1181,7 @@ static struct ibtrs_rcv_buf_pool *get_alloc_rcv_buf_pool(void)
 			pool = __get_pool_from_list();
 			WARN_ON(!pool);
 			pr_debug("Got pool from free list (nr_free_buf_pool: %d)\n",
-			    nr_free_buf_pool);
+				 nr_free_buf_pool);
 		} else {
 			/* all pools are already being used */
 			pr_debug("No free pool on the list\n");
@@ -1229,8 +1229,8 @@ static void put_rcv_buf_pool(struct ibtrs_rcv_buf_pool *pool)
 	if (nr_active_sessions >= pool_size_hi_wm) {
 		mutex_unlock(&buf_pool_mutex);
 		pr_debug("Freeing buf pool"
-		    " (nr_active_sessions: %d, pool_size_hi_wm: %d)\n",
-		    nr_active_sessions, pool_size_hi_wm);
+			 " (nr_active_sessions: %d, pool_size_hi_wm: %d)\n",
+			 nr_active_sessions, pool_size_hi_wm);
 		free_recv_buf_pool(pool);
 	} else {
 		__put_pool_on_list(pool);
@@ -1266,7 +1266,7 @@ static int setup_cont_bufs(struct ibtrs_session *sess)
 
 	sess->rcv_buf_pool = get_alloc_rcv_buf_pool();
 	if (!sess->rcv_buf_pool) {
-		ERR(sess, "Failed to allocate receive buffers for session\n");
+		ibtrs_err(sess, "Failed to allocate receive buffers for session\n");
 		return -ENOMEM;
 	}
 
@@ -1289,9 +1289,9 @@ static int setup_cont_bufs(struct ibtrs_session *sess)
 	sess->off_len = 31 - ilog2(sess->queue_depth - 1);
 	sess->off_mask = (1 << sess->off_len) - 1;
 
-	INFO(sess, "Allocated %d %dKB RDMA receive buffers, %dKB in total\n",
-	     sess->queue_depth, rcv_buf_size >> 10,
-	     sess->queue_depth * rcv_buf_size >> 10);
+	ibtrs_info(sess, "Allocated %d %dKB RDMA receive buffers, %dKB in total\n",
+		   sess->queue_depth, rcv_buf_size >> 10,
+		   sess->queue_depth * rcv_buf_size >> 10);
 
 	return 0;
 
@@ -1356,10 +1356,10 @@ static int alloc_sess_tx_bufs(struct ibtrs_session *sess)
 
 	sess->rdma_info_iu =
 		ibtrs_iu_alloc(0, IBTRS_MSG_SESS_OPEN_RESP_LEN(
-			       sess->queue_depth), GFP_KERNEL, ib_dev,
+				       sess->queue_depth), GFP_KERNEL, ib_dev,
 			       DMA_TO_DEVICE, true);
 	if (unlikely(!sess->rdma_info_iu)) {
-		ERR_RL(sess, "Can't allocate transfer buffer for "
+		ibtrs_err_rl(sess, "Can't allocate transfer buffer for "
 			     "sess open resp\n");
 		return -ENOMEM;
 	}
@@ -1367,14 +1367,14 @@ static int alloc_sess_tx_bufs(struct ibtrs_session *sess)
 	sess->ops_ids = kcalloc(sess->queue_depth, sizeof(*sess->ops_ids),
 				GFP_KERNEL);
 	if (unlikely(!sess->ops_ids)) {
-		ERR_RL(sess, "Can't alloc ops_ids for the session\n");
+		ibtrs_err_rl(sess, "Can't alloc ops_ids for the session\n");
 		goto err;
 	}
 
 	for (i = 0; i < sess->queue_depth; ++i) {
 		id = kzalloc(sizeof(*id), GFP_KERNEL);
 		if (unlikely(!id)) {
-			ERR_RL(sess, "Can't alloc ops id for session\n");
+			ibtrs_err_rl(sess, "Can't alloc ops id for session\n");
 			goto err;
 		}
 		sess->ops_ids[i] = id;
@@ -1384,7 +1384,7 @@ static int alloc_sess_tx_bufs(struct ibtrs_session *sess)
 		iu = ibtrs_iu_alloc(i, MAX_REQ_SIZE, GFP_KERNEL,
 				    ib_dev, DMA_TO_DEVICE, true);
 		if (!iu) {
-			ERR_RL(sess, "Can't alloc tx bufs for user msgs\n");
+			ibtrs_err_rl(sess, "Can't alloc tx bufs for user msgs\n");
 			goto err;
 		}
 		list_add(&iu->list, &sess->tx_bufs);
@@ -1405,7 +1405,7 @@ static int alloc_sess_rx_bufs(struct ibtrs_session *sess)
 		ibtrs_iu_alloc(0, IBTRS_HDR_LEN, GFP_KERNEL, sess->dev->device,
 			       DMA_FROM_DEVICE, true);
 	if (!sess->dummy_rx_iu) {
-		ERR(sess, "Failed to allocate dummy IU to receive "
+		ibtrs_err(sess, "Failed to allocate dummy IU to receive "
 			  "immediate messages on io connections\n");
 		goto err;
 	}
@@ -1413,7 +1413,7 @@ static int alloc_sess_rx_bufs(struct ibtrs_session *sess)
 	sess->usr_rx_ring = kcalloc(USR_CON_BUF_SIZE,
 				    sizeof(*sess->usr_rx_ring), GFP_KERNEL);
 	if (!sess->usr_rx_ring) {
-		ERR(sess, "Alloc usr_rx_ring for session failed\n");
+		ibtrs_err(sess, "Alloc usr_rx_ring for session failed\n");
 		goto err;
 	}
 
@@ -1423,7 +1423,7 @@ static int alloc_sess_rx_bufs(struct ibtrs_session *sess)
 				       sess->dev->device, DMA_FROM_DEVICE,
 				       true);
 		if (!sess->usr_rx_ring[i]) {
-			ERR(sess, "Failed to allocate iu for usr_rx_ring\n");
+			ibtrs_err(sess, "Failed to allocate iu for usr_rx_ring\n");
 			goto err;
 		}
 	}
@@ -1498,8 +1498,8 @@ static int init_transfer_bufs(struct ibtrs_con *con)
 	if (con->user) {
 		err = alloc_sess_bufs(sess);
 		if (err) {
-			ERR(sess, "Alloc sess bufs failed, err: %d\n",
-			    err);
+			ibtrs_err(sess, "Alloc sess bufs failed, err: %d\n",
+				  err);
 			return err;
 		}
 	}
@@ -1517,10 +1517,10 @@ static void process_rdma_write_req(struct ibtrs_con *con,
 
 	if (unlikely(sess->state != SSM_STATE_CONNECTED ||
 		     con->state != CSM_STATE_CONNECTED)) {
-		ERR_RL(sess, "Processing RDMA-Write-Req request failed, "
-		       " session is disconnected, sess state %s,"
-		       " con state %s\n", ssm_state_str(sess->state),
-		       csm_state_str(con->state));
+		ibtrs_err_rl(sess, "Processing RDMA-Write-Req request failed, "
+			     " session is disconnected, sess state %s,"
+			     " con state %s\n", ssm_state_str(sess->state),
+			     csm_state_str(con->state));
 		return;
 	}
 	ibtrs_srv_update_rdma_stats(&sess->stats, off, true);
@@ -1534,9 +1534,9 @@ static void process_rdma_write_req(struct ibtrs_con *con,
 	id->tx_wr	= kcalloc(req->sg_cnt, sizeof(*id->tx_wr), GFP_KERNEL);
 	id->tx_sg	= kcalloc(req->sg_cnt, sizeof(*id->tx_sg), GFP_KERNEL);
 	if (!id->tx_wr || !id->tx_sg) {
-		ERR_RL(sess, "Processing RDMA-Write-Req failed, work request "
-		       "or scatter gather allocation failed for msg_id %d\n",
-		       buf_id);
+		ibtrs_err_rl(sess, "Processing RDMA-Write-Req failed, work request "
+			     "or scatter gather allocation failed for msg_id %d\n",
+			     buf_id);
 		ret = -ENOMEM;
 		goto send_err_msg;
 	}
@@ -1547,9 +1547,9 @@ static void process_rdma_write_req(struct ibtrs_con *con,
 			       sess->rcv_buf_pool->rcv_bufs[buf_id].buf, off);
 
 	if (unlikely(ret)) {
-		ERR_RL(sess, "Processing RDMA-Write-Req failed, user "
-		       "module cb reported for msg_id %d, err: %d\n",
-		       buf_id, ret);
+		ibtrs_err_rl(sess, "Processing RDMA-Write-Req failed, user "
+			     "module cb reported for msg_id %d, err: %d\n",
+			     buf_id, ret);
 		goto send_err_msg;
 	}
 
@@ -1558,8 +1558,8 @@ static void process_rdma_write_req(struct ibtrs_con *con,
 send_err_msg:
 	ret = send_io_resp_imm(con, buf_id, ret);
 	if (ret < 0) {
-		ERR_RL(sess, "Sending err msg for failed RDMA-Write-Req"
-		       " failed, msg_id %d, err: %d\n", buf_id, ret);
+		ibtrs_err_rl(sess, "Sending err msg for failed RDMA-Write-Req"
+			     " failed, msg_id %d, err: %d\n", buf_id, ret);
 		csm_schedule_event(con, CSM_EV_CON_ERROR);
 	}
 	ibtrs_srv_stats_dec_inflight(sess);
@@ -1575,10 +1575,10 @@ static void process_rdma_write(struct ibtrs_con *con,
 
 	if (unlikely(sess->state != SSM_STATE_CONNECTED ||
 		     con->state != CSM_STATE_CONNECTED)) {
-		ERR_RL(sess, "Processing RDMA-Write request failed, "
-		       " session is disconnected, sess state %s,"
-		       " con state %s\n", ssm_state_str(sess->state),
-		       csm_state_str(con->state));
+		ibtrs_err_rl(sess, "Processing RDMA-Write request failed, "
+			     " session is disconnected, sess state %s,"
+			     " con state %s\n", ssm_state_str(sess->state),
+			     csm_state_str(con->state));
 		return;
 	}
 	ibtrs_srv_update_rdma_stats(&sess->stats, off, false);
@@ -1590,8 +1590,8 @@ static void process_rdma_write(struct ibtrs_con *con,
 	ret = srv_ops->rdma_ev(sess, sess->priv, id, IBTRS_SRV_RDMA_EV_RECV,
 			       sess->rcv_buf_pool->rcv_bufs[buf_id].buf, off);
 	if (unlikely(ret)) {
-		ERR_RL(sess, "Processing RDMA-Write failed, user module"
-		       " callback reports err: %d\n", ret);
+		ibtrs_err_rl(sess, "Processing RDMA-Write failed, user module"
+			     " callback reports err: %d\n", ret);
 		goto send_err_msg;
 	}
 
@@ -1600,9 +1600,9 @@ static void process_rdma_write(struct ibtrs_con *con,
 send_err_msg:
 	ret = send_io_resp_imm(con, buf_id, ret);
 	if (ret < 0) {
-		ERR_RL(sess, "Processing RDMA-Write failed, sending I/O"
-		       " response failed, msg_id %d, err: %d\n",
-		       buf_id, ret);
+		ibtrs_err_rl(sess, "Processing RDMA-Write failed, sending I/O"
+			     " response failed, msg_id %d, err: %d\n",
+			     buf_id, ret);
 		csm_schedule_event(con, CSM_EV_CON_ERROR);
 	}
 	ibtrs_srv_stats_dec_inflight(sess);
@@ -1616,16 +1616,16 @@ static int ibtrs_send_usr_msg_ack(struct ibtrs_con *con)
 	sess = con->sess;
 
 	if (unlikely(con->state != CSM_STATE_CONNECTED)) {
-		ERR_RL(sess, "Sending user msg ack failed, disconnected"
-			" Connection state is %s\n", csm_state_str(con->state));
+		ibtrs_err_rl(sess, "Sending user msg ack failed, disconnected"
+			     " Connection state is %s\n", csm_state_str(con->state));
 		return -ECOMM;
 	}
 	pr_debug("Sending user message ack\n");
 	err = ibtrs_write_empty_imm(con->ib_con.qp, UINT_MAX - 1,
 				    IB_SEND_SIGNALED);
 	if (unlikely(err)) {
-		ERR_RL(sess, "Sending user Ack msg failed, err: %d\n",
-		       err);
+		ibtrs_err_rl(sess, "Sending user Ack msg failed, err: %d\n",
+			     err);
 		return err;
 	}
 
@@ -1641,8 +1641,8 @@ static void process_msg_user(struct ibtrs_con *con,
 
 	len = msg->hdr.tsize - IBTRS_HDR_LEN;
 	if (unlikely(sess->state < SSM_STATE_CONNECTED || !sess->priv)) {
-		ERR_RL(sess, "Sending user msg failed, session isn't ready."
-			" Session state is %s\n", ssm_state_str(sess->state));
+		ibtrs_err_rl(sess, "Sending user msg failed, session isn't ready."
+			     " Session state is %s\n", ssm_state_str(sess->state));
 		return;
 	}
 
@@ -1667,24 +1667,24 @@ static void ibtrs_handle_write(struct ibtrs_con *con, struct ibtrs_iu *iu,
 	int ret;
 
 	if (unlikely(ibtrs_validate_message(sess->queue_depth, hdr))) {
-		ERR(sess,
-		    "Processing I/O failed, message validation failed\n");
+		ibtrs_err(sess,
+			  "Processing I/O failed, message validation failed\n");
 		ret = ibtrs_post_recv(con, iu);
 		if (unlikely(ret != 0))
-			ERR(sess,
-			    "Failed to post receive buffer to HCA, err: %d\n",
-			    ret);
+			ibtrs_err(sess,
+				  "Failed to post receive buffer to HCA, err: %d\n",
+				  ret);
 		goto err;
 	}
 
 	pr_debug("recv completion, type 0x%02x, tag %u, id %u, off %u\n",
-	    hdr->type, iu->tag, id, off);
+		 hdr->type, iu->tag, id, off);
 	print_hex_dump_debug("", DUMP_PREFIX_OFFSET, 8, 1,
 			     hdr, IBTRS_HDR_LEN + 32, true);
 	ret = ibtrs_post_recv(con, iu);
 	if (unlikely(ret != 0)) {
-		ERR(sess, "Posting receive buffer to HCA failed, err: %d\n",
-		    ret);
+		ibtrs_err(sess, "Posting receive buffer to HCA failed, err: %d\n",
+			  ret);
 		goto err;
 	}
 
@@ -1699,8 +1699,8 @@ static void ibtrs_handle_write(struct ibtrs_con *con, struct ibtrs_iu *iu,
 				       id, off);
 		break;
 	default:
-		ERR(sess, "Processing I/O request failed, "
-		    "unknown message type received: 0x%02x\n", hdr->type);
+		ibtrs_err(sess, "Processing I/O request failed, "
+			  "unknown message type received: 0x%02x\n", hdr->type);
 		goto err;
 	}
 
@@ -1759,7 +1759,7 @@ static void ibtrs_handle_recv(struct ibtrs_con *con,  struct ibtrs_iu *iu)
 	type = hdr->type;
 
 	pr_debug("recv completion, type 0x%02x, tag %u\n",
-	    type, iu->tag);
+		 type, iu->tag);
 	print_hex_dump_debug("", DUMP_PREFIX_OFFSET, 8, 1,
 			     iu->buf, IBTRS_HDR_LEN, true);
 
@@ -1767,44 +1767,44 @@ static void ibtrs_handle_recv(struct ibtrs_con *con,  struct ibtrs_iu *iu)
 	case IBTRS_MSG_USER:
 		ret = ibtrs_schedule_msg(con, iu->buf);
 		if (unlikely(ret)) {
-			ERR_RL(sess, "Scheduling worker of user message "
-			       "to user module failed, err: %d\n",
-			       ret);
+			ibtrs_err_rl(sess, "Scheduling worker of user message "
+				     "to user module failed, err: %d\n",
+				     ret);
 			goto err1;
 		}
 		ret = ibtrs_post_recv(con, iu);
 		if (unlikely(ret)) {
-			ERR_RL(sess, "Posting receive buffer of user message "
-			       "to HCA failed, err: %d\n", ret);
+			ibtrs_err_rl(sess, "Posting receive buffer of user message "
+				     "to HCA failed, err: %d\n", ret);
 			goto err2;
 		}
 		ret = ibtrs_send_usr_msg_ack(con);
 		if (unlikely(ret)) {
-			ERR_RL(sess, "Sending ACK for user message failed, "
-			       "err: %d\n", ret);
+			ibtrs_err_rl(sess, "Sending ACK for user message failed, "
+				     "err: %d\n", ret);
 			goto err2;
 		}
 		return;
 	case IBTRS_MSG_SESS_INFO:
 		ret = ibtrs_post_recv(con, iu);
 		if (unlikely(ret)) {
-			ERR_RL(sess, "Posting receive buffer of sess info "
-			       "to HCA failed, err: %d\n", ret);
+			ibtrs_err_rl(sess, "Posting receive buffer of sess info "
+				     "to HCA failed, err: %d\n", ret);
 			goto err2;
 		}
 		req = (struct ibtrs_msg_sess_info *)hdr;
 		strlcpy(sess->hostname, req->hostname, sizeof(sess->hostname));
 		return;
 	default:
-		ERR(sess, "Processing received message failed, "
-		    "unknown type: 0x%02x\n", type);
+		ibtrs_err(sess, "Processing received message failed, "
+			  "unknown type: 0x%02x\n", type);
 		goto err1;
 	}
 
 err1:
 	ibtrs_post_recv(con, iu);
 err2:
-	ERR(sess, "Failed to process IBTRS message\n");
+	ibtrs_err(sess, "Failed to process IBTRS message\n");
 	csm_schedule_event(con, CSM_EV_CON_ERROR);
 }
 
@@ -1880,7 +1880,7 @@ static void destroy_sess(struct kref *kref)
 	mutex_unlock(&sess_mutex);
 	wake_up(&sess_list_waitq);
 
-	INFO(sess, "Session is closed\n");
+	ibtrs_info(sess, "Session is closed\n");
 	kfree(sess);
 }
 
@@ -2035,11 +2035,11 @@ static void process_err_wc(struct ibtrs_con *con, struct ib_wc *wc)
 		 * DISCONNECTING state waiting for the second
 		 * CM_DISCONNECTED event
 		 */
-		ERR_RL(con->sess, "%s (wr_id: 0x%llx,"
-		       " type: %s, vendor_err: 0x%x, len: %u)\n",
-		       ib_wc_status_msg(wc->status), wc->wr_id,
-		       ib_wc_opcode_str(wc->opcode),
-		       wc->vendor_err, wc->byte_len);
+		ibtrs_err_rl(con->sess, "%s (wr_id: 0x%llx,"
+			     " type: %s, vendor_err: 0x%x, len: %u)\n",
+			     ib_wc_status_msg(wc->status), wc->wr_id,
+			     ib_wc_opcode_str(wc->opcode),
+			     wc->vendor_err, wc->byte_len);
 	}
 	csm_schedule_event(con, CSM_EV_CON_ERROR);
 }
@@ -2085,17 +2085,17 @@ static int process_wcs(struct ibtrs_con *con, struct ib_wc *wcs, size_t len)
 			if (imm == UINT_MAX) {
 				ret = ibtrs_post_recv(con, iu);
 				if (unlikely(ret != 0)) {
-					ERR(sess, "post receive buffer failed,"
-					    " err: %d\n", ret);
+					ibtrs_err(sess, "post receive buffer failed,"
+						  " err: %d\n", ret);
 					return ret;
 				}
 				break;
 			} else if (imm == UINT_MAX - 1) {
 				ret = ibtrs_post_recv(con, iu);
 				if (unlikely(ret))
-					ERR_RL(sess, "Posting receive buffer of"
-					       " user Ack msg to HCA failed,"
-					       " err: %d\n", ret);
+					ibtrs_err_rl(sess, "Posting receive buffer of"
+						     " user Ack msg to HCA failed,"
+						     " err: %d\n", ret);
 				process_msg_user_ack(con);
 				break;
 			}
@@ -2103,13 +2103,13 @@ static int process_wcs(struct ibtrs_con *con, struct ib_wc *wcs, size_t len)
 			off = imm & sess->off_mask;
 
 			if (id > sess->queue_depth || off > rcv_buf_size) {
-				ERR(sess, "Processing I/O failed, contiguous "
-				    "buf addr is out of reserved area\n");
+				ibtrs_err(sess, "Processing I/O failed, contiguous "
+					  "buf addr is out of reserved area\n");
 				ret = ibtrs_post_recv(con, iu);
 				if (unlikely(ret != 0))
-					ERR(sess, "Processing I/O failed, "
-					    "post receive buffer failed, "
-					    "err: %d\n", ret);
+					ibtrs_err(sess, "Processing I/O failed, "
+						  "post receive buffer failed, "
+						  "err: %d\n", ret);
 				return -EIO;
 			}
 
@@ -2134,9 +2134,9 @@ static int process_wcs(struct ibtrs_con *con, struct ib_wc *wcs, size_t len)
 		}
 
 		default:
-			ERR(sess, "Processing work completion failed,"
-			    " WC has unknown opcode: %s\n",
-			    ib_wc_opcode_str(wc.opcode));
+			ibtrs_err(sess, "Processing work completion failed,"
+				  " WC has unknown opcode: %s\n",
+				  ib_wc_opcode_str(wc.opcode));
 			return -EINVAL;
 		}
 	}
@@ -2168,8 +2168,8 @@ static int get_process_wcs(struct ibtrs_con *con, int *total_cnt)
 		cnt = ib_poll_cq(con->ib_con.cq, ARRAY_SIZE(con->wcs),
 				 con->wcs);
 		if (unlikely(cnt < 0)) {
-			ERR(con->sess, "Polling completion queue failed, "
-			    "err: %d\n", cnt);
+			ibtrs_err(con->sess, "Polling completion queue failed, "
+				  "err: %d\n", cnt);
 			return cnt;
 		}
 
@@ -2192,8 +2192,8 @@ static void wrapper_handle_cq_comp(struct work_struct *work)
 	int total_cnt = 0;
 
 	if (unlikely(con->state == CSM_STATE_CLOSED)) {
-		ERR(sess, "Retrieving work completions from completion"
-		    " queue failed, connection is disconnected\n");
+		ibtrs_err(sess, "Retrieving work completions from completion"
+			  " queue failed, connection is disconnected\n");
 		goto error;
 	}
 
@@ -2204,7 +2204,7 @@ static void wrapper_handle_cq_comp(struct work_struct *work)
 	while ((err = ib_req_notify_cq(con->ib_con.cq, IB_CQ_NEXT_COMP |
 				       IB_CQ_REPORT_MISSED_EVENTS)) > 0) {
 		pr_debug("Missed %d CQ notifications, processing missed WCs...\n",
-		    err);
+			 err);
 		err = get_process_wcs(con, &total_cnt);
 		if (unlikely(err))
 			goto error;
@@ -2246,8 +2246,8 @@ static int accept(struct ibtrs_con *con)
 
 	ret = rdma_accept(con->cm_id, &conn_param);
 	if (ret) {
-		ERR(sess, "Accepting RDMA connection request failed,"
-		    " err: %d\n", ret);
+		ibtrs_err(sess, "Accepting RDMA connection request failed,"
+			  " err: %d\n", ret);
 		return ret;
 	}
 
@@ -2307,7 +2307,7 @@ __create_sess(struct rdma_cm_id *cm_id, const struct ibtrs_msg_sess_open *req)
 	sess->dev = ibtrs_find_get_device(cm_id);
 	if (!sess->dev) {
 		err = -ENOMEM;
-		WRN(sess, "Failed to alloc ibtrs_device\n");
+		ibtrs_wrn(sess, "Failed to alloc ibtrs_device\n");
 		goto err1;
 	}
 	err = setup_cont_bufs(sess);
@@ -2317,7 +2317,7 @@ __create_sess(struct rdma_cm_id *cm_id, const struct ibtrs_msg_sess_open *req)
 	memcpy(sess->uuid, req->uuid, IBTRS_UUID_SIZE);
 	err = ssm_init(sess);
 	if (err) {
-		WRN(sess, "Failed to initialize the session state machine\n");
+		ibtrs_wrn(sess, "Failed to initialize the session state machine\n");
 		goto err3;
 	}
 
@@ -2325,8 +2325,8 @@ __create_sess(struct rdma_cm_id *cm_id, const struct ibtrs_msg_sess_open *req)
 	init_waitqueue_head(&sess->bufs_wait);
 
 	list_add(&sess->list, &sess_list);
-	INFO(sess, "IBTRS Session created (queue depth: %d)\n",
-	     sess->queue_depth);
+	ibtrs_info(sess, "IBTRS Session created (queue depth: %d)\n",
+		   sess->queue_depth);
 
 	return sess;
 
@@ -2409,7 +2409,7 @@ static int ibtrs_srv_get_next_cq_vector(struct ibtrs_session *sess)
 static void ssm_create_con_worker(struct work_struct *work)
 {
 	struct ssm_create_con_work *ssm_w =
-			container_of(work, struct ssm_create_con_work, work);
+		container_of(work, struct ssm_create_con_work, work);
 	struct ibtrs_session *sess = ssm_w->sess;
 	struct rdma_cm_id *cm_id = ssm_w->cm_id;
 	bool user = ssm_w->user;
@@ -2421,16 +2421,16 @@ static void ssm_create_con_worker(struct work_struct *work)
 
 	if (sess->state == SSM_STATE_CLOSING ||
 	    sess->state == SSM_STATE_CLOSED) {
-		WRN(sess, "Creating connection failed, "
-		    "session is being closed\n");
+		ibtrs_wrn(sess, "Creating connection failed, "
+			  "session is being closed\n");
 		ret = -ECOMM;
 		goto err_reject;
 	}
 
 	con = kzalloc(sizeof(*con), GFP_KERNEL);
 	if (!con) {
-		ERR(sess, "Creating connection failed, "
-		    "can't allocate memory for connection\n");
+		ibtrs_err(sess, "Creating connection failed, "
+			  "can't allocate memory for connection\n");
 		ret = -ENOMEM;
 		goto err_reject;
 	}
@@ -2469,9 +2469,9 @@ static void ssm_create_con_worker(struct work_struct *work)
 					     WQ_CPU_INTENSIVE | WQ_HIGHPRI, 0,
 					     "ibtrs_srv_wq");
 	if (!con->cq_wq) {
-		ERR(sess, "Creating connection failed, can't allocate "
-		    "work queue for completion queue, err: %d\n",
-		    ret);
+		ibtrs_err(sess, "Creating connection failed, can't allocate "
+			  "work queue for completion queue, err: %d\n",
+			  ret);
 		goto err_wq1;
 	}
 
@@ -2479,15 +2479,15 @@ static void ssm_create_con_worker(struct work_struct *work)
 					    "ibtrs_rdma_resp");
 
 	if (!con->rdma_resp_wq) {
-		ERR(sess, "Creating connection failed, can't allocate"
-		    " work queue for send response, err: %d\n", ret);
+		ibtrs_err(sess, "Creating connection failed, can't allocate"
+			  " work queue for send response, err: %d\n", ret);
 		goto err_wq2;
 	}
 
 	ret = init_transfer_bufs(con);
 	if (ret) {
-		ERR(sess, "Creating connection failed, can't init"
-		    " transfer buffers, err: %d\n", ret);
+		ibtrs_err(sess, "Creating connection failed, can't init"
+			  " transfer buffers, err: %d\n", ret);
 		goto err_buf;
 	}
 
@@ -2498,8 +2498,8 @@ static void ssm_create_con_worker(struct work_struct *work)
 	if (con->user) {
 		con->sess->msg_wq = alloc_ordered_workqueue("sess_msg_wq", 0);
 		if (!con->sess->msg_wq) {
-			ERR(con->sess, "Failed to create user message"
-			    " workqueue\n");
+			ibtrs_err(con->sess, "Failed to create user message"
+				  " workqueue\n");
 			ret = -ENOMEM;
 			goto err_accept;
 		}
@@ -2592,15 +2592,15 @@ static int rdma_con_establish(struct rdma_cm_id *cm_id, const void *data,
 	sess = __find_active_sess(uuid);
 	if (sess) {
 		if (unlikely(hdr->type == IBTRS_MSG_SESS_OPEN)) {
-			INFO(sess, "Connection request rejected, "
-			     "session already exists\n");
+			ibtrs_info(sess, "Connection request rejected, "
+				   "session already exists\n");
 			mutex_unlock(&sess_mutex);
 			ret = -EEXIST;
 			goto err_reject;
 		}
 		if (!ibtrs_srv_sess_get(sess)) {
-			INFO(sess, "Connection request rejected,"
-			     " session is being closed\n");
+			ibtrs_info(sess, "Connection request rejected,"
+				   " session is being closed\n");
 			mutex_unlock(&sess_mutex);
 			ret = -EINVAL;
 			goto err_reject;
@@ -2632,8 +2632,8 @@ static int rdma_con_establish(struct rdma_cm_id *cm_id, const void *data,
 
 	ret = ssm_schedule_create_con(sess, cm_id, user);
 	if (ret) {
-		ERR(sess, "Unable to schedule creation of connection,"
-		    " session will be closed.\n");
+		ibtrs_err(sess, "Unable to schedule creation of connection,"
+			  " session will be closed.\n");
 		goto err_close;
 	}
 
@@ -2655,7 +2655,7 @@ static int ibtrs_srv_rdma_cm_ev_handler(struct rdma_cm_id *cm_id,
 	int ret = 0;
 
 	pr_debug("cma_event type %d cma_id %p(%s) on con: %p\n", event->event,
-	    cm_id, rdma_event_msg(event->event), con);
+		 cm_id, rdma_event_msg(event->event), con);
 	if (!con && event->event != RDMA_CM_EVENT_CONNECT_REQUEST) {
 		pr_info("Ignore cma_event type %d cma_id %p(%s)\n",
 			event->event, cm_id, rdma_event_msg(event->event));
@@ -2678,8 +2678,8 @@ static int ibtrs_srv_rdma_cm_ev_handler(struct rdma_cm_id *cm_id,
 	case RDMA_CM_EVENT_DEVICE_REMOVAL: {
 		struct completion dc;
 
-		ERR_RL(con->sess,
-		       "IB Device was removed, disconnecting session.\n");
+		ibtrs_err_rl(con->sess,
+			     "IB Device was removed, disconnecting session.\n");
 
 		con->device_being_removed = true;
 		init_completion(&dc);
@@ -2701,22 +2701,22 @@ static int ibtrs_srv_rdma_cm_ev_handler(struct rdma_cm_id *cm_id,
 	case RDMA_CM_EVENT_ROUTE_ERROR:
 	case RDMA_CM_EVENT_UNREACHABLE:
 	case RDMA_CM_EVENT_ADDR_CHANGE:
-		ERR_RL(con->sess, "CM error (CM event: %s, err: %d)\n",
-		       rdma_event_msg(event->event), event->status);
+		ibtrs_err_rl(con->sess, "CM error (CM event: %s, err: %d)\n",
+			     rdma_event_msg(event->event), event->status);
 
 		csm_schedule_event(con, CSM_EV_CON_ERROR);
 		break;
 	case RDMA_CM_EVENT_REJECTED:
 		/* reject status is defined in enum, not errno */
-		ERR_RL(con->sess,
-		       "Connection rejected (CM event: %s, err: %s)\n",
-		       rdma_event_msg(event->event),
-		       rdma_reject_msg(cm_id, event->status));
+		ibtrs_err_rl(con->sess,
+			     "Connection rejected (CM event: %s, err: %s)\n",
+			     rdma_event_msg(event->event),
+			     rdma_reject_msg(cm_id, event->status));
 		csm_schedule_event(con, CSM_EV_CON_ERROR);
 		break;
 	default:
-		WRN(con->sess, "Ignoring unexpected CM event %s, err %d\n",
-		    rdma_event_msg(event->event), event->status);
+		ibtrs_wrn(con->sess, "Ignoring unexpected CM event %s, err %d\n",
+			  rdma_event_msg(event->event), event->status);
 		break;
 	}
 	return ret;
@@ -2753,15 +2753,15 @@ static int ibtrs_srv_cm_init(struct rdma_cm_id **cm_id, struct sockaddr *addr,
 	switch (addr->sa_family) {
 	case AF_INET:
 		pr_debug("listening on port %u\n",
-		    ntohs(((struct sockaddr_in *)addr)->sin_port));
+			 ntohs(((struct sockaddr_in *)addr)->sin_port));
 		break;
 	case AF_INET6:
 		pr_debug("listening on port %u\n",
-		    ntohs(((struct sockaddr_in6 *)addr)->sin6_port));
+			 ntohs(((struct sockaddr_in6 *)addr)->sin6_port));
 		break;
 	case AF_IB:
 		pr_debug("listening on service id 0x%016llx\n",
-		    be64_to_cpu(rdma_get_service_id(*cm_id, addr)));
+			 be64_to_cpu(rdma_get_service_id(*cm_id, addr)));
 		break;
 	default:
 		pr_debug("listening on address family %u\n", addr->sa_family);
@@ -2864,7 +2864,7 @@ int ibtrs_srv_register(const struct ibtrs_srv_ops *ops)
 	if (srv_ops) {
 		pr_err("Registration failed, module %s already registered,"
 		       " only 1 user module supported\n",
-		srv_ops->owner->name);
+		       srv_ops->owner->name);
 		return -ENOTSUPP;
 	}
 
@@ -2989,7 +2989,7 @@ static int send_msg_sess_open_resp(struct ibtrs_con *con)
 	err = ibtrs_post_send(con->ib_con.qp, con->sess->dev->ib_sess.mr,
 			      sess->rdma_info_iu, msg->hdr.tsize);
 	if (unlikely(err))
-		ERR(sess, "Sending sess open resp failed, "
+		ibtrs_err(sess, "Sending sess open resp failed, "
 			  "posting msg to QP failed, err: %d\n", err);
 
 	return err;
@@ -3028,14 +3028,14 @@ static void csm_requested(struct ibtrs_con *con, enum csm_ev ev)
 	case CSM_EV_CON_ERROR:
 	case CSM_EV_SESS_CLOSING:
 	case CSM_EV_CON_DISCONNECTED:
-destroy:
+	destroy:
 		csm_set_state(con, CSM_STATE_CLOSED);
 		close_con(con);
 		ssm_schedule_event(sess, SSM_EV_CON_EST_ERR);
 		break;
 	default:
-		ERR(sess, "Connection received unexpected event %s "
-		    "in %s state.\n", csm_ev_str(ev), csm_state_str(state));
+		ibtrs_err(sess, "Connection received unexpected event %s "
+			  "in %s state.\n", csm_ev_str(ev), csm_state_str(state));
 	}
 }
 
@@ -3053,12 +3053,12 @@ static void csm_connected(struct ibtrs_con *con, enum csm_ev ev)
 		csm_set_state(con, CSM_STATE_CLOSING);
 		err = rdma_disconnect(con->cm_id);
 		if (err)
-			ERR(sess, "Connection received event %s "
-			    "in %s state, new state is %s, but failed to "
-			    "disconnect connection.\n", csm_ev_str(ev),
-			    csm_state_str(state), csm_state_str(con->state));
+			ibtrs_err(sess, "Connection received event %s "
+				  "in %s state, new state is %s, but failed to "
+				  "disconnect connection.\n", csm_ev_str(ev),
+				  csm_state_str(state), csm_state_str(con->state));
 		break;
-		}
+	}
 	case CSM_EV_DEVICE_REMOVAL:
 		/* Send a SSM_EV_SESS_CLOSE event to the session to speed up the
 		 * closing of the other connections. If we just wait for the
@@ -3072,27 +3072,27 @@ static void csm_connected(struct ibtrs_con *con, enum csm_ev ev)
 		csm_set_state(con, CSM_STATE_FLUSHING);
 		err = rdma_disconnect(con->cm_id);
 		if (err)
-			ERR(sess, "Connection received event %s "
-			    "in %s state, new state is %s, but failed to "
-			    "disconnect connection.\n", csm_ev_str(ev),
-			    csm_state_str(state), csm_state_str(con->state));
+			ibtrs_err(sess, "Connection received event %s "
+				  "in %s state, new state is %s, but failed to "
+				  "disconnect connection.\n", csm_ev_str(ev),
+				  csm_state_str(state), csm_state_str(con->state));
 
 		wait_event(sess->bufs_wait,
 			   !atomic_read(&sess->stats.rdma_stats.inflight));
 		pr_debug("posting beacon on con %p\n", con);
 		err = post_beacon(&con->ib_con);
 		if (err) {
-			ERR(sess, "Connection received event %s "
-			    "in %s state, new state is %s but failed to post"
-			    " beacon, closing connection.\n", csm_ev_str(ev),
-			    csm_state_str(state), csm_state_str(con->state));
+			ibtrs_err(sess, "Connection received event %s "
+				  "in %s state, new state is %s but failed to post"
+				  " beacon, closing connection.\n", csm_ev_str(ev),
+				  csm_state_str(state), csm_state_str(con->state));
 			goto destroy;
 		}
 
 		err = ibtrs_request_cq_notifications(&con->ib_con);
 		if (unlikely(err < 0)) {
-			WRN(con->sess, "Requesting CQ Notification for"
-			    " ib_con failed. Connection will be destroyed\n");
+			ibtrs_wrn(con->sess, "Requesting CQ Notification for"
+				  " ib_con failed. Connection will be destroyed\n");
 			goto destroy;
 		} else if (err > 0) {
 			err = get_process_wcs(con, &cnt);
@@ -3108,10 +3108,10 @@ destroy:
 		ssm_schedule_event(sess, SSM_EV_CON_DISCONNECTED);
 
 		break;
-		}
+	}
 	default:
-		ERR(sess, "Connection received unexpected event %s "
-		    "in %s state\n", csm_ev_str(ev), csm_state_str(state));
+		ibtrs_err(sess, "Connection received unexpected event %s "
+			  "in %s state\n", csm_ev_str(ev), csm_state_str(state));
 	}
 }
 
@@ -3133,17 +3133,17 @@ static void csm_closing(struct ibtrs_con *con, enum csm_ev ev)
 
 		pr_debug("posting beacon on con %p\n", con);
 		if (post_beacon(&con->ib_con)) {
-			ERR(sess, "Connection received event %s "
-			    "in %s state, new state is %s but failed to post"
-			    " beacon, closing connection.\n", csm_ev_str(ev),
-			    csm_state_str(state), csm_state_str(con->state));
+			ibtrs_err(sess, "Connection received event %s "
+				  "in %s state, new state is %s but failed to post"
+				  " beacon, closing connection.\n", csm_ev_str(ev),
+				  csm_state_str(state), csm_state_str(con->state));
 			goto destroy;
 		}
 
 		err = ibtrs_request_cq_notifications(&con->ib_con);
 		if (unlikely(err < 0)) {
-			WRN(con->sess, "Requesting CQ Notification for"
-			    " ib_con failed. Connection will be destroyed\n");
+			ibtrs_wrn(con->sess, "Requesting CQ Notification for"
+				  " ib_con failed. Connection will be destroyed\n");
 			goto destroy;
 		} else if (err > 0) {
 			err = get_process_wcs(con, &cnt);
@@ -3164,8 +3164,8 @@ destroy:
 	case CSM_EV_SESS_CLOSING:
 		break;
 	default:
-		ERR(sess, "Connection received unexpected event %s "
-		    "in %s state\n", csm_ev_str(ev), csm_state_str(state));
+		ibtrs_err(sess, "Connection received unexpected event %s "
+			  "in %s state\n", csm_ev_str(ev), csm_state_str(state));
 	}
 }
 
@@ -3199,8 +3199,8 @@ static void csm_flushing(struct ibtrs_con *con, enum csm_ev ev)
 		 */
 		break;
 	default:
-		ERR(sess, "Connection received unexpected event %s "
-		    "in %s state\n", csm_ev_str(ev), csm_state_str(state));
+		ibtrs_err(sess, "Connection received unexpected event %s "
+			  "in %s state\n", csm_ev_str(ev), csm_state_str(state));
 	}
 }
 
@@ -3314,7 +3314,7 @@ static void ssm_idle(struct ibtrs_session *sess, enum ssm_ev ev)
 	enum ssm_state state = sess->state;
 
 	pr_debug("sess %p, event %s, est_cnt=%d\n", sess, ssm_ev_str(ev),
-	    sess->est_cnt);
+		 sess->est_cnt);
 	switch (ev) {
 	case SSM_EV_CON_DISCONNECTED:
 		sess->est_cnt--;
@@ -3339,14 +3339,14 @@ static void ssm_idle(struct ibtrs_session *sess, enum ssm_ev ev)
 		err = ibtrs_srv_create_sess_files(sess);
 		if (err) {
 			if (err == -EEXIST)
-				ERR(sess,
-				    "Session sysfs files already exist,"
-				    " possibly a user-space process is"
-				    " holding them\n");
+				ibtrs_err(sess,
+					  "Session sysfs files already exist,"
+					  " possibly a user-space process is"
+					  " holding them\n");
 			else
-				ERR(sess,
-				    "Create session sysfs files failed,"
-				    " err: %d\n", err);
+				ibtrs_err(sess,
+					  "Create session sysfs files failed,"
+					  " err: %d\n", err);
 			goto destroy;
 		}
 
@@ -3354,23 +3354,23 @@ static void ssm_idle(struct ibtrs_session *sess, enum ssm_ev ev)
 
 		err = ibtrs_srv_sess_ev(sess, IBTRS_SRV_SESS_EV_CONNECTED);
 		if (err) {
-			ERR(sess, "Notifying user session event"
-			    " failed, err: %d\n. Session is closed",
-			    err);
+			ibtrs_err(sess, "Notifying user session event"
+				  " failed, err: %d\n. Session is closed",
+				  err);
 			goto destroy;
 		}
 
 		ssm_set_state(sess, SSM_STATE_CONNECTED);
 		err = ibtrs_srv_request_cq_notifications(sess);
 		if (err) {
-			ERR(sess, "Requesting CQ completion notifications"
-			    " failed, err: %d. Session will be closed.\n",
-			    err);
+			ibtrs_err(sess, "Requesting CQ completion notifications"
+				  " failed, err: %d. Session will be closed.\n",
+				  err);
 			goto destroy;
 		}
 
 		break;
-destroy:
+		destroy:
 		remove_sess_from_sysfs(sess);
 		ssm_set_state(sess, SSM_STATE_CLOSING);
 		sess_schedule_csm_event(sess, CSM_EV_SESS_CLOSING);
@@ -3381,8 +3381,8 @@ destroy:
 		sess_schedule_csm_event(sess, CSM_EV_SESS_CLOSING);
 		break;
 	default:
-		ERR(sess, "Session received unexpected event %s "
-		    "in %s state.\n", ssm_ev_str(ev), ssm_state_str(state));
+		ibtrs_err(sess, "Session received unexpected event %s "
+			  "in %s state.\n", ssm_ev_str(ev), ssm_state_str(state));
 	}
 }
 
@@ -3391,7 +3391,7 @@ static void ssm_connected(struct ibtrs_session *sess, enum ssm_ev ev)
 	enum ssm_state state = sess->state;
 
 	pr_debug("sess %p, event %s, est_cnt=%d\n", sess, ssm_ev_str(ev),
-	    sess->est_cnt);
+		 sess->est_cnt);
 	switch (ev) {
 	case SSM_EV_CON_DISCONNECTED:
 		remove_sess_from_sysfs(sess);
@@ -3409,8 +3409,8 @@ static void ssm_connected(struct ibtrs_session *sess, enum ssm_ev ev)
 		sess_schedule_csm_event(sess, CSM_EV_SESS_CLOSING);
 		break;
 	default:
-		ERR(sess, "Session received unexpected event %s "
-		    "in %s state.\n", ssm_ev_str(ev), ssm_state_str(state));
+		ibtrs_err(sess, "Session received unexpected event %s "
+			  "in %s state.\n", ssm_ev_str(ev), ssm_state_str(state));
 	}
 }
 
@@ -3419,7 +3419,7 @@ static void ssm_closing(struct ibtrs_session *sess, enum ssm_ev ev)
 	enum ssm_state state = sess->state;
 
 	pr_debug("sess %p, event %s, est_cnt=%d\n", sess, ssm_ev_str(ev),
-	    sess->est_cnt);
+		 sess->est_cnt);
 	switch (ev) {
 	case SSM_EV_CON_CONNECTED:
 		sess->est_cnt++;
@@ -3446,8 +3446,8 @@ static void ssm_closing(struct ibtrs_session *sess, enum ssm_ev ev)
 		 */
 		break;
 	default:
-		ERR(sess, "Session received unexpected event %s "
-		    "in %s state.\n", ssm_ev_str(ev), ssm_state_str(state));
+		ibtrs_err(sess, "Session received unexpected event %s "
+			  "in %s state.\n", ssm_ev_str(ev), ssm_state_str(state));
 	}
 }
 
@@ -3457,7 +3457,7 @@ static void ssm_closed(struct ibtrs_session *sess, enum ssm_ev ev)
 	 * to be destroyed
 	 */
 	pr_debug("sess %p, event %s, est_cnt=%d\n", sess, ssm_ev_str(ev),
-	    sess->est_cnt);
+		 sess->est_cnt);
 }
 
 typedef void (ssm_ev_handler_fn)(struct ibtrs_session *, enum ssm_ev);
@@ -3486,8 +3486,8 @@ static void check_heartbeat_work(struct work_struct *work)
 	if (WARN_ON(!queue_delayed_work(sess->sm_wq,
 					&sess->check_heartbeat_dwork,
 					HEARTBEAT_INTV_JIFFIES)))
-		WRN_RL(sess, "Schedule check heartbeat work failed, "
-		       "check_heartbeat worker already queued?\n");
+		ibtrs_wrn_rl(sess, "Schedule check heartbeat work failed, "
+			     "check_heartbeat worker already queued?\n");
 }
 
 static void send_heartbeat_work(struct work_struct *work)
@@ -3502,10 +3502,10 @@ static void send_heartbeat_work(struct work_struct *work)
 	    HEARTBEAT_INTV_MS) {
 		err = send_heartbeat(sess);
 		if (unlikely(err)) {
-			WRN_RL(sess,
-			       "Sending heartbeat failed, err: %d,"
-			       " no further heartbeat will be sent\n",
-			       err);
+			ibtrs_wrn_rl(sess,
+				     "Sending heartbeat failed, err: %d,"
+				     " no further heartbeat will be sent\n",
+				     err);
 			return;
 		}
 	}
@@ -3513,8 +3513,8 @@ static void send_heartbeat_work(struct work_struct *work)
 	if (WARN_ON(!queue_delayed_work(sess->sm_wq,
 					&sess->send_heartbeat_dwork,
 					HEARTBEAT_INTV_JIFFIES)))
-		WRN_RL(sess, "schedule send heartbeat work failed, "
-		       "send_heartbeat worker already queued?\n");
+		ibtrs_wrn_rl(sess, "schedule send heartbeat work failed, "
+			     "send_heartbeat worker already queued?\n");
 }
 
 static inline void ssm_ev_handle(struct ibtrs_session *sess, enum ssm_ev ev)
@@ -3586,7 +3586,7 @@ static int ibtrs_srv_create_debugfs_files(void)
 			pr_warn("Debugfs not enabled in kernel\n");
 		else
 			pr_warn("Failed to create top-level debugfs directory,"
-			       " err: %d\n", ret);
+				" err: %d\n", ret);
 		goto out;
 	}
 
@@ -3595,7 +3595,7 @@ static int ibtrs_srv_create_debugfs_files(void)
 	if (IS_ERR_OR_NULL(mempool_debugfs_dir)) {
 		ret = PTR_ERR(mempool_debugfs_dir);
 		pr_warn("Failed to create mempool debugfs directory,"
-		       " err: %d\n", ret);
+			" err: %d\n", ret);
 		goto out_remove;
 	}
 
@@ -3603,7 +3603,7 @@ static int ibtrs_srv_create_debugfs_files(void)
 				  mempool_debugfs_dir, &nr_free_buf_pool);
 	if (IS_ERR_OR_NULL(file)) {
 		pr_warn("Failed to create mempool \"nr_free_buf_pool\""
-		       " debugfs file\n");
+			" debugfs file\n");
 		ret = -EINVAL;
 		goto out_remove;
 	}
@@ -3612,7 +3612,7 @@ static int ibtrs_srv_create_debugfs_files(void)
 				  mempool_debugfs_dir, &nr_total_buf_pool);
 	if (IS_ERR_OR_NULL(file)) {
 		pr_warn("Failed to create mempool \"nr_total_buf_pool\""
-		       " debugfs file\n");
+			" debugfs file\n");
 		ret = -EINVAL;
 		goto out_remove;
 	}
@@ -3621,7 +3621,7 @@ static int ibtrs_srv_create_debugfs_files(void)
 				  mempool_debugfs_dir, &nr_active_sessions);
 	if (IS_ERR_OR_NULL(file)) {
 		pr_warn("Failed to create mempool \"nr_active_sessions\""
-		       " debugfs file\n");
+			" debugfs file\n");
 		ret = -EINVAL;
 		goto out_remove;
 	}
@@ -3684,7 +3684,7 @@ static int __init ibtrs_server_init(void)
 	err = ibtrs_srv_create_debugfs_files();
 	if (err)
 		pr_warn("Unable to create debugfs files, err: %d."
-		       " Continuing without debugfs\n", err);
+			" Continuing without debugfs\n", err);
 
 	return 0;
 

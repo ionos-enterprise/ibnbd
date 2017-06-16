@@ -11,7 +11,7 @@ ibtrs_validate_msg_sess_open_resp(const struct ibtrs_msg_sess_open_resp *msg)
 	static const int min_bufs = 1;
 
 	if (unlikely(msg->hdr.tsize !=
-				IBTRS_MSG_SESS_OPEN_RESP_LEN(msg->cnt))) {
+		     IBTRS_MSG_SESS_OPEN_RESP_LEN(msg->cnt))) {
 		pr_err("Session open resp msg received with unexpected length"
 		       " %dB instead of %luB\n", msg->hdr.tsize,
 		       IBTRS_MSG_SESS_OPEN_RESP_LEN(msg->cnt));
@@ -34,7 +34,7 @@ ibtrs_validate_msg_sess_open_resp(const struct ibtrs_msg_sess_open_resp *msg)
 
 	if (msg->ver != IBTRS_VERSION) {
 		pr_warn("Sess open resp version mismatch: client version %d,"
-		       " server version: %d\n", IBTRS_VERSION, msg->ver);
+			" server version: %d\n", IBTRS_VERSION, msg->ver);
 	}
 
 	return 0;
@@ -97,7 +97,7 @@ ibtrs_validate_msg_sess_open(const struct ibtrs_msg_sess_open *msg)
 
 	if (msg->ver != IBTRS_VERSION) {
 		pr_warn("Sess open msg version mismatch: client version %d,"
-		       " server version: %d\n", msg->ver, IBTRS_VERSION);
+			" server version: %d\n", msg->ver, IBTRS_VERSION);
 	}
 
 	return 0;

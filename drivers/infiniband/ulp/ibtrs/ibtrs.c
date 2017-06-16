@@ -150,8 +150,8 @@ static void ib_event_handler(struct ib_event_handler *h, struct ib_event *ev)
 	case IB_EVENT_DEVICE_FATAL:
 	case IB_EVENT_PORT_ERR:
 		pr_warn("Received IB event %s (%d) on device %s port %d\n",
-		       ib_event_str(ev->event), ev->event,
-		       ev->device->name, ev->element.port_num);
+			ib_event_str(ev->event), ev->event,
+			ev->device->name, ev->element.port_num);
 		break;
 	default:
 		pr_info("Received IB event %s (%d) on device %s port %d\n",
@@ -167,13 +167,13 @@ static void qp_event_handler(struct ib_event *ev, void *ctx)
 
 	switch (ev->event) {
 	case IB_EVENT_COMM_EST:
-		INFO(con, "QP event %s (%d) received\n",
-		     ib_event_str(ev->event), ev->event);
+		ibtrs_info(con, "QP event %s (%d) received\n",
+			   ib_event_str(ev->event), ev->event);
 		rdma_notify(con->cm_id, IB_EVENT_COMM_EST);
 		break;
 	default:
-		INFO(con, "Unhandled QP event %s (%d) received\n",
-		     ib_event_str(ev->event), ev->event);
+		ibtrs_info(con, "Unhandled QP event %s (%d) received\n",
+			   ib_event_str(ev->event), ev->event);
 		break;
 	}
 }
@@ -225,8 +225,8 @@ static int init_cq(struct ib_con *con, struct rdma_cm_id *cm_id,
 	con->cq = ib_create_cq(cm_id->device, comp_handler, cq_event_handler,
 			       ctx, &cq_attr);/*1 for beacon*/
 	if (IS_ERR(con->cq)) {
-		ERR(con, "Creating completion queue failed, errno: %ld\n",
-		    PTR_ERR(con->cq));
+		ibtrs_err(con, "Creating completion queue failed, errno: %ld\n",
+			  PTR_ERR(con->cq));
 		return PTR_ERR(con->cq);
 	}
 
@@ -246,11 +246,11 @@ void ib_con_destroy(struct ib_con *con)
 
 	err = ib_destroy_qp(con->qp);
 	if (err)
-		ERR(con, "Destroying QP failed, err: %d\n", err);
+		ibtrs_err(con, "Destroying QP failed, err: %d\n", err);
 
 	err = ib_destroy_cq(con->cq);
 	if (err)
-		ERR(con, "Destroying CQ failed, err: %d\n", err);
+		ibtrs_err(con, "Destroying CQ failed, err: %d\n", err);
 }
 EXPORT_SYMBOL_GPL(ib_con_destroy);
 
@@ -274,7 +274,7 @@ static int create_qp(struct ib_con *con, struct rdma_cm_id *cm_id,
 
 	ret = rdma_create_qp(cm_id, pd, &init_attr);
 	if (ret) {
-		ERR(con, "Creating QP failed, err: %d\n", ret);
+		ibtrs_err(con, "Creating QP failed, err: %d\n", ret);
 		return ret;
 	}
 
@@ -306,8 +306,8 @@ int ib_con_init(struct ib_con *con, struct rdma_cm_id *cm_id,
 	if (err) {
 		ret = ib_destroy_cq(con->cq);
 		if (ret)
-			ERR(con, "Destroying CQ failed, err: %d\n",
-			    ret);
+			ibtrs_err(con, "Destroying CQ failed, err: %d\n",
+				  ret);
 		return err;
 	}
 	con->beacon.wr_id = (uintptr_t)&con->beacon;
@@ -333,7 +333,7 @@ int ibtrs_heartbeat_timeout_validate(int timeout)
 {
 	if (timeout && timeout < MIN_HEARTBEAT_TIMEOUT_MS) {
 		pr_warn("Heartbeat timeout: %d is invalid, must be 0 "
-		       "or >= %d ms\n", timeout, MIN_HEARTBEAT_TIMEOUT_MS);
+			"or >= %d ms\n", timeout, MIN_HEARTBEAT_TIMEOUT_MS);
 		return -EINVAL;
 	}
 

@@ -37,8 +37,8 @@ static ssize_t ibtrs_srv_hb_timeout_store(struct kobject *kobj,
 	if (ret)
 		return ret;
 
-	INFO(sess, "%s: changing value from %u to %u\n", attr->attr.name,
-	     sess->heartbeat.timeout_ms, timeout_ms);
+	ibtrs_info(sess, "%s: changing value from %u to %u\n", attr->attr.name,
+		   sess->heartbeat.timeout_ms, timeout_ms);
 	ibtrs_set_heartbeat_timeout(&sess->heartbeat, timeout_ms);
 	return count;
 }
@@ -63,11 +63,11 @@ static ssize_t ibtrs_srv_disconnect_store(struct kobject *kobj,
 						  kobj);
 
 	if (!sysfs_streq(buf, "1")) {
-		ERR(sess, "%s: invalid value: '%s'\n", attr->attr.name, buf);
+		ibtrs_err(sess, "%s: invalid value: '%s'\n", attr->attr.name, buf);
 		return -EINVAL;
 	}
 
-	INFO(sess, "%s: Session disconnect requested\n", attr->attr.name);
+	ibtrs_info(sess, "%s: Session disconnect requested\n", attr->attr.name);
 	ibtrs_srv_queue_close(sess);
 
 	return count;
@@ -113,7 +113,7 @@ static ssize_t hostname_show(struct kobject *kobj,
 }
 
 static struct kobj_attribute hostname_attr =
-		__ATTR(hostname, 0444, hostname_show, NULL);
+	__ATTR(hostname, 0444, hostname_show, NULL);
 
 static struct attribute *default_sess_attrs[] = {
 	&hca_name_attr.attr,
@@ -174,17 +174,17 @@ static int ibtrs_srv_create_stats_files(struct ibtrs_session *sess)
 	ret = kobject_init_and_add(&sess->kobj_stats, &ibtrs_stats_ktype,
 				   &sess->kobj, "stats");
 	if (ret) {
-		ERR(sess,
-		    "Failed to init and add sysfs directory for session stats,"
-		    " err: %d\n", ret);
+		ibtrs_err(sess,
+			  "Failed to init and add sysfs directory for session stats,"
+			  " err: %d\n", ret);
 		return ret;
 	}
 
 	ret = sysfs_create_group(&sess->kobj_stats,
 				 &ibtrs_srv_default_stats_attr_group);
 	if (ret) {
-		ERR(sess, "Failed to create sysfs group for session stats,"
-		    " err: %d\n", ret);
+		ibtrs_err(sess, "Failed to create sysfs group for session stats,"
+			  " err: %d\n", ret);
 		goto err;
 	}
 
@@ -208,16 +208,16 @@ int ibtrs_srv_create_sess_files(struct ibtrs_session *sess)
 	ret = kobject_init_and_add(&sess->kobj, &ibtrs_srv_sess_ktype,
 				   ibtrs_srv_sessions_kobj, "%s", sess->addr);
 	if (ret) {
-		ERR(sess, "Failed to init and add sysfs directory for session,"
-		    " err: %d\n", ret);
+		ibtrs_err(sess, "Failed to init and add sysfs directory for session,"
+			  " err: %d\n", ret);
 		ibtrs_srv_sess_put(sess);
 		return ret;
 	}
 
 	ret = sysfs_create_group(&sess->kobj, &default_sess_attr_group);
 	if (ret) {
-		ERR(sess, "Failed to create sysfs group for session,"
-		    " err: %d\n", ret);
+		ibtrs_err(sess, "Failed to create sysfs group for session,"
+			  " err: %d\n", ret);
 		goto err;
 	}
 

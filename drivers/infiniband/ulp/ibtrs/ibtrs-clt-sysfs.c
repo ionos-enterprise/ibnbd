@@ -35,36 +35,37 @@ static ssize_t ibtrs_clt_max_reconn_attempts_store(struct kobject *kobj,
 
 	ret = kstrtos16(buf, 10, &value);
 	if (unlikely(ret)) {
-		ERR(sess, "%s: failed to convert string '%s' to int\n",
-		    attr->attr.name, buf);
+		ibtrs_err(sess, "%s: failed to convert string '%s' to int\n",
+			  attr->attr.name, buf);
 		return ret;
 	}
 	if (unlikely(value > MAX_MAX_RECONN_ATT ||
 		     value < MIN_MAX_RECONN_ATT)) {
-		ERR(sess, "%s: invalid range"
-		    " (provided: '%s', accepted: min: %d, max: %d)\n",
-		    attr->attr.name, buf, MIN_MAX_RECONN_ATT,
-		    MAX_MAX_RECONN_ATT);
+		ibtrs_err(sess, "%s: invalid range"
+			  " (provided: '%s', accepted: min: %d, max: %d)\n",
+			  attr->attr.name, buf, MIN_MAX_RECONN_ATT,
+			  MAX_MAX_RECONN_ATT);
 		return -EINVAL;
 	}
 
-	INFO(sess, "%s: changing value from %d to %d\n", attr->attr.name,
-	     ibtrs_clt_get_max_reconnect_attempts(sess), value);
+	ibtrs_info(sess, "%s: changing value from %d to %d\n", attr->attr.name,
+		   ibtrs_clt_get_max_reconnect_attempts(sess), value);
 	ibtrs_clt_set_max_reconnect_attempts(sess, value);
 	return count;
 }
 
 static struct kobj_attribute max_ibtrs_clt_reconnect_attempts_attr =
-		__ATTR(max_reconnect_attempts, 0644,
-		       ibtrs_clt_max_reconn_attempts_show,
-		       ibtrs_clt_max_reconn_attempts_store);
+	__ATTR(max_reconnect_attempts, 0644,
+	       ibtrs_clt_max_reconn_attempts_show,
+	       ibtrs_clt_max_reconn_attempts_store);
 
 static ssize_t ibtrs_clt_hb_timeout_show(struct kobject *kobj,
 					 struct kobj_attribute *attr,
 					 char *page)
 {
-	struct ibtrs_session *sess = container_of(kobj, struct ibtrs_session,
-						  kobj);
+	struct ibtrs_session *sess;
+
+	sess = container_of(kobj, struct ibtrs_session, kobj);
 
 	return scnprintf(page, PAGE_SIZE, "%u\n", sess->heartbeat.timeout_ms);
 }
@@ -75,14 +76,14 @@ static ssize_t ibtrs_clt_hb_timeout_store(struct kobject *kobj,
 {
 	int ret;
 	u32 timeout_ms;
-	struct ibtrs_session *sess = container_of(kobj, struct ibtrs_session,
-						  kobj);
+	struct ibtrs_session *sess;
 
+	sess = container_of(kobj, struct ibtrs_session, kobj);
 	ret = kstrtouint(buf, 0, &timeout_ms);
 	if (ret) {
-		ERR(sess,
-		    "%s: failed to convert string '%s' to unsigned int\n",
-		    attr->attr.name, buf);
+		ibtrs_err(sess,
+			  "%s: failed to convert string '%s' to unsigned int\n",
+			  attr->attr.name, buf);
 		return ret;
 	}
 
@@ -90,21 +91,22 @@ static ssize_t ibtrs_clt_hb_timeout_store(struct kobject *kobj,
 	if (ret)
 		return ret;
 
-	INFO(sess, "%s: changing value from %u to %u\n", attr->attr.name,
-	     sess->heartbeat.timeout_ms, timeout_ms);
+	ibtrs_info(sess, "%s: changing value from %u to %u\n", attr->attr.name,
+		   sess->heartbeat.timeout_ms, timeout_ms);
 	ibtrs_set_heartbeat_timeout(&sess->heartbeat, timeout_ms);
 	return count;
 }
 
 static struct kobj_attribute ibtrs_clt_heartbeat_timeout_ms_attr =
-		__ATTR(heartbeat_timeout_ms, 0644,
-		       ibtrs_clt_hb_timeout_show, ibtrs_clt_hb_timeout_store);
+	__ATTR(heartbeat_timeout_ms, 0644,
+	       ibtrs_clt_hb_timeout_show, ibtrs_clt_hb_timeout_store);
 
 static ssize_t ibtrs_clt_state_show(struct kobject *kobj,
 				    struct kobj_attribute *attr, char *page)
 {
-	struct ibtrs_session *sess = container_of(kobj, struct ibtrs_session,
-						  kobj);
+	struct ibtrs_session *sess;
+
+	sess = container_of(kobj, struct ibtrs_session, kobj);
 	if (ibtrs_clt_sess_is_connected(sess))
 		return sprintf(page, "connected\n");
 
@@ -124,7 +126,7 @@ static ssize_t ibtrs_clt_hostname_show(struct kobject *kobj,
 }
 
 static struct kobj_attribute ibtrs_clt_hostname_attr =
-		__ATTR(hostname, 0444, ibtrs_clt_hostname_show, NULL);
+	__ATTR(hostname, 0444, ibtrs_clt_hostname_show, NULL);
 
 static ssize_t ibtrs_clt_reconnect_show(struct kobject *kobj,
 					struct kobj_attribute *attr, char *page)
@@ -143,28 +145,30 @@ static ssize_t ibtrs_clt_reconnect_store(struct kobject *kobj,
 	sess = container_of(kobj, struct ibtrs_session, kobj);
 
 	if (!sysfs_streq(buf, "1")) {
-		ERR(sess, "%s: unknown value: '%s'\n", attr->attr.name, buf);
+		ibtrs_err(sess, "%s: unknown value: '%s'\n", attr->attr.name, buf);
 		return -EINVAL;
 	}
 
 	ret = ibtrs_clt_reconnect(sess);
 	if (ret) {
-		ERR(sess, "%s: failed to reconnect session, err: %d\n",
-		    attr->attr.name, ret);
+		ibtrs_err(sess, "%s: failed to reconnect session, err: %d\n",
+			  attr->attr.name, ret);
 		return ret;
 	}
 	return count;
 }
 
 static struct kobj_attribute ibtrs_clt_reconnect_attr =
-		__ATTR(reconnect, 0644, ibtrs_clt_reconnect_show,
-		       ibtrs_clt_reconnect_store);
+	__ATTR(reconnect, 0644, ibtrs_clt_reconnect_show,
+	       ibtrs_clt_reconnect_store);
 
 static ssize_t ibtrs_clt_queue_show(struct kobject *kobj,
 				    struct kobj_attribute *attr, char *page)
 {
-	struct ibtrs_session *sess = container_of(kobj, struct ibtrs_session,
-						  kobj);
+	struct ibtrs_session *sess;
+
+	sess = container_of(kobj, struct ibtrs_session, kobj);
+
 	return scnprintf(page, PAGE_SIZE, "%d\n",
 			 ibtrs_clt_get_user_queue_depth(sess));
 }
@@ -179,20 +183,20 @@ static ssize_t ibtrs_clt_queue_store(struct kobject *kobj,
 						  kobj);
 	res = kstrtou16(buf, 0, &queue_depth);
 	if (res) {
-		ERR(sess,
-		    "%s: failed to convert string '%s' to unsigned int\n",
-		    attr->attr.name, buf);
+		ibtrs_err(sess,
+			  "%s: failed to convert string '%s' to unsigned int\n",
+			  attr->attr.name, buf);
 		return res;
 	}
 
 	old_queue_depth = ibtrs_clt_get_user_queue_depth(sess);
 	res = ibtrs_clt_set_user_queue_depth(sess, queue_depth);
 	if (!res) {
-		INFO(sess, "%s: changed value from %u to %u\n",
-		     attr->attr.name, old_queue_depth, queue_depth);
+		ibtrs_info(sess, "%s: changed value from %u to %u\n",
+			   attr->attr.name, old_queue_depth, queue_depth);
 	} else {
-		ERR(sess, "%s: failed to set queue depth, err: %d\n",
-		    attr->attr.name, res);
+		ibtrs_err(sess, "%s: failed to set queue depth, err: %d\n",
+			  attr->attr.name, res);
 		return res;
 	}
 	return count;
@@ -272,8 +276,8 @@ err:
 }
 
 static struct kobj_attribute ibtrs_clt_queue_depth_attr =
-		__ATTR(queue_depth, 0644, ibtrs_clt_queue_show,
-		       ibtrs_clt_queue_store);
+	__ATTR(queue_depth, 0644, ibtrs_clt_queue_show,
+	       ibtrs_clt_queue_store);
 
 static struct attribute *ibtrs_clt_default_sess_attrs[] = {
 	&max_ibtrs_clt_reconnect_attempts_attr.attr,
