@@ -545,7 +545,7 @@ static int ibnbd_clt_str_ipv4_to_sockaddr(const char *con_addr,
 	memcpy(&dst_sin->sin_addr.s_addr, ip4,
 	       sizeof(dst_sin->sin_addr.s_addr));
 	dst_sin->sin_family = AF_INET;
-	dst_sin->sin_port = htons(IBTRS_SERVER_PORT);
+	dst_sin->sin_port = htons(IBTRS_PORT);
 
 	return 0;
 }
@@ -566,7 +566,7 @@ static int ibnbd_clt_str_ipv6_to_sockaddr(const char *con_addr,
 		return -EINVAL;
 
 	dst_sin6->sin6_family = AF_INET6;
-	dst_sin6->sin6_port = htons(IBTRS_SERVER_PORT);
+	dst_sin6->sin6_port = htons(IBTRS_PORT);
 
 	return 0;
 }
@@ -593,7 +593,7 @@ static int ibnbd_clt_str_gid_to_sockaddr(const char *con_addr,
 	 * Use the same TCP server port number as the IB service ID
 	 * on the IB port space range
 	 */
-	dst_ib->sib_sid = cpu_to_be64(RDMA_IB_IP_PS_IB | IBTRS_SERVER_PORT);
+	dst_ib->sib_sid = cpu_to_be64(RDMA_IB_IP_PS_IB | IBTRS_PORT);
 	dst_ib->sib_sid_mask = cpu_to_be64(0xffffffffffffffffULL);
 	dst_ib->sib_pkey = cpu_to_be16(0xffff);
 

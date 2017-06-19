@@ -988,6 +988,7 @@ static int __init ibnbd_srv_init_module(void)
 		dev_search_path, ibnbd_io_mode_str(def_io_mode));
 
 	ibnbd_srv_ops.owner	= THIS_MODULE;
+	ibnbd_srv_ops.port	= IBTRS_PORT;
 	ibnbd_srv_ops.recv	= ibnbd_srv_recv;
 	ibnbd_srv_ops.rdma_ev	= ibnbd_srv_rdma_ev;
 	ibnbd_srv_ops.sess_ev	= ibnbd_srv_sess_ev;

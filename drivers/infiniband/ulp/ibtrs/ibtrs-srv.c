@@ -2775,20 +2775,20 @@ err_out:
 	return ret;
 }
 
-static int ibtrs_srv_rdma_init(void)
+static int ibtrs_srv_rdma_init(const struct ibtrs_srv_ops *ops)
 {
 	int ret = 0;
 	struct sockaddr_in6 sin = {
 		.sin6_family	= AF_INET6,
 		.sin6_addr	= IN6ADDR_ANY_INIT,
-		.sin6_port	= htons(IBTRS_SERVER_PORT),
+		.sin6_port	= htons(ops->port),
 	};
 	struct sockaddr_ib sib = {
 		.sib_family			= AF_IB,
 		.sib_addr.sib_subnet_prefix	= 0ULL,
 		.sib_addr.sib_interface_id	= 0ULL,
 		.sib_sid	= cpu_to_be64(RDMA_IB_IP_PS_IB |
-					      IBTRS_SERVER_PORT),
+					      ops->port),
 		.sib_sid_mask	= cpu_to_be64(0xffffffffffffffffULL),
 		.sib_pkey	= cpu_to_be16(0xffff),
 	};
@@ -2876,7 +2876,7 @@ int ibtrs_srv_register(const struct ibtrs_srv_ops *ops)
 
 	ibtrs_srv_alloc_ini_buf_pool();
 
-	err = ibtrs_srv_rdma_init();
+	err = ibtrs_srv_rdma_init(ops);
 	if (err) {
 		pr_err("Can't init RDMA resource, err: %d\n", err);
 		return err;
