@@ -13,8 +13,7 @@
 #include <linux/list.h>
 
 #include "ibtrs.h"
-#include "ibtrs-clt-internal.h"
-#include "ibtrs-clt-sysfs.h"
+#include "ibtrs-clt.h"
 #include "ibtrs-log.h"
 
 #define CONS_PER_SESSION (nr_cpu_ids + 1)

@@ -1,5 +1,5 @@
-#ifndef _IBTRS_SRV_INTERNAL_H
-#define _IBTRS_SRV_INTERNAL_H
+#ifndef IBTRS_SRV_H
+#define IBTRS_SRV_H
 
 #include "ibtrs.h"
 
@@ -152,4 +152,12 @@ int ibtrs_srv_sess_get(struct ibtrs_session *sess);
 
 void ibtrs_srv_sess_put(struct ibtrs_session *sess);
 
-#endif
+/* ibtrs-srv-sysfs.c */
+
+int ibtrs_srv_create_sysfs_files(void);
+
+void ibtrs_srv_destroy_sysfs_files(void);
+
+int ibtrs_srv_create_sess_files(struct ibtrs_session *sess);
+
+#endif /* IBTRS_SRV_H */

@@ -10,9 +10,8 @@
 #include <rdma/ibtrs.h>
 
 #include "ibtrs.h"
+#include "ibtrs-srv.h"
 #include "ibtrs-log.h"
-#include "ibtrs-srv-sysfs.h"
-#include "ibtrs-srv-internal.h"
 
 MODULE_AUTHOR("ibnbd@profitbricks.com");
 MODULE_DESCRIPTION("InfiniBand Transport Server");

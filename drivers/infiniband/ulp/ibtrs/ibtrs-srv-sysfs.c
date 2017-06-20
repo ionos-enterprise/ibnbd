@@ -1,11 +1,11 @@
 #define pr_fmt(fmt) KBUILD_MODNAME " L" __stringify(__LINE__) ": " fmt
 
+//XXX ONLY FOR IBTRS_ADDRLEN, remove ASAP
 #include <rdma/ibtrs.h>
 
-#include "ibtrs-srv-sysfs.h"
-#include "ibtrs-srv-internal.h"
-#include "ibtrs-log.h"
 #include "ibtrs.h"
+#include "ibtrs-srv.h"
+#include "ibtrs-log.h"
 
 static struct kobject *ibtrs_srv_kobj;
 static struct kobject *ibtrs_srv_sessions_kobj;

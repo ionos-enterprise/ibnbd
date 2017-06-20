@@ -1,5 +1,5 @@
-#if !defined(IBTRS_CLT_INTERNAL_H)
-#define IBTRS_CLT_INTERNAL_H
+#ifndef IBTRS_CLT_H
+#define IBTRS_CLT_H
 
 #include "ibtrs.h"
 
@@ -195,4 +195,17 @@ int ibtrs_clt_reset_all_stats(struct ibtrs_session *sess, bool enable);
 ssize_t ibtrs_clt_reset_all_help(struct ibtrs_session *sess,
 				 char *page, size_t len);
 
-#endif
+/* ibtrs-clt-sysfs.c */
+
+int ibtrs_clt_create_sysfs_files(void);
+
+void ibtrs_clt_destroy_sysfs_files(void);
+
+int ibtrs_clt_create_sess_files(struct kobject *kobj, struct kobject *kobj_sess,
+				const char *ip);
+
+void ibtrs_clt_destroy_sess_files(struct kobject *kobj,
+				  struct kobject *kobj_sess);
+
+
+#endif /* IBTRS_CLT_H */

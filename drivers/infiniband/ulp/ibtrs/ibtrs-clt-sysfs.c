@@ -1,10 +1,9 @@
 #include <linux/types.h>
 #include <rdma/ibtrs.h>
 
-#include "ibtrs-clt-internal.h"
-#include "ibtrs-clt-sysfs.h"
-#include "ibtrs-log.h"
 #include "ibtrs.h"
+#include "ibtrs-clt.h"
+#include "ibtrs-log.h"
 
 static struct kobject *sessions_kobj;
 static struct kobject *ibtrs_kobj;
