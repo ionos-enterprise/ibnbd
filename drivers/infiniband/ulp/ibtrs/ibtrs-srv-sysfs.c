@@ -39,7 +39,7 @@ static ssize_t ibtrs_srv_hb_timeout_store(struct kobject *kobj,
 
 	ibtrs_info(sess, "%s: changing value from %u to %u\n", attr->attr.name,
 		   sess->heartbeat.timeout_ms, timeout_ms);
-	ibtrs_set_heartbeat_timeout(&sess->heartbeat, timeout_ms);
+	ibtrs_heartbeat_set_timeout_ms(&sess->heartbeat, timeout_ms);
 	return count;
 }
 

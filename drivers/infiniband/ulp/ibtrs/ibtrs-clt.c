@@ -1624,7 +1624,7 @@ static inline unsigned long ibtrs_clt_get_raw_ms(void)
 
 	getrawmonotonic(&ts);
 
-	return timespec_to_ms(&ts);
+	return timespec_to_ns(&ts) / NSEC_PER_MSEC;
 }
 
 static inline void ibtrs_clt_decrease_inflight(struct ibtrs_clt_stats *s)
@@ -1890,7 +1890,7 @@ static int process_wcs(struct ibtrs_con *con, struct ib_wc *wcs, size_t len)
 		case IB_WC_RDMA_WRITE:
 			break;
 		case IB_WC_RECV_RDMA_WITH_IMM:
-			ibtrs_set_last_heartbeat(&con->sess->heartbeat);
+			ibtrs_heartbeat_set_recv_ts(&con->sess->heartbeat);
 			imm = be32_to_cpu(wc.ex.imm_data);
 			ret = ibtrs_post_recv(con, iu);
 			if (ret) {
@@ -1911,7 +1911,7 @@ static int process_wcs(struct ibtrs_con *con, struct ib_wc *wcs, size_t len)
 			break;
 
 		case IB_WC_RECV:
-			ibtrs_set_last_heartbeat(&con->sess->heartbeat);
+			ibtrs_heartbeat_set_recv_ts(&con->sess->heartbeat);
 
 			hdr = (struct ibtrs_msg_hdr *)iu->buf;
 			ibtrs_handle_recv(con, iu);
@@ -2772,18 +2772,24 @@ static int send_heartbeat(struct ibtrs_session *sess)
 
 static void heartbeat_work(struct work_struct *work)
 {
-	int err;
 	struct ibtrs_session *sess;
+	s64 diff;
+	int err;
 
 	sess = container_of(to_delayed_work(work), struct ibtrs_session,
 			    heartbeat_dwork);
 
-	if (ibtrs_heartbeat_timeout_is_expired(&sess->heartbeat)) {
+	if (!sess->heartbeat.timeout_ms)
+		return;
+	diff = ibtrs_heartbeat_recv_ts_diff_ms(&sess->heartbeat);
+	if (unlikely(diff >= sess->heartbeat.timeout_ms)) {
+		ibtrs_err(sess, "Heartbeat timeout expired, no heartbeat "
+			  "received for %llums, timeout: %ums\n",
+			  diff, sess->heartbeat.timeout_ms);
+
 		ssm_schedule_event(sess, SSM_EV_RECONNECT_HEARTBEAT);
 		return;
 	}
-
-	ibtrs_heartbeat_warn(&sess->heartbeat);
 
 	if (ibtrs_heartbeat_send_ts_diff_ms(&sess->heartbeat) >=
 	    HEARTBEAT_INTV_MS) {
@@ -3519,16 +3525,11 @@ static struct ibtrs_session *sess_init(const struct sockaddr_storage *addr,
 	mutex_lock(&sess_mutex);
 	list_add(&sess->list, &sess_list);
 	mutex_unlock(&sess_mutex);
-
-	ibtrs_set_heartbeat_timeout(&sess->heartbeat,
-				    default_heartbeat_timeout_ms <
-				    MIN_HEARTBEAT_TIMEOUT_MS ?
-				    MIN_HEARTBEAT_TIMEOUT_MS :
-				    default_heartbeat_timeout_ms);
-	atomic64_set(&sess->heartbeat.send_ts_ms, 0);
-	atomic64_set(&sess->heartbeat.recv_ts_ms, 0);
-	sess->heartbeat.addr = sess->addr;
-	sess->heartbeat.hostname = sess->hostname;
+	ibtrs_heartbeat_init(&sess->heartbeat,
+			     default_heartbeat_timeout_ms <
+			     MIN_HEARTBEAT_TIMEOUT_MS ?
+			     MIN_HEARTBEAT_TIMEOUT_MS :
+			     default_heartbeat_timeout_ms);
 
 	INIT_DELAYED_WORK(&sess->heartbeat_dwork, heartbeat_work);
 	INIT_DELAYED_WORK(&sess->reconnect_dwork,
@@ -4591,7 +4592,7 @@ static int ssm_wf_info_init(struct ibtrs_session *sess)
 		if (unlikely(err))
 			return err;
 	} else {
-		ibtrs_set_last_heartbeat(&sess->heartbeat);
+		ibtrs_heartbeat_set_recv_ts(&sess->heartbeat);
 		WARN_ON(!schedule_delayed_work(&sess->heartbeat_dwork,
 					       HEARTBEAT_INTV_JIFFIES));
 	}

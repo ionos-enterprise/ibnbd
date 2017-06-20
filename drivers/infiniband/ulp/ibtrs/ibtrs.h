@@ -87,12 +87,9 @@ struct ibtrs_iu {
 };
 
 struct ibtrs_heartbeat {
-	atomic64_t	send_ts_ms;
-	atomic64_t	recv_ts_ms;
+	atomic64_t	send_ts_ns;
+	atomic64_t	recv_ts_ns;
 	u32		timeout_ms;
-	u32		warn_timeout_ms;
-	char		*addr;
-	char		*hostname;
 };
 
 #define IBTRS_VERSION 2
@@ -320,19 +317,13 @@ void fill_ibtrs_msg_con_open(struct ibtrs_msg_con_open *msg,
 void fill_ibtrs_msg_sess_info(struct ibtrs_msg_sess_info *msg,
 			      const char *hostname);
 
+void ibtrs_heartbeat_init(struct ibtrs_heartbeat *h, u32 timeout_ms);
+void ibtrs_heartbeat_set_timeout_ms(struct ibtrs_heartbeat *h, u32 timeout_ms);
 void ibtrs_heartbeat_set_send_ts(struct ibtrs_heartbeat *h);
-void ibtrs_set_last_heartbeat(struct ibtrs_heartbeat *h);
-u64 ibtrs_last_heartbeat_diff_ms(const struct ibtrs_heartbeat *h);
-u64 ibtrs_heartbeat_send_ts_diff_ms(const struct ibtrs_heartbeat *h);
+void ibtrs_heartbeat_set_recv_ts(struct ibtrs_heartbeat *h);
+s64 ibtrs_heartbeat_send_ts_diff_ms(const struct ibtrs_heartbeat *h);
+s64 ibtrs_heartbeat_recv_ts_diff_ms(const struct ibtrs_heartbeat *h);
 
-void ibtrs_set_heartbeat_timeout(struct ibtrs_heartbeat *h, u32 timeout_ms);
-
-void ibtrs_heartbeat_warn(const struct ibtrs_heartbeat *h);
-
-bool ibtrs_heartbeat_timeout_is_expired(const struct ibtrs_heartbeat *h);
-
-u32 ibtrs_heartbeat_get_send_delay(const struct ibtrs_heartbeat *h);
-u32 ibtrs_heartbeat_get_check_delay(const struct ibtrs_heartbeat *h);
 void ibtrs_iu_put(struct list_head *iu_list, struct ibtrs_iu *iu);
 struct ibtrs_iu *ibtrs_iu_get(struct list_head *iu_list);
 
@@ -415,11 +406,6 @@ static inline void copy_from_kvec(void *data, const struct kvec *vec,
 		data += len;
 		copy -= len;
 	}
-}
-
-static inline u64 timespec_to_ms(const struct timespec *ts)
-{
-	return timespec_to_ns(ts) / NSEC_PER_MSEC;
 }
 
 #define STAT_STORE_FUNC(store, reset) \

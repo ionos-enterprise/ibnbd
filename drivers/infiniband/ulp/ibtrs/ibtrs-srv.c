@@ -2078,7 +2078,7 @@ static int process_wcs(struct ibtrs_con *con, struct ib_wc *wcs, size_t len)
 			u32 imm, id, off;
 			struct ibtrs_msg_hdr *hdr;
 
-			ibtrs_set_last_heartbeat(&sess->heartbeat);
+			ibtrs_heartbeat_set_recv_ts(&sess->heartbeat);
 
 			iu = (struct ibtrs_iu *)(uintptr_t)wc.wr_id;
 			imm = be32_to_cpu(wc.ex.imm_data);
@@ -2126,7 +2126,7 @@ static int process_wcs(struct ibtrs_con *con, struct ib_wc *wcs, size_t len)
 		case IB_WC_RECV: {
 			struct ibtrs_msg_hdr *hdr;
 
-			ibtrs_set_last_heartbeat(&sess->heartbeat);
+			ibtrs_heartbeat_set_recv_ts(&sess->heartbeat);
 			iu = (struct ibtrs_iu *)(uintptr_t)wc.wr_id;
 			hdr = (struct ibtrs_msg_hdr *)iu->buf;
 			ibtrs_handle_recv(con, iu);
@@ -2293,15 +2293,11 @@ __create_sess(struct rdma_cm_id *cm_id, const struct ibtrs_msg_sess_open *req)
 
 	init_waitqueue_head(&sess->mu_iu_wait_q);
 	init_waitqueue_head(&sess->mu_buf_wait_q);
-	ibtrs_set_heartbeat_timeout(&sess->heartbeat,
-				    default_heartbeat_timeout_ms <
-				    MIN_HEARTBEAT_TIMEOUT_MS ?
-				    MIN_HEARTBEAT_TIMEOUT_MS :
-				    default_heartbeat_timeout_ms);
-	atomic64_set(&sess->heartbeat.send_ts_ms, 0);
-	atomic64_set(&sess->heartbeat.recv_ts_ms, 0);
-	sess->heartbeat.addr = sess->addr;
-	sess->heartbeat.hostname = sess->hostname;
+	ibtrs_heartbeat_init(&sess->heartbeat,
+			     default_heartbeat_timeout_ms <
+			     MIN_HEARTBEAT_TIMEOUT_MS ?
+			     MIN_HEARTBEAT_TIMEOUT_MS :
+			     default_heartbeat_timeout_ms);
 
 	atomic_set(&sess->peer_usr_msg_bufs, USR_MSG_CNT);
 	sess->dev = ibtrs_find_get_device(cm_id);
@@ -2997,7 +2993,7 @@ static int send_msg_sess_open_resp(struct ibtrs_con *con)
 
 static void queue_heartbeat_dwork(struct ibtrs_session *sess)
 {
-	ibtrs_set_last_heartbeat(&sess->heartbeat);
+	ibtrs_heartbeat_set_recv_ts(&sess->heartbeat);
 	WARN_ON(!queue_delayed_work(sess->sm_wq,
 				    &sess->send_heartbeat_dwork,
 				    HEARTBEAT_INTV_JIFFIES));
@@ -3472,17 +3468,18 @@ static ssm_ev_handler_fn *ibtrs_srv_ev_handlers[] = {
 static void check_heartbeat_work(struct work_struct *work)
 {
 	struct ibtrs_session *sess;
+	s64 diff;
 
 	sess = container_of(to_delayed_work(work), struct ibtrs_session,
 			    check_heartbeat_dwork);
 
-	if (ibtrs_heartbeat_timeout_is_expired(&sess->heartbeat)) {
+	if (!sess->heartbeat.timeout_ms)
+		return;
+	diff = ibtrs_heartbeat_recv_ts_diff_ms(&sess->heartbeat);
+	if (unlikely(diff >= sess->heartbeat.timeout_ms)) {
 		ssm_schedule_event(sess, SSM_EV_SESS_CLOSE);
 		return;
 	}
-
-	ibtrs_heartbeat_warn(&sess->heartbeat);
-
 	if (WARN_ON(!queue_delayed_work(sess->sm_wq,
 					&sess->check_heartbeat_dwork,
 					HEARTBEAT_INTV_JIFFIES)))
