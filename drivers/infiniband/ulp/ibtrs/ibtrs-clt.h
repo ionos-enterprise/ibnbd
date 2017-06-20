@@ -110,7 +110,6 @@ struct ibtrs_clt_sess {
 	struct workqueue_struct	*sm_wq;
 	struct workqueue_struct	*msg_wq;
 	struct delayed_work	heartbeat_dwork;
-	u32			heartbeat_timeout_srv_ms;
 	struct delayed_work	reconnect_dwork;
 	struct ibtrs_heartbeat	heartbeat;
 	atomic_t		refcount;
