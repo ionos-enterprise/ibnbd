@@ -302,12 +302,12 @@ struct rdma_req {
 };
 
 struct ibtrs_clt_con {
+	struct ibtrs_con	ibtrs_con;
 	enum  csm_state		state;
 	short			cpu;
 	bool			user; /* true if con is for user msg only */
 	atomic_t		io_cnt;
 	struct ibtrs_session	*sess;
-	struct ib_con		ib_con;
 	struct ibtrs_fr_pool	*fr_pool;
 	struct rdma_cm_id	*cm_id;
 	struct work_struct	cq_work;
@@ -1157,7 +1157,7 @@ static int ibtrs_map_finish_fr(struct ibtrs_map_state *state,
 	ibtrs_map_desc(state, state->base_dma_addr, state->dma_len,
 		       desc->mr->rkey, con->sess->max_desc);
 
-	return ib_post_send(con->ib_con.qp, &wr.wr, &bad_wr);
+	return ib_post_send(con->ibtrs_con.qp, &wr.wr, &bad_wr);
 }
 
 static int ibtrs_finish_fmr_mapping(struct ibtrs_map_state *state,
@@ -1310,7 +1310,7 @@ static int ibtrs_inv_rkey(struct ibtrs_clt_con *con, u32 rkey)
 		.ex.invalidate_rkey = rkey,
 	};
 
-	return ib_post_send(con->ib_con.qp, &wr, &bad_wr);
+	return ib_post_send(con->ibtrs_con.qp, &wr, &bad_wr);
 }
 
 static void ibtrs_unmap_fast_reg_data(struct ibtrs_clt_con *con,
@@ -1392,7 +1392,7 @@ static int ibtrs_post_send_rdma(struct ibtrs_clt_con *con, struct rdma_req *req,
 	list[0].length = req->sg_size;
 	list[0].lkey   = con->sess->ib_sess.pd->local_dma_lkey;
 
-	return ib_post_rdma_write_imm(con->ib_con.qp, list, 1,
+	return ib_post_rdma_write_imm(con->ibtrs_con.qp, list, 1,
 				      con->sess->srv_rdma_buf_rkey,
 				      addr + off, (u64)req->iu, imm,
 				      cnt % (con->sess->queue_depth) ?
@@ -1485,7 +1485,7 @@ last_one:
 	ibtrs_set_rdma_desc_last(con, list, req, wr, offset, desc, m, n, addr,
 				 size, imm);
 
-	ret = ib_post_send(con->ib_con.qp, &wrs[0].wr, &bad_wr);
+	ret = ib_post_send(con->ibtrs_con.qp, &wrs[0].wr, &bad_wr);
 	if (unlikely(ret))
 		ibtrs_err(sess, "Posting RDMA-Write-Request to QP failed,"
 			  " err: %d\n", ret);
@@ -1518,7 +1518,7 @@ static int ibtrs_post_send_rdma_desc(struct ibtrs_clt_con *con,
 		list[i].length = size;
 		list[i].lkey   = sess->ib_sess.pd->local_dma_lkey;
 
-		ret = ib_post_rdma_write_imm(con->ib_con.qp, list, num_sge,
+		ret = ib_post_rdma_write_imm(con->ibtrs_con.qp, list, num_sge,
 					     sess->srv_rdma_buf_rkey,
 					     addr, (u64)req->iu, imm,
 					     cnt %
@@ -1557,7 +1557,7 @@ static int ibtrs_post_send_rdma_more(struct ibtrs_clt_con *con,
 	list[i].length = size;
 	list[i].lkey   = con->sess->ib_sess.pd->local_dma_lkey;
 
-	ret = ib_post_rdma_write_imm(con->ib_con.qp, list, num_sge,
+	ret = ib_post_rdma_write_imm(con->ibtrs_con.qp, list, num_sge,
 				     con->sess->srv_rdma_buf_rkey,
 				     addr, (uintptr_t)req->iu, imm,
 				     cnt % (con->sess->queue_depth) ?
@@ -1588,7 +1588,7 @@ static int ibtrs_post_recv(struct ibtrs_clt_con *con, struct ibtrs_iu *iu)
 	wr.sg_list  = &list;
 	wr.num_sge  = 1;
 
-	err = ib_post_recv(con->ib_con.qp, &wr, &bad_wr);
+	err = ib_post_recv(con->ibtrs_con.qp, &wr, &bad_wr);
 	if (unlikely(err))
 		ibtrs_err(con->sess, "Posting receive work request failed, err:"
 			  " %d\n", err);
@@ -1689,7 +1689,7 @@ static int ibtrs_send_msg_user_ack(struct ibtrs_clt_con *con)
 		return -ECOMM;
 	}
 
-	err = ibtrs_write_empty_imm(con->ib_con.qp, UINT_MAX - 1,
+	err = ibtrs_write_empty_imm(con->ibtrs_con.qp, UINT_MAX - 1,
 				    IB_SEND_SIGNALED);
 	rcu_read_unlock();
 	if (unlikely(err)) {
@@ -1825,7 +1825,7 @@ static void process_err_wc(struct ibtrs_clt_con *con,
 {
 	struct ibtrs_iu *iu;
 
-	if (wc->wr_id == (uintptr_t)&con->ib_con.beacon) {
+	if (wc->wr_id == (uintptr_t)&con->ibtrs_con.beacon) {
 		csm_schedule_event(con, CSM_EV_BEACON_COMPLETED);
 		return;
 	}
@@ -1948,7 +1948,7 @@ static int get_process_wcs(struct ibtrs_clt_con *con)
 	struct ib_wc *wcs = con->wcs;
 
 	do {
-		cnt = ib_poll_cq(con->ib_con.cq, ARRAY_SIZE(con->wcs), wcs);
+		cnt = ib_poll_cq(con->ibtrs_con.cq, ARRAY_SIZE(con->wcs), wcs);
 		if (unlikely(cnt < 0)) {
 			ibtrs_err(con->sess, "Getting work requests from completion"
 				  " queue failed, err: %d\n", cnt);
@@ -2120,7 +2120,7 @@ static void handle_cq_comp(struct ibtrs_clt_con *con)
 	if (unlikely(err))
 		goto error;
 
-	while ((err = ib_req_notify_cq(con->ib_con.cq, IB_CQ_NEXT_COMP |
+	while ((err = ib_req_notify_cq(con->ibtrs_con.cq, IB_CQ_NEXT_COMP |
 				       IB_CQ_REPORT_MISSED_EVENTS)) > 0) {
 		pr_debug("Missed %d CQ notifications, processing missed WCs...\n",
 			 err);
@@ -2765,7 +2765,7 @@ static int send_heartbeat(struct ibtrs_session *sess)
 		return -ECOMM;
 	}
 
-	err = ibtrs_write_empty_imm(con->ib_con.qp, UINT_MAX, IB_SEND_SIGNALED);
+	err = ibtrs_write_empty_imm(con->ibtrs_con.qp, UINT_MAX, IB_SEND_SIGNALED);
 	rcu_read_unlock();
 	if (unlikely(err)) {
 		ibtrs_wrn(sess, "Sending heartbeat failed, posting msg to QP failed,"
@@ -2976,7 +2976,7 @@ static void con_destroy(struct ibtrs_clt_con *con)
 		cancel_work_sync(&con->cq_work);
 	}
 	fail_outstanding_reqs(con);
-	ib_con_destroy(&con->ib_con);
+	ibtrs_con_destroy(&con->ibtrs_con);
 	free_con_fast_pool(con);
 	if (con->user)
 		free_sess_tr_bufs(con->sess);
@@ -3626,10 +3626,10 @@ static int create_con(struct ibtrs_clt_con *con)
 			  "pool, err: %d\n", err);
 		goto err_cm_id;
 	}
-	con->ib_con.addr = sess->addr;
-	con->ib_con.hostname = sess->hostname;
+	con->ibtrs_con.addr = sess->addr;
+	con->ibtrs_con.hostname = sess->hostname;
 	cq_vector = con->cpu % sess->ib_device->num_comp_vectors;
-	err = ib_con_init(&con->ib_con, con->cm_id,
+	err = ibtrs_con_init(&con->ibtrs_con, con->cm_id,
 			  sess->max_sge, cq_event_handler, con, cq_vector,
 			  cq_size, wr_queue_size, &sess->ib_sess);
 	if (err) {
@@ -3642,7 +3642,7 @@ static int create_con(struct ibtrs_clt_con *con)
 	pr_debug("setup_buffers successful\n");
 	err = post_recv(con);
 	if (err)
-		goto err_ib_con;
+		goto err_con;
 
 	err = connect_qp(con);
 	if (err) {
@@ -3657,8 +3657,8 @@ static int create_con(struct ibtrs_clt_con *con)
 
 err_wq:
 	rdma_disconnect(con->cm_id);
-err_ib_con:
-	ib_con_destroy(&con->ib_con);
+err_con:
+	ibtrs_con_destroy(&con->ibtrs_con);
 err_pool:
 	free_con_fast_pool(con);
 err_cm_id:
@@ -4241,7 +4241,7 @@ int ibtrs_clt_send(struct ibtrs_session *sess, const struct kvec *vec,
 	msg->hdr.tsize	= IBTRS_HDR_LEN + len;
 	copy_from_kvec(msg->payl, vec, len);
 
-	err = ibtrs_post_send(con->ib_con.qp, con->sess->ib_sess.mr, iu,
+	err = ibtrs_post_send(con->ibtrs_con.qp, con->sess->ib_sess.mr, iu,
 			      msg->hdr.tsize);
 	rcu_read_unlock();
 	if (unlikely(err)) {
@@ -4355,7 +4355,7 @@ static int send_msg_sess_info(struct ibtrs_clt_con *con)
 
 	fill_ibtrs_msg_sess_info(msg, hostname);
 
-	err = ibtrs_post_send(con->ib_con.qp, con->sess->ib_sess.mr,
+	err = ibtrs_post_send(con->ibtrs_con.qp, con->sess->ib_sess.mr,
 			      sess->sess_info_iu, msg->hdr.tsize);
 	if (unlikely(err))
 		ibtrs_err(sess, "Sending sess info failed, "
@@ -4432,17 +4432,18 @@ static void csm_closing(struct ibtrs_clt_con *con, enum csm_ev ev)
 		csm_set_state(con, CSM_STATE_FLUSHING);
 		synchronize_rcu();
 
-		err = post_beacon(&con->ib_con);
+		err = post_beacon(&con->ibtrs_con);
 		if (err) {
 			ibtrs_wrn(con->sess, "Failed to post BEACON,"
 				  " will destroy connection directly\n");
 			goto destroy;
 		}
 
-		err = ibtrs_request_cq_notifications(&con->ib_con);
+		err = ibtrs_request_cq_notifications(&con->ibtrs_con);
 		if (unlikely(err < 0)) {
-			ibtrs_wrn(con->sess, "Requesting CQ Notification for"
-				  " ib_con failed. Connection will be destroyed\n");
+			ibtrs_wrn(con->sess,
+				  "Requesting CQ Notification for ibtrs_con "
+				  "failed. Connection will be destroyed\n");
 			goto destroy;
 		} else if (err > 0) {
 			err = get_process_wcs(con);
@@ -4592,7 +4593,7 @@ static int ssm_wf_info_init(struct ibtrs_session *sess)
 {
 	int err;
 
-	err = ibtrs_request_cq_notifications(&sess->con[0].ib_con);
+	err = ibtrs_request_cq_notifications(&sess->con[0].ibtrs_con);
 	if (unlikely(err < 0)) {
 		return err;
 	} else if (err > 0) {
@@ -4681,7 +4682,7 @@ static int ibtrs_clt_request_cq_notifications(struct ibtrs_session *sess)
 	for (i = 0; i < CONS_PER_SESSION; i++) {
 		struct ibtrs_clt_con *con = &sess->con[i];
 
-		err = ibtrs_request_cq_notifications(&con->ib_con);
+		err = ibtrs_request_cq_notifications(&con->ibtrs_con);
 		if (unlikely(err < 0)) {
 			return err;
 		} else if (err > 0) {

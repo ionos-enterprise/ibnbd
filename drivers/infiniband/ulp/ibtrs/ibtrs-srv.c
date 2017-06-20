@@ -374,13 +374,13 @@ struct ssm_work {
 };
 
 struct ibtrs_srv_con {
+	struct ibtrs_con	ibtrs_con;
 	/* list for ibtrs_session->con_list */
 	struct list_head	list;
 	enum csm_state		state;
 	/* true if con is for user msg only */
 	bool			user;
 	bool			failover_enabled;
-	struct ib_con		ib_con;
 	atomic_t		wr_cnt;
 	struct rdma_cm_id	*cm_id;
 	int			cq_vector;
@@ -751,7 +751,7 @@ static int rdma_write_sg(struct ibtrs_ops_id *id)
 		sess->queue_depth ? 0 : IB_SEND_SIGNALED;
 	wr->wr.ex.imm_data	= cpu_to_be32(id->msg_id << 16);
 
-	err = ib_post_send(id->con->ib_con.qp, &id->tx_wr[0].wr, &bad_wr);
+	err = ib_post_send(id->con->ibtrs_con.qp, &id->tx_wr[0].wr, &bad_wr);
 	if (unlikely(err))
 		ibtrs_err(sess,
 			  "Posting RDMA-Write-Request to QP failed, err: %d\n",
@@ -764,7 +764,7 @@ static int send_io_resp_imm(struct ibtrs_srv_con *con, int msg_id, s16 errno)
 {
 	int err;
 
-	err = ibtrs_write_empty_imm(con->ib_con.qp, (msg_id << 16) | (u16)errno,
+	err = ibtrs_write_empty_imm(con->ibtrs_con.qp, (msg_id << 16) | (u16)errno,
 				    atomic_inc_return(&con->wr_cnt) %
 				    con->sess->queue_depth ? 0 :
 				    IB_SEND_SIGNALED);
@@ -779,7 +779,8 @@ static int send_heartbeat_raw(struct ibtrs_srv_con *con)
 {
 	int err;
 
-	err = ibtrs_write_empty_imm(con->ib_con.qp, UINT_MAX, IB_SEND_SIGNALED);
+	err = ibtrs_write_empty_imm(con->ibtrs_con.qp, UINT_MAX,
+				    IB_SEND_SIGNALED);
 	if (unlikely(err)) {
 		ibtrs_err(con->sess,
 			  "Sending heartbeat failed, posting msg to QP failed,"
@@ -950,9 +951,9 @@ int ibtrs_srv_send(struct ibtrs_session *sess, const struct kvec *vec,
 	msg->hdr.tsize	= len + IBTRS_HDR_LEN;
 	copy_from_kvec(msg->payl, vec, len);
 
-	err = ibtrs_post_send(con->ib_con.qp,
-			      con->sess->dev->ib_sess.pd->__internal_mr, iu,
-			      msg->hdr.tsize);
+	err = ibtrs_post_send(con->ibtrs_con.qp,
+			      con->sess->dev->ib_sess.pd->__internal_mr,
+			      iu, msg->hdr.tsize);
 	if (unlikely(err)) {
 		ibtrs_err_rl(sess, "Sending message failed, posting message to QP"
 			     " failed, err: %d\n", err);
@@ -1002,7 +1003,7 @@ static int ibtrs_post_recv(struct ibtrs_srv_con *con, struct ibtrs_iu *iu)
 	wr.sg_list  = &list;
 	wr.num_sge  = 1;
 
-	err = ib_post_recv(con->ib_con.qp, &wr, &bad_wr);
+	err = ib_post_recv(con->ibtrs_con.qp, &wr, &bad_wr);
 	if (unlikely(err))
 		ibtrs_err_rl(con->sess, "Posting recv buffer failed, err: %d\n",
 			     err);
@@ -1620,7 +1621,7 @@ static int ibtrs_send_usr_msg_ack(struct ibtrs_srv_con *con)
 		return -ECOMM;
 	}
 	pr_debug("Sending user message ack\n");
-	err = ibtrs_write_empty_imm(con->ib_con.qp, UINT_MAX - 1,
+	err = ibtrs_write_empty_imm(con->ibtrs_con.qp, UINT_MAX - 1,
 				    IB_SEND_SIGNALED);
 	if (unlikely(err)) {
 		ibtrs_err_rl(sess, "Sending user Ack msg failed, err: %d\n",
@@ -1837,7 +1838,7 @@ static void close_con(struct ibtrs_srv_con *con)
 	cancel_work_sync(&con->cq_work);
 	destroy_workqueue(con->rdma_resp_wq);
 
-	ib_con_destroy(&con->ib_con);
+	ibtrs_con_destroy(&con->ibtrs_con);
 	if (!con->user && !con->device_being_removed)
 		rdma_destroy_id(con->cm_id);
 
@@ -2013,7 +2014,7 @@ static void process_err_wc(struct ibtrs_srv_con *con, struct ib_wc *wc)
 {
 	struct ibtrs_iu *iu;
 
-	if (wc->wr_id == (uintptr_t)&con->ib_con.beacon) {
+	if (wc->wr_id == (uintptr_t)&con->ibtrs_con.beacon) {
 		pr_debug("beacon received for con %p\n", con);
 		csm_schedule_event(con, CSM_EV_BEACON_COMPLETED);
 		return;
@@ -2166,7 +2167,7 @@ static int get_process_wcs(struct ibtrs_srv_con *con, int *total_cnt)
 	int cnt, err;
 
 	do {
-		cnt = ib_poll_cq(con->ib_con.cq, ARRAY_SIZE(con->wcs),
+		cnt = ib_poll_cq(con->ibtrs_con.cq, ARRAY_SIZE(con->wcs),
 				 con->wcs);
 		if (unlikely(cnt < 0)) {
 			ibtrs_err(con->sess, "Polling completion queue failed, "
@@ -2204,7 +2205,7 @@ static void wrapper_handle_cq_comp(struct work_struct *work)
 	if (unlikely(err))
 		goto error;
 
-	while ((err = ib_req_notify_cq(con->ib_con.cq, IB_CQ_NEXT_COMP |
+	while ((err = ib_req_notify_cq(con->ibtrs_con.cq, IB_CQ_NEXT_COMP |
 				       IB_CQ_REPORT_MISSED_EVENTS)) > 0) {
 		pr_debug("Missed %d CQ notifications, processing missed WCs...\n",
 			 err);
@@ -2450,9 +2451,9 @@ static void ssm_create_con_worker(struct work_struct *work)
 
 	con->cq_vector = ibtrs_srv_get_next_cq_vector(sess);
 
-	con->ib_con.addr = sess->addr;
-	con->ib_con.hostname = sess->hostname;
-	ret = ib_con_init(&con->ib_con, con->cm_id,
+	con->ibtrs_con.addr = sess->addr;
+	con->ibtrs_con.hostname = sess->hostname;
+	ret = ibtrs_con_init(&con->ibtrs_con, con->cm_id,
 			  1, cq_event_handler, con, con->cq_vector, cq_size,
 			  wr_queue_size, &con->sess->dev->ib_sess);
 	if (ret)
@@ -2526,7 +2527,7 @@ err_buf:
 err_wq2:
 	destroy_workqueue(con->cq_wq);
 err_wq1:
-	ib_con_destroy(&con->ib_con);
+	ibtrs_con_destroy(&con->ibtrs_con);
 err_init:
 	kfree(con);
 err_reject:
@@ -2985,7 +2986,7 @@ static int send_msg_sess_open_resp(struct ibtrs_srv_con *con)
 
 	fill_ibtrs_msg_sess_open_resp(msg, con);
 
-	err = ibtrs_post_send(con->ib_con.qp, con->sess->dev->ib_sess.mr,
+	err = ibtrs_post_send(con->ibtrs_con.qp, con->sess->dev->ib_sess.mr,
 			      sess->rdma_info_iu, msg->hdr.tsize);
 	if (unlikely(err))
 		ibtrs_err(sess, "Sending sess open resp failed, "
@@ -3079,7 +3080,7 @@ static void csm_connected(struct ibtrs_srv_con *con, enum csm_ev ev)
 		wait_event(sess->bufs_wait,
 			   !atomic_read(&sess->stats.rdma_stats.inflight));
 		pr_debug("posting beacon on con %p\n", con);
-		err = post_beacon(&con->ib_con);
+		err = post_beacon(&con->ibtrs_con);
 		if (err) {
 			ibtrs_err(sess, "Connection received event %s "
 				  "in %s state, new state is %s but failed to post"
@@ -3088,10 +3089,10 @@ static void csm_connected(struct ibtrs_srv_con *con, enum csm_ev ev)
 			goto destroy;
 		}
 
-		err = ibtrs_request_cq_notifications(&con->ib_con);
+		err = ibtrs_request_cq_notifications(&con->ibtrs_con);
 		if (unlikely(err < 0)) {
 			ibtrs_wrn(con->sess, "Requesting CQ Notification for"
-				  " ib_con failed. Connection will be destroyed\n");
+				  " ibtrs_con failed. Connection will be destroyed\n");
 			goto destroy;
 		} else if (err > 0) {
 			err = get_process_wcs(con, &cnt);
@@ -3131,7 +3132,7 @@ static void csm_closing(struct ibtrs_srv_con *con, enum csm_ev ev)
 			   !atomic_read(&sess->stats.rdma_stats.inflight));
 
 		pr_debug("posting beacon on con %p\n", con);
-		if (post_beacon(&con->ib_con)) {
+		if (post_beacon(&con->ibtrs_con)) {
 			ibtrs_err(sess, "Connection received event %s "
 				  "in %s state, new state is %s but failed to post"
 				  " beacon, closing connection.\n", csm_ev_str(ev),
@@ -3139,10 +3140,10 @@ static void csm_closing(struct ibtrs_srv_con *con, enum csm_ev ev)
 			goto destroy;
 		}
 
-		err = ibtrs_request_cq_notifications(&con->ib_con);
+		err = ibtrs_request_cq_notifications(&con->ibtrs_con);
 		if (unlikely(err < 0)) {
 			ibtrs_wrn(con->sess, "Requesting CQ Notification for"
-				  " ib_con failed. Connection will be destroyed\n");
+				  " ibtrs_con failed. Connection will be destroyed\n");
 			goto destroy;
 		} else if (err > 0) {
 			err = get_process_wcs(con, &cnt);
@@ -3284,7 +3285,7 @@ static void remove_sess_from_sysfs(struct ibtrs_session *sess)
 static __always_inline int
 __ibtrs_srv_request_cq_notifications(struct ibtrs_srv_con *con)
 {
-	return ibtrs_request_cq_notifications(&con->ib_con);
+	return ibtrs_request_cq_notifications(&con->ibtrs_con);
 }
 
 static int ibtrs_srv_request_cq_notifications(struct ibtrs_session *sess)

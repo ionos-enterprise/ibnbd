@@ -65,7 +65,7 @@ struct ibtrs_ib_path {
 	union ib_gid    p_dgid;
 };
 
-struct ib_con {
+struct ibtrs_con {
 	struct ib_qp		*qp;
 	struct ib_cq		*cq;
 	struct ib_send_wr	beacon;
@@ -347,32 +347,32 @@ int ib_post_rdma_write_imm(struct ib_qp *qp, struct ib_sge *sge,
 int ib_post_rdma_write(struct ib_qp *qp, struct ib_sge *sge,
 		       unsigned int num_sge, u32 rkey, u64 rdma_addr,
 		       u64 wr_id);
-int post_beacon(struct ib_con *con);
+int post_beacon(struct ibtrs_con *con);
 /**
  * ib_session_init() - Create a new IB session
  */
 int ib_session_init(struct ib_device *dev, struct ib_session *session);
 
 /**
- * ib_con_init() - initialize and add a ib_con to the session
- * @con:	&ib_con to initialize
- * @session:	session the &ib_con is added to
+ * ibtrs_con_init() - initialize and add a ibtrs_con to the session
+ * @con:	&ibtrs_con to initialize
+ * @session:	session the &ibtrs_con is added to
  * @ctx:	CQ context, returned to the user via completion handler
  *
  * Returns 0 on success otherwise a negative errno code
  */
-int ib_con_init(struct ib_con *con, struct rdma_cm_id *cm_id,
+int ibtrs_con_init(struct ibtrs_con *con, struct rdma_cm_id *cm_id,
 		u32 max_send_sge,
 		ib_comp_handler comp_handler, void *ctx, int cq_vector,
 		u16 cq_size, u16 wr_queue_size, struct ib_session *session);
 
-int ibtrs_request_cq_notifications(struct ib_con *con);
+int ibtrs_request_cq_notifications(struct ibtrs_con *con);
 
-void ib_con_destroy(struct ib_con *con);
+void ibtrs_con_destroy(struct ibtrs_con *con);
 
 /**
  * ib_session_destroy() - Free a session
- * The corresponding &ib_con must have been freed before.
+ * The corresponding &ibtrs_con must have been freed before.
  */
 void ib_session_destroy(struct ib_session *session);
 

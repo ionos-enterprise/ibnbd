@@ -163,7 +163,7 @@ static void ib_event_handler(struct ib_event_handler *h, struct ib_event *ev)
 
 static void qp_event_handler(struct ib_event *ev, void *ctx)
 {
-	struct ib_con *con = ctx;
+	struct ibtrs_con *con = ctx;
 
 	switch (ev->event) {
 	case IB_EVENT_COMM_EST:
@@ -213,7 +213,7 @@ err:
 }
 EXPORT_SYMBOL_GPL(ib_session_init);
 
-static int init_cq(struct ib_con *con, struct rdma_cm_id *cm_id,
+static int init_cq(struct ibtrs_con *con, struct rdma_cm_id *cm_id,
 		   ib_comp_handler comp_handler, void *ctx, int cq_vector,
 		   u16 cq_size)
 {
@@ -233,14 +233,14 @@ static int init_cq(struct ib_con *con, struct rdma_cm_id *cm_id,
 	return 0;
 }
 
-int ibtrs_request_cq_notifications(struct ib_con *con)
+int ibtrs_request_cq_notifications(struct ibtrs_con *con)
 {
 	return ib_req_notify_cq(con->cq, IB_CQ_NEXT_COMP |
 				IB_CQ_REPORT_MISSED_EVENTS);
 }
 EXPORT_SYMBOL_GPL(ibtrs_request_cq_notifications);
 
-void ib_con_destroy(struct ib_con *con)
+void ibtrs_con_destroy(struct ibtrs_con *con)
 {
 	int err;
 
@@ -252,9 +252,9 @@ void ib_con_destroy(struct ib_con *con)
 	if (err)
 		ibtrs_err(con, "Destroying CQ failed, err: %d\n", err);
 }
-EXPORT_SYMBOL_GPL(ib_con_destroy);
+EXPORT_SYMBOL_GPL(ibtrs_con_destroy);
 
-static int create_qp(struct ib_con *con, struct rdma_cm_id *cm_id,
+static int create_qp(struct ibtrs_con *con, struct rdma_cm_id *cm_id,
 		     struct ib_pd *pd, u16 wr_queue_size, u32 max_send_sge)
 {
 	struct ib_qp_init_attr init_attr = {NULL};
@@ -282,7 +282,7 @@ static int create_qp(struct ib_con *con, struct rdma_cm_id *cm_id,
 	return ret;
 }
 
-int post_beacon(struct ib_con *con)
+int post_beacon(struct ibtrs_con *con)
 {
 	struct ib_send_wr *bad_wr;
 
@@ -290,10 +290,10 @@ int post_beacon(struct ib_con *con)
 }
 EXPORT_SYMBOL_GPL(post_beacon);
 
-int ib_con_init(struct ib_con *con, struct rdma_cm_id *cm_id,
-		u32 max_send_sge,
-		ib_comp_handler comp_handler, void *ctx, int cq_vector,
-		u16 cq_size, u16 wr_queue_size, struct ib_session *session)
+int ibtrs_con_init(struct ibtrs_con *con, struct rdma_cm_id *cm_id,
+		   u32 max_send_sge,
+		   ib_comp_handler comp_handler, void *ctx, int cq_vector,
+		   u16 cq_size, u16 wr_queue_size, struct ib_session *session)
 {
 	int err, ret;
 
@@ -316,7 +316,7 @@ int ib_con_init(struct ib_con *con, struct rdma_cm_id *cm_id,
 
 	return 0;
 }
-EXPORT_SYMBOL_GPL(ib_con_init);
+EXPORT_SYMBOL_GPL(ibtrs_con_init);
 
 void ib_session_destroy(struct ib_session *session)
 {
