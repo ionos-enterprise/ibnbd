@@ -85,7 +85,7 @@ struct ibtrs_clt_stats {
 	struct ibtrs_stats_wc_comp		*wc_comp;
 };
 
-struct ibtrs_session {
+struct ibtrs_clt_sess {
 	struct list_head	list; /* global session list */
 	wait_queue_head_t	wait_q;
 	enum ssm_state		state;
@@ -159,40 +159,40 @@ struct ibtrs_session {
  * ibtrs_clt_reconnect() - Reconnect the session
  * @sess: Session handler
  */
-int ibtrs_clt_reconnect(struct ibtrs_session *sess);
+int ibtrs_clt_reconnect(struct ibtrs_clt_sess *sess);
 
-void ibtrs_clt_set_max_reconnect_attempts(struct ibtrs_session *sess,
+void ibtrs_clt_set_max_reconnect_attempts(struct ibtrs_clt_sess *sess,
 					  s16 value);
 
-s16 ibtrs_clt_get_max_reconnect_attempts(const struct ibtrs_session *sess);
-int ibtrs_clt_get_user_queue_depth(struct ibtrs_session *sess);
-int ibtrs_clt_set_user_queue_depth(struct ibtrs_session *sess, u16 queue_depth);
-int ibtrs_clt_reset_sg_list_distr_stats(struct ibtrs_session *sess,
+s16 ibtrs_clt_get_max_reconnect_attempts(const struct ibtrs_clt_sess *sess);
+int ibtrs_clt_get_user_queue_depth(struct ibtrs_clt_sess *sess);
+int ibtrs_clt_set_user_queue_depth(struct ibtrs_clt_sess *sess, u16 queue_depth);
+int ibtrs_clt_reset_sg_list_distr_stats(struct ibtrs_clt_sess *sess,
 					bool enable);
-int ibtrs_clt_stats_sg_list_distr_to_str(struct ibtrs_session *sess,
+int ibtrs_clt_stats_sg_list_distr_to_str(struct ibtrs_clt_sess *sess,
 					 char *buf, size_t len);
-int ibtrs_clt_reset_rdma_lat_distr_stats(struct ibtrs_session *sess,
+int ibtrs_clt_reset_rdma_lat_distr_stats(struct ibtrs_clt_sess *sess,
 					 bool enable);
-ssize_t ibtrs_clt_stats_rdma_lat_distr_to_str(struct ibtrs_session *sess,
+ssize_t ibtrs_clt_stats_rdma_lat_distr_to_str(struct ibtrs_clt_sess *sess,
 					      char *page, size_t len);
-int ibtrs_clt_reset_cpu_migr_stats(struct ibtrs_session *sess, bool enable);
-int ibtrs_clt_stats_migration_cnt_to_str(struct ibtrs_session *sess, char *buf,
+int ibtrs_clt_reset_cpu_migr_stats(struct ibtrs_clt_sess *sess, bool enable);
+int ibtrs_clt_stats_migration_cnt_to_str(struct ibtrs_clt_sess *sess, char *buf,
 					 size_t len);
-int ibtrs_clt_reset_reconnects_stat(struct ibtrs_session *sess, bool enable);
-int ibtrs_clt_stats_reconnects_to_str(struct ibtrs_session *sess, char *buf,
+int ibtrs_clt_reset_reconnects_stat(struct ibtrs_clt_sess *sess, bool enable);
+int ibtrs_clt_stats_reconnects_to_str(struct ibtrs_clt_sess *sess, char *buf,
 				      size_t len);
-int ibtrs_clt_reset_user_ib_msgs_stats(struct ibtrs_session *sess, bool enable);
-int ibtrs_clt_stats_user_ib_msgs_to_str(struct ibtrs_session *sess, char *buf,
+int ibtrs_clt_reset_user_ib_msgs_stats(struct ibtrs_clt_sess *sess, bool enable);
+int ibtrs_clt_stats_user_ib_msgs_to_str(struct ibtrs_clt_sess *sess, char *buf,
 					size_t len);
-int ibtrs_clt_reset_wc_comp_stats(struct ibtrs_session *sess, bool enable);
-int ibtrs_clt_stats_wc_completion_to_str(struct ibtrs_session *sess, char *buf,
+int ibtrs_clt_reset_wc_comp_stats(struct ibtrs_clt_sess *sess, bool enable);
+int ibtrs_clt_stats_wc_completion_to_str(struct ibtrs_clt_sess *sess, char *buf,
 					 size_t len);
-int ibtrs_clt_reset_rdma_stats(struct ibtrs_session *sess, bool enable);
-ssize_t ibtrs_clt_stats_rdma_to_str(struct ibtrs_session *sess,
+int ibtrs_clt_reset_rdma_stats(struct ibtrs_clt_sess *sess, bool enable);
+ssize_t ibtrs_clt_stats_rdma_to_str(struct ibtrs_clt_sess *sess,
 				    char *page, size_t len);
-bool ibtrs_clt_sess_is_connected(const struct ibtrs_session *sess);
-int ibtrs_clt_reset_all_stats(struct ibtrs_session *sess, bool enable);
-ssize_t ibtrs_clt_reset_all_help(struct ibtrs_session *sess,
+bool ibtrs_clt_sess_is_connected(const struct ibtrs_clt_sess *sess);
+int ibtrs_clt_reset_all_stats(struct ibtrs_clt_sess *sess, bool enable);
+ssize_t ibtrs_clt_reset_all_help(struct ibtrs_clt_sess *sess,
 				 char *page, size_t len);
 
 /* ibtrs-clt-sysfs.c */

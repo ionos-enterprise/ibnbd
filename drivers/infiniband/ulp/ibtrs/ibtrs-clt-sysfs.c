@@ -15,8 +15,9 @@ static ssize_t ibtrs_clt_max_reconn_attempts_show(struct kobject *kobj,
 						  struct kobj_attribute *attr,
 						  char *page)
 {
-	struct ibtrs_session *sess = container_of(kobj, struct ibtrs_session,
-						  kobj);
+	struct ibtrs_clt_sess *sess;
+
+	sess = container_of(kobj, struct ibtrs_clt_sess, kobj);
 
 	return sprintf(page, "%d\n",
 		       ibtrs_clt_get_max_reconnect_attempts(sess));
@@ -27,11 +28,11 @@ static ssize_t ibtrs_clt_max_reconn_attempts_store(struct kobject *kobj,
 						   const char *buf,
 						   size_t count)
 {
-	int ret;
+	struct ibtrs_clt_sess *sess;
 	s16 value;
-	struct ibtrs_session *sess = container_of(kobj, struct ibtrs_session,
-						  kobj);
+	int ret;
 
+	sess = container_of(kobj, struct ibtrs_clt_sess, kobj);
 	ret = kstrtos16(buf, 10, &value);
 	if (unlikely(ret)) {
 		ibtrs_err(sess, "%s: failed to convert string '%s' to int\n",
@@ -62,9 +63,9 @@ static ssize_t ibtrs_clt_hb_timeout_show(struct kobject *kobj,
 					 struct kobj_attribute *attr,
 					 char *page)
 {
-	struct ibtrs_session *sess;
+	struct ibtrs_clt_sess *sess;
 
-	sess = container_of(kobj, struct ibtrs_session, kobj);
+	sess = container_of(kobj, struct ibtrs_clt_sess, kobj);
 
 	return scnprintf(page, PAGE_SIZE, "%u\n", sess->heartbeat.timeout_ms);
 }
@@ -75,9 +76,9 @@ static ssize_t ibtrs_clt_hb_timeout_store(struct kobject *kobj,
 {
 	int ret;
 	u32 timeout_ms;
-	struct ibtrs_session *sess;
+	struct ibtrs_clt_sess *sess;
 
-	sess = container_of(kobj, struct ibtrs_session, kobj);
+	sess = container_of(kobj, struct ibtrs_clt_sess, kobj);
 	ret = kstrtouint(buf, 0, &timeout_ms);
 	if (ret) {
 		ibtrs_err(sess,
@@ -103,9 +104,9 @@ static struct kobj_attribute ibtrs_clt_heartbeat_timeout_ms_attr =
 static ssize_t ibtrs_clt_state_show(struct kobject *kobj,
 				    struct kobj_attribute *attr, char *page)
 {
-	struct ibtrs_session *sess;
+	struct ibtrs_clt_sess *sess;
 
-	sess = container_of(kobj, struct ibtrs_session, kobj);
+	sess = container_of(kobj, struct ibtrs_clt_sess, kobj);
 	if (ibtrs_clt_sess_is_connected(sess))
 		return sprintf(page, "connected\n");
 
@@ -119,8 +120,10 @@ static struct kobj_attribute ibtrs_clt_state_attr = __ATTR(state, 0444,
 static ssize_t ibtrs_clt_hostname_show(struct kobject *kobj,
 				       struct kobj_attribute *attr, char *page)
 {
-	struct ibtrs_session *sess = container_of(kobj, struct ibtrs_session,
-						  kobj);
+	struct ibtrs_clt_sess *sess;
+
+	sess = container_of(kobj, struct ibtrs_clt_sess, kobj);
+
 	return sprintf(page, "%s\n", sess->hostname);
 }
 
@@ -138,11 +141,10 @@ static ssize_t ibtrs_clt_reconnect_store(struct kobject *kobj,
 					 struct kobj_attribute *attr,
 					 const char *buf, size_t count)
 {
-	struct ibtrs_session *sess;
+	struct ibtrs_clt_sess *sess;
 	int ret;
 
-	sess = container_of(kobj, struct ibtrs_session, kobj);
-
+	sess = container_of(kobj, struct ibtrs_clt_sess, kobj);
 	if (!sysfs_streq(buf, "1")) {
 		ibtrs_err(sess, "%s: unknown value: '%s'\n", attr->attr.name, buf);
 		return -EINVAL;
@@ -164,9 +166,9 @@ static struct kobj_attribute ibtrs_clt_reconnect_attr =
 static ssize_t ibtrs_clt_queue_show(struct kobject *kobj,
 				    struct kobj_attribute *attr, char *page)
 {
-	struct ibtrs_session *sess;
+	struct ibtrs_clt_sess *sess;
 
-	sess = container_of(kobj, struct ibtrs_session, kobj);
+	sess = container_of(kobj, struct ibtrs_clt_sess, kobj);
 
 	return scnprintf(page, PAGE_SIZE, "%d\n",
 			 ibtrs_clt_get_user_queue_depth(sess));
@@ -178,8 +180,9 @@ static ssize_t ibtrs_clt_queue_store(struct kobject *kobj,
 {
 	int res;
 	u16 old_queue_depth, queue_depth;
-	struct ibtrs_session *sess = container_of(kobj, struct ibtrs_session,
-						  kobj);
+	struct ibtrs_clt_sess *sess;
+
+	sess = container_of(kobj, struct ibtrs_clt_sess, kobj);
 	res = kstrtou16(buf, 0, &queue_depth);
 	if (res) {
 		ibtrs_err(sess,
@@ -201,35 +204,35 @@ static ssize_t ibtrs_clt_queue_store(struct kobject *kobj,
 	return count;
 }
 
-STAT_ATTR(struct ibtrs_session, cpu_migration,
+STAT_ATTR(struct ibtrs_clt_sess, cpu_migration,
 	  ibtrs_clt_stats_migration_cnt_to_str,
 	  ibtrs_clt_reset_cpu_migr_stats);
 
-STAT_ATTR(struct ibtrs_session, sg_entries,
+STAT_ATTR(struct ibtrs_clt_sess, sg_entries,
 	  ibtrs_clt_stats_sg_list_distr_to_str,
 	  ibtrs_clt_reset_sg_list_distr_stats);
 
-STAT_ATTR(struct ibtrs_session, reconnects,
+STAT_ATTR(struct ibtrs_clt_sess, reconnects,
 	  ibtrs_clt_stats_reconnects_to_str,
 	  ibtrs_clt_reset_reconnects_stat);
 
-STAT_ATTR(struct ibtrs_session, rdma_lat,
+STAT_ATTR(struct ibtrs_clt_sess, rdma_lat,
 	  ibtrs_clt_stats_rdma_lat_distr_to_str,
 	  ibtrs_clt_reset_rdma_lat_distr_stats);
 
-STAT_ATTR(struct ibtrs_session, user_ib_messages,
+STAT_ATTR(struct ibtrs_clt_sess, user_ib_messages,
 	  ibtrs_clt_stats_user_ib_msgs_to_str,
 	  ibtrs_clt_reset_user_ib_msgs_stats);
 
-STAT_ATTR(struct ibtrs_session, wc_completion,
+STAT_ATTR(struct ibtrs_clt_sess, wc_completion,
 	  ibtrs_clt_stats_wc_completion_to_str,
 	  ibtrs_clt_reset_wc_comp_stats);
 
-STAT_ATTR(struct ibtrs_session, rdma,
+STAT_ATTR(struct ibtrs_clt_sess, rdma,
 	  ibtrs_clt_stats_rdma_to_str,
 	  ibtrs_clt_reset_rdma_stats);
 
-STAT_ATTR(struct ibtrs_session, reset_all,
+STAT_ATTR(struct ibtrs_clt_sess, reset_all,
 	  ibtrs_clt_reset_all_help,
 	  ibtrs_clt_reset_all_stats);
 
@@ -301,7 +304,7 @@ static struct attribute_group ibtrs_clt_default_sess_attr_group = {
 	.attrs = ibtrs_clt_default_sess_attrs,
 };
 
-static struct kobj_type ibtrs_session_ktype = {
+static struct kobj_type ibtrs_clt_sess_ktype = {
 	.sysfs_ops = &kobj_sysfs_ops,
 };
 
@@ -310,7 +313,7 @@ int ibtrs_clt_create_sess_files(struct kobject *kobj,
 {
 	int ret;
 
-	ret = kobject_init_and_add(kobj, &ibtrs_session_ktype, sessions_kobj,
+	ret = kobject_init_and_add(kobj, &ibtrs_clt_sess_ktype, sessions_kobj,
 				   "%s", ip);
 	if (ret) {
 		pr_err("Failed to create session kobject, err: %d\n",
