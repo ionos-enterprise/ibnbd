@@ -98,7 +98,7 @@ struct ibtrs_session {
 	struct ibtrs_iu		**usr_rx_ring;
 	struct ibtrs_iu		**io_tx_ius;
 
-	spinlock_t              u_msg_ius_lock ____cacheline_aligned;
+	spinlock_t              u_msg_ius_lock;
 	struct list_head	u_msg_ius_list;
 
 	struct rdma_req		*reqs;

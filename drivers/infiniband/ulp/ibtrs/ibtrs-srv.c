@@ -422,7 +422,7 @@ struct ibtrs_ops_id {
 	struct ib_sge			*tx_sg;
 	int				status;
 	struct work_struct		work;
-} ____cacheline_aligned;
+};
 
 static void csm_set_state(struct ibtrs_srv_con *con, enum csm_state s)
 {

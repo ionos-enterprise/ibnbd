@@ -299,7 +299,7 @@ struct rdma_req {
 	u16			nmdesc;
 	enum dma_data_direction dir;
 	unsigned long		start_time;
-} ____cacheline_aligned;
+};
 
 struct ibtrs_clt_con {
 	enum  csm_state		state;
@@ -703,8 +703,7 @@ struct ibtrs_fr_desc {
 struct ibtrs_fr_pool {
 	int			size;
 	int			max_page_list_len;
-	/* lock for free_list*/
-	spinlock_t		lock ____cacheline_aligned;
+	spinlock_t		lock;
 	struct list_head	free_list;
 	struct ibtrs_fr_desc	desc[0];
 };

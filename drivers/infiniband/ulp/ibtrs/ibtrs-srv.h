@@ -81,8 +81,7 @@ struct ibtrs_session {
 	struct ibtrs_iu		*dummy_rx_iu;
 	struct ibtrs_iu		**usr_rx_ring;
 	struct ibtrs_ops_id	**ops_ids;
-	/* lock for tx_bufs */
-	spinlock_t              tx_bufs_lock ____cacheline_aligned;
+	spinlock_t              tx_bufs_lock;
 	struct list_head	tx_bufs;
 	u16			tx_bufs_used;
 	unsigned int		est_cnt; /* number of established connections */

@@ -66,8 +66,8 @@ struct ibtrs_ib_path {
 };
 
 struct ib_con {
-	struct ib_qp		*qp ____cacheline_aligned;
-	struct ib_cq		*cq ____cacheline_aligned;
+	struct ib_qp		*qp;
+	struct ib_cq		*cq;
 	struct ib_send_wr	beacon;
 	struct rdma_cm_id	*cm_id;
 	struct ibtrs_ib_path    pri_path;
