@@ -66,7 +66,7 @@ struct ibtrs_srv_stats {
 	struct ibtrs_stats_wc_comp		wc_comp;
 };
 
-struct ibtrs_session {
+struct ibtrs_srv_sess {
 	struct list_head	list;
 	enum ssm_state		state;
 	struct kref		kref;
@@ -119,37 +119,37 @@ struct ibtrs_session {
 	atomic_t		peer_usr_msg_bufs;
 };
 
-void ibtrs_srv_queue_close(struct ibtrs_session *sess);
+void ibtrs_srv_queue_close(struct ibtrs_srv_sess *sess);
 
-u8 ibtrs_srv_get_sess_primary_port_num(struct ibtrs_session *sess);
+u8 ibtrs_srv_get_sess_primary_port_num(struct ibtrs_srv_sess *sess);
 
-int ibtrs_srv_current_hca_port_to_str(struct ibtrs_session *sess,
+int ibtrs_srv_current_hca_port_to_str(struct ibtrs_srv_sess *sess,
 				      char *buf, size_t len);
-int ibtrs_srv_failover_hca_port_to_str(struct ibtrs_session *sess,
+int ibtrs_srv_failover_hca_port_to_str(struct ibtrs_srv_sess *sess,
 				       char *buf, size_t len);
-const char *ibtrs_srv_get_sess_hca_name(struct ibtrs_session *sess);
-int ibtrs_srv_migrate(struct ibtrs_session *sess, u8 port_num);
-int ibtrs_srv_reset_rdma_stats(struct ibtrs_session *sess, bool enable);
-ssize_t ibtrs_srv_stats_rdma_to_str(struct ibtrs_session *sess,
+const char *ibtrs_srv_get_sess_hca_name(struct ibtrs_srv_sess *sess);
+int ibtrs_srv_migrate(struct ibtrs_srv_sess *sess, u8 port_num);
+int ibtrs_srv_reset_rdma_stats(struct ibtrs_srv_sess *sess, bool enable);
+ssize_t ibtrs_srv_stats_rdma_to_str(struct ibtrs_srv_sess *sess,
 				    char *page, size_t len);
-int ibtrs_srv_reset_user_ib_msgs_stats(struct ibtrs_session *sess, bool enable);
-int ibtrs_srv_stats_user_ib_msgs_to_str(struct ibtrs_session *sess, char *buf,
+int ibtrs_srv_reset_user_ib_msgs_stats(struct ibtrs_srv_sess *sess, bool enable);
+int ibtrs_srv_stats_user_ib_msgs_to_str(struct ibtrs_srv_sess *sess, char *buf,
 					size_t len);
-int ibtrs_srv_reset_apm_stats(struct ibtrs_session *sess, bool enable);
-int ibtrs_srv_stats_apm_to_str(struct ibtrs_session *sess, char *buf,
+int ibtrs_srv_reset_apm_stats(struct ibtrs_srv_sess *sess, bool enable);
+int ibtrs_srv_stats_apm_to_str(struct ibtrs_srv_sess *sess, char *buf,
 			       size_t len);
-int ibtrs_srv_reset_wc_completion_stats(struct ibtrs_session *sess,
+int ibtrs_srv_reset_wc_completion_stats(struct ibtrs_srv_sess *sess,
 					bool enable);
-int ibtrs_srv_stats_wc_completion_to_str(struct ibtrs_session *sess, char *buf,
+int ibtrs_srv_stats_wc_completion_to_str(struct ibtrs_srv_sess *sess, char *buf,
 					 size_t len);
-int ibtrs_srv_reset_all_stats(struct ibtrs_session *sess, bool enable);
-ssize_t ibtrs_srv_reset_all_help(struct ibtrs_session *sess,
+int ibtrs_srv_reset_all_stats(struct ibtrs_srv_sess *sess, bool enable);
+ssize_t ibtrs_srv_reset_all_help(struct ibtrs_srv_sess *sess,
 				 char *page, size_t len);
 int heartbeat_timeout_validate(int timeout);
 
-int ibtrs_srv_sess_get(struct ibtrs_session *sess);
+int ibtrs_srv_sess_get(struct ibtrs_srv_sess *sess);
 
-void ibtrs_srv_sess_put(struct ibtrs_session *sess);
+void ibtrs_srv_sess_put(struct ibtrs_srv_sess *sess);
 
 /* ibtrs-srv-sysfs.c */
 
@@ -157,6 +157,6 @@ int ibtrs_srv_create_sysfs_files(void);
 
 void ibtrs_srv_destroy_sysfs_files(void);
 
-int ibtrs_srv_create_sess_files(struct ibtrs_session *sess);
+int ibtrs_srv_create_sess_files(struct ibtrs_srv_sess *sess);
 
 #endif /* IBTRS_SRV_H */

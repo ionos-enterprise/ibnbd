@@ -7,15 +7,13 @@
 #include "ibtrs-srv.h"
 #include "ibtrs-log.h"
 
-static struct kobject *ibtrs_srv_kobj;
-static struct kobject *ibtrs_srv_sessions_kobj;
-
 static ssize_t ibtrs_srv_hb_timeout_show(struct kobject *kobj,
 					 struct kobj_attribute *attr,
 					 char *page)
 {
-	struct ibtrs_session *sess = container_of(kobj, struct ibtrs_session,
-						  kobj);
+	struct ibtrs_srv_sess *sess;
+
+	sess = container_of(kobj, struct ibtrs_srv_sess, kobj);
 
 	return scnprintf(page, PAGE_SIZE, "%u\n", sess->heartbeat.timeout_ms);
 }
@@ -24,11 +22,11 @@ static ssize_t ibtrs_srv_hb_timeout_store(struct kobject *kobj,
 					  struct kobj_attribute *attr,
 					  const char *buf, size_t count)
 {
-	int ret;
+	struct ibtrs_srv_sess *sess;
 	u32 timeout_ms;
-	struct ibtrs_session *sess = container_of(kobj, struct ibtrs_session,
-						  kobj);
+	int ret;
 
+	sess = container_of(kobj, struct ibtrs_srv_sess, kobj);
 	ret = kstrtouint(buf, 0, &timeout_ms);
 	if (ret)
 		return ret;
@@ -59,9 +57,9 @@ static ssize_t ibtrs_srv_disconnect_store(struct kobject *kobj,
 					  struct kobj_attribute *attr,
 					  const char *buf, size_t count)
 {
-	struct ibtrs_session *sess = container_of(kobj, struct ibtrs_session,
-						  kobj);
+	struct ibtrs_srv_sess *sess;
 
+	sess = container_of(kobj, struct ibtrs_srv_sess, kobj);
 	if (!sysfs_streq(buf, "1")) {
 		ibtrs_err(sess, "%s: invalid value: '%s'\n", attr->attr.name, buf);
 		return -EINVAL;
@@ -81,8 +79,10 @@ static ssize_t ibtrs_srv_current_hca_port_show(struct kobject *kobj,
 					       struct kobj_attribute *attr,
 					       char *page)
 {
-	struct ibtrs_session *sess = container_of(kobj, struct ibtrs_session,
-						  kobj);
+	struct ibtrs_srv_sess *sess;
+
+	sess = container_of(kobj, struct ibtrs_srv_sess, kobj);
+
 	return ibtrs_srv_current_hca_port_to_str(sess, page, PAGE_SIZE);
 }
 
@@ -94,8 +94,9 @@ static ssize_t ibtrs_srv_hca_name_show(struct kobject *kobj,
 				       struct kobj_attribute *attr,
 				       char *page)
 {
-	struct ibtrs_session *sess = container_of(kobj, struct ibtrs_session,
-						  kobj);
+	struct ibtrs_srv_sess *sess;
+
+	sess = container_of(kobj, struct ibtrs_srv_sess, kobj);
 
 	return scnprintf(page, PAGE_SIZE, "%s\n",
 			 ibtrs_srv_get_sess_hca_name(sess));
@@ -107,8 +108,10 @@ static struct kobj_attribute hca_name_attr =
 static ssize_t hostname_show(struct kobject *kobj,
 			     struct kobj_attribute *attr, char *page)
 {
-	struct ibtrs_session *sess = container_of(kobj, struct ibtrs_session,
-						  kobj);
+	struct ibtrs_srv_sess *sess;
+
+	sess = container_of(kobj, struct ibtrs_srv_sess, kobj);
+
 	return sprintf(page, "%s\n", sess->hostname);
 }
 
@@ -130,9 +133,9 @@ static struct attribute_group default_sess_attr_group = {
 
 static void ibtrs_srv_sess_release(struct kobject *kobj)
 {
-	struct ibtrs_session *sess = container_of(kobj, struct ibtrs_session,
-						  kobj);
+	struct ibtrs_srv_sess *sess;
 
+	sess = container_of(kobj, struct ibtrs_srv_sess, kobj);
 	ibtrs_srv_sess_put(sess);
 }
 
@@ -141,19 +144,19 @@ static struct kobj_type ibtrs_srv_sess_ktype = {
 	.release	= ibtrs_srv_sess_release,
 };
 
-STAT_ATTR(struct ibtrs_session, rdma,
+STAT_ATTR(struct ibtrs_srv_sess, rdma,
 	  ibtrs_srv_stats_rdma_to_str,
 	  ibtrs_srv_reset_rdma_stats);
 
-STAT_ATTR(struct ibtrs_session, user_ib_messages,
+STAT_ATTR(struct ibtrs_srv_sess, user_ib_messages,
 	  ibtrs_srv_stats_user_ib_msgs_to_str,
 	  ibtrs_srv_reset_user_ib_msgs_stats);
 
-STAT_ATTR(struct ibtrs_session, wc_completion,
+STAT_ATTR(struct ibtrs_srv_sess, wc_completion,
 	  ibtrs_srv_stats_wc_completion_to_str,
 	  ibtrs_srv_reset_wc_completion_stats);
 
-STAT_ATTR(struct ibtrs_session, reset_all,
+STAT_ATTR(struct ibtrs_srv_sess, reset_all,
 	  ibtrs_srv_reset_all_help,
 	  ibtrs_srv_reset_all_stats);
 
@@ -173,7 +176,7 @@ static struct kobj_type ibtrs_stats_ktype = {
 	.sysfs_ops = &kobj_sysfs_ops,
 };
 
-static int ibtrs_srv_create_stats_files(struct ibtrs_session *sess)
+static int ibtrs_srv_create_stats_files(struct ibtrs_srv_sess *sess)
 {
 	int ret;
 
@@ -202,7 +205,10 @@ err:
 	return ret;
 }
 
-int ibtrs_srv_create_sess_files(struct ibtrs_session *sess)
+static struct kobject *ibtrs_srv_kobj;
+static struct kobject *ibtrs_srv_sessions_kobj;
+
+int ibtrs_srv_create_sess_files(struct ibtrs_srv_sess *sess)
 {
 	int ret;
 

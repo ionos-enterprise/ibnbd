@@ -17,7 +17,7 @@ enum ibnbd_srv_sess_state {
 
 struct ibnbd_srv_session {
 	struct list_head        list; /* for the global sess_list */
-	struct ibtrs_session    *ibtrs_sess;
+	struct ibtrs_srv_sess   *ibtrs_sess;
 	char			str_addr[IBTRS_ADDRLEN];
 	char			hostname[MAXHOSTNAMELEN];
 	int			queue_depth;
