@@ -1,7 +1,7 @@
 #ifndef IBTRS_CLT_H
 #define IBTRS_CLT_H
 
-#include "ibtrs.h"
+#include "ibtrs-pri.h"
 
 enum ssm_state {
 	_SSM_STATE_MIN,

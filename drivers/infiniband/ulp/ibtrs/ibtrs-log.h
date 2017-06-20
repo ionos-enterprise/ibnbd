@@ -1,5 +1,5 @@
-#ifndef __IBTRS_LOG_H__
-#define __IBTRS_LOG_H__
+#ifndef IBTRS_LOG_H
+#define IBTRS_LOG_H
 
 #define ibtrs_prefix(sess) ((sess)->hostname[0] ? (sess)->hostname : \
 			    (sess)->addr)
@@ -20,4 +20,4 @@
 #define ibtrs_info_rl(dev, fmt, ...) \
 	ibtrs_log(KERN_INFO, printk_ratelimited, dev, fmt, ##__VA_ARGS__)
 
-#endif /*__IBTRS_LOG_H__*/
+#endif /* IBTRS_LOG_H */

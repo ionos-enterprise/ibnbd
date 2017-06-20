@@ -1,5 +1,5 @@
 #include <linux/slab.h>
-#include "ibtrs.h"
+#include "ibtrs-pri.h"
 
 /*
  * Return an IU  to the free pool

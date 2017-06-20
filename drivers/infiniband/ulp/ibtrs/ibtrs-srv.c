@@ -9,7 +9,7 @@
 #include <rdma/rdma_cm.h>
 #include <rdma/ibtrs.h>
 
-#include "ibtrs.h"
+#include "ibtrs-pri.h"
 #include "ibtrs-srv.h"
 #include "ibtrs-log.h"
 

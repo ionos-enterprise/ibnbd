@@ -1,6 +1,6 @@
 #define pr_fmt(fmt) KBUILD_MODNAME " L" __stringify(__LINE__) ": " fmt
 
-#include "ibtrs.h"
+#include "ibtrs-pri.h"
 #include "ibtrs-log.h"
 
 void ibtrs_heartbeat_init(struct ibtrs_heartbeat *h, u32 timeout_ms)

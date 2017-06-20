@@ -1,5 +1,5 @@
-#ifndef __IBTRS_H
-#define __IBTRS_H
+#ifndef IBTRS_PRI_H
+#define IBTRS_PRI_H
 
 #include <linux/uio.h>
 #include <linux/types.h>
@@ -446,4 +446,4 @@ static struct kobj_attribute stat##_attr = \
 		       stat##_show, \
 		       stat##_store)
 
-#endif /*__IBTRS_H*/
+#endif /* IBTRS_PRI_H */

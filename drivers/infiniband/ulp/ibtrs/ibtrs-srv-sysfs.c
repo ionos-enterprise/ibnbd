@@ -3,7 +3,7 @@
 //XXX ONLY FOR IBTRS_ADDRLEN, remove ASAP
 #include <rdma/ibtrs.h>
 
-#include "ibtrs.h"
+#include "ibtrs-pri.h"
 #include "ibtrs-srv.h"
 #include "ibtrs-log.h"
 

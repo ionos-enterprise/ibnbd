@@ -1,7 +1,7 @@
 #include <linux/types.h>
 #include <rdma/ibtrs.h>
 
-#include "ibtrs.h"
+#include "ibtrs-pri.h"
 #include "ibtrs-clt.h"
 #include "ibtrs-log.h"
 

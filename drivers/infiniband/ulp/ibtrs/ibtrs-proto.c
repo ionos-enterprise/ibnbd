@@ -1,8 +1,6 @@
 #define pr_fmt(fmt) KBUILD_MODNAME " L" __stringify(__LINE__) ": " fmt
 
-#include <linux/errno.h>
-#include <linux/printk.h>
-#include "ibtrs.h"
+#include "ibtrs-pri.h"
 #include "ibtrs-log.h"
 
 static int

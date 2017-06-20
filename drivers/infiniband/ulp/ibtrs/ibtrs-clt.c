@@ -12,7 +12,7 @@
 #include <rdma/ibtrs.h>
 #include <linux/list.h>
 
-#include "ibtrs.h"
+#include "ibtrs-pri.h"
 #include "ibtrs-clt.h"
 #include "ibtrs-log.h"
 
