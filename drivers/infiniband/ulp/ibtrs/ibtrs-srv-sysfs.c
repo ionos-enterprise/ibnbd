@@ -141,15 +141,21 @@ static struct kobj_type ibtrs_srv_sess_ktype = {
 	.release	= ibtrs_srv_sess_release,
 };
 
-STAT_ATTR(rdma, ibtrs_srv_stats_rdma_to_str, ibtrs_srv_reset_rdma_stats);
+STAT_ATTR(struct ibtrs_session, rdma,
+	  ibtrs_srv_stats_rdma_to_str,
+	  ibtrs_srv_reset_rdma_stats);
 
-STAT_ATTR(user_ib_messages, ibtrs_srv_stats_user_ib_msgs_to_str,
+STAT_ATTR(struct ibtrs_session, user_ib_messages,
+	  ibtrs_srv_stats_user_ib_msgs_to_str,
 	  ibtrs_srv_reset_user_ib_msgs_stats);
 
-STAT_ATTR(wc_completion, ibtrs_srv_stats_wc_completion_to_str,
+STAT_ATTR(struct ibtrs_session, wc_completion,
+	  ibtrs_srv_stats_wc_completion_to_str,
 	  ibtrs_srv_reset_wc_completion_stats);
 
-STAT_ATTR(reset_all, ibtrs_srv_reset_all_help, ibtrs_srv_reset_all_stats);
+STAT_ATTR(struct ibtrs_session, reset_all,
+	  ibtrs_srv_reset_all_help,
+	  ibtrs_srv_reset_all_stats);
 
 static struct attribute *ibtrs_srv_default_stats_attrs[] = {
 	&rdma_attr.attr,

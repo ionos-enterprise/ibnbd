@@ -201,28 +201,37 @@ static ssize_t ibtrs_clt_queue_store(struct kobject *kobj,
 	return count;
 }
 
-STAT_ATTR(cpu_migration, ibtrs_clt_stats_migration_cnt_to_str,
+STAT_ATTR(struct ibtrs_session, cpu_migration,
+	  ibtrs_clt_stats_migration_cnt_to_str,
 	  ibtrs_clt_reset_cpu_migr_stats);
 
-STAT_ATTR(sg_entries, ibtrs_clt_stats_sg_list_distr_to_str,
+STAT_ATTR(struct ibtrs_session, sg_entries,
+	  ibtrs_clt_stats_sg_list_distr_to_str,
 	  ibtrs_clt_reset_sg_list_distr_stats);
 
-STAT_ATTR(reconnects, ibtrs_clt_stats_reconnects_to_str,
+STAT_ATTR(struct ibtrs_session, reconnects,
+	  ibtrs_clt_stats_reconnects_to_str,
 	  ibtrs_clt_reset_reconnects_stat);
 
-STAT_ATTR(rdma_lat, ibtrs_clt_stats_rdma_lat_distr_to_str,
+STAT_ATTR(struct ibtrs_session, rdma_lat,
+	  ibtrs_clt_stats_rdma_lat_distr_to_str,
 	  ibtrs_clt_reset_rdma_lat_distr_stats);
 
-STAT_ATTR(user_ib_messages, ibtrs_clt_stats_user_ib_msgs_to_str,
+STAT_ATTR(struct ibtrs_session, user_ib_messages,
+	  ibtrs_clt_stats_user_ib_msgs_to_str,
 	  ibtrs_clt_reset_user_ib_msgs_stats);
 
-STAT_ATTR(wc_completion, ibtrs_clt_stats_wc_completion_to_str,
+STAT_ATTR(struct ibtrs_session, wc_completion,
+	  ibtrs_clt_stats_wc_completion_to_str,
 	  ibtrs_clt_reset_wc_comp_stats);
 
-STAT_ATTR(rdma, ibtrs_clt_stats_rdma_to_str,
+STAT_ATTR(struct ibtrs_session, rdma,
+	  ibtrs_clt_stats_rdma_to_str,
 	  ibtrs_clt_reset_rdma_stats);
 
-STAT_ATTR(reset_all, ibtrs_clt_reset_all_help, ibtrs_clt_reset_all_stats);
+STAT_ATTR(struct ibtrs_session, reset_all,
+	  ibtrs_clt_reset_all_help,
+	  ibtrs_clt_reset_all_stats);
 
 static struct attribute *ibtrs_clt_default_stats_attrs[] = {
 	&sg_entries_attr.attr,

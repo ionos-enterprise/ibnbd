@@ -53,7 +53,6 @@ static inline const char *ib_wc_opcode_str(enum ib_wc_opcode opcode)
 	}
 }
 
-
 struct ib_session {
 	struct ib_pd		*pd;
 	struct ib_mr		*mr;
@@ -408,42 +407,40 @@ static inline void copy_from_kvec(void *data, const struct kvec *vec,
 	}
 }
 
-#define STAT_STORE_FUNC(store, reset) \
-static ssize_t store##_store(struct kobject *kobj, \
-			    struct kobj_attribute *attr, \
-			    const char *buf, size_t count) \
-{ \
-	int ret = -EINVAL; \
-	struct ibtrs_session *sess = container_of(kobj, struct ibtrs_session, \
-						  kobj_stats); \
-\
-	if (sysfs_streq(buf, "1")) \
-		ret = reset(sess, true); \
-	else if (sysfs_streq(buf, "0"))\
-		ret = reset(sess, false); \
-	if (ret) \
-		return ret; \
-\
-	return count; \
+#define STAT_STORE_FUNC(type, store, reset)				\
+static ssize_t store##_store(struct kobject *kobj,			\
+			     struct kobj_attribute *attr,		\
+			     const char *buf, size_t count)		\
+{									\
+	int ret = -EINVAL;						\
+	type *sess = container_of(kobj, type, kobj_stats);		\
+									\
+	if (sysfs_streq(buf, "1"))					\
+		ret = reset(sess, true);				\
+	else if (sysfs_streq(buf, "0"))					\
+		ret = reset(sess, false);				\
+	if (ret)							\
+		return ret;						\
+									\
+	return count;							\
 }
 
-#define STAT_SHOW_FUNC(show, print) \
-static ssize_t show##_show(struct kobject *kobj, \
-			   struct kobj_attribute *attr, \
-			   char *page) \
-{ \
-	struct ibtrs_session *sess = container_of(kobj, struct ibtrs_session, \
-						  kobj_stats); \
-\
-	return print(sess, page, PAGE_SIZE); \
+#define STAT_SHOW_FUNC(type, show, print)				\
+static ssize_t show##_show(struct kobject *kobj,			\
+			   struct kobj_attribute *attr,			\
+			   char *page)					\
+{									\
+	type *sess = container_of(kobj, type, kobj_stats);		\
+									\
+	return print(sess, page, PAGE_SIZE);				\
 }
 
-#define STAT_ATTR(stat, print, reset) \
-STAT_STORE_FUNC(stat, reset) \
-STAT_SHOW_FUNC(stat, print) \
-static struct kobj_attribute stat##_attr = \
-		__ATTR(stat, 0644, \
-		       stat##_show, \
+#define STAT_ATTR(type, stat, print, reset)				\
+STAT_STORE_FUNC(type, stat, reset)					\
+STAT_SHOW_FUNC(type, stat, print)					\
+static struct kobj_attribute stat##_attr =				\
+		__ATTR(stat, 0644,					\
+		       stat##_show,					\
 		       stat##_store)
 
 #endif /* IBTRS_PRI_H */
