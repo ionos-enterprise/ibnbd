@@ -373,7 +373,7 @@ struct ssm_work {
 	struct work_struct	work;
 };
 
-struct ibtrs_con {
+struct ibtrs_srv_con {
 	/* list for ibtrs_session->con_list */
 	struct list_head	list;
 	enum csm_state		state;
@@ -393,14 +393,14 @@ struct ibtrs_con {
 };
 
 struct csm_work {
-	struct ibtrs_con	*con;
+	struct ibtrs_srv_con	*con;
 	enum csm_ev		ev;
 	struct work_struct	work;
 };
 
 struct msg_work {
 	struct work_struct	work;
-	struct ibtrs_con	*con;
+	struct ibtrs_srv_con	*con;
 	void                    *msg;
 };
 
@@ -413,7 +413,7 @@ struct ibtrs_device {
 };
 
 struct ibtrs_ops_id {
-	struct ibtrs_con		*con;
+	struct ibtrs_srv_con		*con;
 	u32				msg_id;
 	u8				dir;
 	u64				data_dma_addr;
@@ -424,7 +424,7 @@ struct ibtrs_ops_id {
 	struct work_struct		work;
 } ____cacheline_aligned;
 
-static void csm_set_state(struct ibtrs_con *con, enum csm_state s)
+static void csm_set_state(struct ibtrs_srv_con *con, enum csm_state s)
 {
 	if (con->state != s) {
 		pr_debug("changing con %p csm state from %s to %s\n", con,
@@ -442,9 +442,9 @@ static void ssm_set_state(struct ibtrs_session *sess, enum ssm_state state)
 	}
 }
 
-static struct ibtrs_con *ibtrs_srv_get_user_con(struct ibtrs_session *sess)
+static struct ibtrs_srv_con *ibtrs_srv_get_user_con(struct ibtrs_session *sess)
 {
-	struct ibtrs_con *con;
+	struct ibtrs_srv_con *con;
 
 	if (sess->est_cnt > 0) {
 		list_for_each_entry(con, &sess->con_list, list) {
@@ -455,15 +455,15 @@ static struct ibtrs_con *ibtrs_srv_get_user_con(struct ibtrs_session *sess)
 	return NULL;
 }
 
-static void csm_init(struct ibtrs_con *con);
-static void csm_schedule_event(struct ibtrs_con *con, enum csm_ev ev);
+static void csm_init(struct ibtrs_srv_con *con);
+static void csm_schedule_event(struct ibtrs_srv_con *con, enum csm_ev ev);
 static int ssm_init(struct ibtrs_session *sess);
 static int ssm_schedule_event(struct ibtrs_session *sess, enum ssm_ev ev);
 
 static int ibtrs_srv_get_sess_current_port_num(struct ibtrs_session *sess)
 {
-	struct ibtrs_con *con, *next;
-	struct ibtrs_con *ucon = ibtrs_srv_get_user_con(sess);
+	struct ibtrs_srv_con *con, *next;
+	struct ibtrs_srv_con *ucon = ibtrs_srv_get_user_con(sess);
 
 	if (sess->state != SSM_STATE_CONNECTED || !ucon)
 		return -ECOMM;
@@ -502,7 +502,7 @@ int ibtrs_srv_current_hca_port_to_str(struct ibtrs_session *sess,
 
 inline const char *ibtrs_srv_get_sess_hca_name(struct ibtrs_session *sess)
 {
-	struct ibtrs_con *con = ibtrs_srv_get_user_con(sess);
+	struct ibtrs_srv_con *con = ibtrs_srv_get_user_con(sess);
 
 	if (con)
 		return sess->dev->device->name;
@@ -760,7 +760,7 @@ static int rdma_write_sg(struct ibtrs_ops_id *id)
 	return err;
 }
 
-static int send_io_resp_imm(struct ibtrs_con *con, int msg_id, s16 errno)
+static int send_io_resp_imm(struct ibtrs_srv_con *con, int msg_id, s16 errno)
 {
 	int err;
 
@@ -775,7 +775,7 @@ static int send_io_resp_imm(struct ibtrs_con *con, int msg_id, s16 errno)
 	return err;
 }
 
-static int send_heartbeat_raw(struct ibtrs_con *con)
+static int send_heartbeat_raw(struct ibtrs_srv_con *con)
 {
 	int err;
 
@@ -793,12 +793,12 @@ static int send_heartbeat_raw(struct ibtrs_con *con)
 
 static int send_heartbeat(struct ibtrs_session *sess)
 {
-	struct ibtrs_con *con;
+	struct ibtrs_srv_con *con;
 
 	if (unlikely(list_empty(&sess->con_list)))
 		return -ENOENT;
 
-	con = list_first_entry(&sess->con_list, struct ibtrs_con, list);
+	con = list_first_entry(&sess->con_list, struct ibtrs_srv_con, list);
 	WARN_ON(!con->user);
 
 	if (unlikely(con->state != CSM_STATE_CONNECTED))
@@ -899,7 +899,7 @@ int ibtrs_srv_send(struct ibtrs_session *sess, const struct kvec *vec,
 		   size_t nr)
 {
 	struct ibtrs_iu *iu = NULL;
-	struct ibtrs_con *con;
+	struct ibtrs_srv_con *con;
 	struct ibtrs_msg_user *msg;
 	size_t len;
 	bool closed_st = false;
@@ -981,7 +981,7 @@ inline void ibtrs_srv_set_sess_priv(struct ibtrs_session *sess, void *priv)
 }
 EXPORT_SYMBOL(ibtrs_srv_set_sess_priv);
 
-static int ibtrs_post_recv(struct ibtrs_con *con, struct ibtrs_iu *iu)
+static int ibtrs_post_recv(struct ibtrs_srv_con *con, struct ibtrs_iu *iu)
 {
 	struct ib_recv_wr wr, *bad_wr;
 	struct ib_sge list;
@@ -1307,7 +1307,7 @@ err_map:
 }
 
 static void fill_ibtrs_msg_sess_open_resp(struct ibtrs_msg_sess_open_resp *msg,
-					  struct ibtrs_con *con)
+					  struct ibtrs_srv_con *con)
 {
 	int i;
 
@@ -1445,7 +1445,7 @@ static int alloc_sess_bufs(struct ibtrs_session *sess)
 		return alloc_sess_tx_bufs(sess);
 }
 
-static int post_io_con_recv(struct ibtrs_con *con)
+static int post_io_con_recv(struct ibtrs_srv_con *con)
 {
 	int i, ret;
 
@@ -1458,7 +1458,7 @@ static int post_io_con_recv(struct ibtrs_con *con)
 	return 0;
 }
 
-static int post_user_con_recv(struct ibtrs_con *con)
+static int post_user_con_recv(struct ibtrs_srv_con *con)
 {
 	int i, ret;
 
@@ -1473,7 +1473,7 @@ static int post_user_con_recv(struct ibtrs_con *con)
 	return 0;
 }
 
-static int post_recv(struct ibtrs_con *con)
+static int post_recv(struct ibtrs_srv_con *con)
 {
 	if (con->user)
 		return post_user_con_recv(con);
@@ -1489,7 +1489,7 @@ static void free_sess_bufs(struct ibtrs_session *sess)
 	free_sess_tx_bufs(sess);
 }
 
-static int init_transfer_bufs(struct ibtrs_con *con)
+static int init_transfer_bufs(struct ibtrs_srv_con *con)
 {
 	int err;
 	struct ibtrs_session *sess = con->sess;
@@ -1506,7 +1506,7 @@ static int init_transfer_bufs(struct ibtrs_con *con)
 	return post_recv(con);
 }
 
-static void process_rdma_write_req(struct ibtrs_con *con,
+static void process_rdma_write_req(struct ibtrs_srv_con *con,
 				   struct ibtrs_msg_req_rdma_write *req,
 				   u32 buf_id, u32 off)
 {
@@ -1564,7 +1564,7 @@ send_err_msg:
 	ibtrs_srv_stats_dec_inflight(sess);
 }
 
-static void process_rdma_write(struct ibtrs_con *con,
+static void process_rdma_write(struct ibtrs_srv_con *con,
 			       struct ibtrs_msg_rdma_write *req,
 			       u32 buf_id, u32 off)
 {
@@ -1607,7 +1607,7 @@ send_err_msg:
 	ibtrs_srv_stats_dec_inflight(sess);
 }
 
-static int ibtrs_send_usr_msg_ack(struct ibtrs_con *con)
+static int ibtrs_send_usr_msg_ack(struct ibtrs_srv_con *con)
 {
 	struct ibtrs_session *sess;
 	int err;
@@ -1632,7 +1632,7 @@ static int ibtrs_send_usr_msg_ack(struct ibtrs_con *con)
 	return 0;
 }
 
-static void process_msg_user(struct ibtrs_con *con,
+static void process_msg_user(struct ibtrs_srv_con *con,
 			     struct ibtrs_msg_user *msg)
 {
 	int len;
@@ -1651,7 +1651,7 @@ static void process_msg_user(struct ibtrs_con *con,
 	atomic64_add(len, &sess->stats.user_ib_msgs.recv_size);
 }
 
-static void process_msg_user_ack(struct ibtrs_con *con)
+static void process_msg_user_ack(struct ibtrs_srv_con *con)
 {
 	struct ibtrs_session *sess = con->sess;
 
@@ -1659,7 +1659,7 @@ static void process_msg_user_ack(struct ibtrs_con *con)
 	wake_up(&con->sess->mu_buf_wait_q);
 }
 
-static void ibtrs_handle_write(struct ibtrs_con *con, struct ibtrs_iu *iu,
+static void ibtrs_handle_write(struct ibtrs_srv_con *con, struct ibtrs_iu *iu,
 			       struct ibtrs_msg_hdr *hdr, u32 id, u32 off)
 {
 	struct ibtrs_session *sess = con->sess;
@@ -1712,7 +1712,7 @@ err:
 static void msg_worker(struct work_struct *work)
 {
 	struct msg_work *w;
-	struct ibtrs_con *con;
+	struct ibtrs_srv_con *con;
 	struct ibtrs_msg_user *msg;
 
 	w = container_of(work, struct msg_work, work);
@@ -1723,7 +1723,8 @@ static void msg_worker(struct work_struct *work)
 	kfree(msg);
 }
 
-static int ibtrs_schedule_msg(struct ibtrs_con *con, struct ibtrs_msg_user *msg)
+static int ibtrs_schedule_msg(struct ibtrs_srv_con *con,
+			      struct ibtrs_msg_user *msg)
 {
 	struct msg_work *w;
 
@@ -1743,7 +1744,7 @@ static int ibtrs_schedule_msg(struct ibtrs_con *con, struct ibtrs_msg_user *msg)
 	return 0;
 }
 
-static void ibtrs_handle_recv(struct ibtrs_con *con,  struct ibtrs_iu *iu)
+static void ibtrs_handle_recv(struct ibtrs_srv_con *con, struct ibtrs_iu *iu)
 {
 	struct ibtrs_msg_hdr *hdr;
 	struct ibtrs_msg_sess_info *req;
@@ -1807,14 +1808,15 @@ err2:
 	csm_schedule_event(con, CSM_EV_CON_ERROR);
 }
 
-static void add_con_to_list(struct ibtrs_session *sess, struct ibtrs_con *con)
+static void add_con_to_list(struct ibtrs_session *sess,
+			    struct ibtrs_srv_con *con)
 {
 	mutex_lock(&sess->lock);
 	list_add_tail(&con->list, &sess->con_list);
 	mutex_unlock(&sess->lock);
 }
 
-static void remove_con_from_list(struct ibtrs_con *con)
+static void remove_con_from_list(struct ibtrs_srv_con *con)
 {
 	if (WARN_ON(!con->sess))
 		return;
@@ -1823,7 +1825,7 @@ static void remove_con_from_list(struct ibtrs_con *con)
 	mutex_unlock(&con->sess->lock);
 }
 
-static void close_con(struct ibtrs_con *con)
+static void close_con(struct ibtrs_srv_con *con)
 {
 	struct ibtrs_session *sess = con->sess;
 
@@ -1854,7 +1856,7 @@ static void close_con(struct ibtrs_con *con)
 	con->sess->active_cnt--;
 }
 
-static void destroy_con(struct ibtrs_con *con)
+static void destroy_con(struct ibtrs_srv_con *con)
 {
 	remove_con_from_list(con);
 	kfree(con);
@@ -1864,7 +1866,7 @@ static void destroy_sess(struct kref *kref)
 {
 	struct ibtrs_session *sess = container_of(kref, struct ibtrs_session,
 						  kref);
-	struct ibtrs_con *con, *con_next;
+	struct ibtrs_srv_con *con, *con_next;
 
 	if (sess->cm_id)
 		rdma_destroy_id(sess->cm_id);
@@ -2007,7 +2009,7 @@ static void ibtrs_srv_destroy_ib_session(struct ibtrs_session *sess)
 	kref_put(&sess->dev->ref, ibtrs_free_dev);
 }
 
-static void process_err_wc(struct ibtrs_con *con, struct ib_wc *wc)
+static void process_err_wc(struct ibtrs_srv_con *con, struct ib_wc *wc)
 {
 	struct ibtrs_iu *iu;
 
@@ -2043,7 +2045,7 @@ static void process_err_wc(struct ibtrs_con *con, struct ib_wc *wc)
 	csm_schedule_event(con, CSM_EV_CON_ERROR);
 }
 
-static int process_wcs(struct ibtrs_con *con, struct ib_wc *wcs, size_t len)
+static int process_wcs(struct ibtrs_srv_con *con, struct ib_wc *wcs, size_t len)
 {
 	int i, ret;
 	struct ibtrs_iu *iu;
@@ -2142,7 +2144,7 @@ static int process_wcs(struct ibtrs_con *con, struct ib_wc *wcs, size_t len)
 	return 0;
 }
 
-static void ibtrs_srv_update_wc_stats(struct ibtrs_con *con, int cnt)
+static void ibtrs_srv_update_wc_stats(struct ibtrs_srv_con *con, int cnt)
 {
 	int old_max = atomic_read(&con->sess->stats.wc_comp.max_wc_cnt);
 	int act_max;
@@ -2159,7 +2161,7 @@ static void ibtrs_srv_update_wc_stats(struct ibtrs_con *con, int cnt)
 	atomic64_add(cnt, &con->sess->stats.wc_comp.total_wc_cnt);
 }
 
-static int get_process_wcs(struct ibtrs_con *con, int *total_cnt)
+static int get_process_wcs(struct ibtrs_srv_con *con, int *total_cnt)
 {
 	int cnt, err;
 
@@ -2185,14 +2187,16 @@ static int get_process_wcs(struct ibtrs_con *con, int *total_cnt)
 
 static void wrapper_handle_cq_comp(struct work_struct *work)
 {
-	int err;
-	struct ibtrs_con *con = container_of(work, struct ibtrs_con, cq_work);
-	struct ibtrs_session *sess = con->sess;
+	struct ibtrs_srv_con *con;
 	int total_cnt = 0;
+	int err;
+
+	con = container_of(work, struct ibtrs_srv_con, cq_work);
 
 	if (unlikely(con->state == CSM_STATE_CLOSED)) {
-		ibtrs_err(sess, "Retrieving work completions from completion"
-			  " queue failed, connection is disconnected\n");
+		ibtrs_err(con->sess,
+			  "Retrieving work completions from completion "
+			  "queue failed, connection is disconnected\n");
 		goto error;
 	}
 
@@ -2221,7 +2225,7 @@ error:
 
 static void cq_event_handler(struct ib_cq *cq, void *ctx)
 {
-	struct ibtrs_con *con = ctx;
+	struct ibtrs_srv_con *con = ctx;
 
 	/* queue_work() can return False here.
 	 * The work can be already queued, When CQ notifications were already
@@ -2231,7 +2235,7 @@ static void cq_event_handler(struct ib_cq *cq, void *ctx)
 		queue_work(con->cq_wq, &con->cq_work);
 }
 
-static int accept(struct ibtrs_con *con)
+static int accept(struct ibtrs_srv_con *con)
 {
 	struct rdma_conn_param conn_param;
 	int ret;
@@ -2408,7 +2412,7 @@ static void ssm_create_con_worker(struct work_struct *work)
 	struct ibtrs_session *sess = ssm_w->sess;
 	struct rdma_cm_id *cm_id = ssm_w->cm_id;
 	bool user = ssm_w->user;
-	struct ibtrs_con *con;
+	struct ibtrs_srv_con *con;
 	int ret;
 	u16 cq_size, wr_queue_size;
 
@@ -2646,7 +2650,7 @@ err_reject:
 static int ibtrs_srv_rdma_cm_ev_handler(struct rdma_cm_id *cm_id,
 					struct rdma_cm_event *event)
 {
-	struct ibtrs_con *con = cm_id->context;
+	struct ibtrs_srv_con *con = cm_id->context;
 	int ret = 0;
 
 	pr_debug("cma_event type %d cma_id %p(%s) on con: %p\n", event->event,
@@ -2965,13 +2969,13 @@ static int check_module_params(void)
 	return 0;
 }
 
-static void csm_init(struct ibtrs_con *con)
+static void csm_init(struct ibtrs_srv_con *con)
 {
 	pr_debug("initializing csm to %s\n", csm_state_str(CSM_STATE_REQUESTED));
 	csm_set_state(con, CSM_STATE_REQUESTED);
 }
 
-static int send_msg_sess_open_resp(struct ibtrs_con *con)
+static int send_msg_sess_open_resp(struct ibtrs_srv_con *con)
 {
 	struct ibtrs_msg_sess_open_resp *msg;
 	int err;
@@ -3001,7 +3005,7 @@ static void queue_heartbeat_dwork(struct ibtrs_session *sess)
 				    HEARTBEAT_INTV_JIFFIES));
 }
 
-static void csm_requested(struct ibtrs_con *con, enum csm_ev ev)
+static void csm_requested(struct ibtrs_srv_con *con, enum csm_ev ev)
 {
 	struct ibtrs_session *sess = con->sess;
 	enum csm_state state = con->state;
@@ -3034,7 +3038,7 @@ static void csm_requested(struct ibtrs_con *con, enum csm_ev ev)
 	}
 }
 
-static void csm_connected(struct ibtrs_con *con, enum csm_ev ev)
+static void csm_connected(struct ibtrs_srv_con *con, enum csm_ev ev)
 {
 	struct ibtrs_session *sess = con->sess;
 	enum csm_state state = con->state;
@@ -3110,7 +3114,7 @@ destroy:
 	}
 }
 
-static void csm_closing(struct ibtrs_con *con, enum csm_ev ev)
+static void csm_closing(struct ibtrs_srv_con *con, enum csm_ev ev)
 {
 	struct ibtrs_session *sess = con->sess;
 	enum csm_state state = con->state;
@@ -3164,7 +3168,7 @@ destroy:
 	}
 }
 
-static void csm_flushing(struct ibtrs_con *con, enum csm_ev ev)
+static void csm_flushing(struct ibtrs_srv_con *con, enum csm_ev ev)
 {
 	struct ibtrs_session *sess = con->sess;
 	enum csm_state state = con->state;
@@ -3199,7 +3203,7 @@ static void csm_flushing(struct ibtrs_con *con, enum csm_ev ev)
 	}
 }
 
-static void csm_closed(struct ibtrs_con *con, enum csm_ev ev)
+static void csm_closed(struct ibtrs_srv_con *con, enum csm_ev ev)
 {
 	/* in this state, we ignore every event scheduled for this connection
 	 * and just wait for the session workqueue to be flushed and the
@@ -3208,7 +3212,7 @@ static void csm_closed(struct ibtrs_con *con, enum csm_ev ev)
 	pr_debug("con %p, event %s\n", con, csm_ev_str(ev));
 }
 
-typedef void (ibtrs_srv_csm_ev_handler_fn)(struct ibtrs_con *, enum csm_ev);
+typedef void (ibtrs_srv_csm_ev_handler_fn)(struct ibtrs_srv_con *, enum csm_ev);
 
 static ibtrs_srv_csm_ev_handler_fn *ibtrs_srv_csm_ev_handlers[] = {
 	[CSM_STATE_REQUESTED]		= csm_requested,
@@ -3218,7 +3222,7 @@ static ibtrs_srv_csm_ev_handler_fn *ibtrs_srv_csm_ev_handlers[] = {
 	[CSM_STATE_CLOSED]		= csm_closed,
 };
 
-static inline void ibtrs_srv_csm_ev_handle(struct ibtrs_con *con,
+static inline void ibtrs_srv_csm_ev_handle(struct ibtrs_srv_con *con,
 					   enum csm_ev ev)
 {
 	return (*ibtrs_srv_csm_ev_handlers[con->state])(con, ev);
@@ -3232,7 +3236,7 @@ static void csm_worker(struct work_struct *work)
 	kfree(csm_w);
 }
 
-static void csm_schedule_event(struct ibtrs_con *con, enum csm_ev ev)
+static void csm_schedule_event(struct ibtrs_srv_con *con, enum csm_ev ev)
 {
 	struct csm_work *w;
 
@@ -3259,7 +3263,7 @@ out:
 
 static void sess_schedule_csm_event(struct ibtrs_session *sess, enum csm_ev ev)
 {
-	struct ibtrs_con *con;
+	struct ibtrs_srv_con *con;
 
 	list_for_each_entry(con, &sess->con_list, list)
 		csm_schedule_event(con, ev);
@@ -3278,14 +3282,14 @@ static void remove_sess_from_sysfs(struct ibtrs_session *sess)
 }
 
 static __always_inline int
-__ibtrs_srv_request_cq_notifications(struct ibtrs_con *con)
+__ibtrs_srv_request_cq_notifications(struct ibtrs_srv_con *con)
 {
 	return ibtrs_request_cq_notifications(&con->ib_con);
 }
 
 static int ibtrs_srv_request_cq_notifications(struct ibtrs_session *sess)
 {
-	struct ibtrs_con *con;
+	struct ibtrs_srv_con *con;
 	int err, cnt = 0;
 
 	list_for_each_entry(con, &sess->con_list, list)  {

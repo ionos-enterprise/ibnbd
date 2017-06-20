@@ -89,7 +89,7 @@ struct ibtrs_session {
 	struct list_head	list; /* global session list */
 	wait_queue_head_t	wait_q;
 	enum ssm_state		state;
-	struct ibtrs_con	*con;
+	struct ibtrs_clt_con	*con;
 	struct ib_session	ib_sess;
 	struct ib_device	*ib_device;
 	struct ibtrs_iu		*rdma_info_iu;
