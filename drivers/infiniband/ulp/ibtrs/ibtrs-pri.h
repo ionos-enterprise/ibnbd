@@ -102,11 +102,6 @@ struct ibtrs_heartbeat {
 #pragma GCC diagnostic warning "-Wpadded"
 #endif
 
-/* Refer: IBTRS Protocol (Google doc)
- * https://docs.google.com/a/profitbricks.com/document/d/
- * 1o2YyuLGs7wnFVx4ExnBskbwa6aML-951Rry3H5QIpZU
- */
-
 /**
  * enum ibtrs_msg_types - IBTRS message types. DO NOT REMOVE OR REORDER!!!
  * @IBTRS_MSG_SESS_OPEN:	Client requests new session on Server
