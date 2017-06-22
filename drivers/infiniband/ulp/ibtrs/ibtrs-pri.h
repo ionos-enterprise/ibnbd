@@ -343,10 +343,8 @@ int ib_post_rdma_write_imm(struct ib_qp *qp, struct ib_sge *sge,
 			   unsigned int num_sge, u32 rkey, u64 rdma_addr,
 			   u64 wr_id, u32 imm_data, enum ib_send_flags flags);
 
-int ib_post_rdma_write(struct ib_qp *qp, struct ib_sge *sge,
-		       unsigned int num_sge, u32 rkey, u64 rdma_addr,
-		       u64 wr_id);
 int post_beacon(struct ibtrs_con *con);
+
 /**
  * ib_session_init() - Create a new IB session
  */

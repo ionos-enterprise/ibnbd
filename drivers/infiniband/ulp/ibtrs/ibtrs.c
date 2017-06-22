@@ -51,15 +51,15 @@ static int post_rdma_write(struct ib_qp *qp, struct ib_sge *sge, size_t num_sge,
 	struct ib_rdma_wr wr;
 	int i;
 
-	wr.wr.next			= NULL;
-	wr.wr.wr_id		= wr_id;
-	wr.wr.sg_list		= sge;
-	wr.wr.num_sge		= num_sge;
+	wr.wr.next	= NULL;
+	wr.wr.wr_id	= wr_id;
+	wr.wr.sg_list	= sge;
+	wr.wr.num_sge	= num_sge;
 	wr.rkey		= rkey;
 	wr.remote_addr	= rdma_addr;
-	wr.wr.opcode		= opcode;
-	wr.wr.ex.imm_data		= cpu_to_be32(imm_data);
-	wr.wr.send_flags		= flags;
+	wr.wr.opcode	  = opcode;
+	wr.wr.ex.imm_data = cpu_to_be32(imm_data);
+	wr.wr.send_flags = flags;
 
 	/* if one of the sges has 0 size,, the operation will fail with an
 	 * length error
@@ -69,14 +69,6 @@ static int post_rdma_write(struct ib_qp *qp, struct ib_sge *sge, size_t num_sge,
 			return -EINVAL;
 
 	return ib_post_send(qp, &wr.wr, &bad_wr);
-}
-
-inline int ib_post_rdma_write(struct ib_qp *qp, struct ib_sge *sge,
-			      unsigned int num_sge, u32 rkey, u64 rdma_addr,
-			      u64 wr_id)
-{
-	return post_rdma_write(qp, sge, num_sge, rkey, rdma_addr, wr_id,
-			       0, IB_WR_RDMA_WRITE, 0);
 }
 
 int ib_post_rdma_write_imm(struct ib_qp *qp, struct ib_sge *sge,
