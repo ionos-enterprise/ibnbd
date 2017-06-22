@@ -3629,9 +3629,9 @@ static int create_con(struct ibtrs_clt_con *con)
 	con->ibtrs_con.addr = sess->addr;
 	con->ibtrs_con.hostname = sess->hostname;
 	cq_vector = con->cpu % sess->ib_device->num_comp_vectors;
-	err = ibtrs_con_init(&con->ibtrs_con, con->cm_id,
-			  sess->max_sge, cq_event_handler, con, cq_vector,
-			  cq_size, wr_queue_size, &sess->ib_sess);
+	err = ibtrs_con_init(&sess->sess, &con->ibtrs_con, con->cm_id,
+			     sess->max_sge, cq_event_handler, con, cq_vector,
+			     cq_size, wr_queue_size, &sess->ib_sess);
 	if (err) {
 		ibtrs_err(sess,
 			  "Failed to initialize IB connection, err: %d\n",

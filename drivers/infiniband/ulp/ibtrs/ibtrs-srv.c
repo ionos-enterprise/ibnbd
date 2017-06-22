@@ -2455,9 +2455,9 @@ static void ssm_create_con_worker(struct work_struct *work)
 
 	con->ibtrs_con.addr = sess->addr;
 	con->ibtrs_con.hostname = sess->hostname;
-	ret = ibtrs_con_init(&con->ibtrs_con, con->cm_id,
-			  1, cq_event_handler, con, con->cq_vector, cq_size,
-			  wr_queue_size, &con->sess->dev->ib_sess);
+	ret = ibtrs_con_init(&sess->sess, &con->ibtrs_con, con->cm_id,
+			     1, cq_event_handler, con, con->cq_vector, cq_size,
+			     wr_queue_size, &con->sess->dev->ib_sess);
 	if (ret)
 		goto err_init;
 

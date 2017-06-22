@@ -69,12 +69,13 @@ struct ibtrs_sess {
 };
 
 struct ibtrs_con {
+	struct ibtrs_sess	*sess;
 	struct ib_qp		*qp;
 	struct ib_cq		*cq;
 	struct ib_send_wr	beacon;
 	struct rdma_cm_id	*cm_id;
-	struct ibtrs_ib_path    pri_path;
-	struct ibtrs_ib_path   cur_path;
+	struct ibtrs_ib_path	pri_path;
+	struct ibtrs_ib_path	cur_path;
 	char			*addr;
 	char			*hostname;
 };
@@ -352,16 +353,11 @@ int ib_session_init(struct ib_device *dev, struct ib_session *session);
 
 /**
  * ibtrs_con_init() - initialize and add a ibtrs_con to the session
- * @con:	&ibtrs_con to initialize
- * @session:	session the &ibtrs_con is added to
- * @ctx:	CQ context, returned to the user via completion handler
- *
- * Returns 0 on success otherwise a negative errno code
  */
-int ibtrs_con_init(struct ibtrs_con *con, struct rdma_cm_id *cm_id,
-		u32 max_send_sge,
-		ib_comp_handler comp_handler, void *ctx, int cq_vector,
-		u16 cq_size, u16 wr_queue_size, struct ib_session *session);
+int ibtrs_con_init(struct ibtrs_sess *ibtrs_sess, struct ibtrs_con *con,
+		   struct rdma_cm_id *cm_id, u32 max_send_sge,
+		   ib_comp_handler comp_handler, void *ctx, int cq_vector,
+		   u16 cq_size, u16 wr_queue_size, struct ib_session *session);
 
 int ibtrs_request_cq_notifications(struct ibtrs_con *con);
 

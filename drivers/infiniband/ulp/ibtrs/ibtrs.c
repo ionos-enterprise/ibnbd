@@ -282,8 +282,8 @@ int post_beacon(struct ibtrs_con *con)
 }
 EXPORT_SYMBOL_GPL(post_beacon);
 
-int ibtrs_con_init(struct ibtrs_con *con, struct rdma_cm_id *cm_id,
-		   u32 max_send_sge,
+int ibtrs_con_init(struct ibtrs_sess *ibtrs_sess, struct ibtrs_con *con,
+		   struct rdma_cm_id *cm_id, u32 max_send_sge,
 		   ib_comp_handler comp_handler, void *ctx, int cq_vector,
 		   u16 cq_size, u16 wr_queue_size, struct ib_session *session)
 {
@@ -305,6 +305,7 @@ int ibtrs_con_init(struct ibtrs_con *con, struct rdma_cm_id *cm_id,
 	con->beacon.wr_id = (uintptr_t)&con->beacon;
 	con->beacon.opcode = IB_WR_SEND;
 	con->cm_id = cm_id;
+	con->sess = ibtrs_sess;
 
 	return 0;
 }
