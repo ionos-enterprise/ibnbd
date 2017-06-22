@@ -276,19 +276,24 @@ out:
 
 static int create_sess(struct ibtrs_srv_sess *sess)
 {
+	const struct sockaddr_storage *sockaddr;
 	struct ibnbd_srv_session *srv_sess;
+	char str_addr[MAXHOSTNAMELEN];
+
+	sockaddr = ibtrs_srv_get_sess_sockaddr(sess);
+	ibtrs_addr_to_str(sockaddr, str_addr, sizeof(str_addr));
 
 	srv_sess = kzalloc(sizeof(*srv_sess), GFP_KERNEL);
 	if (!srv_sess) {
 		pr_err("Allocating srv_session for client %s failed\n",
-		       ibtrs_srv_get_sess_addr(sess));
+		       str_addr);
 		return -ENOMEM;
 	}
 	srv_sess->queue_depth = ibtrs_srv_get_sess_qdepth(sess);
 	srv_sess->sess_bio_set =  bioset_create(srv_sess->queue_depth, 0);
 	if (!srv_sess->sess_bio_set) {
 		pr_err("Allocating srv_session for client %s failed\n",
-		       ibtrs_srv_get_sess_addr(sess));
+		       str_addr);
 		kfree(srv_sess);
 		return -ENOMEM;
 	}
@@ -304,8 +309,7 @@ static int create_sess(struct ibtrs_srv_sess *sess)
 
 	srv_sess->ibtrs_sess = sess;
 	srv_sess->queue_depth = ibtrs_srv_get_sess_qdepth(sess);
-	strlcpy(srv_sess->str_addr, ibtrs_srv_get_sess_addr(sess),
-		sizeof(srv_sess->str_addr));
+	strlcpy(srv_sess->str_addr, str_addr, sizeof(srv_sess->str_addr));
 
 	ibtrs_srv_set_sess_priv(sess, srv_sess);
 
@@ -319,8 +323,6 @@ static int ibnbd_srv_sess_ev(struct ibtrs_srv_sess *sess,
 
 	switch (ev) {
 	case IBTRS_SRV_SESS_EV_CONNECTED:
-		pr_info("IBTRS session to %s established\n",
-			ibtrs_srv_get_sess_addr(sess));
 		return create_sess(sess);
 
 	case IBTRS_SRV_SESS_EV_DISCONNECTING:

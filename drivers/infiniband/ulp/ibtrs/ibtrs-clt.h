@@ -142,8 +142,6 @@ struct ibtrs_clt_sess {
 	struct completion	*destroy_completion;
 	struct kobject		kobj;
 	struct kobject		kobj_stats;
-	char			addr[IBTRS_ADDRLEN];
-	char			hostname[MAXHOSTNAMELEN];
 	struct ibtrs_clt_stats  stats;
 	wait_queue_head_t	mu_iu_wait_q;
 	wait_queue_head_t	mu_buf_wait_q;

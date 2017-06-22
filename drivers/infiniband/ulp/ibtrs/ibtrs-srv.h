@@ -110,8 +110,6 @@ struct ibtrs_srv_sess {
 	void			*priv;
 	struct kobject		kobj;
 	struct kobject		kobj_stats;
-	char			addr[IBTRS_ADDRLEN]; /* client address */
-	char			hostname[MAXHOSTNAMELEN];
 	u8			primary_port_num;
 	struct ibtrs_srv_stats	stats;
 	wait_queue_head_t	mu_iu_wait_q;

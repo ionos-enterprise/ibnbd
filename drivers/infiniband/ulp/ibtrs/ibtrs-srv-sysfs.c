@@ -1,8 +1,5 @@
 #define pr_fmt(fmt) KBUILD_MODNAME " L" __stringify(__LINE__) ": " fmt
 
-//XXX ONLY FOR IBTRS_ADDRLEN, remove ASAP
-#include <rdma/ibtrs.h>
-
 #include "ibtrs-pri.h"
 #include "ibtrs-srv.h"
 #include "ibtrs-log.h"
@@ -112,7 +109,7 @@ static ssize_t hostname_show(struct kobject *kobj,
 
 	sess = container_of(kobj, struct ibtrs_srv_sess, kobj);
 
-	return sprintf(page, "%s\n", sess->hostname);
+	return sprintf(page, "%s\n", sess->sess.addr.hostname);
 }
 
 static struct kobj_attribute hostname_attr =
@@ -210,15 +207,15 @@ static struct kobject *ibtrs_srv_sessions_kobj;
 
 int ibtrs_srv_create_sess_files(struct ibtrs_srv_sess *sess)
 {
+	char buf[MAXHOSTNAMELEN];
 	int ret;
-
-	pr_debug("creating sysfs files for sess %s\n", sess->addr);
 
 	if (WARN_ON(!ibtrs_srv_sess_get(sess)))
 		return -EINVAL;
 
+	sockaddr_to_str(&sess->sess.addr.sockaddr, buf, sizeof(buf));
 	ret = kobject_init_and_add(&sess->kobj, &ibtrs_srv_sess_ktype,
-				   ibtrs_srv_sessions_kobj, "%s", sess->addr);
+				   ibtrs_srv_sessions_kobj, "%s", buf);
 	if (ret) {
 		ibtrs_err(sess, "Failed to init and add sysfs directory for session,"
 			  " err: %d\n", ret);

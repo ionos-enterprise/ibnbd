@@ -64,8 +64,14 @@ struct ibtrs_ib_path {
 	union ib_gid    p_dgid;
 };
 
+struct ibtrs_addr {
+	struct sockaddr_storage sockaddr;
+	char	hostname[MAXHOSTNAMELEN];
+};
+
 struct ibtrs_sess {
 	struct list_head	list;
+	struct ibtrs_addr	addr;
 };
 
 struct ibtrs_con {
@@ -76,8 +82,6 @@ struct ibtrs_con {
 	struct rdma_cm_id	*cm_id;
 	struct ibtrs_ib_path	pri_path;
 	struct ibtrs_ib_path	cur_path;
-	char			*addr;
-	char			*hostname;
 };
 
 struct ibtrs_iu {
@@ -370,6 +374,42 @@ void ibtrs_con_destroy(struct ibtrs_con *con);
 void ib_session_destroy(struct ib_session *session);
 
 int ib_get_max_wr_queue_size(struct ib_device *dev);
+
+static inline void sockaddr_to_str(const struct sockaddr_storage *addr,
+				   char *buf, size_t len)
+{
+	switch (addr->ss_family) {
+	case AF_IB:
+		scnprintf(buf, len, "gid:%pI6",
+			  &((struct sockaddr_ib *)addr)->sib_addr.sib_raw);
+		return;
+	case AF_INET:
+		scnprintf(buf, len, "ip:%pI4",
+			  &((struct sockaddr_in *)addr)->sin_addr);
+		return;
+	case AF_INET6:
+		/* workaround for ip4 client addr being set to INET6 family.
+		 * This should fix it:
+		 * yotamke@mellanox.com: [PATCH for-next] RDMA/CMA: Mark
+		 * IPv4 addresses correctly when the listener is IPv6]
+		 * http://permalink.gmane.org/gmane.linux.drivers.rdma/22395
+		 *
+		 * The first byte of ip6 address can't be 0. If it is, assume
+		 * structure addr actually contains ip4 address.
+		 */
+		if (!((struct sockaddr_in6 *)addr)->sin6_addr.s6_addr[0]) {
+			scnprintf(buf, len, "ip:%pI4",
+				  &((struct sockaddr_in *)addr)->sin_addr);
+			return;
+		}
+		/* end of workaround*/
+		scnprintf(buf, len, "ip:%pI6c",
+			  &((struct sockaddr_in6 *)addr)->sin6_addr);
+		return;
+	}
+	scnprintf(buf, len, "<invalid address family>");
+	pr_err("Invalid address family\n");
+}
 
 /**
  * kvec_length() - Total number of bytes covered by an kvec.

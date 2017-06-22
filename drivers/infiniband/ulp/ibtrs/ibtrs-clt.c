@@ -745,10 +745,10 @@ static void free_io_bufs(struct ibtrs_clt_sess *sess);
 
 static int process_open_rsp(struct ibtrs_clt_con *con, const void *resp)
 {
-	int i;
 	const struct ibtrs_msg_sess_open_resp *msg = resp;
 	struct ibtrs_clt_sess *sess = con->sess;
 	u32 chunk_size;
+	int i;
 
 	rcu_read_lock();
 	smp_rmb(); /* fence con->state check */
@@ -774,7 +774,8 @@ static int process_open_rsp(struct ibtrs_clt_con *con, const void *resp)
 		return -EINVAL;
 	}
 
-	strlcpy(sess->hostname, msg->hostname, sizeof(sess->hostname));
+	memcpy(sess->sess.addr.hostname, msg->hostname,
+	       sizeof(msg->hostname));
 	sess->srv_rdma_buf_rkey = msg->rkey;
 	sess->user_queue_depth = msg->max_inflight_msg;
 	sess->max_io_size = msg->max_io_size;
@@ -3521,6 +3522,7 @@ static struct ibtrs_clt_sess *sess_init(const struct sockaddr_storage *addr,
 		goto err_cons;
 	}
 
+	sess->sess.addr.sockaddr = *addr;
 	sess->reconnect_delay_sec	= reconnect_delay_sec;
 	sess->max_reconnect_attempts	= max_reconnect_attempts;
 	sess->max_pages_per_mr		= max_segments;
@@ -3626,15 +3628,12 @@ static int create_con(struct ibtrs_clt_con *con)
 			  "pool, err: %d\n", err);
 		goto err_cm_id;
 	}
-	con->ibtrs_con.addr = sess->addr;
-	con->ibtrs_con.hostname = sess->hostname;
 	cq_vector = con->cpu % sess->ib_device->num_comp_vectors;
 	err = ibtrs_con_init(&sess->sess, &con->ibtrs_con, con->cm_id,
 			     sess->max_sge, cq_event_handler, con, cq_vector,
 			     cq_size, wr_queue_size, &sess->ib_sess);
 	if (err) {
-		ibtrs_err(sess,
-			  "Failed to initialize IB connection, err: %d\n",
+		ibtrs_err(sess, "Failed to initialize IB connection, err: %d\n",
 			  err);
 		goto err_pool;
 	}
@@ -3674,7 +3673,7 @@ struct ibtrs_clt_sess *ibtrs_clt_open(const struct sockaddr_storage *addr,
 {
 	int err;
 	struct ibtrs_clt_sess *sess;
-	char str_addr[IBTRS_ADDRLEN];
+	char str_addr[MAXHOSTNAMELEN];
 
 	if (!clt_ops_are_valid(clt_ops)) {
 		pr_err("User module did not register ops callbacks\n");
@@ -3702,7 +3701,6 @@ struct ibtrs_clt_sess *ibtrs_clt_open(const struct sockaddr_storage *addr,
 	}
 
 	get_sess(sess);
-	strlcpy(sess->addr, str_addr, sizeof(sess->addr));
 	err = init_con(sess, &sess->con[0], 0, true);
 	if (err) {
 		ibtrs_err(sess, "Establishing session to server failed,"
@@ -3724,7 +3722,7 @@ struct ibtrs_clt_sess *ibtrs_clt_open(const struct sockaddr_storage *addr,
 		goto err; /* state machine will do the clean up. */
 	}
 	err = ibtrs_clt_create_sess_files(&sess->kobj, &sess->kobj_stats,
-					  sess->addr);
+					  str_addr);
 	if (err) {
 		ibtrs_err(sess, "Establishing session to server failed,"
 			  " failed to create session sysfs files, err: %d\n",
@@ -5166,7 +5164,8 @@ int ibtrs_clt_query(struct ibtrs_clt_sess *sess, struct ibtrs_attrs *attr)
 	attr->max_pages_per_mr = sess->max_pages_per_mr;
 	attr->max_sge          = sess->max_sge;
 	attr->max_io_size      = sess->max_io_size;
-	strlcpy(attr->hostname, sess->hostname, sizeof(attr->hostname));
+	strlcpy(attr->hostname, sess->sess.addr.hostname,
+		sizeof(attr->hostname));
 
 	return 0;
 }

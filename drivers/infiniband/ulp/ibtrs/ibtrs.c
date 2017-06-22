@@ -269,8 +269,8 @@ static int create_qp(struct ibtrs_con *con, struct rdma_cm_id *cm_id,
 		ibtrs_err(con, "Creating QP failed, err: %d\n", ret);
 		return ret;
 	}
-
 	con->qp = cm_id->qp;
+
 	return ret;
 }
 
@@ -298,8 +298,7 @@ int ibtrs_con_init(struct ibtrs_sess *ibtrs_sess, struct ibtrs_con *con,
 	if (err) {
 		ret = ib_destroy_cq(con->cq);
 		if (ret)
-			ibtrs_err(con, "Destroying CQ failed, err: %d\n",
-				  ret);
+			ibtrs_err(con, "Destroying CQ failed, err: %d\n", ret);
 		return err;
 	}
 	con->beacon.wr_id = (uintptr_t)&con->beacon;

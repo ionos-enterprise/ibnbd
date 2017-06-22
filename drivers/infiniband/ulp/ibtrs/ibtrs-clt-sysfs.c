@@ -124,7 +124,7 @@ static ssize_t ibtrs_clt_hostname_show(struct kobject *kobj,
 
 	sess = container_of(kobj, struct ibtrs_clt_sess, kobj);
 
-	return sprintf(page, "%s\n", sess->hostname);
+	return sprintf(page, "%s\n", sess->sess.addr.hostname);
 }
 
 static struct kobj_attribute ibtrs_clt_hostname_attr =

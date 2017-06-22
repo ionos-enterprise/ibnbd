@@ -1794,7 +1794,8 @@ static void ibtrs_handle_recv(struct ibtrs_srv_con *con, struct ibtrs_iu *iu)
 			goto err2;
 		}
 		req = (struct ibtrs_msg_sess_info *)hdr;
-		strlcpy(sess->hostname, req->hostname, sizeof(sess->hostname));
+		memcpy(sess->sess.addr.hostname, req->hostname,
+		       sizeof(req->hostname));
 		return;
 	default:
 		ibtrs_err(sess, "Processing received message failed, "
@@ -2270,11 +2271,7 @@ __create_sess(struct rdma_cm_id *cm_id, const struct ibtrs_msg_sess_open *req)
 		goto out;
 	}
 
-	err = ibtrs_addr_to_str(&cm_id->route.addr.dst_addr, sess->addr,
-				sizeof(sess->addr));
-	if (err < 0)
-		goto err1;
-
+	sess->sess.addr.sockaddr = cm_id->route.addr.dst_addr;
 	sess->est_cnt = 0;
 	sess->state_in_sysfs = false;
 	sess->cur_cq_vector = -1;
@@ -2340,19 +2337,20 @@ out:
 	return ERR_PTR(err);
 }
 
-inline const char *ibtrs_srv_get_sess_hostname(struct ibtrs_srv_sess *sess)
+const char *ibtrs_srv_get_sess_hostname(struct ibtrs_srv_sess *sess)
 {
-	return sess->hostname;
+	return sess->sess.addr.hostname;
 }
 EXPORT_SYMBOL(ibtrs_srv_get_sess_hostname);
 
-inline const char *ibtrs_srv_get_sess_addr(struct ibtrs_srv_sess *sess)
+const struct sockaddr_storage *
+ibtrs_srv_get_sess_sockaddr(struct ibtrs_srv_sess *sess)
 {
-	return sess->addr;
+	return &sess->sess.addr.sockaddr;
 }
-EXPORT_SYMBOL(ibtrs_srv_get_sess_addr);
+EXPORT_SYMBOL(ibtrs_srv_get_sess_sockaddr);
 
-inline int ibtrs_srv_get_sess_qdepth(struct ibtrs_srv_sess *sess)
+int ibtrs_srv_get_sess_qdepth(struct ibtrs_srv_sess *sess)
 {
 	return sess->queue_depth;
 }
@@ -2410,15 +2408,18 @@ static int ibtrs_srv_get_next_cq_vector(struct ibtrs_srv_sess *sess)
 
 static void ssm_create_con_worker(struct work_struct *work)
 {
-	struct ssm_create_con_work *ssm_w =
-		container_of(work, struct ssm_create_con_work, work);
-	struct ibtrs_srv_sess *sess = ssm_w->sess;
-	struct rdma_cm_id *cm_id = ssm_w->cm_id;
-	bool user = ssm_w->user;
-	struct ibtrs_srv_con *con;
-	int ret;
+	struct ssm_create_con_work *ssm_w;
+	struct ibtrs_srv_sess *sess;
 	u16 cq_size, wr_queue_size;
+	struct ibtrs_srv_con *con;
+	struct rdma_cm_id *cm_id;
+	bool user;
+	int ret;
 
+	ssm_w = container_of(work, struct ssm_create_con_work, work);
+	sess = ssm_w->sess;
+	cm_id = ssm_w->cm_id;
+	user = ssm_w->user;
 	kfree(ssm_w);
 
 	if (sess->state == SSM_STATE_CLOSING ||
@@ -2453,13 +2454,14 @@ static void ssm_create_con_worker(struct work_struct *work)
 
 	con->cq_vector = ibtrs_srv_get_next_cq_vector(sess);
 
-	con->ibtrs_con.addr = sess->addr;
-	con->ibtrs_con.hostname = sess->hostname;
 	ret = ibtrs_con_init(&sess->sess, &con->ibtrs_con, con->cm_id,
 			     1, cq_event_handler, con, con->cq_vector, cq_size,
 			     wr_queue_size, &con->sess->dev->ib_sess);
-	if (ret)
+	if (ret) {
+		ibtrs_err(sess, "Failed to initialize IB connection, err: %d\n",
+			  ret);
 		goto err_init;
+	}
 
 	INIT_WORK(&con->cq_work, wrapper_handle_cq_comp);
 	if (con->user)

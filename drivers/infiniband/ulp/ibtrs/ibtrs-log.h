@@ -1,11 +1,40 @@
 #ifndef IBTRS_LOG_H
 #define IBTRS_LOG_H
 
-#define ibtrs_prefix(sess) ((sess)->hostname[0] ? (sess)->hostname : \
-			    (sess)->addr)
+struct fake_sess {
+	struct ibtrs_sess sess;
+};
 
-#define ibtrs_log(lvl, fn, sess, fmt, ...)			\
-	fn(lvl "<%s>: " fmt, ibtrs_prefix(sess), ##__VA_ARGS__)
+#define FAKE_OR_REAL(dev)						\
+	typeof(__builtin_choose_expr(					\
+		       __builtin_types_compatible_p(typeof(dev),	\
+						    struct ibtrs_con *), \
+		       (struct fake_sess *)NULL,			\
+		       (typeof(dev))NULL))
+
+
+#define ibtrs_prefix(dev) ({					\
+	const struct ibtrs_addr *addr;				\
+	char str_addr[MAXHOSTNAMELEN];				\
+	const char *str = str_addr;				\
+								\
+	__builtin_choose_expr(					\
+		__builtin_types_compatible_p(			\
+			typeof(dev), struct ibtrs_con *),	\
+		addr = &((struct ibtrs_con *)dev)->sess->addr,	\
+		addr = &((FAKE_OR_REAL(dev))(dev))->sess.addr	\
+	);							\
+								\
+	if (addr->hostname[0])					\
+		str = addr->hostname;				\
+	else							\
+		sockaddr_to_str(&addr->sockaddr, str_addr,	\
+				sizeof(str_addr));		\
+	str;							\
+})
+
+#define ibtrs_log(lvl, fn, dev, fmt, ...)			\
+	fn(lvl "<%s>: " fmt, ibtrs_prefix(dev), ##__VA_ARGS__)
 
 #define ibtrs_err(dev, fmt, ...)	\
 	ibtrs_log(KERN_ERR, printk, dev, fmt, ##__VA_ARGS__)
