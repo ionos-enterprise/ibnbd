@@ -56,3 +56,15 @@ s64 ibtrs_heartbeat_recv_ts_diff_ms(const struct ibtrs_heartbeat *h)
 	return timediff_cur_ns(atomic64_read(&h->recv_ts_ns)) / NSEC_PER_MSEC;
 }
 EXPORT_SYMBOL_GPL(ibtrs_heartbeat_recv_ts_diff_ms);
+
+int ibtrs_heartbeat_timeout_validate(int timeout)
+{
+	if (timeout && timeout < MIN_HEARTBEAT_TIMEOUT_MS) {
+		pr_warn("Heartbeat timeout: %d is invalid, must be 0 "
+			"or >= %d ms\n", timeout, MIN_HEARTBEAT_TIMEOUT_MS);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(ibtrs_heartbeat_timeout_validate);

@@ -317,6 +317,7 @@ void ibtrs_heartbeat_set_send_ts(struct ibtrs_heartbeat *h);
 void ibtrs_heartbeat_set_recv_ts(struct ibtrs_heartbeat *h);
 s64 ibtrs_heartbeat_send_ts_diff_ms(const struct ibtrs_heartbeat *h);
 s64 ibtrs_heartbeat_recv_ts_diff_ms(const struct ibtrs_heartbeat *h);
+int ibtrs_heartbeat_timeout_validate(int timeout);
 
 void ibtrs_iu_put(struct list_head *iu_list, struct ibtrs_iu *iu);
 struct ibtrs_iu *ibtrs_iu_get(struct list_head *iu_list);
@@ -371,8 +372,6 @@ void ibtrs_con_destroy(struct ibtrs_con *con);
 void ib_session_destroy(struct ib_session *session);
 
 int ib_get_max_wr_queue_size(struct ib_device *dev);
-
-int ibtrs_heartbeat_timeout_validate(int timeout);
 
 /**
  * kvec_length() - Total number of bytes covered by an kvec.

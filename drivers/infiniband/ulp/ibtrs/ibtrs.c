@@ -328,15 +328,3 @@ void ib_session_destroy(struct ib_session *session)
 	ib_unregister_event_handler(&session->event_handler);
 }
 EXPORT_SYMBOL_GPL(ib_session_destroy);
-
-int ibtrs_heartbeat_timeout_validate(int timeout)
-{
-	if (timeout && timeout < MIN_HEARTBEAT_TIMEOUT_MS) {
-		pr_warn("Heartbeat timeout: %d is invalid, must be 0 "
-			"or >= %d ms\n", timeout, MIN_HEARTBEAT_TIMEOUT_MS);
-		return -EINVAL;
-	}
-
-	return 0;
-}
-EXPORT_SYMBOL_GPL(ibtrs_heartbeat_timeout_validate);
