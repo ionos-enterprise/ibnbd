@@ -86,7 +86,7 @@ struct ibtrs_clt_stats {
 };
 
 struct ibtrs_clt_sess {
-	struct list_head	list; /* global session list */
+	struct ibtrs_sess	sess;
 	wait_queue_head_t	wait_q;
 	enum ssm_state		state;
 	struct ibtrs_clt_con	*con;

@@ -427,7 +427,7 @@ static void put_sess(struct ibtrs_clt_sess *sess)
 		ibtrs_clt_free_stats(sess);
 		destroy_completion = sess->destroy_completion;
 		mutex_lock(&sess_mutex);
-		list_del(&sess->list);
+		list_del(&sess->sess.list);
 		mutex_unlock(&sess_mutex);
 		ibtrs_info(sess, "Session is disconnected\n");
 		kfree(sess);
@@ -3531,7 +3531,7 @@ static struct ibtrs_clt_sess *sess_init(const struct sockaddr_storage *addr,
 	init_waitqueue_head(&sess->tags_wait);
 	sess->state = SSM_STATE_IDLE;
 	mutex_lock(&sess_mutex);
-	list_add(&sess->list, &sess_list);
+	list_add(&sess->sess.list, &sess_list);
 	mutex_unlock(&sess_mutex);
 	ibtrs_heartbeat_init(&sess->heartbeat,
 			     default_heartbeat_timeout_ms <
@@ -3744,7 +3744,7 @@ err1:
 	sess->con = NULL;
 	ibtrs_clt_free_stats(sess);
 	mutex_lock(&sess_mutex);
-	list_del(&sess->list);
+	list_del(&sess->sess.list);
 	mutex_unlock(&sess_mutex);
 	kfree(sess);
 err:
@@ -4452,7 +4452,7 @@ static void csm_closing(struct ibtrs_clt_con *con, enum csm_ev ev)
 			break;
 		}
 		break;
-		destroy:
+destroy:
 		con_destroy(con);
 		csm_set_state(con, CSM_STATE_CLOSED);
 		ssm_schedule_event(con->sess, SSM_EV_CON_CLOSED);

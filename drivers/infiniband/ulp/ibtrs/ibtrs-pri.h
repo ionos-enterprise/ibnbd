@@ -64,6 +64,10 @@ struct ibtrs_ib_path {
 	union ib_gid    p_dgid;
 };
 
+struct ibtrs_sess {
+	struct list_head	list;
+};
+
 struct ibtrs_con {
 	struct ib_qp		*qp;
 	struct ib_cq		*cq;

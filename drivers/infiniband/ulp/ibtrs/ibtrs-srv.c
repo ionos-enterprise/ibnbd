@@ -1878,7 +1878,7 @@ static void destroy_sess(struct kref *kref)
 		destroy_con(con);
 
 	mutex_lock(&sess_mutex);
-	list_del(&sess->list);
+	list_del(&sess->sess.list);
 	mutex_unlock(&sess_mutex);
 	wake_up(&sess_list_waitq);
 
@@ -2324,7 +2324,7 @@ __create_sess(struct rdma_cm_id *cm_id, const struct ibtrs_msg_sess_open *req)
 	kref_init(&sess->kref);
 	init_waitqueue_head(&sess->bufs_wait);
 
-	list_add(&sess->list, &sess_list);
+	list_add(&sess->sess.list, &sess_list);
 	ibtrs_info(sess, "IBTRS Session created (queue depth: %d)\n",
 		   sess->queue_depth);
 
@@ -2360,13 +2360,15 @@ EXPORT_SYMBOL(ibtrs_srv_get_sess_qdepth);
 
 static struct ibtrs_srv_sess *__find_active_sess(const char *uuid)
 {
-	struct ibtrs_srv_sess *n;
+	struct ibtrs_sess *sess;
+	struct ibtrs_srv_sess *srv_sess;
 
-	list_for_each_entry(n, &sess_list, list) {
-		if (!memcmp(n->uuid, uuid, sizeof(n->uuid)) &&
-		    n->state != SSM_STATE_CLOSING &&
-		    n->state != SSM_STATE_CLOSED)
-			return n;
+	list_for_each_entry(sess, &sess_list, list) {
+		srv_sess = container_of(sess, typeof(*srv_sess), sess);
+		if (!memcmp(srv_sess->uuid, uuid, sizeof(srv_sess->uuid)) &&
+		    srv_sess->state != SSM_STATE_CLOSING &&
+		    srv_sess->state != SSM_STATE_CLOSED)
+			return srv_sess;
 	}
 
 	return NULL;
@@ -2894,14 +2896,16 @@ inline void ibtrs_srv_queue_close(struct ibtrs_srv_sess *sess)
 
 static void close_sessions(void)
 {
-	struct ibtrs_srv_sess *sess;
+	struct ibtrs_srv_sess *srv_sess;
+	struct ibtrs_sess *sess;
 
 	mutex_lock(&sess_mutex);
 	list_for_each_entry(sess, &sess_list, list) {
-		if (!ibtrs_srv_sess_get(sess))
+		srv_sess = container_of(sess, typeof(*srv_sess), sess);
+		if (!ibtrs_srv_sess_get(srv_sess))
 			continue;
-		ssm_schedule_event(sess, SSM_EV_SESS_CLOSE);
-		ibtrs_srv_sess_put(sess);
+		ssm_schedule_event(srv_sess, SSM_EV_SESS_CLOSE);
+		ibtrs_srv_sess_put(srv_sess);
 	}
 	mutex_unlock(&sess_mutex);
 
@@ -3028,7 +3032,7 @@ static void csm_requested(struct ibtrs_srv_con *con, enum csm_ev ev)
 	case CSM_EV_CON_ERROR:
 	case CSM_EV_SESS_CLOSING:
 	case CSM_EV_CON_DISCONNECTED:
-	destroy:
+destroy:
 		csm_set_state(con, CSM_STATE_CLOSED);
 		close_con(con);
 		ssm_schedule_event(sess, SSM_EV_CON_EST_ERR);
