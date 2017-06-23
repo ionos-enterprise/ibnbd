@@ -936,11 +936,11 @@ struct ibnbd_clt_session *ibnbd_create_session(const struct sockaddr_storage *ad
 {
 	struct ibnbd_clt_session *sess;
 	struct ibtrs_attrs attrs;
-	char str_addr[IBTRS_ADDRLEN];
+	char str_addr[MAXHOSTNAMELEN];
 	int err;
 	int cpu;
 
-	err = ibtrs_addr_to_str(addr, str_addr, sizeof(str_addr));
+	err = ibnbd_sockaddr_to_str(addr, str_addr, sizeof(str_addr));
 	if (err < 0) {
 		pr_err("Can't create session, invalid address\n");
 		return ERR_PTR(err);

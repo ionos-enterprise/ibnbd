@@ -94,12 +94,12 @@ static int ibnbd_clt_parse_map_options(const char *buf, char *server_addr,
 				ret = -ENOMEM;
 				goto out;
 			}
-			if (strlen(p) > IBTRS_ADDRLEN) {
+			if (strlen(p) > MAXHOSTNAMELEN) {
 				pr_err("map_device: Server address too long\n");
 				ret = -EINVAL;
 				goto out;
 			}
-			strlcpy(server_addr, p, IBTRS_ADDRLEN);
+			strlcpy(server_addr, p, MAXHOSTNAMELEN);
 			kfree(p);
 			break;
 
@@ -461,7 +461,7 @@ static ssize_t ibnbd_clt_session_show(struct kobject *kobj,
 				      char *page)
 {
 	struct ibnbd_clt_dev *dev;
-	char server_addr[IBTRS_ADDRLEN];
+	char server_addr[MAXHOSTNAMELEN];
 	int ret;
 
 	dev = container_of(kobj, struct ibnbd_clt_dev, kobj);
@@ -469,8 +469,8 @@ static ssize_t ibnbd_clt_session_show(struct kobject *kobj,
 	if (dev->dev_state == DEV_STATE_UNMAPPED)
 		return -EIO;
 
-	ret = ibtrs_addr_to_str(&dev->sess->addr, server_addr,
-				sizeof(server_addr));
+	ret = ibnbd_sockaddr_to_str(&dev->sess->addr, server_addr,
+				    sizeof(server_addr));
 
 	if (ret >= sizeof(server_addr))
 		return -ENOBUFS;
@@ -702,7 +702,7 @@ static ssize_t ibnbd_clt_map_device_store(struct kobject *kobj,
 	struct ibnbd_clt_dev *dev;
 	int ret;
 	char pathname[NAME_MAX];
-	char server_addr[IBTRS_ADDRLEN];
+	char server_addr[MAXHOSTNAMELEN];
 	enum ibnbd_access_mode access_mode = IBNBD_ACCESS_RW;
 	enum ibnbd_queue_mode queue_mode = BLK_MQ;
 	enum ibnbd_io_mode io_mode = IBNBD_AUTOIO;

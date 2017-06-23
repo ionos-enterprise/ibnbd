@@ -3681,16 +3681,7 @@ struct ibtrs_clt_sess *ibtrs_clt_open(const struct sockaddr_storage *addr,
 		goto err;
 	}
 
-	err = ibtrs_addr_to_str(addr, str_addr, sizeof(str_addr));
-	if (err < 0) {
-		pr_err("Establishing session to server failed, converting"
-		       " addr from binary to string failed, err: %d\n",
-		       err);
-		return ERR_PTR(err);
-	}
-
-	pr_info("Establishing session to server %s\n", str_addr);
-
+	sockaddr_to_str(addr, str_addr, sizeof(str_addr));
 	sess = sess_init(addr, pdu_sz, priv, reconnect_delay_sec,
 			 max_segments, max_reconnect_attempts);
 	if (IS_ERR(sess)) {

@@ -281,7 +281,7 @@ static int create_sess(struct ibtrs_srv_sess *sess)
 	char str_addr[MAXHOSTNAMELEN];
 
 	sockaddr = ibtrs_srv_get_sess_sockaddr(sess);
-	ibtrs_addr_to_str(sockaddr, str_addr, sizeof(str_addr));
+	ibnbd_sockaddr_to_str(sockaddr, str_addr, sizeof(str_addr));
 
 	srv_sess = kzalloc(sizeof(*srv_sess), GFP_KERNEL);
 	if (!srv_sess) {

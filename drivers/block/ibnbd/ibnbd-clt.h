@@ -70,7 +70,7 @@ struct ibnbd_clt_session {
 	struct list_head        devs_list; /* list of struct ibnbd_clt_dev */
 	struct kref		refcount;
 	struct sockaddr_storage addr;
-	char			str_addr[IBTRS_ADDRLEN];
+	char			str_addr[MAXHOSTNAMELEN];
 	char			hostname[MAXHOSTNAMELEN];
 	enum ibnbd_clt_sess_state state;
 	u8			ver; /* protocol version */
