@@ -145,7 +145,7 @@ struct ibtrs_clt_sess {
 	wait_queue_head_t	mu_iu_wait_q;
 	wait_queue_head_t	mu_buf_wait_q;
 	atomic_t		peer_usr_msg_bufs;
-	struct completion	*ib_sess_destroy_completion;
+	bool			device_removed;
 };
 
 #define TAG_SIZE(sess) (sizeof(struct ibtrs_tag) + (sess)->pdu_sz)

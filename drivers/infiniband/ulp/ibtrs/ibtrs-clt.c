@@ -314,7 +314,6 @@ struct ibtrs_clt_con {
 	struct workqueue_struct *cq_wq;
 	struct tasklet_struct	cq_tasklet;
 	struct ib_wc		wcs[WC_ARRAY_SIZE];
-	bool			device_being_removed;
 };
 
 struct sess_destroy_work {
@@ -2082,28 +2081,9 @@ static int ibtrs_clt_rdma_cm_ev_handler(struct rdma_cm_id *cm_id,
 		csm_schedule_event(con, CSM_EV_CON_ERROR);
 		break;
 	}
-	case RDMA_CM_EVENT_DEVICE_REMOVAL: {
-		struct completion dc;
-
-		ibtrs_err_rl(con->sess, "CM error (CM event: %s, err: %d)\n",
-			     rdma_event_msg(event->event), event->status);
-
-		con->device_being_removed = true;
-		init_completion(&dc);
-		con->sess->ib_sess_destroy_completion = &dc;
-
-		/* Generating a CON_ERROR event will cause the SSM to close all
-		 * the connections and try to reconnect. Wait until all
-		 * connections are closed and the ib session destroyed before
-		 * returning to the ib core code.
-		 */
-		csm_schedule_event(con, CSM_EV_CON_ERROR);
-		wait_for_completion(&dc);
-		con->sess->ib_sess_destroy_completion = NULL;
-
-		/* return 1 so cm_id is destroyed afterwards */
-		return 1;
-	}
+	case RDMA_CM_EVENT_DEVICE_REMOVAL:
+		/* Device removal is handled via the ib_client API */
+		break;
 	default:
 		ibtrs_wrn(con->sess, "Ignoring unexpected CM event %s, err: %d\n",
 			  rdma_event_msg(event->event), event->status);
@@ -2111,6 +2091,38 @@ static int ibtrs_clt_rdma_cm_ev_handler(struct rdma_cm_id *cm_id,
 	}
 	return 0;
 }
+
+static void ibtrs_clt_ib_client_remove(struct ib_device *ib_device,
+				       void *client_data)
+{
+	struct ibtrs_clt_sess *clt_sess;
+	struct ibtrs_sess *sess;
+
+	/* Remove sessions using this device */
+	mutex_lock(&sess_mutex);
+	list_for_each_entry(sess, &sess_list, list) {
+		clt_sess = container_of(sess, struct ibtrs_clt_sess, sess);
+		if (clt_sess->ib_device != ib_device)
+			continue;
+		ibtrs_info(clt_sess, "removing session\n");
+		/*
+		 * Generating a CON_ERROR event will cause the SSM to close
+		 * all the connections and try to reconnect, in order to avoid
+		 * reconnections mark device as removed.
+		 */
+		clt_sess->device_removed = true;
+		ssm_schedule_event(clt_sess, SSM_EV_CON_ERROR);
+	}
+	mutex_unlock(&sess_mutex);
+
+	/* Ensure scheduled event is completed */
+	flush_workqueue(ibtrs_wq);
+}
+
+static struct ib_client ibtrs_clt_ib_client = {
+       .name   = "ibtrs_client",
+       .remove = ibtrs_clt_ib_client_remove
+};
 
 static void handle_cq_comp(struct ibtrs_clt_con *con)
 {
@@ -2917,9 +2929,6 @@ static void ibtrs_clt_destroy_ib_session(struct ibtrs_clt_sess *sess)
 
 	if (atomic_cmpxchg(&sess->ib_sess_initialized, 1, 0) == 1)
 		ib_session_destroy(&sess->ib_sess);
-
-	if (sess->ib_sess_destroy_completion)
-		complete_all(sess->ib_sess_destroy_completion);
 }
 
 static void free_con_fast_pool(struct ibtrs_clt_con *con)
@@ -2962,10 +2971,8 @@ static int alloc_con_fast_pool(struct ibtrs_clt_con *con)
 
 static void ibtrs_clt_destroy_cm_id(struct ibtrs_clt_con *con)
 {
-	if (!con->device_being_removed) {
-		rdma_destroy_id(con->cm_id);
-		con->cm_id = NULL;
-	}
+	rdma_destroy_id(con->cm_id);
+	con->cm_id = NULL;
 }
 
 static void con_destroy(struct ibtrs_clt_con *con)
@@ -3555,10 +3562,9 @@ static int init_con(struct ibtrs_clt_sess *sess, struct ibtrs_clt_con *con,
 {
 	int err;
 
-	con->sess			= sess;
-	con->cpu			= cpu;
-	con->user			= user;
-	con->device_being_removed	= false;
+	con->sess = sess;
+	con->cpu  = cpu;
+	con->user = user;
 
 	err = create_cm_id_con(&sess->peer_addr, con);
 	if (err) {
@@ -4988,14 +4994,14 @@ static void ssm_close_reconnect(struct ibtrs_clt_sess *sess, enum ssm_ev ev)
 		if (sess->active_cnt)
 			break;
 	case SSM_EV_ALL_CON_CLOSED:
-		if (!sess->ib_sess_destroy_completion &&
+		if (!sess->device_removed &&
 		    (sess->max_reconnect_attempts == -1 ||
 		     (sess->max_reconnect_attempts > 0 &&
 		      sess->retry_cnt < sess->max_reconnect_attempts))) {
 			ssm_init_state(sess, SSM_STATE_RECONNECT);
 		} else {
-			if (sess->ib_sess_destroy_completion)
-				ibtrs_info(sess, "Device is being removed, will not"
+			if (sess->device_removed)
+				ibtrs_info(sess, "Device is removed, will not"
 					   " schedule reconnect of session.\n");
 			else
 				ibtrs_info(sess, "Max reconnect attempts reached, "
@@ -5253,17 +5259,27 @@ static int __init ibtrs_client_init(void)
 		return -ENOMEM;
 	}
 
+	err = ib_register_client(&ibtrs_clt_ib_client);
+	if (err) {
+		goto out_destroy_wq;
+		return err;
+	}
+
 	err = ibtrs_clt_create_sysfs_files();
 	if (err) {
 		pr_err("Failed to load module, can't create sysfs files,"
 		       " err: %d\n", err);
-		goto out_destroy_wq;
+		goto out_unregister_client;
 	}
 	uuid_le_gen(&uuid);
+
 	return 0;
 
+out_unregister_client:
+	ib_unregister_client(&ibtrs_clt_ib_client);
 out_destroy_wq:
 	destroy_workqueue(ibtrs_wq);
+
 	return err;
 }
 
@@ -5275,6 +5291,7 @@ static void __exit ibtrs_client_exit(void)
 	WARN(!list_empty(&sess_list),
 	     "Session(s) still exist on module unload\n");
 	mutex_unlock(&sess_mutex);
+	ib_unregister_client(&ibtrs_clt_ib_client);
 	ibtrs_clt_destroy_sysfs_files();
 	destroy_workqueue(ibtrs_wq);
 
