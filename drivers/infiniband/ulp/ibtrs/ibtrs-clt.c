@@ -317,7 +317,7 @@ struct ibtrs_clt_con {
 	bool			device_being_removed;
 };
 
-struct sess_destroy_sm_wq_work {
+struct sess_destroy_work {
 	struct work_struct	work;
 	struct ibtrs_clt_sess	*sess;
 };
@@ -420,7 +420,6 @@ static void put_sess(struct ibtrs_clt_sess *sess)
 	if (!atomic_dec_if_positive(&sess->refcount)) {
 		struct completion *destroy_completion;
 
-		destroy_workqueue(sess->sm_wq);
 		sess_deinit_cons(sess);
 		kfree(sess->con);
 		sess->con = NULL;
@@ -654,7 +653,7 @@ out:
 	w->con = con;
 	w->ev = ev;
 	INIT_WORK(&w->work, csm_trigger_event);
-	WARN_ON(!queue_work_on(0, con->sess->sm_wq, &w->work));
+	WARN_ON(!queue_work_on(0, ibtrs_wq, &w->work));
 }
 
 static void ssm_schedule_event(struct ibtrs_clt_sess *sess, enum ssm_ev ev)
@@ -670,7 +669,7 @@ static void ssm_schedule_event(struct ibtrs_clt_sess *sess, enum ssm_ev ev)
 	w->sess = sess;
 	w->ev = ev;
 	INIT_WORK(&w->work, ssm_trigger_event);
-	WARN_ON(!queue_work_on(0, sess->sm_wq, &w->work));
+	WARN_ON(!queue_work_on(0, ibtrs_wq, &w->work));
 }
 
 static inline bool clt_ops_are_valid(const struct ibtrs_clt_ops *ops)
@@ -3097,9 +3096,9 @@ int ibtrs_clt_stats_wc_completion_to_str(struct ibtrs_clt_sess *sess, char *buf,
 
 static void sess_destroy_handler(struct work_struct *work)
 {
-	struct sess_destroy_sm_wq_work *w;
+	struct sess_destroy_work *w;
 
-	w = container_of(work, struct sess_destroy_sm_wq_work, work);
+	w = container_of(work, struct sess_destroy_work, work);
 
 	put_sess(w->sess);
 	kfree(w);
@@ -3107,7 +3106,7 @@ static void sess_destroy_handler(struct work_struct *work)
 
 static void sess_schedule_destroy(struct ibtrs_clt_sess *sess)
 {
-	struct sess_destroy_sm_wq_work *w;
+	struct sess_destroy_work *w;
 
 	while (true) {
 		w = kmalloc(sizeof(*w), GFP_KERNEL | __GFP_REPEAT);
@@ -3491,13 +3490,6 @@ static struct ibtrs_clt_sess *sess_init(const struct sockaddr_storage *addr,
 		goto err;
 	}
 	atomic_set(&sess->refcount, 1);
-	sess->sm_wq = create_workqueue("sess_sm_wq");
-
-	if (!sess->sm_wq) {
-		pr_err("Failed to create SSM workqueue\n");
-		err = -ENOMEM;
-		goto err_free_sess;
-	}
 
 	sess->peer_addr	= *addr;
 	sess->pdu_sz	= pdu_sz;
@@ -3506,7 +3498,7 @@ static struct ibtrs_clt_sess *sess_init(const struct sockaddr_storage *addr,
 				  GFP_KERNEL);
 	if (!sess->con) {
 		err = -ENOMEM;
-		goto err_free_sm_wq;
+		goto err_free_sess;
 	}
 
 	sess->rdma_info_iu = NULL;
@@ -3552,8 +3544,6 @@ err_cons:
 err_free_con:
 	kfree(sess->con);
 	sess->con = NULL;
-err_free_sm_wq:
-	destroy_workqueue(sess->sm_wq);
 err_free_sess:
 	kfree(sess);
 err:
@@ -3727,7 +3717,6 @@ struct ibtrs_clt_sess *ibtrs_clt_open(const struct sockaddr_storage *addr,
 	return sess;
 
 err1:
-	destroy_workqueue(sess->sm_wq);
 	sess_deinit_cons(sess);
 	kfree(sess->con);
 	sess->con = NULL;
@@ -4911,8 +4900,9 @@ static int ssm_reconnect_init(struct ibtrs_clt_sess *sess)
 	delay_jiffies = msecs_to_jiffies(1000 * (delay_sec));
 
 	ibtrs_info(sess, "Session reconnect in %ds\n", delay_sec);
-	queue_delayed_work_on(0, sess->sm_wq,
-			      &sess->reconnect_dwork, delay_jiffies);
+	queue_delayed_work_on(0, ibtrs_wq, &sess->reconnect_dwork,
+			      delay_jiffies);
+
 	return 0;
 }
 
@@ -5257,7 +5247,7 @@ static int __init ibtrs_client_init(void)
 		return err;
 	}
 
-	ibtrs_wq = alloc_workqueue("ibtrs_client_wq", 0, 0);
+	ibtrs_wq = create_workqueue("ibtrs_client_wq");
 	if (!ibtrs_wq) {
 		pr_err("Failed to load module, alloc ibtrs_client_wq failed\n");
 		return -ENOMEM;

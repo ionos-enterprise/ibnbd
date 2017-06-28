@@ -107,7 +107,6 @@ struct ibtrs_clt_sess {
 	bool			io_bufs_initialized;
 	size_t			pdu_sz;
 	void			*priv;
-	struct workqueue_struct	*sm_wq;
 	struct workqueue_struct	*msg_wq;
 	struct delayed_work	heartbeat_dwork;
 	struct delayed_work	reconnect_dwork;
