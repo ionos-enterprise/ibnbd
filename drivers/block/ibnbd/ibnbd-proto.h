@@ -19,7 +19,6 @@
  * @IBNBD_MSG_OPEN:		open connection to ibnbd server instance
  * @IBNBD_MSG_OPEN_RSP:		response to an @IBNBD_MSG_OPEN
  * @IBNBD_MSG_READ:		request block device read operation
- * @IBNBD_MSG_WRITE:		request block device write operation
  * @IBNBD_MSG_REVAL:		notify client about changed device size
  *
  * Note: DO NOT REORDER THE MEMBERS OF THIS ENUM!

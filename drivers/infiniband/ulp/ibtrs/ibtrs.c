@@ -33,7 +33,7 @@ int ibtrs_post_send(struct ib_qp *qp, struct ib_mr *mr, struct ibtrs_iu *iu,
 
 	memset(&wr, 0, sizeof(wr));
 	wr.next       = NULL;
-	wr.wr_id      = (uintptr_t)iu;
+	wr.wr_cqe     = &iu->cqe;
 	wr.sg_list    = &list;
 	wr.num_sge    = 1;
 	wr.opcode     = IB_WR_SEND;
@@ -43,8 +43,9 @@ int ibtrs_post_send(struct ib_qp *qp, struct ib_mr *mr, struct ibtrs_iu *iu,
 }
 EXPORT_SYMBOL_GPL(ibtrs_post_send);
 
-static int post_rdma_write(struct ib_qp *qp, struct ib_sge *sge, size_t num_sge,
-			   u32 rkey, u64 rdma_addr, u64 wr_id, u32 imm_data,
+static int post_rdma_write(struct ib_qp *qp, struct ib_cqe *cqe,
+			   struct ib_sge *sge, size_t num_sge,
+			   u32 rkey, u64 rdma_addr, u32 imm_data,
 			   enum ib_wr_opcode opcode, enum ib_send_flags flags)
 {
 	struct ib_send_wr *bad_wr;
@@ -52,7 +53,7 @@ static int post_rdma_write(struct ib_qp *qp, struct ib_sge *sge, size_t num_sge,
 	int i;
 
 	wr.wr.next	= NULL;
-	wr.wr.wr_id	= wr_id;
+	wr.wr.wr_cqe	= cqe;
 	wr.wr.sg_list	= sge;
 	wr.wr.num_sge	= num_sge;
 	wr.rkey		= rkey;
@@ -71,12 +72,12 @@ static int post_rdma_write(struct ib_qp *qp, struct ib_sge *sge, size_t num_sge,
 	return ib_post_send(qp, &wr.wr, &bad_wr);
 }
 
-int ib_post_rdma_write_imm(struct ib_qp *qp, struct ib_sge *sge,
-			   unsigned int num_sge, u32 rkey, u64 rdma_addr,
-			   u64 wr_id, u32 imm_data,
+int ib_post_rdma_write_imm(struct ib_qp *qp, struct ib_cqe *cqe,
+			   struct ib_sge *sge, unsigned int num_sge,
+			   u32 rkey, u64 rdma_addr, u32 imm_data,
 			   enum ib_send_flags flags)
 {
-	return post_rdma_write(qp, sge, num_sge, rkey, rdma_addr, wr_id,
+	return post_rdma_write(qp, cqe, sge, num_sge, rkey, rdma_addr,
 			       imm_data, IB_WR_RDMA_WRITE_WITH_IMM, flags);
 }
 EXPORT_SYMBOL_GPL(ib_post_rdma_write_imm);
@@ -170,11 +171,6 @@ static void qp_event_handler(struct ib_event *ev, void *ctx)
 	}
 }
 
-static void cq_event_handler(struct ib_event *ev, void *ctx)
-{
-	pr_info("CQ event %s (%d)\n", ib_event_str(ev->event), ev->event);
-}
-
 int ib_session_init(struct ib_device *dev, struct ib_session *s)
 {
 	int err;
@@ -206,16 +202,10 @@ err:
 EXPORT_SYMBOL_GPL(ib_session_init);
 
 static int init_cq(struct ibtrs_con *con, struct rdma_cm_id *cm_id,
-		   ib_comp_handler comp_handler, void *ctx, int cq_vector,
-		   u16 cq_size)
+		   int cq_vector, u16 cq_size, enum ib_poll_context poll_ctx)
 {
-	struct ib_cq_init_attr cq_attr = {};
-
-	cq_attr.cqe = cq_size * 2 + 1;
-	cq_attr.comp_vector = cq_vector;
-
-	con->cq = ib_create_cq(cm_id->device, comp_handler, cq_event_handler,
-			       ctx, &cq_attr);/*1 for beacon*/
+	con->cq = ib_alloc_cq(cm_id->device, con, cq_size * 2 + 1,
+			      cq_vector, poll_ctx);
 	if (IS_ERR(con->cq)) {
 		ibtrs_err(con, "Creating completion queue failed, errno: %ld\n",
 			  PTR_ERR(con->cq));
@@ -283,14 +273,13 @@ int post_beacon(struct ibtrs_con *con)
 EXPORT_SYMBOL_GPL(post_beacon);
 
 int ibtrs_con_init(struct ibtrs_sess *ibtrs_sess, struct ibtrs_con *con,
-		   struct rdma_cm_id *cm_id, u32 max_send_sge,
-		   ib_comp_handler comp_handler, void *ctx, int cq_vector,
-		   u16 cq_size, u16 wr_queue_size, struct ib_session *session)
+		   struct rdma_cm_id *cm_id, u32 max_send_sge, int cq_vector,
+		   u16 cq_size, u16 wr_queue_size, struct ib_session *session,
+		   enum ib_poll_context poll_ctx)
 {
 	int err, ret;
 
-	err = init_cq(con, cm_id, comp_handler, ctx,
-		      cq_vector, cq_size);
+	err = init_cq(con, cm_id, cq_vector, cq_size, poll_ctx);
 	if (err)
 		return err;
 
@@ -301,7 +290,7 @@ int ibtrs_con_init(struct ibtrs_sess *ibtrs_sess, struct ibtrs_con *con,
 			ibtrs_err(con, "Destroying CQ failed, err: %d\n", ret);
 		return err;
 	}
-	con->beacon.wr_id = (uintptr_t)&con->beacon;
+	con->beacon.wr_cqe = &con->beacon_cqe;
 	con->beacon.opcode = IB_WR_SEND;
 	con->cm_id = cm_id;
 	con->sess = ibtrs_sess;

@@ -78,7 +78,8 @@ struct ibtrs_con {
 	struct ibtrs_sess	*sess;
 	struct ib_qp		*qp;
 	struct ib_cq		*cq;
-	struct ib_send_wr	beacon;
+	struct ib_send_wr	beacon;      /* XXX die ASAP */
+	struct ib_cqe		beacon_cqe;  /* XXX die ASAP */
 	struct rdma_cm_id	*cm_id;
 	struct ibtrs_ib_path	pri_path;
 	struct ibtrs_ib_path	cur_path;
@@ -86,6 +87,7 @@ struct ibtrs_con {
 
 struct ibtrs_iu {
 	struct list_head        list;
+	struct ib_cqe           cqe;
 	dma_addr_t              dma_addr;
 	void                    *buf;
 	size_t                  size;
@@ -344,9 +346,10 @@ int ibtrs_write_empty_imm(struct ib_qp *qp, u32 imm_data,
 int ibtrs_post_send(struct ib_qp *qp, struct ib_mr *mr, struct ibtrs_iu *iu,
 		    u32 size);
 
-int ib_post_rdma_write_imm(struct ib_qp *qp, struct ib_sge *sge,
-			   unsigned int num_sge, u32 rkey, u64 rdma_addr,
-			   u64 wr_id, u32 imm_data, enum ib_send_flags flags);
+int ib_post_rdma_write_imm(struct ib_qp *qp, struct ib_cqe *cqe,
+			   struct ib_sge *sge, unsigned int num_sge,
+			   u32 rkey, u64 rdma_addr, u32 imm_data,
+			   enum ib_send_flags flags);
 
 int post_beacon(struct ibtrs_con *con);
 
@@ -360,8 +363,8 @@ int ib_session_init(struct ib_device *dev, struct ib_session *session);
  */
 int ibtrs_con_init(struct ibtrs_sess *ibtrs_sess, struct ibtrs_con *con,
 		   struct rdma_cm_id *cm_id, u32 max_send_sge,
-		   ib_comp_handler comp_handler, void *ctx, int cq_vector,
-		   u16 cq_size, u16 wr_queue_size, struct ib_session *session);
+		   int cq_vector, u16 cq_size, u16 wr_queue_size,
+		   struct ib_session *session, enum ib_poll_context poll_ctx);
 
 int ibtrs_request_cq_notifications(struct ibtrs_con *con);
 

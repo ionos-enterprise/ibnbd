@@ -128,8 +128,14 @@ MODULE_PARM_DESC(hostname, "Sets hostname of local server, will send to the"
 		 " other side if set,  will display togather with addr "
 		 "(default: empty)");
 
-#define LOCAL_INV_WR_ID_MASK	1
-#define	FAST_REG_WR_ID_MASK	2
+static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc);
+
+static struct ib_cqe fast_reg_cqe = {
+	.done = ibtrs_clt_rdma_done
+};
+static struct ib_cqe local_inv_cqe = {
+	.done = ibtrs_clt_rdma_done
+};
 
 static const struct ibtrs_clt_ops *clt_ops;
 static struct workqueue_struct *ibtrs_wq;
@@ -310,9 +316,6 @@ struct ibtrs_clt_con {
 	struct ibtrs_clt_sess	*sess;
 	struct ibtrs_fr_pool	*fr_pool;
 	struct rdma_cm_id	*cm_id;
-	struct work_struct	cq_work;
-	struct workqueue_struct *cq_wq;
-	struct tasklet_struct	cq_tasklet;
 	struct ib_wc		wcs[WC_ARRAY_SIZE];
 };
 
@@ -400,26 +403,11 @@ static inline int get_sess(struct ibtrs_clt_sess *sess)
 
 static void free_con_fast_pool(struct ibtrs_clt_con *con);
 
-static void sess_deinit_cons(struct ibtrs_clt_sess *sess)
-{
-	int i;
-
-	for (i = 0; i < CONS_PER_SESSION; i++) {
-		struct ibtrs_clt_con *con = &sess->con[i];
-
-		if (!i)
-			destroy_workqueue(con->cq_wq);
-		else
-			tasklet_kill(&con->cq_tasklet);
-	}
-}
-
 static void put_sess(struct ibtrs_clt_sess *sess)
 {
 	if (!atomic_dec_if_positive(&sess->refcount)) {
 		struct completion *destroy_completion;
 
-		sess_deinit_cons(sess);
 		kfree(sess->con);
 		sess->con = NULL;
 		ibtrs_clt_free_stats(sess);
@@ -1143,7 +1131,7 @@ static int ibtrs_map_finish_fr(struct ibtrs_map_state *state,
 
 	wr.wr.next = NULL;
 	wr.wr.opcode = IB_WR_REG_MR;
-	wr.wr.wr_id = FAST_REG_WR_ID_MASK;
+	wr.wr.wr_cqe = &fast_reg_cqe;
 	wr.wr.num_sge = 0;
 	wr.wr.send_flags = 0;
 	wr.mr = desc->mr;
@@ -1302,7 +1290,7 @@ static int ibtrs_inv_rkey(struct ibtrs_clt_con *con, u32 rkey)
 	struct ib_send_wr *bad_wr;
 	struct ib_send_wr wr = {
 		.opcode		    = IB_WR_LOCAL_INV,
-		.wr_id		    = LOCAL_INV_WR_ID_MASK,
+		.wr_cqe		    = &local_inv_cqe,
 		.next		    = NULL,
 		.num_sge	    = 0,
 		.send_flags	    = 0,
@@ -1391,9 +1379,9 @@ static int ibtrs_post_send_rdma(struct ibtrs_clt_con *con, struct rdma_req *req,
 	list[0].length = req->sg_size;
 	list[0].lkey   = con->sess->ib_sess.pd->local_dma_lkey;
 
-	return ib_post_rdma_write_imm(con->ibtrs_con.qp, list, 1,
-				      con->sess->srv_rdma_buf_rkey,
-				      addr + off, (u64)req->iu, imm,
+	return ib_post_rdma_write_imm(con->ibtrs_con.qp, &req->iu->cqe,
+				      list, 1, con->sess->srv_rdma_buf_rkey,
+				      addr + off, imm,
 				      cnt % (con->sess->queue_depth) ?
 				      0 : IB_SEND_SIGNALED);
 }
@@ -1425,16 +1413,18 @@ static void ibtrs_set_rdma_desc_last(struct ibtrs_clt_con *con,
 	list[i].addr   = req->iu->dma_addr;
 	list[i].length = size;
 	list[i].lkey   = sess->ib_sess.pd->local_dma_lkey;
-	wr->wr.wr_id = (uintptr_t)req->iu;
+
+	req->iu->cqe.done = ibtrs_clt_rdma_done;
+
+	wr->wr.wr_cqe = &req->iu->cqe;
 	wr->wr.sg_list = &list[m];
 	wr->wr.num_sge = n - m + 1;
 	wr->remote_addr	= addr + offset;
-	wr->rkey	= sess->srv_rdma_buf_rkey;
+	wr->rkey = sess->srv_rdma_buf_rkey;
 
-	wr->wr.opcode	= IB_WR_RDMA_WRITE_WITH_IMM;
-	wr->wr.send_flags   = cnt % (sess->queue_depth) ? 0 :
-		IB_SEND_SIGNALED;
-	wr->wr.ex.imm_data	= cpu_to_be32(imm);
+	wr->wr.opcode = IB_WR_RDMA_WRITE_WITH_IMM;
+	wr->wr.send_flags  = cnt % (sess->queue_depth) ? 0 : IB_SEND_SIGNALED;
+	wr->wr.ex.imm_data = cpu_to_be32(imm);
 }
 
 static int ibtrs_post_send_rdma_desc_more(struct ibtrs_clt_con *con,
@@ -1467,15 +1457,17 @@ static int ibtrs_post_send_rdma_desc_more(struct ibtrs_clt_con *con,
 			ibtrs_set_sge_with_desc(&list[m], desc);
 			len +=  desc->len;
 		}
-		wr->wr.wr_id = (uintptr_t)req->iu;
+		req->iu->cqe.done = ibtrs_clt_rdma_done;
+
+		wr->wr.wr_cqe = &req->iu->cqe;
 		wr->wr.sg_list = &list[m];
 		wr->wr.num_sge = max_sge;
 		wr->remote_addr	= addr + offset;
-		wr->rkey	= sess->srv_rdma_buf_rkey;
+		wr->rkey = sess->srv_rdma_buf_rkey;
 
 		offset += len;
-		wr->wr.next	= &wrs[j + 1].wr;
-		wr->wr.opcode	= IB_WR_RDMA_WRITE;
+		wr->wr.next = &wrs[j + 1].wr;
+		wr->wr.opcode = IB_WR_RDMA_WRITE;
 	}
 
 last_one:
@@ -1517,11 +1509,11 @@ static int ibtrs_post_send_rdma_desc(struct ibtrs_clt_con *con,
 		list[i].length = size;
 		list[i].lkey   = sess->ib_sess.pd->local_dma_lkey;
 
-		ret = ib_post_rdma_write_imm(con->ibtrs_con.qp, list, num_sge,
+		ret = ib_post_rdma_write_imm(con->ibtrs_con.qp, &req->iu->cqe,
+					     list, num_sge,
 					     sess->srv_rdma_buf_rkey,
-					     addr, (u64)req->iu, imm,
-					     cnt %
-					     (sess->queue_depth) ?
+					     addr, imm,
+					     cnt % (sess->queue_depth) ?
 					     0 : IB_SEND_SIGNALED);
 	} else
 		ret = ibtrs_post_send_rdma_desc_more(con, list, req, desc, n,
@@ -1556,9 +1548,10 @@ static int ibtrs_post_send_rdma_more(struct ibtrs_clt_con *con,
 	list[i].length = size;
 	list[i].lkey   = con->sess->ib_sess.pd->local_dma_lkey;
 
-	ret = ib_post_rdma_write_imm(con->ibtrs_con.qp, list, num_sge,
+	ret = ib_post_rdma_write_imm(con->ibtrs_con.qp, &req->iu->cqe,
+				     list, num_sge,
 				     con->sess->srv_rdma_buf_rkey,
-				     addr, (uintptr_t)req->iu, imm,
+				     addr, imm,
 				     cnt % (con->sess->queue_depth) ?
 				     0 : IB_SEND_SIGNALED);
 
@@ -1582,10 +1575,12 @@ static int ibtrs_post_recv(struct ibtrs_clt_con *con, struct ibtrs_iu *iu)
 		return -EINVAL;
 	}
 
-	wr.next     = NULL;
-	wr.wr_id    = (uintptr_t)iu;
-	wr.sg_list  = &list;
-	wr.num_sge  = 1;
+	iu->cqe.done = ibtrs_clt_rdma_done;
+
+	wr.next    = NULL;
+	wr.wr_cqe  = &iu->cqe;
+	wr.sg_list = &list;
+	wr.num_sge = 1;
 
 	err = ib_post_recv(con->ibtrs_con.qp, &wr, &bad_wr);
 	if (unlikely(err))
@@ -1824,24 +1819,23 @@ static void process_err_wc(struct ibtrs_clt_con *con,
 {
 	struct ibtrs_iu *iu;
 
-	if (wc->wr_id == (uintptr_t)&con->ibtrs_con.beacon) {
+	if (wc->wr_cqe == &con->ibtrs_con.beacon_cqe) {
 		csm_schedule_event(con, CSM_EV_BEACON_COMPLETED);
 		return;
 	}
 
-	if (wc->wr_id == FAST_REG_WR_ID_MASK ||
-	    wc->wr_id == LOCAL_INV_WR_ID_MASK) {
-		ibtrs_err_rl(con->sess, "Fast registration wr failed: wr_id: %d,"
-			     "status: %s\n", (int)wc->wr_id,
+	if (wc->wr_cqe == &fast_reg_cqe || wc->wr_cqe == &local_inv_cqe) {
+		ibtrs_err_rl(con->sess, "Fast registration wr failed: wr_cqe: %p,"
+			     "status: %s\n", wc->wr_cqe,
 			     ib_wc_status_msg(wc->status));
 		csm_schedule_event(con, CSM_EV_WC_ERROR);
 		return;
 	}
-	/* only wc->wr_id is ensured to be correct in erroneous WCs,
+	/* only wc->wr_cqe is ensured to be correct in erroneous WCs,
 	 * we can't rely on wc->opcode, use iu->direction to determine if it's
 	 * an tx or rx IU
 	 */
-	iu = (struct ibtrs_iu *)wc->wr_id;
+	iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
 	if (iu && iu->direction == DMA_TO_DEVICE && iu->is_msg)
 		put_u_msg_iu(con->sess, iu);
 
@@ -1849,9 +1843,9 @@ static void process_err_wc(struct ibtrs_clt_con *con,
 	if (unlikely(wc->status != IB_WC_WR_FLUSH_ERR ||
 		     (con->state != CSM_STATE_CLOSING &&
 		      con->state != CSM_STATE_FLUSHING)))
-		ibtrs_err_rl(con->sess, "wr_id: 0x%llx status: %d (%s),"
+		ibtrs_err_rl(con->sess, "wr_cqe: %p status: %d (%s),"
 			     " type: %d (%s), vendor_err: %x, len: %u,"
-			     " connection status: %s\n", wc->wr_id,
+			     " connection status: %s\n", wc->wr_cqe,
 			     wc->status, ib_wc_status_msg(wc->status),
 			     wc->opcode, ib_wc_opcode_str(wc->opcode),
 			     wc->vendor_err, wc->byte_len, csm_state_str(con->state));
@@ -1859,111 +1853,85 @@ static void process_err_wc(struct ibtrs_clt_con *con,
 	csm_schedule_event(con, CSM_EV_WC_ERROR);
 }
 
-static int process_wcs(struct ibtrs_clt_con *con, struct ib_wc *wcs, size_t len)
-{
-	int i, ret;
-	u32 imm;
-
-	for (i = 0; i < len; i++) {
-		u32 msg_id;
-		s16 errno;
-		struct ibtrs_msg_hdr *hdr;
-		struct ibtrs_iu *iu;
-		struct ib_wc wc = wcs[i];
-
-		if (unlikely(wc.status != IB_WC_SUCCESS)) {
-			process_err_wc(con, &wc);
-			continue;
-		}
-
-		pr_debug("cq complete with wr_id 0x%llx "
-			 "status %d (%s) type %d (%s) len %u\n",
-			 wc.wr_id, wc.status, ib_wc_status_msg(wc.status), wc.opcode,
-			 ib_wc_opcode_str(wc.opcode), wc.byte_len);
-
-		iu = (struct ibtrs_iu *)wc.wr_id;
-
-		switch (wc.opcode) {
-		case IB_WC_SEND:
-			if (con->user) {
-				if (iu == con->sess->sess_info_iu)
-					break;
-				put_u_msg_iu(con->sess, iu);
-				wake_up(&con->sess->mu_iu_wait_q);
-			}
-			break;
-		case IB_WC_RDMA_WRITE:
-			break;
-		case IB_WC_RECV_RDMA_WITH_IMM:
-			ibtrs_heartbeat_set_recv_ts(&con->sess->heartbeat);
-			imm = be32_to_cpu(wc.ex.imm_data);
-			ret = ibtrs_post_recv(con, iu);
-			if (ret) {
-				ibtrs_err(con->sess, "Failed to post receive "
-					  "buffer\n");
-				csm_schedule_event(con, CSM_EV_CON_ERROR);
-			}
-
-			if (imm == UINT_MAX) {
-				break;
-			} else if (imm == UINT_MAX - 1) {
-				process_msg_user_ack(con);
-				break;
-			}
-			msg_id = imm >> 16;
-			errno = (imm << 16) >> 16;
-			process_io_rsp(con->sess, msg_id, errno);
-			break;
-
-		case IB_WC_RECV:
-			ibtrs_heartbeat_set_recv_ts(&con->sess->heartbeat);
-
-			hdr = (struct ibtrs_msg_hdr *)iu->buf;
-			ibtrs_handle_recv(con, iu);
-			break;
-
-		default:
-			ibtrs_wrn(con->sess, "Unexpected WC type: %s\n",
-				  ib_wc_opcode_str(wc.opcode));
-		}
-	}
-
-	return 0;
-}
-
-static void ibtrs_clt_update_wc_stats(struct ibtrs_clt_con *con, int cnt)
+static void ibtrs_clt_update_wc_stats(struct ibtrs_clt_con *con)
 {
 	short cpu = con->cpu;
 
-	if (cnt > con->sess->stats.wc_comp[cpu].max_wc_cnt)
-		con->sess->stats.wc_comp[cpu].max_wc_cnt = cnt;
+	if (unlikely(con->cpu != cpu)) {
+		pr_debug_ratelimited("WC processing is migrated from CPU %d to "
+				     "%d, cstate %s, sstate %s, user: %s\n",
+				     con->cpu, cpu, csm_state_str(con->state),
+				     ssm_state_str(con->sess->state),
+				     con->user ? "true" : "false");
+		atomic_inc(&con->sess->stats.cpu_migr.from[con->cpu]);
+		con->sess->stats.cpu_migr.to[cpu]++;
+	}
+	//XXX remove ASAP
+	con->sess->stats.wc_comp[cpu].max_wc_cnt = 1;
 	con->sess->stats.wc_comp[cpu].cnt++;
-	con->sess->stats.wc_comp[cpu].total_cnt += cnt;
+	con->sess->stats.wc_comp[cpu].total_cnt++;
 }
 
-static int get_process_wcs(struct ibtrs_clt_con *con)
+static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 {
-	int cnt, err;
-	struct ib_wc *wcs = con->wcs;
+	struct ibtrs_clt_con *con = cq->cq_context;
+	struct ibtrs_clt_sess *sess = con->sess;
+	struct ibtrs_msg_hdr *hdr;
+	struct ibtrs_iu *iu;
+	u32 imm, msg_id;
+	int err;
 
-	do {
-		cnt = ib_poll_cq(con->ibtrs_con.cq, ARRAY_SIZE(con->wcs), wcs);
-		if (unlikely(cnt < 0)) {
-			ibtrs_err(con->sess, "Getting work requests from completion"
-				  " queue failed, err: %d\n", cnt);
-			return cnt;
+	ibtrs_clt_update_wc_stats(con);
+	if (unlikely(wc->status != IB_WC_SUCCESS)) {
+		process_err_wc(con, wc);
+		return;
+	}
+	iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
+
+	switch (wc->opcode) {
+	case IB_WC_SEND:
+		if (con->user) {
+			if (iu == sess->sess_info_iu)
+				break;
+			put_u_msg_iu(sess, iu);
+			wake_up(&sess->mu_iu_wait_q);
 		}
-		pr_debug("Retrieved %d wcs from CQ\n", cnt);
-
-		if (likely(cnt > 0)) {
-			err = process_wcs(con, wcs, cnt);
-			if (unlikely(err))
-				return err;
-			ibtrs_clt_update_wc_stats(con, cnt);
+		break;
+	case IB_WC_RDMA_WRITE:
+		break;
+	case IB_WC_RECV_RDMA_WITH_IMM:
+		ibtrs_heartbeat_set_recv_ts(&sess->heartbeat);
+		imm = be32_to_cpu(wc->ex.imm_data);
+		err = ibtrs_post_recv(con, iu);
+		if (err) {
+			ibtrs_err(sess, "Failed to post receive "
+				  "buffer\n");
+			csm_schedule_event(con, CSM_EV_CON_ERROR);
 		}
-	} while (cnt > 0);
 
-	return 0;
+		if (imm == UINT_MAX)
+			break;
+		else if (imm == UINT_MAX - 1) {
+			process_msg_user_ack(con);
+			break;
+		}
+		msg_id = imm >> 16;
+		err = (imm << 16) >> 16;
+		process_io_rsp(sess, msg_id, err);
+		break;
+
+	case IB_WC_RECV:
+		ibtrs_heartbeat_set_recv_ts(&sess->heartbeat);
+
+		hdr = (struct ibtrs_msg_hdr *)iu->buf;
+		ibtrs_handle_recv(con, iu);
+		break;
+
+	default:
+		ibtrs_wrn(sess, "Unexpected WC type: %s\n",
+			  ib_wc_opcode_str(wc->opcode));
+		return;
+	}
 }
 
 static void process_con_rejected(struct ibtrs_clt_con *con,
@@ -2123,73 +2091,6 @@ static struct ib_client ibtrs_clt_ib_client = {
        .name   = "ibtrs_client",
        .remove = ibtrs_clt_ib_client_remove
 };
-
-static void handle_cq_comp(struct ibtrs_clt_con *con)
-{
-	int err;
-
-	err = get_process_wcs(con);
-	if (unlikely(err))
-		goto error;
-
-	while ((err = ib_req_notify_cq(con->ibtrs_con.cq, IB_CQ_NEXT_COMP |
-				       IB_CQ_REPORT_MISSED_EVENTS)) > 0) {
-		pr_debug("Missed %d CQ notifications, processing missed WCs...\n",
-			 err);
-		err = get_process_wcs(con);
-		if (unlikely(err))
-			goto error;
-	}
-
-	if (unlikely(err))
-		goto error;
-
-	return;
-
-error:
-	ibtrs_err(con->sess, "Failed to get WCs from CQ, err: %d\n", err);
-	csm_schedule_event(con, CSM_EV_CON_ERROR);
-}
-
-static inline void tasklet_handle_cq_comp(unsigned long data)
-{
-	struct ibtrs_clt_con *con = (struct ibtrs_clt_con *)data;
-
-	handle_cq_comp(con);
-}
-
-static inline void wrapper_handle_cq_comp(struct work_struct *work)
-{
-	struct ibtrs_clt_con *con;
-
-	con = container_of(work, struct ibtrs_clt_con, cq_work);
-	handle_cq_comp(con);
-}
-
-static void cq_event_handler(struct ib_cq *cq, void *ctx)
-{
-	struct ibtrs_clt_con *con = ctx;
-	int cpu = raw_smp_processor_id();
-
-	if (unlikely(con->cpu != cpu)) {
-		pr_debug_ratelimited("WC processing is migrated from CPU %d to %d, cstate %s,"
-				     " sstate %s, user: %s\n", con->cpu,
-				     cpu, csm_state_str(con->state),
-				     ssm_state_str(con->sess->state),
-				     con->user ? "true" : "false");
-		atomic_inc(&con->sess->stats.cpu_migr.from[con->cpu]);
-		con->sess->stats.cpu_migr.to[cpu]++;
-	}
-
-	/* queue_work() can return False here.
-	 * The work can be already queued, When CQ notifications were already
-	 * activiated and are activated again after the beacon was posted.
-	 */
-	if (con->user)
-		queue_work(con->cq_wq, &con->cq_work);
-	else
-		tasklet_schedule(&con->cq_tasklet);
-}
 
 static int post_io_con_recv(struct ibtrs_clt_con *con)
 {
@@ -2979,8 +2880,6 @@ static void con_destroy(struct ibtrs_clt_con *con)
 {
 	if (con->user) {
 		cancel_delayed_work_sync(&con->sess->heartbeat_dwork);
-		drain_workqueue(con->cq_wq);
-		cancel_work_sync(&con->cq_work);
 	}
 	fail_outstanding_reqs(con);
 	ibtrs_con_destroy(&con->ibtrs_con);
@@ -3463,20 +3362,6 @@ static int sess_init_cons(struct ibtrs_clt_sess *sess)
 
 		csm_set_state(con, CSM_STATE_CLOSED);
 		con->sess = sess;
-		if (!i) {
-			INIT_WORK(&con->cq_work, wrapper_handle_cq_comp);
-			con->cq_wq =
-				alloc_ordered_workqueue("ibtrs_clt_wq",
-							WQ_HIGHPRI);
-			if (!con->cq_wq) {
-				ibtrs_err(sess, "Failed to allocate cq workqueue.\n");
-				return -ENOMEM;
-			}
-		} else {
-			tasklet_init(&con->cq_tasklet,
-				     tasklet_handle_cq_comp, (unsigned
-							      long)(con));
-		}
 	}
 
 	return 0;
@@ -3518,7 +3403,7 @@ static struct ibtrs_clt_sess *sess_init(const struct sockaddr_storage *addr,
 	err = ibtrs_clt_init_stats(sess);
 	if (err) {
 		pr_err("Failed to initialize statistics\n");
-		goto err_cons;
+		goto err_free_con;
 	}
 
 	sess->sess.addr.sockaddr = *addr;
@@ -3546,8 +3431,6 @@ static struct ibtrs_clt_sess *sess_init(const struct sockaddr_storage *addr,
 
 	return sess;
 
-err_cons:
-	sess_deinit_cons(sess);
 err_free_con:
 	kfree(sess->con);
 	sess->con = NULL;
@@ -3626,13 +3509,15 @@ static int create_con(struct ibtrs_clt_con *con)
 	}
 	cq_vector = con->cpu % sess->ib_device->num_comp_vectors;
 	err = ibtrs_con_init(&sess->sess, &con->ibtrs_con, con->cm_id,
-			     sess->max_sge, cq_event_handler, con, cq_vector,
-			     cq_size, wr_queue_size, &sess->ib_sess);
+			     sess->max_sge, cq_vector, cq_size, wr_queue_size,
+			     &sess->ib_sess, IB_POLL_SOFTIRQ);
 	if (err) {
 		ibtrs_err(sess, "Failed to initialize IB connection, err: %d\n",
 			  err);
 		goto err_pool;
 	}
+	/* XXX soon beacon will die */
+	con->ibtrs_con.beacon_cqe.done = ibtrs_clt_rdma_done;
 
 	pr_debug("setup_buffers successful\n");
 	err = post_recv(con);
@@ -3723,7 +3608,6 @@ struct ibtrs_clt_sess *ibtrs_clt_open(const struct sockaddr_storage *addr,
 	return sess;
 
 err1:
-	sess_deinit_cons(sess);
 	kfree(sess->con);
 	sess->con = NULL;
 	ibtrs_clt_free_stats(sess);
@@ -4423,17 +4307,13 @@ static void csm_closing(struct ibtrs_clt_con *con, enum csm_ev ev)
 			goto destroy;
 		}
 
+		/* XXX: should die ASAP */
 		err = ibtrs_request_cq_notifications(&con->ibtrs_con);
 		if (unlikely(err < 0)) {
 			ibtrs_wrn(con->sess,
 				  "Requesting CQ Notification for ibtrs_con "
 				  "failed. Connection will be destroyed\n");
 			goto destroy;
-		} else if (err > 0) {
-			err = get_process_wcs(con);
-			if (unlikely(err))
-				goto destroy;
-			break;
 		}
 		break;
 destroy:
@@ -4575,21 +4455,11 @@ static void ssm_idle_reconnect(struct ibtrs_clt_sess *sess, enum ssm_ev ev)
 
 static int ssm_wf_info_init(struct ibtrs_clt_sess *sess)
 {
-	int err;
+	ibtrs_heartbeat_set_recv_ts(&sess->heartbeat);
+	WARN_ON(!schedule_delayed_work(&sess->heartbeat_dwork,
+				       HEARTBEAT_INTV_JIFFIES));
 
-	err = ibtrs_request_cq_notifications(&sess->con[0].ibtrs_con);
-	if (unlikely(err < 0)) {
-		return err;
-	} else if (err > 0) {
-		err = get_process_wcs(&sess->con[0]);
-		if (unlikely(err))
-			return err;
-	} else {
-		ibtrs_heartbeat_set_recv_ts(&sess->heartbeat);
-		WARN_ON(!schedule_delayed_work(&sess->heartbeat_dwork,
-					       HEARTBEAT_INTV_JIFFIES));
-	}
-	return err;
+	return 0;
 }
 
 static void ssm_wf_info(struct ibtrs_clt_sess *sess, enum ssm_ev ev)
@@ -4657,26 +4527,6 @@ static void queue_destroy_sess(struct ibtrs_clt_sess *sess)
 	sess->srv_rdma_addr = NULL;
 	ibtrs_clt_destroy_ib_session(sess);
 	sess_schedule_destroy(sess);
-}
-
-static int ibtrs_clt_request_cq_notifications(struct ibtrs_clt_sess *sess)
-{
-	int err, i;
-
-	for (i = 0; i < CONS_PER_SESSION; i++) {
-		struct ibtrs_clt_con *con = &sess->con[i];
-
-		err = ibtrs_request_cq_notifications(&con->ibtrs_con);
-		if (unlikely(err < 0)) {
-			return err;
-		} else if (err > 0) {
-			err = get_process_wcs(con);
-			if (unlikely(err))
-				return err;
-		}
-	}
-
-	return 0;
 }
 
 static int ibtrs_alloc_io_bufs(struct ibtrs_clt_sess *sess)
@@ -4818,16 +4668,6 @@ static void ssm_open_reconnect(struct ibtrs_clt_sess *sess, enum ssm_ev ev)
 
 static int ssm_connected_init(struct ibtrs_clt_sess *sess)
 {
-	int err;
-
-	err = ibtrs_clt_request_cq_notifications(sess);
-	if (err) {
-		ibtrs_err(sess, "Establishing Session failed, requesting"
-			  " CQ completion notification failed, err: %d\n",
-			  err);
-		return err;
-	}
-
 	atomic_set(&sess->peer_usr_msg_bufs, USR_MSG_CNT);
 
 	return 0;

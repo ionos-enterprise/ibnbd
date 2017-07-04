@@ -24,6 +24,8 @@ static int max_io_size = DEFAULT_MAX_IO_SIZE;
 #define MAX_REQ_SIZE PAGE_SIZE
 static int rcv_buf_size = DEFAULT_MAX_IO_SIZE + MAX_REQ_SIZE;
 
+static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc);
+
 static int max_io_size_set(const char *val, const struct kernel_param *kp)
 {
 	int err, ival;
@@ -385,8 +387,6 @@ struct ibtrs_srv_con {
 	struct rdma_cm_id	*cm_id;
 	int			cq_vector;
 	struct ibtrs_srv_sess	*sess;
-	struct work_struct	cq_work;
-	struct workqueue_struct *cq_wq;
 	struct workqueue_struct *rdma_resp_wq;
 	struct ib_wc		wcs[WC_ARRAY_SIZE];
 	bool			device_being_removed;
@@ -731,9 +731,8 @@ static int rdma_write_sg(struct ibtrs_ops_id *id)
 		list->lkey = sess->dev->ib_sess.pd->local_dma_lkey;
 		offset += list->length;
 
-		wr->wr.wr_id		= (uintptr_t)id;
-		wr->wr.sg_list		= list;
-		wr->wr.num_sge		= 1;
+		wr->wr.sg_list	= list;
+		wr->wr.num_sge	= 1;
 		wr->remote_addr	= id->req->desc[i].addr;
 		wr->rkey	= id->req->desc[i].key;
 
@@ -745,11 +744,11 @@ static int rdma_write_sg(struct ibtrs_ops_id *id)
 		}
 	}
 
-	wr->wr.opcode	= IB_WR_RDMA_WRITE_WITH_IMM;
-	wr->wr.next	= NULL;
-	wr->wr.send_flags	= atomic_inc_return(&id->con->wr_cnt) %
+	wr->wr.opcode = IB_WR_RDMA_WRITE_WITH_IMM;
+	wr->wr.next = NULL;
+	wr->wr.send_flags = atomic_inc_return(&id->con->wr_cnt) %
 		sess->queue_depth ? 0 : IB_SEND_SIGNALED;
-	wr->wr.ex.imm_data	= cpu_to_be32(id->msg_id << 16);
+	wr->wr.ex.imm_data = cpu_to_be32(id->msg_id << 16);
 
 	err = ib_post_send(id->con->ibtrs_con.qp, &id->tx_wr[0].wr, &bad_wr);
 	if (unlikely(err))
@@ -998,8 +997,10 @@ static int ibtrs_post_recv(struct ibtrs_srv_con *con, struct ibtrs_iu *iu)
 		return -EINVAL;
 	}
 
+	iu->cqe.done = ibtrs_srv_rdma_done;
+
 	wr.next     = NULL;
-	wr.wr_id    = (uintptr_t)iu;
+	wr.wr_cqe   = &iu->cqe;
 	wr.sg_list  = &list;
 	wr.num_sge  = 1;
 
@@ -1836,14 +1837,11 @@ static void close_con(struct ibtrs_srv_con *con)
 	if (con->user)
 		cancel_delayed_work(&sess->send_heartbeat_dwork);
 
-	cancel_work_sync(&con->cq_work);
 	destroy_workqueue(con->rdma_resp_wq);
 
 	ibtrs_con_destroy(&con->ibtrs_con);
 	if (!con->user && !con->device_being_removed)
 		rdma_destroy_id(con->cm_id);
-
-	destroy_workqueue(con->cq_wq);
 
 	if (con->user) {
 		/* notify possible user msg ACK thread waiting for a tx iu or
@@ -2015,17 +2013,17 @@ static void process_err_wc(struct ibtrs_srv_con *con, struct ib_wc *wc)
 {
 	struct ibtrs_iu *iu;
 
-	if (wc->wr_id == (uintptr_t)&con->ibtrs_con.beacon) {
+	if (wc->wr_cqe == &con->ibtrs_con.beacon_cqe) {
 		pr_debug("beacon received for con %p\n", con);
 		csm_schedule_event(con, CSM_EV_BEACON_COMPLETED);
 		return;
 	}
 
-	/* only wc->wr_id is ensured to be correct in erroneous WCs,
+	/* only wc->wr_cqe is ensured to be correct in erroneous WCs,
 	 * we can't rely on wc->opcode, use iu->direction to determine if it's
 	 * an tx or rx IU
 	 */
-	iu = (struct ibtrs_iu *)wc->wr_id;
+	iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
 	if (iu && iu->direction == DMA_TO_DEVICE &&
 	    iu != con->sess->rdma_info_iu)
 		put_tx_iu(con->sess, iu);
@@ -2038,203 +2036,114 @@ static void process_err_wc(struct ibtrs_srv_con *con, struct ib_wc *wc)
 		 * DISCONNECTING state waiting for the second
 		 * CM_DISCONNECTED event
 		 */
-		ibtrs_err_rl(con->sess, "%s (wr_id: 0x%llx,"
+		ibtrs_err_rl(con->sess, "%s (wr_cqe: %p,"
 			     " type: %s, vendor_err: 0x%x, len: %u)\n",
-			     ib_wc_status_msg(wc->status), wc->wr_id,
+			     ib_wc_status_msg(wc->status), wc->wr_cqe,
 			     ib_wc_opcode_str(wc->opcode),
 			     wc->vendor_err, wc->byte_len);
 	}
 	csm_schedule_event(con, CSM_EV_CON_ERROR);
 }
 
-static int process_wcs(struct ibtrs_srv_con *con, struct ib_wc *wcs, size_t len)
+static void ibtrs_srv_update_wc_stats(struct ibtrs_srv_con *con)
 {
-	int i, ret;
-	struct ibtrs_iu *iu;
-	struct ibtrs_srv_sess *sess = con->sess;
-
-	for (i = 0; i < len; i++) {
-		struct ib_wc wc = wcs[i];
-
-		if (unlikely(wc.status != IB_WC_SUCCESS)) {
-			process_err_wc(con, &wc);
-			continue;
-		}
-
-		/* pr_debug("cq complete with wr_id 0x%llx, len %u "
-		 *  "status %d (%s) type %d (%s)\n", wc.wr_id,
-		 *  wc.byte_len, wc.status, ib_wc_status_msg(wc.status),
-		 *  wc.opcode, ib_wc_opcode_str(wc.opcode));
-		 */
-
-		switch (wc.opcode) {
-		case IB_WC_SEND:
-			iu = (struct ibtrs_iu *)(uintptr_t)wc.wr_id;
-			if (iu == con->sess->rdma_info_iu)
-				break;
-			put_tx_iu(sess, iu);
-			if (con->user)
-				wake_up(&sess->mu_iu_wait_q);
-			break;
-
-		case IB_WC_RECV_RDMA_WITH_IMM: {
-			u32 imm, id, off;
-			struct ibtrs_msg_hdr *hdr;
-
-			ibtrs_heartbeat_set_recv_ts(&sess->heartbeat);
-
-			iu = (struct ibtrs_iu *)(uintptr_t)wc.wr_id;
-			imm = be32_to_cpu(wc.ex.imm_data);
-			if (imm == UINT_MAX) {
-				ret = ibtrs_post_recv(con, iu);
-				if (unlikely(ret != 0)) {
-					ibtrs_err(sess, "post receive buffer failed,"
-						  " err: %d\n", ret);
-					return ret;
-				}
-				break;
-			} else if (imm == UINT_MAX - 1) {
-				ret = ibtrs_post_recv(con, iu);
-				if (unlikely(ret))
-					ibtrs_err_rl(sess, "Posting receive buffer of"
-						     " user Ack msg to HCA failed,"
-						     " err: %d\n", ret);
-				process_msg_user_ack(con);
-				break;
-			}
-			id = imm >> sess->off_len;
-			off = imm & sess->off_mask;
-
-			if (id > sess->queue_depth || off > rcv_buf_size) {
-				ibtrs_err(sess, "Processing I/O failed, contiguous "
-					  "buf addr is out of reserved area\n");
-				ret = ibtrs_post_recv(con, iu);
-				if (unlikely(ret != 0))
-					ibtrs_err(sess, "Processing I/O failed, "
-						  "post receive buffer failed, "
-						  "err: %d\n", ret);
-				return -EIO;
-			}
-
-			hdr = (struct ibtrs_msg_hdr *)
-				(sess->rcv_buf_pool->rcv_bufs[id].buf + off);
-
-			ibtrs_handle_write(con, iu, hdr, id, off);
-			break;
-		}
-
-		case IB_WC_RDMA_WRITE:
-			break;
-
-		case IB_WC_RECV: {
-			struct ibtrs_msg_hdr *hdr;
-
-			ibtrs_heartbeat_set_recv_ts(&sess->heartbeat);
-			iu = (struct ibtrs_iu *)(uintptr_t)wc.wr_id;
-			hdr = (struct ibtrs_msg_hdr *)iu->buf;
-			ibtrs_handle_recv(con, iu);
-			break;
-		}
-
-		default:
-			ibtrs_err(sess, "Processing work completion failed,"
-				  " WC has unknown opcode: %s\n",
-				  ib_wc_opcode_str(wc.opcode));
-			return -EINVAL;
-		}
-	}
-	return 0;
-}
-
-static void ibtrs_srv_update_wc_stats(struct ibtrs_srv_con *con, int cnt)
-{
-	int old_max = atomic_read(&con->sess->stats.wc_comp.max_wc_cnt);
-	int act_max;
-
-	while (cnt > old_max) {
-		act_max = atomic_cmpxchg(&con->sess->stats.wc_comp.max_wc_cnt,
-					 old_max, cnt);
-		if (likely(act_max == old_max))
-			break;
-		old_max = act_max;
-	}
+	//XXX remove ASAP
+	//XXX int old_max = atomic_read(&con->sess->stats.wc_comp.max_wc_cnt);
 
 	atomic64_inc(&con->sess->stats.wc_comp.calls);
-	atomic64_add(cnt, &con->sess->stats.wc_comp.total_wc_cnt);
+	atomic64_inc(&con->sess->stats.wc_comp.total_wc_cnt);
 }
 
-static int get_process_wcs(struct ibtrs_srv_con *con, int *total_cnt)
+static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 {
-	int cnt, err;
+	struct ibtrs_srv_con *con = cq->cq_context;
+	struct ibtrs_srv_sess *sess = con->sess;
+	struct ibtrs_iu *iu;
+	int ret;
 
-	do {
-		cnt = ib_poll_cq(con->ibtrs_con.cq, ARRAY_SIZE(con->wcs),
-				 con->wcs);
-		if (unlikely(cnt < 0)) {
-			ibtrs_err(con->sess, "Polling completion queue failed, "
-				  "err: %d\n", cnt);
-			return cnt;
-		}
+	ibtrs_srv_update_wc_stats(con);
 
-		if (likely(cnt > 0)) {
-			err = process_wcs(con, con->wcs, cnt);
-			*total_cnt += cnt;
-			if (unlikely(err))
-				return err;
-		}
-	} while (cnt > 0);
-
-	return 0;
-}
-
-static void wrapper_handle_cq_comp(struct work_struct *work)
-{
-	struct ibtrs_srv_con *con;
-	int total_cnt = 0;
-	int err;
-
-	con = container_of(work, struct ibtrs_srv_con, cq_work);
-
-	if (unlikely(con->state == CSM_STATE_CLOSED)) {
-		ibtrs_err(con->sess,
-			  "Retrieving work completions from completion "
-			  "queue failed, connection is disconnected\n");
-		goto error;
+	if (unlikely(wc->status != IB_WC_SUCCESS)) {
+		process_err_wc(con, wc);
+		return;
 	}
 
-	err = get_process_wcs(con, &total_cnt);
-	if (unlikely(err))
-		goto error;
+	switch (wc->opcode) {
+	case IB_WC_SEND:
+		iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
+		if (iu == con->sess->rdma_info_iu)
+			break;
+		put_tx_iu(sess, iu);
+		if (con->user)
+			wake_up(&sess->mu_iu_wait_q);
+		break;
 
-	while ((err = ib_req_notify_cq(con->ibtrs_con.cq, IB_CQ_NEXT_COMP |
-				       IB_CQ_REPORT_MISSED_EVENTS)) > 0) {
-		pr_debug("Missed %d CQ notifications, processing missed WCs...\n",
-			 err);
-		err = get_process_wcs(con, &total_cnt);
-		if (unlikely(err))
-			goto error;
+	case IB_WC_RECV_RDMA_WITH_IMM: {
+		u32 imm, id, off;
+		struct ibtrs_msg_hdr *hdr;
+
+		ibtrs_heartbeat_set_recv_ts(&sess->heartbeat);
+
+		iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
+		imm = be32_to_cpu(wc->ex.imm_data);
+		if (imm == UINT_MAX) {
+			ret = ibtrs_post_recv(con, iu);
+			if (unlikely(ret != 0)) {
+				ibtrs_err(sess, "post receive buffer failed,"
+					  " err: %d\n", ret);
+				csm_schedule_event(con, CSM_EV_CON_ERROR);
+				return;
+			}
+			break;
+		} else if (imm == UINT_MAX - 1) {
+			ret = ibtrs_post_recv(con, iu);
+			if (unlikely(ret))
+				ibtrs_err_rl(sess, "Posting receive buffer of"
+					     " user Ack msg to HCA failed,"
+					     " err: %d\n", ret);
+			process_msg_user_ack(con);
+			break;
+		}
+		id = imm >> sess->off_len;
+		off = imm & sess->off_mask;
+
+		if (id > sess->queue_depth || off > rcv_buf_size) {
+			ibtrs_err(sess, "Processing I/O failed, contiguous "
+				  "buf addr is out of reserved area\n");
+			ret = ibtrs_post_recv(con, iu);
+			if (unlikely(ret != 0))
+				ibtrs_err(sess, "Processing I/O failed, "
+					  "post receive buffer failed, "
+					  "err: %d\n", ret);
+			csm_schedule_event(con, CSM_EV_CON_ERROR);
+			return;
+		}
+
+		hdr = (struct ibtrs_msg_hdr *)
+			(sess->rcv_buf_pool->rcv_bufs[id].buf + off);
+
+		ibtrs_handle_write(con, iu, hdr, id, off);
+		break;
 	}
 
-	if (unlikely(err))
-		goto error;
+	case IB_WC_RDMA_WRITE:
+		break;
 
-	ibtrs_srv_update_wc_stats(con, total_cnt);
-	return;
+	case IB_WC_RECV: {
+		struct ibtrs_msg_hdr *hdr;
 
-error:
-	csm_schedule_event(con, CSM_EV_CON_ERROR);
-}
+		ibtrs_heartbeat_set_recv_ts(&sess->heartbeat);
+		iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
+		hdr = (struct ibtrs_msg_hdr *)iu->buf;
+		ibtrs_handle_recv(con, iu);
+		break;
+	}
 
-static void cq_event_handler(struct ib_cq *cq, void *ctx)
-{
-	struct ibtrs_srv_con *con = ctx;
-
-	/* queue_work() can return False here.
-	 * The work can be already queued, When CQ notifications were already
-	 * activiated and are activated again after the beacon was posted.
-	 */
-	if (con->state != CSM_STATE_CLOSED)
-		queue_work(con->cq_wq, &con->cq_work);
+	default:
+		ibtrs_wrn(sess, "Unexpected WC type: %s\n",
+			  ib_wc_opcode_str(wc->opcode));
+		return;
+	}
 }
 
 static int accept(struct ibtrs_srv_con *con)
@@ -2454,30 +2363,17 @@ static void ssm_create_con_worker(struct work_struct *work)
 
 	con->cq_vector = ibtrs_srv_get_next_cq_vector(sess);
 
+	/* TODO: SOFTIRQ can be faster, but be careful with softirq context */
 	ret = ibtrs_con_init(&sess->sess, &con->ibtrs_con, con->cm_id,
-			     1, cq_event_handler, con, con->cq_vector, cq_size,
-			     wr_queue_size, &con->sess->dev->ib_sess);
+			     1, con->cq_vector, cq_size, wr_queue_size,
+			     &con->sess->dev->ib_sess, IB_POLL_WORKQUEUE);
 	if (ret) {
 		ibtrs_err(sess, "Failed to initialize IB connection, err: %d\n",
 			  ret);
 		goto err_init;
 	}
-
-	INIT_WORK(&con->cq_work, wrapper_handle_cq_comp);
-	if (con->user)
-		con->cq_wq = alloc_ordered_workqueue("%s",
-						     WQ_HIGHPRI,
-						     "ibtrs_srv_wq");
-	else
-		con->cq_wq = alloc_workqueue("%s",
-					     WQ_CPU_INTENSIVE | WQ_HIGHPRI, 0,
-					     "ibtrs_srv_wq");
-	if (!con->cq_wq) {
-		ibtrs_err(sess, "Creating connection failed, can't allocate "
-			  "work queue for completion queue, err: %d\n",
-			  ret);
-		goto err_wq1;
-	}
+	/* XXX soon beacon will die */
+	con->ibtrs_con.beacon_cqe.done = ibtrs_srv_rdma_done;
 
 	con->rdma_resp_wq = alloc_workqueue("%s", 0, WQ_HIGHPRI,
 					    "ibtrs_rdma_resp");
@@ -2485,7 +2381,7 @@ static void ssm_create_con_worker(struct work_struct *work)
 	if (!con->rdma_resp_wq) {
 		ibtrs_err(sess, "Creating connection failed, can't allocate"
 			  " work queue for send response, err: %d\n", ret);
-		goto err_wq2;
+		goto err_wq;
 	}
 
 	ret = init_transfer_bufs(con);
@@ -2528,9 +2424,7 @@ err_accept:
 	remove_con_from_list(con);
 err_buf:
 	destroy_workqueue(con->rdma_resp_wq);
-err_wq2:
-	destroy_workqueue(con->cq_wq);
-err_wq1:
+err_wq:
 	ibtrs_con_destroy(&con->ibtrs_con);
 err_init:
 	kfree(con);
@@ -3073,7 +2967,7 @@ static void csm_connected(struct ibtrs_srv_con *con, enum csm_ev ev)
 		ssm_schedule_event(sess, SSM_EV_SESS_CLOSE);
 		/* fall-through */
 	case CSM_EV_CON_DISCONNECTED: {
-		int err, cnt = 0;
+		int err;
 
 		csm_set_state(con, CSM_STATE_FLUSHING);
 		err = rdma_disconnect(con->cm_id);
@@ -3095,16 +2989,12 @@ static void csm_connected(struct ibtrs_srv_con *con, enum csm_ev ev)
 			goto destroy;
 		}
 
+		/* XXX: should die ASAP */
 		err = ibtrs_request_cq_notifications(&con->ibtrs_con);
 		if (unlikely(err < 0)) {
 			ibtrs_wrn(con->sess, "Requesting CQ Notification for"
 				  " ibtrs_con failed. Connection will be destroyed\n");
 			goto destroy;
-		} else if (err > 0) {
-			err = get_process_wcs(con, &cnt);
-			if (unlikely(err))
-				goto destroy;
-			break;
 		}
 		break;
 
@@ -3130,7 +3020,7 @@ static void csm_closing(struct ibtrs_srv_con *con, enum csm_ev ev)
 	switch (ev) {
 	case CSM_EV_DEVICE_REMOVAL:
 	case CSM_EV_CON_DISCONNECTED: {
-		int err, cnt = 0;
+		int err;
 
 		csm_set_state(con, CSM_STATE_FLUSHING);
 
@@ -3146,16 +3036,12 @@ static void csm_closing(struct ibtrs_srv_con *con, enum csm_ev ev)
 			goto destroy;
 		}
 
+		/* XXX: should die ASAP */
 		err = ibtrs_request_cq_notifications(&con->ibtrs_con);
 		if (unlikely(err < 0)) {
 			ibtrs_wrn(con->sess, "Requesting CQ Notification for"
 				  " ibtrs_con failed. Connection will be destroyed\n");
 			goto destroy;
-		} else if (err > 0) {
-			err = get_process_wcs(con, &cnt);
-			if (unlikely(err))
-				goto destroy;
-			break;
 		}
 		break;
 
@@ -3288,33 +3174,6 @@ static void remove_sess_from_sysfs(struct ibtrs_srv_sess *sess)
 	ibtrs_srv_schedule_sysfs_put(sess);
 }
 
-static __always_inline int
-__ibtrs_srv_request_cq_notifications(struct ibtrs_srv_con *con)
-{
-	return ibtrs_request_cq_notifications(&con->ibtrs_con);
-}
-
-static int ibtrs_srv_request_cq_notifications(struct ibtrs_srv_sess *sess)
-{
-	struct ibtrs_srv_con *con;
-	int err, cnt = 0;
-
-	list_for_each_entry(con, &sess->con_list, list)  {
-		if (con->state == CSM_STATE_CONNECTED) {
-			err = __ibtrs_srv_request_cq_notifications(con);
-			if (unlikely(err < 0)) {
-				return err;
-			} else if (err > 0) {
-				err = get_process_wcs(con, &cnt);
-				if (unlikely(err))
-					return err;
-			}
-		}
-	}
-
-	return 0;
-}
-
 static void ssm_idle(struct ibtrs_srv_sess *sess, enum ssm_ev ev)
 {
 	enum ssm_state state = sess->state;
@@ -3367,13 +3226,6 @@ static void ssm_idle(struct ibtrs_srv_sess *sess, enum ssm_ev ev)
 		}
 
 		ssm_set_state(sess, SSM_STATE_CONNECTED);
-		err = ibtrs_srv_request_cq_notifications(sess);
-		if (err) {
-			ibtrs_err(sess, "Requesting CQ completion notifications"
-				  " failed, err: %d. Session will be closed.\n",
-				  err);
-			goto destroy;
-		}
 
 		break;
 		destroy:
