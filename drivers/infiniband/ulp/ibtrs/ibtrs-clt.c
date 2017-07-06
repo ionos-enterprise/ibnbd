@@ -628,6 +628,7 @@ static void csm_schedule_event(struct ibtrs_clt_con *con, enum csm_ev ev)
 
 	if (in_softirq()) {
 		w = kmalloc(sizeof(*w), GFP_ATOMIC);
+		/* FIXME: WTF? */
 		BUG_ON(!w);
 		goto out;
 	}
@@ -647,6 +648,12 @@ static void ssm_schedule_event(struct ibtrs_clt_sess *sess, enum ssm_ev ev)
 {
 	struct sess_sm_work *w = NULL;
 
+	if (in_softirq()) {
+		w = kmalloc(sizeof(*w), GFP_ATOMIC);
+		/* FIXME: WTF? */
+		BUG_ON(!w);
+		return;
+	}
 	while (!w) {
 		w = kmalloc(sizeof(*w), GFP_KERNEL | __GFP_REPEAT);
 		if (!w)
@@ -785,7 +792,7 @@ static int process_open_rsp(struct ibtrs_clt_con *con, const void *resp)
 	if (!sess->srv_rdma_addr) {
 		sess->srv_rdma_addr = kcalloc(sess->queue_depth,
 					      sizeof(*sess->srv_rdma_addr),
-					      GFP_KERNEL);
+					      GFP_ATOMIC);
 		if (!sess->srv_rdma_addr) {
 			ibtrs_err(sess, "Failed to allocate memory for server RDMA"
 				  " addresses\n");
@@ -1737,12 +1744,17 @@ static int ibtrs_schedule_msg(struct ibtrs_clt_con *con,
 {
 	struct msg_work *w;
 
-	w = kmalloc(sizeof(*w), GFP_KERNEL | __GFP_REPEAT);
+	/*
+	 * FIXME: that is ugly, and better way is to notify API client
+	 *        calling cb directly.  We should not care about contexts.
+	 */
+
+	w = kmalloc(sizeof(*w), GFP_ATOMIC);
 	if (!w)
 		return -ENOMEM;
 
 	w->con = con;
-	w->msg = kmalloc(msg->hdr.tsize, GFP_KERNEL | __GFP_REPEAT);
+	w->msg = kmalloc(msg->hdr.tsize, GFP_ATOMIC);
 	if (!w->msg) {
 		kfree(w);
 		return -ENOMEM;
