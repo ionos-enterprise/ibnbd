@@ -16,7 +16,7 @@
 #include "ibtrs-clt.h"
 #include "ibtrs-log.h"
 
-#define CONS_PER_SESSION (nr_cpu_ids + 1)
+#define CONS_PER_SESSION (nr_cons_per_session + 1)
 #define RECONNECT_SEED 8
 #define MAX_SEGMENTS 31
 
@@ -29,6 +29,11 @@ static bool use_fr;
 module_param(use_fr, bool, 0444);
 MODULE_PARM_DESC(use_fr, "use FRWR mode for memory registration if possible."
 		 " (default: 0)");
+
+static ushort nr_cons_per_session;
+module_param(nr_cons_per_session, ushort, 0444);
+MODULE_PARM_DESC(nr_cons_per_session, "Number of connections per session."
+		 " (default: NR_CPUS)");
 
 static int retry_count = 7;
 
@@ -2575,8 +2580,6 @@ static int connect_qp(struct ibtrs_clt_con *con)
 	conn_param.retry_count = retry_count;
 
 	if (con->user) {
-		if (CONS_PER_SESSION > U8_MAX)
-			return -EINVAL;
 		fill_ibtrs_msg_sess_open(&somsg, CONS_PER_SESSION, &uuid);
 		conn_param.private_data		= &somsg;
 		conn_param.private_data_len	= sizeof(somsg);
@@ -5016,6 +5019,12 @@ static int check_module_params(void)
 		pr_err("invalid fmr_sg_cnt values\n");
 		return -EINVAL;
 	}
+	if (nr_cons_per_session == 0)
+		nr_cons_per_session = nr_cpu_ids;
+	if (nr_cons_per_session >= U8_MAX)
+		/* Protocol header has only 8bits for connection number */
+		nr_cons_per_session = U8_MAX - 1;
+
 	return 0;
 }
 
