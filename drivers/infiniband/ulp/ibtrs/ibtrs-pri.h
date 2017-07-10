@@ -30,9 +30,9 @@
 
 /*
  * With the current size of the tag allocated on the client, 4K is the maximum
- * number of tags we can allocate. (see IBNBD-2321)
- * This number is also used on the client to allocate the IU for the user
- * connection to receive the RDMA addresses from the server.
+ * number of tags we can allocate.  This number is also used on the client to
+ * allocate the IU for the user connection to receive the RDMA addresses from
+ * the server.
  */
 #define MAX_SESS_QUEUE_DEPTH 4096
 
@@ -139,11 +139,6 @@ enum ibtrs_msg_types {
  * struct ibtrs_msg_hdr - Common header of all IBTRS messages
  * @type:	Message type, valid values see: enum ibtrs_msg_types
  * @tsize:	Total size of transferred data
- *
- * Don't move the first 8 padding bytes! It's a workaround for a kernel bug.
- * See IBNBD-610 for details
- *
- * DO NOT CHANGE!
  */
 struct ibtrs_msg_hdr {
 	u8			__padding1;
