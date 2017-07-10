@@ -154,17 +154,28 @@ static void qp_event_handler(struct ib_event *ev, void *ctx)
 	}
 }
 
-int ib_session_init(struct ib_device *dev, struct ib_session *s)
+int ibtrs_ib_dev_init(struct ibtrs_ib_dev *d, struct ib_device *dev)
 {
-	s->pd = ib_alloc_pd(dev, IB_PD_UNSAFE_GLOBAL_RKEY);
-	if (IS_ERR(s->pd))
-		return PTR_ERR(s->pd);
-
-	s->mr = s->pd->__internal_mr;
+	d->pd = ib_alloc_pd(dev, IB_PD_UNSAFE_GLOBAL_RKEY);
+	if (IS_ERR(d->pd))
+		return PTR_ERR(d->pd);
+	d->mr = d->pd->__internal_mr;
+	d->dev = dev;
 
 	return 0;
 }
-EXPORT_SYMBOL_GPL(ib_session_init);
+EXPORT_SYMBOL_GPL(ibtrs_ib_dev_init);
+
+void ibtrs_ib_dev_destroy(struct ibtrs_ib_dev *d)
+{
+	if (d->pd) {
+		ib_dealloc_pd(d->pd);
+		d->mr = NULL;
+		d->pd = NULL;
+		d->dev = NULL;
+	}
+}
+EXPORT_SYMBOL_GPL(ibtrs_ib_dev_destroy);
 
 static int init_cq(struct ibtrs_con *con, struct rdma_cm_id *cm_id,
 		   int cq_vector, u16 cq_size, enum ib_poll_context poll_ctx)
@@ -237,9 +248,9 @@ int post_beacon(struct ibtrs_con *con)
 }
 EXPORT_SYMBOL_GPL(post_beacon);
 
-int ibtrs_con_init(struct ibtrs_sess *ibtrs_sess, struct ibtrs_con *con,
+int ibtrs_con_init(struct ibtrs_sess *sess, struct ibtrs_con *con,
 		   struct rdma_cm_id *cm_id, u32 max_send_sge, int cq_vector,
-		   u16 cq_size, u16 wr_queue_size, struct ib_session *session,
+		   u16 cq_size, u16 wr_queue_size, struct ibtrs_ib_dev *ibdev,
 		   enum ib_poll_context poll_ctx)
 {
 	int err, ret;
@@ -248,7 +259,7 @@ int ibtrs_con_init(struct ibtrs_sess *ibtrs_sess, struct ibtrs_con *con,
 	if (err)
 		return err;
 
-	err = create_qp(con, cm_id, session->pd, wr_queue_size, max_send_sge);
+	err = create_qp(con, cm_id, ibdev->pd, wr_queue_size, max_send_sge);
 	if (err) {
 		ret = ib_destroy_cq(con->cq);
 		if (ret)
@@ -258,17 +269,8 @@ int ibtrs_con_init(struct ibtrs_sess *ibtrs_sess, struct ibtrs_con *con,
 	con->beacon.wr_cqe = &con->beacon_cqe;
 	con->beacon.opcode = IB_WR_SEND;
 	con->cm_id = cm_id;
-	con->sess = ibtrs_sess;
+	con->sess = sess;
 
 	return 0;
 }
 EXPORT_SYMBOL_GPL(ibtrs_con_init);
-
-void ib_session_destroy(struct ib_session *session)
-{
-	if (session->pd) {
-		ib_dealloc_pd(session->pd);
-		session->pd = NULL;
-	}
-}
-EXPORT_SYMBOL_GPL(ib_session_destroy);

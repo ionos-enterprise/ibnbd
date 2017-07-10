@@ -90,8 +90,7 @@ struct ibtrs_clt_sess {
 	wait_queue_head_t	wait_q;
 	enum ssm_state		state;
 	struct ibtrs_clt_con	*con;
-	struct ib_session	ib_sess;
-	struct ib_device	*ib_device;
+	struct ibtrs_ib_dev	ib_dev;
 	struct ibtrs_iu		*rdma_info_iu;
 	struct ibtrs_iu		*sess_info_iu;
 	struct ibtrs_iu		*dummy_rx_iu;
@@ -103,7 +102,7 @@ struct ibtrs_clt_sess {
 
 	struct rdma_req		*reqs;
 	struct ib_fmr_pool	*fmr_pool;
-	atomic_t		ib_sess_initialized;
+	atomic_t		ib_dev_initialized;
 	bool			io_bufs_initialized;
 	size_t			pdu_sz;
 	void			*priv;

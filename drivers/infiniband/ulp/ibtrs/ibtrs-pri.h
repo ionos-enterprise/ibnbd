@@ -53,9 +53,10 @@ static inline const char *ib_wc_opcode_str(enum ib_wc_opcode opcode)
 	}
 }
 
-struct ib_session {
+struct ibtrs_ib_dev {
 	struct ib_pd		*pd;
 	struct ib_mr		*mr;
+	struct ib_device	*dev;
 };
 
 struct ibtrs_ib_path {
@@ -347,10 +348,8 @@ int ib_post_rdma_write_imm(struct ib_qp *qp, struct ib_cqe *cqe,
 
 int post_beacon(struct ibtrs_con *con);
 
-/**
- * ib_session_init() - Create a new IB session
- */
-int ib_session_init(struct ib_device *dev, struct ib_session *session);
+int ibtrs_ib_dev_init(struct ibtrs_ib_dev *ibdev, struct ib_device *dev);
+void ibtrs_ib_dev_destroy(struct ibtrs_ib_dev *ibdev);
 
 /**
  * ibtrs_con_init() - initialize and add a ibtrs_con to the session
@@ -358,17 +357,12 @@ int ib_session_init(struct ib_device *dev, struct ib_session *session);
 int ibtrs_con_init(struct ibtrs_sess *ibtrs_sess, struct ibtrs_con *con,
 		   struct rdma_cm_id *cm_id, u32 max_send_sge,
 		   int cq_vector, u16 cq_size, u16 wr_queue_size,
-		   struct ib_session *session, enum ib_poll_context poll_ctx);
+		   struct ibtrs_ib_dev *ibdev, enum ib_poll_context poll_ctx);
 
 int ibtrs_request_cq_notifications(struct ibtrs_con *con);
 
 void ibtrs_con_destroy(struct ibtrs_con *con);
 
-/**
- * ib_session_destroy() - Free a session
- * The corresponding &ibtrs_con must have been freed before.
- */
-void ib_session_destroy(struct ib_session *session);
 
 int ib_get_max_wr_queue_size(struct ib_device *dev);
 
