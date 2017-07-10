@@ -3501,11 +3501,9 @@ static int create_con(struct ibtrs_clt_con *con)
 		cq_size		= USR_CON_BUF_SIZE + 1;
 		wr_queue_size	= USR_CON_BUF_SIZE + 1;
 	} else {
-		err = ib_get_max_wr_queue_size(sess->ib_dev.dev);
-		if (err < 0)
-			goto err_cm_id;
-		cq_size		= sess->queue_depth;
-		wr_queue_size	= min_t(int, err - 1,
+		cq_size	      = sess->queue_depth;
+		wr_queue_size = sess->ib_dev.dev->attrs.max_qp_wr - 1;
+		wr_queue_size = min_t(int, wr_queue_size,
 					sess->queue_depth * num_wr *
 					(use_fr ? 3 : 2));
 	}

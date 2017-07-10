@@ -2188,16 +2188,11 @@ __create_sess(struct rdma_cm_id *cm_id, const struct ibtrs_msg_sess_open *req)
 	INIT_LIST_HEAD(&sess->tx_bufs);
 	spin_lock_init(&sess->tx_bufs_lock);
 
-	err = ib_get_max_wr_queue_size(cm_id->device);
-	if (err < 0)
-		goto err1;
-
-	sess->wq_size = err - 1;
-
-	sess->queue_depth		= sess_queue_depth;
-	sess->con_cnt			= req->con_cnt;
-	sess->ver			= min_t(u8, req->ver, IBTRS_VERSION);
-	sess->primary_port_num		= cm_id->port_num;
+	sess->wq_size		= cm_id->device->attrs.max_qp_wr - 1;
+	sess->queue_depth	= sess_queue_depth;
+	sess->con_cnt		= req->con_cnt;
+	sess->ver		= min_t(u8, req->ver, IBTRS_VERSION);
+	sess->primary_port_num	= cm_id->port_num;
 
 	init_waitqueue_head(&sess->mu_iu_wait_q);
 	init_waitqueue_head(&sess->mu_buf_wait_q);

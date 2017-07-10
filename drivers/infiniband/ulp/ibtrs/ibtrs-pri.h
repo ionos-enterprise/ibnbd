@@ -363,9 +363,6 @@ int ibtrs_request_cq_notifications(struct ibtrs_con *con);
 
 void ibtrs_con_destroy(struct ibtrs_con *con);
 
-
-int ib_get_max_wr_queue_size(struct ib_device *dev);
-
 static inline void sockaddr_to_str(const struct sockaddr_storage *addr,
 				   char *buf, size_t len)
 {

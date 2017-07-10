@@ -82,15 +82,6 @@ int ib_post_rdma_write_imm(struct ib_qp *qp, struct ib_cqe *cqe,
 }
 EXPORT_SYMBOL_GPL(ib_post_rdma_write_imm);
 
-/* TODO delete */
-int ib_get_max_wr_queue_size(struct ib_device *dev)
-{
-	struct ib_device_attr *attr = &dev->attrs;
-
-	return attr->max_qp_wr;
-}
-EXPORT_SYMBOL_GPL(ib_get_max_wr_queue_size);
-
 static const char *ib_event_str(enum ib_event_type ev)
 {
 	switch (ev) {
