@@ -56,7 +56,6 @@ static inline const char *ib_wc_opcode_str(enum ib_wc_opcode opcode)
 struct ib_session {
 	struct ib_pd		*pd;
 	struct ib_mr		*mr;
-	struct ib_event_handler	event_handler;
 };
 
 struct ibtrs_ib_path {

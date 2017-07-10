@@ -137,23 +137,6 @@ static const char *ib_event_str(enum ib_event_type ev)
 	}
 };
 
-static void ib_event_handler(struct ib_event_handler *h, struct ib_event *ev)
-{
-	switch (ev->event) {
-	case IB_EVENT_DEVICE_FATAL:
-	case IB_EVENT_PORT_ERR:
-		pr_warn("Received IB event %s (%d) on device %s port %d\n",
-			ib_event_str(ev->event), ev->event,
-			ev->device->name, ev->element.port_num);
-		break;
-	default:
-		pr_info("Received IB event %s (%d) on device %s port %d\n",
-			ib_event_str(ev->event), ev->event,
-			ev->device->name, ev->element.port_num);
-		break;
-	}
-}
-
 static void qp_event_handler(struct ib_event *ev, void *ctx)
 {
 	struct ibtrs_con *con = ctx;
@@ -173,31 +156,13 @@ static void qp_event_handler(struct ib_event *ev, void *ctx)
 
 int ib_session_init(struct ib_device *dev, struct ib_session *s)
 {
-	int err;
-
 	s->pd = ib_alloc_pd(dev, IB_PD_UNSAFE_GLOBAL_RKEY);
-	if (IS_ERR(s->pd)) {
-		pr_err("Allocating protection domain failed, err: %ld\n",
-		       PTR_ERR(s->pd));
+	if (IS_ERR(s->pd))
 		return PTR_ERR(s->pd);
-	}
+
 	s->mr = s->pd->__internal_mr;
-	INIT_IB_EVENT_HANDLER(&s->event_handler, dev, ib_event_handler);
-	err = ib_register_event_handler(&s->event_handler);
-	if (err) {
-		pr_err("Registering IB event handler failed, err: %d\n",
-		       err);
-		goto err;
-	}
 
 	return 0;
-
-err:
-	ib_dealloc_pd(s->pd);
-	s->pd = NULL;
-	s->mr = NULL;
-
-	return err;
 }
 EXPORT_SYMBOL_GPL(ib_session_init);
 
@@ -305,7 +270,5 @@ void ib_session_destroy(struct ib_session *session)
 		ib_dealloc_pd(session->pd);
 		session->pd = NULL;
 	}
-
-	ib_unregister_event_handler(&session->event_handler);
 }
 EXPORT_SYMBOL_GPL(ib_session_destroy);
