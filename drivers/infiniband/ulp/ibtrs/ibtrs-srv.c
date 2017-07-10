@@ -2973,7 +2973,7 @@ static void csm_connected(struct ibtrs_srv_con *con, enum csm_ev ev)
 		wait_event(sess->bufs_wait,
 			   !atomic_read(&sess->stats.rdma_stats.inflight));
 		pr_debug("posting beacon on con %p\n", con);
-		err = post_beacon(&con->ibtrs_con);
+		err = ibtrs_post_beacon(&con->ibtrs_con);
 		if (err) {
 			ibtrs_err(sess, "Connection received event %s "
 				  "in %s state, new state is %s but failed to post"
@@ -3021,7 +3021,7 @@ static void csm_closing(struct ibtrs_srv_con *con, enum csm_ev ev)
 			   !atomic_read(&sess->stats.rdma_stats.inflight));
 
 		pr_debug("posting beacon on con %p\n", con);
-		if (post_beacon(&con->ibtrs_con)) {
+		if (ibtrs_post_beacon(&con->ibtrs_con)) {
 			ibtrs_err(sess, "Connection received event %s "
 				  "in %s state, new state is %s but failed to post"
 				  " beacon, closing connection.\n", csm_ev_str(ev),

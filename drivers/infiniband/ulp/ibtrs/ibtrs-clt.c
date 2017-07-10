@@ -1391,11 +1391,11 @@ static int ibtrs_post_send_rdma(struct ibtrs_clt_con *con, struct rdma_req *req,
 	list[0].length = req->sg_size;
 	list[0].lkey   = con->sess->ib_dev.pd->local_dma_lkey;
 
-	return ib_post_rdma_write_imm(con->ibtrs_con.qp, &req->iu->cqe,
-				      list, 1, con->sess->srv_rdma_buf_rkey,
-				      addr + off, imm,
-				      cnt % (con->sess->queue_depth) ?
-				      0 : IB_SEND_SIGNALED);
+	return ibtrs_post_rdma_write_imm(con->ibtrs_con.qp, &req->iu->cqe,
+					 list, 1, con->sess->srv_rdma_buf_rkey,
+					 addr + off, imm,
+					 cnt % (con->sess->queue_depth) ?
+					 0 : IB_SEND_SIGNALED);
 }
 
 static void ibtrs_set_sge_with_desc(struct ib_sge *list,
@@ -1521,12 +1521,12 @@ static int ibtrs_post_send_rdma_desc(struct ibtrs_clt_con *con,
 		list[i].length = size;
 		list[i].lkey   = sess->ib_dev.pd->local_dma_lkey;
 
-		ret = ib_post_rdma_write_imm(con->ibtrs_con.qp, &req->iu->cqe,
-					     list, num_sge,
-					     sess->srv_rdma_buf_rkey,
-					     addr, imm,
-					     cnt % (sess->queue_depth) ?
-					     0 : IB_SEND_SIGNALED);
+		ret = ibtrs_post_rdma_write_imm(con->ibtrs_con.qp, &req->iu->cqe,
+						list, num_sge,
+						sess->srv_rdma_buf_rkey,
+						addr, imm,
+						cnt % (sess->queue_depth) ?
+						0 : IB_SEND_SIGNALED);
 	} else
 		ret = ibtrs_post_send_rdma_desc_more(con, list, req, desc, n,
 						     addr, size, imm);
@@ -1560,12 +1560,12 @@ static int ibtrs_post_send_rdma_more(struct ibtrs_clt_con *con,
 	list[i].length = size;
 	list[i].lkey   = con->sess->ib_dev.pd->local_dma_lkey;
 
-	ret = ib_post_rdma_write_imm(con->ibtrs_con.qp, &req->iu->cqe,
-				     list, num_sge,
-				     con->sess->srv_rdma_buf_rkey,
-				     addr, imm,
-				     cnt % (con->sess->queue_depth) ?
-				     0 : IB_SEND_SIGNALED);
+	ret = ibtrs_post_rdma_write_imm(con->ibtrs_con.qp, &req->iu->cqe,
+					list, num_sge,
+					con->sess->srv_rdma_buf_rkey,
+					addr, imm,
+					cnt % (con->sess->queue_depth) ?
+					0 : IB_SEND_SIGNALED);
 
 	kfree(list);
 	return ret;
@@ -4307,7 +4307,7 @@ static void csm_closing(struct ibtrs_clt_con *con, enum csm_ev ev)
 		csm_set_state(con, CSM_STATE_FLUSHING);
 		synchronize_rcu();
 
-		err = post_beacon(&con->ibtrs_con);
+		err = ibtrs_post_beacon(&con->ibtrs_con);
 		if (err) {
 			ibtrs_wrn(con->sess, "Failed to post BEACON,"
 				  " will destroy connection directly\n");

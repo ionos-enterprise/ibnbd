@@ -341,12 +341,12 @@ int ibtrs_write_empty_imm(struct ib_qp *qp, u32 imm_data,
 int ibtrs_post_send(struct ib_qp *qp, struct ib_mr *mr, struct ibtrs_iu *iu,
 		    u32 size);
 
-int ib_post_rdma_write_imm(struct ib_qp *qp, struct ib_cqe *cqe,
-			   struct ib_sge *sge, unsigned int num_sge,
-			   u32 rkey, u64 rdma_addr, u32 imm_data,
-			   enum ib_send_flags flags);
+int ibtrs_post_rdma_write_imm(struct ib_qp *qp, struct ib_cqe *cqe,
+			      struct ib_sge *sge, unsigned int num_sge,
+			      u32 rkey, u64 rdma_addr, u32 imm_data,
+			      enum ib_send_flags flags);
 
-int post_beacon(struct ibtrs_con *con);
+int ibtrs_post_beacon(struct ibtrs_con *con);
 
 int ibtrs_ib_dev_init(struct ibtrs_ib_dev *ibdev, struct ib_device *dev);
 void ibtrs_ib_dev_destroy(struct ibtrs_ib_dev *ibdev);

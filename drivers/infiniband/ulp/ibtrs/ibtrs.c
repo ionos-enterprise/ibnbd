@@ -43,24 +43,24 @@ int ibtrs_post_send(struct ib_qp *qp, struct ib_mr *mr, struct ibtrs_iu *iu,
 }
 EXPORT_SYMBOL_GPL(ibtrs_post_send);
 
-static int post_rdma_write(struct ib_qp *qp, struct ib_cqe *cqe,
-			   struct ib_sge *sge, size_t num_sge,
-			   u32 rkey, u64 rdma_addr, u32 imm_data,
-			   enum ib_wr_opcode opcode, enum ib_send_flags flags)
+int ibtrs_post_rdma_write_imm(struct ib_qp *qp, struct ib_cqe *cqe,
+			      struct ib_sge *sge, unsigned int num_sge,
+			      u32 rkey, u64 rdma_addr, u32 imm_data,
+			      enum ib_send_flags flags)
 {
 	struct ib_send_wr *bad_wr;
 	struct ib_rdma_wr wr;
 	int i;
 
-	wr.wr.next	= NULL;
-	wr.wr.wr_cqe	= cqe;
-	wr.wr.sg_list	= sge;
-	wr.wr.num_sge	= num_sge;
-	wr.rkey		= rkey;
-	wr.remote_addr	= rdma_addr;
-	wr.wr.opcode	  = opcode;
+	wr.wr.next	  = NULL;
+	wr.wr.wr_cqe	  = cqe;
+	wr.wr.sg_list	  = sge;
+	wr.wr.num_sge	  = num_sge;
+	wr.rkey		  = rkey;
+	wr.remote_addr	  = rdma_addr;
+	wr.wr.opcode	  = IB_WR_RDMA_WRITE_WITH_IMM;
 	wr.wr.ex.imm_data = cpu_to_be32(imm_data);
-	wr.wr.send_flags = flags;
+	wr.wr.send_flags  = flags;
 
 	/* if one of the sges has 0 size,, the operation will fail with an
 	 * length error
@@ -71,16 +71,7 @@ static int post_rdma_write(struct ib_qp *qp, struct ib_cqe *cqe,
 
 	return ib_post_send(qp, &wr.wr, &bad_wr);
 }
-
-int ib_post_rdma_write_imm(struct ib_qp *qp, struct ib_cqe *cqe,
-			   struct ib_sge *sge, unsigned int num_sge,
-			   u32 rkey, u64 rdma_addr, u32 imm_data,
-			   enum ib_send_flags flags)
-{
-	return post_rdma_write(qp, cqe, sge, num_sge, rkey, rdma_addr,
-			       imm_data, IB_WR_RDMA_WRITE_WITH_IMM, flags);
-}
-EXPORT_SYMBOL_GPL(ib_post_rdma_write_imm);
+EXPORT_SYMBOL_GPL(ibtrs_post_rdma_write_imm);
 
 static const char *ib_event_str(enum ib_event_type ev)
 {
@@ -231,13 +222,13 @@ static int create_qp(struct ibtrs_con *con, struct rdma_cm_id *cm_id,
 	return ret;
 }
 
-int post_beacon(struct ibtrs_con *con)
+int ibtrs_post_beacon(struct ibtrs_con *con)
 {
 	struct ib_send_wr *bad_wr;
 
 	return ib_post_send(con->qp, &con->beacon, &bad_wr);
 }
-EXPORT_SYMBOL_GPL(post_beacon);
+EXPORT_SYMBOL_GPL(ibtrs_post_beacon);
 
 int ibtrs_con_init(struct ibtrs_sess *sess, struct ibtrs_con *con,
 		   struct rdma_cm_id *cm_id, u32 max_send_sge, int cq_vector,
