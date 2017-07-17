@@ -217,8 +217,6 @@ struct ibtrs_msg_sess_info {
  * @max_io_size:   max io size server supports
  * @max_req_size:   max infiniband message size server supports
  * @addr:	rdma addresses of buffers
- *
- * DO NOT CHANGE members before ver.
  */
 struct ibtrs_msg_sess_open_resp {
 	struct ibtrs_msg_hdr	hdr;
