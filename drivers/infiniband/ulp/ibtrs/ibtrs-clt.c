@@ -1778,7 +1778,7 @@ static void ibtrs_handle_recv(struct ibtrs_clt_con *con,
 	int ret;
 
 	hdr = (struct ibtrs_msg_hdr *)iu->buf;
-	if (unlikely(ibtrs_validate_message(sess->queue_depth, hdr)))
+	if (unlikely(ibtrs_validate_message(hdr)))
 		goto err1;
 
 	pr_debug("recv completion, type 0x%02x\n",
@@ -1966,7 +1966,7 @@ static void process_con_rejected(struct ibtrs_clt_con *con,
 	    msg->hdr.type != IBTRS_MSG_ERROR)
 		return;
 
-	if (unlikely(ibtrs_validate_message(con->sess->queue_depth, msg))) {
+	if (unlikely(ibtrs_validate_message(&msg->hdr))) {
 		ibtrs_err(con->sess,
 			  "Received invalid connection rejected message\n");
 		return;

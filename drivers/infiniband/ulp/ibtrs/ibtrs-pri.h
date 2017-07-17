@@ -306,7 +306,7 @@ struct ibtrs_msg_error {
 #pragma GCC diagnostic pop
 #endif
 
-int ibtrs_validate_message(u16 queue_depth, const void *hdr);
+int ibtrs_validate_message(const struct ibtrs_msg_hdr *hdr);
 
 void fill_ibtrs_msg_sess_open(struct ibtrs_msg_sess_open *msg, u8 con_cnt,
 			      const uuid_le *uuid);

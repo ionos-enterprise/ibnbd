@@ -1666,7 +1666,7 @@ static void ibtrs_handle_write(struct ibtrs_srv_con *con, struct ibtrs_iu *iu,
 	struct ibtrs_srv_sess *sess = con->sess;
 	int ret;
 
-	if (unlikely(ibtrs_validate_message(sess->queue_depth, hdr))) {
+	if (unlikely(ibtrs_validate_message(hdr))) {
 		ibtrs_err(sess,
 			  "Processing I/O failed, message validation failed\n");
 		ret = ibtrs_post_recv(con, iu);
@@ -1754,7 +1754,7 @@ static void ibtrs_handle_recv(struct ibtrs_srv_con *con, struct ibtrs_iu *iu)
 	u8 type;
 
 	hdr = (struct ibtrs_msg_hdr *)iu->buf;
-	if (unlikely(ibtrs_validate_message(sess->queue_depth, hdr)))
+	if (unlikely(ibtrs_validate_message(hdr)))
 		goto err1;
 
 	type = hdr->type;
@@ -2449,11 +2449,11 @@ static int ssm_schedule_create_con(struct ibtrs_srv_sess *sess,
 static int rdma_con_establish(struct rdma_cm_id *cm_id, const void *data,
 			      size_t size)
 {
-	struct ibtrs_srv_sess *sess;
-	int ret;
-	const char *uuid = NULL;
 	const struct ibtrs_msg_hdr *hdr = data;
+	struct ibtrs_srv_sess *sess;
+	const char *uuid = NULL;
 	bool user = false;
+	int ret;
 
 	if (unlikely(!srv_ops_are_valid(srv_ops))) {
 		pr_err("Establishing connection failed, "
@@ -2464,7 +2464,7 @@ static int rdma_con_establish(struct rdma_cm_id *cm_id, const void *data,
 
 	if (unlikely((size < sizeof(struct ibtrs_msg_con_open)) ||
 		     (size < sizeof(struct ibtrs_msg_sess_open)) ||
-		     ibtrs_validate_message(0, hdr))) {
+		     ibtrs_validate_message(hdr))) {
 		pr_err("Establishing connection failed, "
 		       "connection request payload size unexpected "
 		       "%zu != %lu or %lu\n", size,

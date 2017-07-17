@@ -46,8 +46,7 @@ ibtrs_validate_msg_user(const struct ibtrs_msg_user *msg)
 }
 
 static int
-ibtrs_validate_msg_rdma_write(const struct ibtrs_msg_rdma_write *msg,
-			      u16 queue_depth)
+ibtrs_validate_msg_rdma_write(const struct ibtrs_msg_rdma_write *msg)
 {
 	if (unlikely(msg->hdr.tsize <= sizeof(*msg))) {
 		pr_err("RDMA-Write msg received with invalid length %d"
@@ -59,8 +58,7 @@ ibtrs_validate_msg_rdma_write(const struct ibtrs_msg_rdma_write *msg,
 }
 
 static int
-ibtrs_validate_msg_req_rdma_write(const struct ibtrs_msg_req_rdma_write *msg,
-				  u16 queue_depth)
+ibtrs_validate_msg_req_rdma_write(const struct ibtrs_msg_req_rdma_write *msg)
 {
 	if (unlikely(msg->hdr.tsize <= sizeof(*msg))) {
 		pr_err("Request-RDMA-Write msg request received with invalid"
@@ -123,49 +121,55 @@ static int ibtrs_validate_msg_error(const struct ibtrs_msg_error *msg)
 	return 0;
 }
 
-int ibtrs_validate_message(u16 queue_depth, const void *data)
+int ibtrs_validate_message(const struct ibtrs_msg_hdr *hdr)
 {
-	const struct ibtrs_msg_hdr *hdr = data;
-
 	switch (hdr->type) {
 	case IBTRS_MSG_RDMA_WRITE: {
-		const struct ibtrs_msg_rdma_write *msg = data;
+		const struct ibtrs_msg_rdma_write *msg;
 
-		return ibtrs_validate_msg_rdma_write(msg, queue_depth);
+		msg = container_of(hdr, typeof(*msg), hdr);
+		return ibtrs_validate_msg_rdma_write(msg);
 	}
 	case IBTRS_MSG_REQ_RDMA_WRITE: {
-		const struct ibtrs_msg_req_rdma_write *req = data;
+		const struct ibtrs_msg_req_rdma_write *req;
 
-		return ibtrs_validate_msg_req_rdma_write(req, queue_depth);
+		req = container_of(hdr, typeof(*req), hdr);
+		return ibtrs_validate_msg_req_rdma_write(req);
 	}
 	case IBTRS_MSG_SESS_OPEN_RESP: {
-		const struct ibtrs_msg_sess_open_resp *msg = data;
+		const struct ibtrs_msg_sess_open_resp *msg;
 
+		msg = container_of(hdr, typeof(*msg), hdr);
 		return ibtrs_validate_msg_sess_open_resp(msg);
 	}
 	case IBTRS_MSG_SESS_INFO: {
-		const struct ibtrs_msg_sess_info *msg = data;
+		const struct ibtrs_msg_sess_info *msg;
 
+		msg = container_of(hdr, typeof(*msg), hdr);
 		return ibtrs_validate_msg_sess_info(msg);
 	}
 	case IBTRS_MSG_USER: {
-		const struct ibtrs_msg_user *msg = data;
+		const struct ibtrs_msg_user *msg;
 
+		msg = container_of(hdr, typeof(*msg), hdr);
 		return ibtrs_validate_msg_user(msg);
 	}
 	case IBTRS_MSG_CON_OPEN: {
-		const struct ibtrs_msg_con_open *msg = data;
+		const struct ibtrs_msg_con_open *msg;
 
+		msg = container_of(hdr, typeof(*msg), hdr);
 		return ibtrs_validate_msg_con_open(msg);
 	}
 	case IBTRS_MSG_SESS_OPEN: {
-		const struct ibtrs_msg_sess_open *msg = data;
+		const struct ibtrs_msg_sess_open *msg;
 
+		msg = container_of(hdr, typeof(*msg), hdr);
 		return ibtrs_validate_msg_sess_open(msg);
 	}
 	case IBTRS_MSG_ERROR: {
-		const struct ibtrs_msg_error *msg = data;
+		const struct ibtrs_msg_error *msg;
 
+		msg = container_of(hdr, typeof(*msg), hdr);
 		return ibtrs_validate_msg_error(msg);
 	}
 	default:
