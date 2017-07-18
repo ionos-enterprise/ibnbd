@@ -406,8 +406,6 @@ static inline int get_sess(struct ibtrs_clt_sess *sess)
 	return atomic_inc_not_zero(&sess->refcount);
 }
 
-static void free_con_fast_pool(struct ibtrs_clt_con *con);
-
 static void put_sess(struct ibtrs_clt_sess *sess)
 {
 	if (!atomic_dec_if_positive(&sess->refcount)) {
@@ -1042,13 +1040,6 @@ static void ibtrs_fr_pool_put(struct ibtrs_fr_pool *pool,
 	for (i = 0; i < n; i++)
 		list_add(&desc[i]->entry, &pool->free_list);
 	spin_unlock_bh(&pool->lock);
-}
-
-static inline struct ibtrs_fr_pool *alloc_fr_pool(struct ibtrs_clt_sess *sess)
-{
-	return ibtrs_create_fr_pool(sess->ib_dev.dev, sess->ib_dev.pd,
-				    sess->queue_depth,
-				    sess->max_pages_per_mr);
 }
 
 static void ibtrs_map_desc(struct ibtrs_map_state *state, dma_addr_t dma_addr,
@@ -2774,11 +2765,6 @@ static int create_ib_dev(struct ibtrs_clt_con *con)
 	if (atomic_read(&sess->ib_dev_initialized) == 1)
 		return 0;
 
-	if (WARN_ON(!con->cm_id->device)) {
-		ibtrs_wrn(sess, "Invalid CM ID device\n");
-		return -EINVAL;
-	}
-
 	/* For performance reasons, we don't allow a session to be created if
 	 * the number of completion vectors available in the hardware is not
 	 * enough to have one interrupt per CPU.
@@ -2861,13 +2847,14 @@ static int alloc_con_fast_pool(struct ibtrs_clt_con *con)
 
 	if (con->user)
 		return 0;
-
 	if (sess->fast_reg_mode == IBTRS_FAST_MEM_FMR)
 		return 0;
-
 	if (sess->fast_reg_mode == IBTRS_FAST_MEM_FR) {
-		fr_pool = alloc_fr_pool(sess);
-		if (IS_ERR(fr_pool)) {
+		fr_pool = ibtrs_create_fr_pool(sess->ib_dev.dev,
+					       sess->ib_dev.pd,
+					       sess->queue_depth,
+					       sess->max_pages_per_mr);
+		if (unlikely(IS_ERR(fr_pool))) {
 			err = PTR_ERR(fr_pool);
 			ibtrs_err(sess, "FR pool allocation failed, err: %d\n",
 				  err);
