@@ -737,7 +737,7 @@ struct ibtrs_map_state {
 	enum dma_data_direction dir;
 };
 
-static void free_io_bufs(struct ibtrs_clt_sess *sess);
+static void free_sess_io_bufs(struct ibtrs_clt_sess *sess);
 
 static int process_open_rsp(struct ibtrs_clt_con *con, const void *resp)
 {
@@ -786,7 +786,7 @@ static int process_open_rsp(struct ibtrs_clt_con *con, const void *resp)
 	 */
 	if (sess->queue_depth &&
 	    sess->queue_depth != msg->max_inflight_msg) {
-		free_io_bufs(sess);
+		free_sess_io_bufs(sess);
 		kfree(sess->srv_rdma_addr);
 		sess->srv_rdma_addr = NULL;
 	}
@@ -3381,7 +3381,7 @@ static void destroy_ib_dev(struct ibtrs_clt_sess *sess)
 	if (atomic_cmpxchg(&sess->ib_dev_initialized, 1, 0) == 1) {
 		ibtrs_ib_dev_destroy(&sess->ib_dev);
 		free_sess_init_bufs(sess);
-		free_io_bufs(sess);
+		free_sess_io_bufs(sess);
 		destroy_workqueue(sess->msg_wq);
 	}
 }
@@ -4497,7 +4497,7 @@ static void queue_destroy_sess(struct ibtrs_clt_sess *sess)
 	sess_schedule_destroy(sess);
 }
 
-static int alloc_io_bufs(struct ibtrs_clt_sess *sess)
+static int alloc_sess_io_bufs(struct ibtrs_clt_sess *sess)
 {
 	int ret;
 
@@ -4523,7 +4523,7 @@ static int alloc_io_bufs(struct ibtrs_clt_sess *sess)
 	return 0;
 }
 
-static void free_io_bufs(struct ibtrs_clt_sess *sess)
+static void free_sess_io_bufs(struct ibtrs_clt_sess *sess)
 {
 	free_reqs(sess);
 	free_sess_fast_pool(sess);
@@ -4538,7 +4538,7 @@ static int ssm_open_init(struct ibtrs_clt_sess *sess)
 {
 	int i, ret;
 
-	ret = alloc_io_bufs(sess);
+	ret = alloc_sess_io_bufs(sess);
 	if (ret)
 		return ret;
 
