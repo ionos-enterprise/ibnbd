@@ -2668,8 +2668,6 @@ static int alloc_con_fast_pool(struct ibtrs_clt_con *con)
 	struct ibtrs_fr_pool *fr_pool;
 	int err = 0;
 
-	if (con->user)
-		return 0;
 	if (sess->fast_reg_mode == IBTRS_FAST_MEM_FMR)
 		return 0;
 	if (sess->fast_reg_mode == IBTRS_FAST_MEM_FR) {
@@ -2691,8 +2689,6 @@ static int alloc_con_fast_pool(struct ibtrs_clt_con *con)
 
 static void free_con_fast_pool(struct ibtrs_clt_con *con)
 {
-	if (con->user)
-		return;
 	if (con->sess->fast_reg_mode == IBTRS_FAST_MEM_FMR)
 		return;
 	if (con->sess->fast_reg_mode == IBTRS_FAST_MEM_FR) {
@@ -2753,9 +2749,10 @@ static void con_destroy(struct ibtrs_clt_con *con)
 	}
 	fail_outstanding_reqs(con);
 	ibtrs_con_destroy(&con->ibtrs_con);
-	free_con_fast_pool(con);
 	if (con->user)
 		free_sess_tr_bufs(con->sess);
+	else
+		free_con_fast_pool(con);
 	ibtrs_clt_destroy_cm_id(con);
 
 	/* notify possible user msg ACK thread waiting for a tx iu or user msg
@@ -3389,13 +3386,13 @@ static int create_con(struct ibtrs_clt_con *con)
 		wr_queue_size = min_t(int, wr_queue_size,
 				      sess->queue_depth * num_wr *
 				      (use_fr ? 3 : 2));
-	}
 
-	err = alloc_con_fast_pool(con);
-	if (err) {
-		ibtrs_err(sess, "Failed to allocate fast memory "
-			  "pool, err: %d\n", err);
-		goto err_cm_id;
+		err = alloc_con_fast_pool(con);
+		if (err) {
+			ibtrs_err(sess, "Failed to allocate fast memory "
+				  "pool, err: %d\n", err);
+			goto err_cm_id;
+		}
 	}
 	cq_vector = con->cpu % sess->ib_dev.dev->num_comp_vectors;
 	err = ibtrs_con_init(&sess->sess, &con->ibtrs_con, con->cm_id,
@@ -3433,7 +3430,8 @@ err_wq:
 err_con:
 	ibtrs_con_destroy(&con->ibtrs_con);
 err_pool:
-	free_con_fast_pool(con);
+	if (!con->user)
+		free_con_fast_pool(con);
 err_cm_id:
 	ibtrs_clt_destroy_cm_id(con);
 
