@@ -2206,7 +2206,7 @@ static void fail_all_outstanding_reqs(struct ibtrs_clt_sess *sess)
 		fail_outstanding_req(sess->reqs[i].con, &sess->reqs[i]);
 }
 
-static void ibtrs_free_reqs(struct ibtrs_clt_sess *sess)
+static void free_reqs(struct ibtrs_clt_sess *sess)
 {
 	struct rdma_req *req;
 	int i;
@@ -2233,7 +2233,7 @@ static void ibtrs_free_reqs(struct ibtrs_clt_sess *sess)
 	sess->reqs = NULL;
 }
 
-static int ibtrs_alloc_reqs(struct ibtrs_clt_sess *sess)
+static int alloc_reqs(struct ibtrs_clt_sess *sess)
 {
 	struct rdma_req *req = NULL;
 	void *mr_list = NULL;
@@ -2265,7 +2265,7 @@ static int ibtrs_alloc_reqs(struct ibtrs_clt_sess *sess)
 	return 0;
 
 out:
-	ibtrs_free_reqs(sess);
+	free_reqs(sess);
 	return -ENOMEM;
 }
 
@@ -2312,15 +2312,6 @@ static void free_sess_tx_bufs(struct ibtrs_clt_sess *sess, bool check)
 
 }
 
-static void free_sess_fast_pool(struct ibtrs_clt_sess *sess)
-{
-	if (sess->fast_reg_mode == IBTRS_FAST_MEM_FMR) {
-		if (sess->fmr_pool)
-			ib_destroy_fmr_pool(sess->fmr_pool);
-		sess->fmr_pool = NULL;
-	}
-}
-
 static void free_sess_tr_bufs(struct ibtrs_clt_sess *sess)
 {
 	free_sess_rx_bufs(sess);
@@ -2346,40 +2337,6 @@ static void free_sess_init_bufs(struct ibtrs_clt_sess *sess)
 			      sess->ib_dev.dev);
 		sess->sess_info_iu = NULL;
 	}
-}
-
-static void free_io_bufs(struct ibtrs_clt_sess *sess)
-{
-	ibtrs_free_reqs(sess);
-	free_sess_fast_pool(sess);
-	kfree(sess->tags_map);
-	sess->tags_map = NULL;
-	kfree(sess->tags);
-	sess->tags = NULL;
-	sess->io_bufs_initialized = false;
-}
-
-static void free_sess_bufs(struct ibtrs_clt_sess *sess)
-{
-	free_sess_init_bufs(sess);
-	free_io_bufs(sess);
-}
-
-static struct ib_fmr_pool *alloc_fmr_pool(struct ibtrs_clt_sess *sess)
-{
-	struct ib_fmr_pool_param fmr_param;
-
-	memset(&fmr_param, 0, sizeof(fmr_param));
-	fmr_param.pool_size	    = sess->queue_depth *
-		sess->max_pages_per_mr;
-	fmr_param.dirty_watermark   = fmr_param.pool_size / 4;
-	fmr_param.cache		    = 0;
-	fmr_param.max_pages_per_fmr = sess->max_pages_per_mr;
-	fmr_param.page_shift	    = ilog2(sess->mr_page_size);
-	fmr_param.access	    = (IB_ACCESS_LOCAL_WRITE |
-				       IB_ACCESS_REMOTE_WRITE);
-
-	return ib_create_fmr_pool(sess->ib_dev.pd, &fmr_param);
 }
 
 static int alloc_sess_rx_bufs(struct ibtrs_clt_sess *sess)
@@ -2411,24 +2368,6 @@ err:
 	free_sess_rx_bufs(sess);
 
 	return -ENOMEM;
-}
-
-static int alloc_sess_fast_pool(struct ibtrs_clt_sess *sess)
-{
-	int err = 0;
-	struct ib_fmr_pool *fmr_pool;
-
-	if (sess->fast_reg_mode == IBTRS_FAST_MEM_FMR) {
-		fmr_pool = alloc_fmr_pool(sess);
-		if (IS_ERR(fmr_pool)) {
-			err = PTR_ERR(fmr_pool);
-			ibtrs_err(sess, "FMR pool allocation failed, err: %d\n",
-				  err);
-			return err;
-		}
-		sess->fmr_pool = fmr_pool;
-	}
-	return err;
 }
 
 static int alloc_sess_init_bufs(struct ibtrs_clt_sess *sess)
@@ -2621,23 +2560,25 @@ static int resolve_route(struct ibtrs_clt_con *con)
 	return err;
 }
 
-static int query_fast_reg_mode(struct ibtrs_clt_con *con)
+static int query_fast_reg_mode(struct ibtrs_clt_sess *sess)
 {
-	struct ib_device *ibdev = con->sess->ib_dev.dev;
-	struct ib_device_attr *dev_attr = &ibdev->attrs;
-	int mr_page_shift;
+	struct ib_device_attr *dev_attr;
+	struct ib_device *ibdev;
 	u64 max_pages_per_mr;
+	int mr_page_shift;
 
+	ibdev = sess->ib_dev.dev;
+	dev_attr = &ibdev->attrs;
 
 	if (ibdev->alloc_fmr && ibdev->dealloc_fmr &&
 	    ibdev->map_phys_fmr && ibdev->unmap_fmr) {
-		con->sess->fast_reg_mode = IBTRS_FAST_MEM_FMR;
-		ibtrs_info(con->sess, "Device %s supports FMR\n", ibdev->name);
+		sess->fast_reg_mode = IBTRS_FAST_MEM_FMR;
+		ibtrs_info(sess, "Device %s supports FMR\n", ibdev->name);
 	}
 	if (dev_attr->device_cap_flags & IB_DEVICE_MEM_MGT_EXTENSIONS &&
 	    use_fr) {
-		con->sess->fast_reg_mode = IBTRS_FAST_MEM_FR;
-		ibtrs_info(con->sess, "Device %s supports FR\n", ibdev->name);
+		sess->fast_reg_mode = IBTRS_FAST_MEM_FR;
+		ibtrs_info(sess, "Device %s supports FR\n", ibdev->name);
 	}
 
 	/*
@@ -2645,26 +2586,26 @@ static int query_fast_reg_mode(struct ibtrs_clt_con *con)
 	 * minimum of 4096 bytes. We're unlikely to build large sglists
 	 * out of smaller entries.
 	 */
-	mr_page_shift		= max(12, ffs(dev_attr->page_size_cap) - 1);
-	con->sess->mr_page_size	= 1 << mr_page_shift;
-	con->sess->max_sge	= dev_attr->max_sge;
-	con->sess->mr_page_mask	= ~((u64)con->sess->mr_page_size - 1);
-	max_pages_per_mr	= dev_attr->max_mr_size;
-	do_div(max_pages_per_mr, con->sess->mr_page_size);
-	con->sess->max_pages_per_mr = min_t(u64, con->sess->max_pages_per_mr,
-					    max_pages_per_mr);
-	if (con->sess->fast_reg_mode == IBTRS_FAST_MEM_FR) {
-		con->sess->max_pages_per_mr =
-			min_t(u32, con->sess->max_pages_per_mr,
-			      dev_attr->max_fast_reg_page_list_len);
+	mr_page_shift      = max(12, ffs(dev_attr->page_size_cap) - 1);
+	sess->mr_page_size = 1 << mr_page_shift;
+	sess->max_sge      = dev_attr->max_sge;
+	sess->mr_page_mask = ~((u64)sess->mr_page_size - 1);
+	max_pages_per_mr   = dev_attr->max_mr_size;
+	do_div(max_pages_per_mr, sess->mr_page_size);
+	sess->max_pages_per_mr = min_t(u64, sess->max_pages_per_mr,
+				       max_pages_per_mr);
+	if (sess->fast_reg_mode == IBTRS_FAST_MEM_FR) {
+		sess->max_pages_per_mr = min_t(u32, sess->max_pages_per_mr,
+					  dev_attr->max_fast_reg_page_list_len);
 	}
-	con->sess->mr_max_size	= con->sess->mr_page_size *
-		con->sess->max_pages_per_mr;
+	sess->mr_max_size = sess->mr_page_size * sess->max_pages_per_mr;
+
 	pr_debug("%s: mr_page_shift = %d, dev_attr->max_mr_size = %#llx, "
 		 "dev_attr->max_fast_reg_page_list_len = %u, max_pages_per_mr = %d, "
 		 "mr_max_size = %#x\n", ibdev->name, mr_page_shift,
 		 dev_attr->max_mr_size, dev_attr->max_fast_reg_page_list_len,
-		 con->sess->max_pages_per_mr, con->sess->mr_max_size);
+		 sess->max_pages_per_mr, sess->mr_max_size);
+
 	return 0;
 }
 
@@ -2732,118 +2673,11 @@ static void heartbeat_work(struct work_struct *work)
 		ibtrs_wrn(sess, "Schedule heartbeat work failed, already queued?\n");
 }
 
-static int create_cm_id_con(const struct sockaddr_storage *addr,
-			    struct ibtrs_clt_con *con)
-{
-	int err;
-
-	if (addr->ss_family == AF_IB)
-		con->cm_id = rdma_create_id(&init_net,
-					    ibtrs_clt_rdma_cm_ev_handler, con,
-					    RDMA_PS_IB, IB_QPT_RC);
-	else
-		con->cm_id = rdma_create_id(&init_net,
-					    ibtrs_clt_rdma_cm_ev_handler, con,
-					    RDMA_PS_TCP, IB_QPT_RC);
-
-	if (IS_ERR(con->cm_id)) {
-		err = PTR_ERR(con->cm_id);
-		ibtrs_wrn(con->sess, "Failed to create CM ID, err: %d\n",
-			  err);
-		con->cm_id = NULL;
-		return err;
-	}
-
-	return 0;
-}
-
-static int create_ib_dev(struct ibtrs_clt_con *con)
-{
-	int err;
-	struct ibtrs_clt_sess *sess = con->sess;
-
-	if (atomic_read(&sess->ib_dev_initialized) == 1)
-		return 0;
-
-	/* For performance reasons, we don't allow a session to be created if
-	 * the number of completion vectors available in the hardware is not
-	 * enough to have one interrupt per CPU.
-	 */
-	if (con->cm_id->device->num_comp_vectors < num_online_cpus()) {
-		ibtrs_wrn(sess,
-			  "%d cq vectors available, not enough to have one IRQ per"
-			  " CPU, >= %d vectors required, contine anyway.\n",
-			  sess->ib_dev.dev->num_comp_vectors, num_online_cpus());
-	}
-
-	err = ibtrs_ib_dev_init(&sess->ib_dev, con->cm_id->device);
-	if (err) {
-		ibtrs_wrn(sess, "Failed to initialize IB session, err: %d\n",
-			  err);
-		goto err_out;
-	}
-
-	err = query_fast_reg_mode(con);
-	if (err) {
-		ibtrs_wrn(sess, "Failed to query fast registration mode, err: %d\n",
-			  err);
-		goto err_sess;
-	}
-
-	err = alloc_sess_init_bufs(sess);
-	if (err) {
-		ibtrs_err(sess, "Failed to allocate session buffers, err: %d\n",
-			  err);
-		goto err_sess;
-	}
-
-	sess->msg_wq = alloc_ordered_workqueue("sess_msg_wq", 0);
-	if (!sess->msg_wq) {
-		ibtrs_err(sess, "Failed to create user message workqueue\n");
-		err = -ENOMEM;
-		goto err_buff;
-	}
-
-	atomic_set(&sess->ib_dev_initialized, 1);
-
-	return 0;
-
-err_buff:
-	free_sess_init_bufs(sess);
-err_sess:
-	ibtrs_ib_dev_destroy(&sess->ib_dev);
-err_out:
-
-	return err;
-}
-
-static void ibtrs_clt_ib_dev_destroy(struct ibtrs_clt_sess *sess)
-{
-	if (atomic_cmpxchg(&sess->ib_dev_initialized, 1, 0) == 1) {
-		ibtrs_ib_dev_destroy(&sess->ib_dev);
-		free_sess_bufs(sess);
-		destroy_workqueue(sess->msg_wq);
-	}
-
-}
-
-static void free_con_fast_pool(struct ibtrs_clt_con *con)
-{
-	if (con->user)
-		return;
-	if (con->sess->fast_reg_mode == IBTRS_FAST_MEM_FMR)
-		return;
-	if (con->sess->fast_reg_mode == IBTRS_FAST_MEM_FR) {
-		ibtrs_destroy_fr_pool(con->fr_pool);
-		con->fr_pool = NULL;
-	}
-}
-
 static int alloc_con_fast_pool(struct ibtrs_clt_con *con)
 {
-	int err = 0;
-	struct ibtrs_fr_pool *fr_pool;
 	struct ibtrs_clt_sess *sess = con->sess;
+	struct ibtrs_fr_pool *fr_pool;
+	int err = 0;
 
 	if (con->user)
 		return 0;
@@ -2864,6 +2698,57 @@ static int alloc_con_fast_pool(struct ibtrs_clt_con *con)
 	}
 
 	return err;
+}
+
+static void free_con_fast_pool(struct ibtrs_clt_con *con)
+{
+	if (con->user)
+		return;
+	if (con->sess->fast_reg_mode == IBTRS_FAST_MEM_FMR)
+		return;
+	if (con->sess->fast_reg_mode == IBTRS_FAST_MEM_FR) {
+		ibtrs_destroy_fr_pool(con->fr_pool);
+		con->fr_pool = NULL;
+	}
+}
+
+static int alloc_sess_fast_pool(struct ibtrs_clt_sess *sess)
+{
+	struct ib_fmr_pool_param fmr_param;
+	struct ib_fmr_pool *fmr_pool;
+	int err = 0;
+
+	if (sess->fast_reg_mode == IBTRS_FAST_MEM_FMR) {
+		memset(&fmr_param, 0, sizeof(fmr_param));
+		fmr_param.pool_size	    = sess->queue_depth *
+					      sess->max_pages_per_mr;
+		fmr_param.dirty_watermark   = fmr_param.pool_size / 4;
+		fmr_param.cache		    = 0;
+		fmr_param.max_pages_per_fmr = sess->max_pages_per_mr;
+		fmr_param.page_shift	    = ilog2(sess->mr_page_size);
+		fmr_param.access	    = (IB_ACCESS_LOCAL_WRITE |
+					       IB_ACCESS_REMOTE_WRITE);
+
+		fmr_pool = ib_create_fmr_pool(sess->ib_dev.pd, &fmr_param);
+		if (IS_ERR(fmr_pool)) {
+			err = PTR_ERR(fmr_pool);
+			ibtrs_err(sess, "FMR pool allocation failed, err: %d\n",
+				  err);
+			return err;
+		}
+		sess->fmr_pool = fmr_pool;
+	}
+
+	return err;
+}
+
+static void free_sess_fast_pool(struct ibtrs_clt_sess *sess)
+{
+	if (sess->fast_reg_mode == IBTRS_FAST_MEM_FMR &&
+	    sess->fmr_pool) {
+		ib_destroy_fmr_pool(sess->fmr_pool);
+		sess->fmr_pool = NULL;
+	}
 }
 
 static void ibtrs_clt_destroy_cm_id(struct ibtrs_clt_con *con)
@@ -3436,63 +3321,95 @@ err:
 	return ERR_PTR(err);
 }
 
-static int init_con(struct ibtrs_clt_sess *sess, struct ibtrs_clt_con *con,
-		    short cpu, bool user)
+static int create_ib_dev(struct ibtrs_clt_sess *sess)
 {
+	struct ibtrs_clt_con *con = &sess->con[0];
 	int err;
 
-	con->sess = sess;
-	con->cpu  = cpu;
-	con->user = user;
-
-	err = create_cm_id_con(&sess->peer_addr, con);
-	if (err) {
-		ibtrs_err(sess, "Failed to create CM ID for connection\n");
-		return err;
+	if (atomic_read(&sess->ib_dev_initialized) == 1)
+		return 0;
+	/*
+	 * For performance reasons, we don't allow a session to be created if
+	 * the number of completion vectors available in the hardware is not
+	 * enough to have one interrupt per CPU.
+	 */
+	if (con->cm_id->device->num_comp_vectors < num_online_cpus()) {
+		ibtrs_wrn(sess,
+			  "%d cq vectors available, not enough to have one IRQ per"
+			  " CPU, >= %d vectors required, contine anyway.\n",
+			  sess->ib_dev.dev->num_comp_vectors, num_online_cpus());
 	}
-
-	csm_set_state(con, CSM_STATE_RESOLVING_ADDR);
-	err = resolve_addr(con, &sess->peer_addr);
-	if (err) {
-		ibtrs_err(sess, "Failed to resolve address, err: %d\n", err);
-		goto err_cm_id;
+	err = ibtrs_ib_dev_init(&sess->ib_dev, con->cm_id->device);
+	if (unlikely(err)) {
+		ibtrs_wrn(sess, "Failed to initialize IB session, err: %d\n",
+			  err);
+		goto err_out;
 	}
-
-	sess->active_cnt++;
+	err = query_fast_reg_mode(sess);
+	if (unlikely(err)) {
+		ibtrs_wrn(sess, "Failed to query fast registration mode, err: %d\n",
+			  err);
+		goto err_sess;
+	}
+	err = alloc_sess_init_bufs(sess);
+	if (unlikely(err)) {
+		ibtrs_err(sess, "Failed to allocate session buffers, err: %d\n",
+			  err);
+		goto err_sess;
+	}
+	sess->msg_wq = alloc_ordered_workqueue("sess_msg_wq", 0);
+	if (unlikely(!sess->msg_wq)) {
+		ibtrs_err(sess, "Failed to create user message workqueue\n");
+		err = -ENOMEM;
+		goto err_buff;
+	}
+	atomic_set(&sess->ib_dev_initialized, 1);
 
 	return 0;
 
-err_cm_id:
-	csm_set_state(con, CSM_STATE_CLOSED);
-	ibtrs_clt_destroy_cm_id(con);
+err_buff:
+	free_sess_init_bufs(sess);
+err_sess:
+	ibtrs_ib_dev_destroy(&sess->ib_dev);
+err_out:
 
 	return err;
 }
 
+static void destroy_ib_dev(struct ibtrs_clt_sess *sess)
+{
+	if (atomic_cmpxchg(&sess->ib_dev_initialized, 1, 0) == 1) {
+		ibtrs_ib_dev_destroy(&sess->ib_dev);
+		free_sess_init_bufs(sess);
+		free_io_bufs(sess);
+		destroy_workqueue(sess->msg_wq);
+	}
+}
+
 static int create_con(struct ibtrs_clt_con *con)
 {
-	int err, cq_vector;
-	u16 cq_size, wr_queue_size;
 	struct ibtrs_clt_sess *sess = con->sess;
-	int num_wr = DIV_ROUND_UP(con->sess->max_pages_per_mr,
-				  con->sess->max_sge);
+	u16 cq_size, wr_queue_size;
+	int err, cq_vector, num_wr;
 
+	num_wr = DIV_ROUND_UP(con->sess->max_pages_per_mr,
+			      con->sess->max_sge);
 	if (con->user) {
-		err = create_ib_dev(con);
+		err = create_ib_dev(sess);
 		if (err) {
 			ibtrs_err(sess,
 				  "Failed to create IB session, err: %d\n",
 				  err);
 			goto err_cm_id;
 		}
-		cq_size		= USR_CON_BUF_SIZE + 1;
-		wr_queue_size	= USR_CON_BUF_SIZE + 1;
+		cq_size	      = USR_CON_BUF_SIZE + 1;
+		wr_queue_size = USR_CON_BUF_SIZE + 1;
 	} else {
 		cq_size	      = sess->queue_depth;
 		wr_queue_size = sess->ib_dev.dev->attrs.max_qp_wr - 1;
 		wr_queue_size = min_t(int, wr_queue_size,
-					sess->queue_depth * num_wr *
-					(use_fr ? 3 : 2));
+				      sess->queue_depth * num_wr *
+				      (use_fr ? 3 : 2));
 	}
 
 	err = alloc_con_fast_pool(con);
@@ -3536,6 +3453,64 @@ err_con:
 err_pool:
 	free_con_fast_pool(con);
 err_cm_id:
+	ibtrs_clt_destroy_cm_id(con);
+
+	return err;
+}
+
+static int create_cm_id_con(const struct sockaddr_storage *addr,
+			    struct ibtrs_clt_con *con)
+{
+	int err;
+
+	if (addr->ss_family == AF_IB)
+		con->cm_id = rdma_create_id(&init_net,
+					    ibtrs_clt_rdma_cm_ev_handler, con,
+					    RDMA_PS_IB, IB_QPT_RC);
+	else
+		con->cm_id = rdma_create_id(&init_net,
+					    ibtrs_clt_rdma_cm_ev_handler, con,
+					    RDMA_PS_TCP, IB_QPT_RC);
+
+	if (IS_ERR(con->cm_id)) {
+		err = PTR_ERR(con->cm_id);
+		ibtrs_wrn(con->sess, "Failed to create CM ID, err: %d\n",
+			  err);
+		con->cm_id = NULL;
+		return err;
+	}
+
+	return 0;
+}
+
+static int init_con(struct ibtrs_clt_sess *sess, struct ibtrs_clt_con *con,
+		    short cpu, bool user)
+{
+	int err;
+
+	con->sess = sess;
+	con->cpu  = cpu;
+	con->user = user;
+
+	err = create_cm_id_con(&sess->peer_addr, con);
+	if (err) {
+		ibtrs_err(sess, "Failed to create CM ID for connection\n");
+		return err;
+	}
+
+	csm_set_state(con, CSM_STATE_RESOLVING_ADDR);
+	err = resolve_addr(con, &sess->peer_addr);
+	if (err) {
+		ibtrs_err(sess, "Failed to resolve address, err: %d\n", err);
+		goto err_cm_id;
+	}
+
+	sess->active_cnt++;
+
+	return 0;
+
+err_cm_id:
+	csm_set_state(con, CSM_STATE_CLOSED);
 	ibtrs_clt_destroy_cm_id(con);
 
 	return err;
@@ -4518,46 +4493,52 @@ static void queue_destroy_sess(struct ibtrs_clt_sess *sess)
 {
 	kfree(sess->srv_rdma_addr);
 	sess->srv_rdma_addr = NULL;
-	ibtrs_clt_ib_dev_destroy(sess);
+	destroy_ib_dev(sess);
 	sess_schedule_destroy(sess);
 }
 
-static int ibtrs_alloc_io_bufs(struct ibtrs_clt_sess *sess)
+static int alloc_io_bufs(struct ibtrs_clt_sess *sess)
 {
 	int ret;
 
 	if (sess->io_bufs_initialized)
 		return 0;
-
-	ret = ibtrs_alloc_reqs(sess);
+	ret = alloc_reqs(sess);
 	if (ret) {
-		ibtrs_err(sess,
-			  "Failed to allocate session request buffers, err: %d\n",
-			  ret);
+		ibtrs_err(sess, "alloc_reqs(), err: %d\n", ret);
 		return ret;
 	}
-
 	ret = alloc_sess_fast_pool(sess);
-	if (ret)
+	if (ret) {
+		ibtrs_err(sess, "alloc_sess_fast_pool(), err: %d\n", ret);
 		return ret;
-
+	}
 	ret = alloc_sess_tags(sess);
 	if (ret) {
-		ibtrs_err(sess, "Failed to allocate session tags, err: %d\n",
-			  ret);
+		ibtrs_err(sess, "alloc_sess_tags(), err: %d\n", ret);
 		return ret;
 	}
-
 	sess->io_bufs_initialized = true;
 
 	return 0;
+}
+
+static void free_io_bufs(struct ibtrs_clt_sess *sess)
+{
+	free_reqs(sess);
+	free_sess_fast_pool(sess);
+	kfree(sess->tags_map);
+	sess->tags_map = NULL;
+	kfree(sess->tags);
+	sess->tags = NULL;
+	sess->io_bufs_initialized = false;
 }
 
 static int ssm_open_init(struct ibtrs_clt_sess *sess)
 {
 	int i, ret;
 
-	ret = ibtrs_alloc_io_bufs(sess);
+	ret = alloc_io_bufs(sess);
 	if (ret)
 		return ret;
 
@@ -4895,7 +4876,7 @@ static void ssm_close_reconnect_imm(struct ibtrs_clt_sess *sess, enum ssm_ev ev)
 
 static int ssm_disconnected_init(struct ibtrs_clt_sess *sess)
 {
-	ibtrs_clt_ib_dev_destroy(sess);
+	destroy_ib_dev(sess);
 
 	return 0;
 }
