@@ -3395,9 +3395,9 @@ static int create_con(struct ibtrs_clt_con *con)
 		}
 	}
 	cq_vector = con->cpu % sess->ib_dev.dev->num_comp_vectors;
-	err = ibtrs_con_init(&sess->sess, &con->ibtrs_con, con->cm_id,
-			     sess->max_sge, cq_vector, cq_size, wr_queue_size,
-			     &sess->ib_dev, IB_POLL_SOFTIRQ);
+	err = ibtrs_con_create(&sess->sess, &con->ibtrs_con, con->cm_id,
+			       sess->max_sge, cq_vector, cq_size, wr_queue_size,
+			       &sess->ib_dev, IB_POLL_SOFTIRQ);
 	if (err) {
 		ibtrs_err(sess, "Failed to initialize IB connection, err: %d\n",
 			  err);

@@ -219,10 +219,10 @@ static int create_qp(struct ibtrs_con *con, struct rdma_cm_id *cm_id,
 	return ret;
 }
 
-int ibtrs_con_init(struct ibtrs_sess *sess, struct ibtrs_con *con,
-		   struct rdma_cm_id *cm_id, u32 max_send_sge, int cq_vector,
-		   u16 cq_size, u16 wr_queue_size, struct ibtrs_ib_dev *ibdev,
-		   enum ib_poll_context poll_ctx)
+int ibtrs_con_create(struct ibtrs_sess *sess, struct ibtrs_con *con,
+		     struct rdma_cm_id *cm_id, u32 max_send_sge, int cq_vector,
+		     u16 cq_size, u16 wr_queue_size, struct ibtrs_ib_dev *ibdev,
+		     enum ib_poll_context poll_ctx)
 {
 	int err, ret;
 
@@ -244,7 +244,7 @@ int ibtrs_con_init(struct ibtrs_sess *sess, struct ibtrs_con *con,
 
 	return 0;
 }
-EXPORT_SYMBOL_GPL(ibtrs_con_init);
+EXPORT_SYMBOL_GPL(ibtrs_con_create);
 
 void ibtrs_con_destroy(struct ibtrs_con *con)
 {

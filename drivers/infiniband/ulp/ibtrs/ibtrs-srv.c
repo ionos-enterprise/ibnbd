@@ -2357,9 +2357,9 @@ static void ssm_create_con_worker(struct work_struct *work)
 	con->cq_vector = ibtrs_srv_get_next_cq_vector(sess);
 
 	/* TODO: SOFTIRQ can be faster, but be careful with softirq context */
-	ret = ibtrs_con_init(&sess->sess, &con->ibtrs_con, con->cm_id,
-			     1, con->cq_vector, cq_size, wr_queue_size,
-			     &con->sess->dev->ib_dev, IB_POLL_WORKQUEUE);
+	ret = ibtrs_con_create(&sess->sess, &con->ibtrs_con, con->cm_id,
+			       1, con->cq_vector, cq_size, wr_queue_size,
+			       &con->sess->dev->ib_dev, IB_POLL_WORKQUEUE);
 	if (ret) {
 		ibtrs_err(sess, "Failed to initialize IB connection, err: %d\n",
 			  ret);
