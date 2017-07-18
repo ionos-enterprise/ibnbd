@@ -159,20 +159,6 @@ void ibtrs_ib_dev_destroy(struct ibtrs_ib_dev *d)
 }
 EXPORT_SYMBOL_GPL(ibtrs_ib_dev_destroy);
 
-static int init_cq(struct ibtrs_con *con, struct rdma_cm_id *cm_id,
-		   int cq_vector, u16 cq_size, enum ib_poll_context poll_ctx)
-{
-	con->cq = ib_alloc_cq(cm_id->device, con, cq_size * 2 + 1,
-			      cq_vector, poll_ctx);
-	if (IS_ERR(con->cq)) {
-		ibtrs_err(con, "Creating completion queue failed, errno: %ld\n",
-			  PTR_ERR(con->cq));
-		return PTR_ERR(con->cq);
-	}
-
-	return 0;
-}
-
 int ibtrs_request_cq_notifications(struct ibtrs_con *con)
 {
 	return ib_req_notify_cq(con->cq, IB_CQ_NEXT_COMP |
@@ -180,19 +166,30 @@ int ibtrs_request_cq_notifications(struct ibtrs_con *con)
 }
 EXPORT_SYMBOL_GPL(ibtrs_request_cq_notifications);
 
-void ibtrs_con_destroy(struct ibtrs_con *con)
+int ibtrs_post_beacon(struct ibtrs_con *con)
 {
-	int err;
+	struct ib_send_wr *bad_wr;
 
-	err = ib_destroy_qp(con->qp);
-	if (err)
-		ibtrs_err(con, "Destroying QP failed, err: %d\n", err);
-
-	err = ib_destroy_cq(con->cq);
-	if (err)
-		ibtrs_err(con, "Destroying CQ failed, err: %d\n", err);
+	return ib_post_send(con->qp, &con->beacon, &bad_wr);
 }
-EXPORT_SYMBOL_GPL(ibtrs_con_destroy);
+EXPORT_SYMBOL_GPL(ibtrs_post_beacon);
+
+static int create_cq(struct ibtrs_con *con, struct rdma_cm_id *cm_id,
+		     int cq_vector, u16 cq_size, enum ib_poll_context poll_ctx)
+{
+	struct ib_cq *cq;
+
+	cq = ib_alloc_cq(cm_id->device, con, cq_size * 2 + 1,
+			      cq_vector, poll_ctx);
+	if (IS_ERR(cq)) {
+		ibtrs_err(con, "Creating completion queue failed, errno: %ld\n",
+			  PTR_ERR(cq));
+		return PTR_ERR(cq);
+	}
+	con->cq = cq;
+
+	return 0;
+}
 
 static int create_qp(struct ibtrs_con *con, struct rdma_cm_id *cm_id,
 		     struct ib_pd *pd, u16 wr_queue_size, u32 max_send_sge)
@@ -222,14 +219,6 @@ static int create_qp(struct ibtrs_con *con, struct rdma_cm_id *cm_id,
 	return ret;
 }
 
-int ibtrs_post_beacon(struct ibtrs_con *con)
-{
-	struct ib_send_wr *bad_wr;
-
-	return ib_post_send(con->qp, &con->beacon, &bad_wr);
-}
-EXPORT_SYMBOL_GPL(ibtrs_post_beacon);
-
 int ibtrs_con_init(struct ibtrs_sess *sess, struct ibtrs_con *con,
 		   struct rdma_cm_id *cm_id, u32 max_send_sge, int cq_vector,
 		   u16 cq_size, u16 wr_queue_size, struct ibtrs_ib_dev *ibdev,
@@ -237,12 +226,12 @@ int ibtrs_con_init(struct ibtrs_sess *sess, struct ibtrs_con *con,
 {
 	int err, ret;
 
-	err = init_cq(con, cm_id, cq_vector, cq_size, poll_ctx);
-	if (err)
+	err = create_cq(con, cm_id, cq_vector, cq_size, poll_ctx);
+	if (unlikely(err))
 		return err;
 
 	err = create_qp(con, cm_id, ibdev->pd, wr_queue_size, max_send_sge);
-	if (err) {
+	if (unlikely(err)) {
 		ret = ib_destroy_cq(con->cq);
 		if (ret)
 			ibtrs_err(con, "Destroying CQ failed, err: %d\n", ret);
@@ -256,3 +245,14 @@ int ibtrs_con_init(struct ibtrs_sess *sess, struct ibtrs_con *con,
 	return 0;
 }
 EXPORT_SYMBOL_GPL(ibtrs_con_init);
+
+void ibtrs_con_destroy(struct ibtrs_con *con)
+{
+	int err;
+
+	rdma_destroy_qp(con->cm_id);
+	err = ib_destroy_cq(con->cq);
+	if (err)
+		ibtrs_err(con, "Destroying CQ failed, err: %d\n", err);
+}
+EXPORT_SYMBOL_GPL(ibtrs_con_destroy);
