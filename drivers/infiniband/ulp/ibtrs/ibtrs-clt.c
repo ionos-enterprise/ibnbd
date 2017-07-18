@@ -2748,7 +2748,7 @@ static void con_destroy(struct ibtrs_clt_con *con)
 		cancel_delayed_work_sync(&con->sess->heartbeat_dwork);
 	}
 	fail_outstanding_reqs(con);
-	ibtrs_con_destroy(&con->ibtrs_con);
+	ibtrs_cq_qp_destroy(&con->ibtrs_con);
 	if (con->user)
 		free_sess_tr_bufs(con->sess);
 	else
@@ -3395,9 +3395,9 @@ static int create_con(struct ibtrs_clt_con *con)
 		}
 	}
 	cq_vector = con->cpu % sess->ib_dev.dev->num_comp_vectors;
-	err = ibtrs_con_create(&sess->sess, &con->ibtrs_con, con->cm_id,
-			       sess->max_sge, cq_vector, cq_size, wr_queue_size,
-			       &sess->ib_dev, IB_POLL_SOFTIRQ);
+	err = ibtrs_cq_qp_create(&sess->sess, &con->ibtrs_con, con->cm_id,
+				 sess->max_sge, cq_vector, cq_size,
+				 wr_queue_size, &sess->ib_dev, IB_POLL_SOFTIRQ);
 	if (err) {
 		ibtrs_err(sess, "Failed to initialize IB connection, err: %d\n",
 			  err);
@@ -3428,7 +3428,7 @@ static int create_con(struct ibtrs_clt_con *con)
 err_wq:
 	rdma_disconnect(con->cm_id);
 err_con:
-	ibtrs_con_destroy(&con->ibtrs_con);
+	ibtrs_cq_qp_destroy(&con->ibtrs_con);
 err_pool:
 	if (!con->user)
 		free_con_fast_pool(con);

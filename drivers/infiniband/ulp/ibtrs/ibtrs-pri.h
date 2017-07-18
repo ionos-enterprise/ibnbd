@@ -349,11 +349,12 @@ int ibtrs_post_beacon(struct ibtrs_con *con);
 int ibtrs_ib_dev_init(struct ibtrs_ib_dev *ibdev, struct ib_device *dev);
 void ibtrs_ib_dev_destroy(struct ibtrs_ib_dev *ibdev);
 
-int ibtrs_con_create(struct ibtrs_sess *ibtrs_sess, struct ibtrs_con *con,
-		     struct rdma_cm_id *cm_id, u32 max_send_sge,
-		     int cq_vector, u16 cq_size, u16 wr_queue_size,
-		     struct ibtrs_ib_dev *ibdev, enum ib_poll_context poll_ctx);
-void ibtrs_con_destroy(struct ibtrs_con *con);
+int ibtrs_cq_qp_create(struct ibtrs_sess *ibtrs_sess, struct ibtrs_con *con,
+		       struct rdma_cm_id *cm_id, u32 max_send_sge,
+		       int cq_vector, u16 cq_size, u16 wr_queue_size,
+		       struct ibtrs_ib_dev *ibdev,
+		       enum ib_poll_context poll_ctx);
+void ibtrs_cq_qp_destroy(struct ibtrs_con *con);
 
 int ibtrs_request_cq_notifications(struct ibtrs_con *con);
 

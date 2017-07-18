@@ -1838,7 +1838,7 @@ static void close_con(struct ibtrs_srv_con *con)
 
 	destroy_workqueue(con->rdma_resp_wq);
 
-	ibtrs_con_destroy(&con->ibtrs_con);
+	ibtrs_cq_qp_destroy(&con->ibtrs_con);
 	if (!con->user && !con->device_being_removed)
 		rdma_destroy_id(con->cm_id);
 
@@ -2357,9 +2357,9 @@ static void ssm_create_con_worker(struct work_struct *work)
 	con->cq_vector = ibtrs_srv_get_next_cq_vector(sess);
 
 	/* TODO: SOFTIRQ can be faster, but be careful with softirq context */
-	ret = ibtrs_con_create(&sess->sess, &con->ibtrs_con, con->cm_id,
-			       1, con->cq_vector, cq_size, wr_queue_size,
-			       &con->sess->dev->ib_dev, IB_POLL_WORKQUEUE);
+	ret = ibtrs_cq_qp_create(&sess->sess, &con->ibtrs_con, con->cm_id,
+				 1, con->cq_vector, cq_size, wr_queue_size,
+				 &con->sess->dev->ib_dev, IB_POLL_WORKQUEUE);
 	if (ret) {
 		ibtrs_err(sess, "Failed to initialize IB connection, err: %d\n",
 			  ret);
@@ -2418,7 +2418,7 @@ err_accept:
 err_buf:
 	destroy_workqueue(con->rdma_resp_wq);
 err_wq:
-	ibtrs_con_destroy(&con->ibtrs_con);
+	ibtrs_cq_qp_destroy(&con->ibtrs_con);
 err_init:
 	kfree(con);
 err_reject:

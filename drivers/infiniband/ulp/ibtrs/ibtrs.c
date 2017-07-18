@@ -219,10 +219,11 @@ static int create_qp(struct ibtrs_con *con, struct rdma_cm_id *cm_id,
 	return ret;
 }
 
-int ibtrs_con_create(struct ibtrs_sess *sess, struct ibtrs_con *con,
-		     struct rdma_cm_id *cm_id, u32 max_send_sge, int cq_vector,
-		     u16 cq_size, u16 wr_queue_size, struct ibtrs_ib_dev *ibdev,
-		     enum ib_poll_context poll_ctx)
+int ibtrs_cq_qp_create(struct ibtrs_sess *sess, struct ibtrs_con *con,
+		       struct rdma_cm_id *cm_id, u32 max_send_sge,
+		       int cq_vector, u16 cq_size, u16 wr_queue_size,
+		       struct ibtrs_ib_dev *ibdev,
+		       enum ib_poll_context poll_ctx)
 {
 	int err, ret;
 
@@ -244,9 +245,9 @@ int ibtrs_con_create(struct ibtrs_sess *sess, struct ibtrs_con *con,
 
 	return 0;
 }
-EXPORT_SYMBOL_GPL(ibtrs_con_create);
+EXPORT_SYMBOL_GPL(ibtrs_cq_qp_create);
 
-void ibtrs_con_destroy(struct ibtrs_con *con)
+void ibtrs_cq_qp_destroy(struct ibtrs_con *con)
 {
 	int err;
 
@@ -255,4 +256,4 @@ void ibtrs_con_destroy(struct ibtrs_con *con)
 	if (err)
 		ibtrs_err(con, "Destroying CQ failed, err: %d\n", err);
 }
-EXPORT_SYMBOL_GPL(ibtrs_con_destroy);
+EXPORT_SYMBOL_GPL(ibtrs_cq_qp_destroy);
