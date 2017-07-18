@@ -2100,59 +2100,48 @@ static struct ib_client ibtrs_clt_ib_client = {
        .remove = ibtrs_clt_ib_client_remove
 };
 
-static int post_io_con_recv(struct ibtrs_clt_con *con)
+static int post_recv_io(struct ibtrs_clt_con *con)
 {
+	struct ibtrs_clt_sess *sess = con->sess;
 	int i, ret;
-	struct ibtrs_iu *dummy_rx_iu = con->sess->dummy_rx_iu;
 
-	for (i = 0; i < con->sess->queue_depth; i++) {
-		ret = ibtrs_post_recv(con, dummy_rx_iu);
+	for (i = 0; i < sess->queue_depth; i++) {
+		ret = ibtrs_post_recv(con, sess->dummy_rx_iu);
 		if (unlikely(ret)) {
-			ibtrs_wrn(con->sess,
-				  "Posting receive buffers to HCA failed, err:"
-				  " %d\n", ret);
+			ibtrs_err(sess, "ibtrs_post_recv(), err: %d\n", ret);
 			return ret;
 		}
 	}
+
 	return 0;
 }
 
-static int post_usr_con_recv(struct ibtrs_clt_con *con)
+static int post_recv_usr(struct ibtrs_clt_sess *sess)
 {
+	struct ibtrs_clt_con *usr_con = &sess->con[0];
 	int i, ret;
 
 	for (i = 0; i < USR_CON_BUF_SIZE; i++) {
-		struct ibtrs_iu *iu = con->sess->usr_rx_ring[i];
-
-		ret = ibtrs_post_recv(con, iu);
+		ret = ibtrs_post_recv(usr_con, sess->usr_rx_ring[i]);
 		if (unlikely(ret)) {
-			ibtrs_wrn(con->sess,
-				  "Posting receive buffers to HCA failed, err:"
-				  " %d\n", ret);
+			ibtrs_err(sess, "ibtrs_post_recv(), err: %d\n", ret);
 			return ret;
 		}
 	}
+
 	return 0;
 }
 
-static int post_init_con_recv(struct ibtrs_clt_con *con)
+static int post_recv_info(struct ibtrs_clt_sess *sess)
 {
+	struct ibtrs_clt_con *usr_con = &sess->con[0];
 	int ret;
 
-	ret = ibtrs_post_recv(con, con->sess->rdma_info_iu);
+	ret = ibtrs_post_recv(usr_con, sess->rdma_info_iu);
 	if (unlikely(ret))
-		ibtrs_wrn(con->sess,
-			  "Posting rdma info iu to HCA failed, err: %d\n",
-			  ret);
-	return ret;
-}
+		ibtrs_err(sess, "ibtrs_post_recv(), err: %d\n", ret);
 
-static int post_recv(struct ibtrs_clt_con *con)
-{
-	if (con->user)
-		return post_init_con_recv(con);
-	else
-		return post_io_con_recv(con);
+	return ret;
 }
 
 static void fail_outstanding_req(struct ibtrs_clt_con *con,
@@ -3421,7 +3410,10 @@ static int create_con(struct ibtrs_clt_con *con)
 	con->ibtrs_con.beacon_cqe.done = ibtrs_clt_rdma_done;
 
 	pr_debug("setup_buffers successful\n");
-	err = post_recv(con);
+	if (con->user)
+		err = post_recv_info(sess);
+	else
+		err = post_recv_io(con);
 	if (err)
 		goto err_con;
 
@@ -4540,7 +4532,7 @@ static int ssm_open_init(struct ibtrs_clt_sess *sess)
 		return ret;
 	}
 
-	ret = post_usr_con_recv(&sess->con[0]);
+	ret = post_recv_usr(sess);
 	if (unlikely(ret))
 		return ret;
 	for (i = 1; i < CONS_PER_SESSION; i++) {
