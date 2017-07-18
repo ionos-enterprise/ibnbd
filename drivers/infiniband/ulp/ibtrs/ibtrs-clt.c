@@ -1757,7 +1757,7 @@ static int ibtrs_schedule_msg(struct ibtrs_clt_con *con,
 	}
 	memcpy(w->msg, msg, msg->hdr.tsize);
 	INIT_WORK(&w->work, msg_worker);
-	queue_work(con->sess->msg_wq, &w->work);
+	queue_work(ibtrs_wq, &w->work);
 	return 0;
 }
 
@@ -3343,35 +3343,26 @@ static int create_ib_dev(struct ibtrs_clt_sess *sess)
 	if (unlikely(err)) {
 		ibtrs_wrn(sess, "Failed to initialize IB session, err: %d\n",
 			  err);
-		goto err_out;
+		return err;
 	}
 	err = query_fast_reg_mode(sess);
 	if (unlikely(err)) {
 		ibtrs_wrn(sess, "Failed to query fast registration mode, err: %d\n",
 			  err);
-		goto err_sess;
+		goto err;
 	}
 	err = alloc_sess_init_bufs(sess);
 	if (unlikely(err)) {
 		ibtrs_err(sess, "Failed to allocate session buffers, err: %d\n",
 			  err);
-		goto err_sess;
-	}
-	sess->msg_wq = alloc_ordered_workqueue("sess_msg_wq", 0);
-	if (unlikely(!sess->msg_wq)) {
-		ibtrs_err(sess, "Failed to create user message workqueue\n");
-		err = -ENOMEM;
-		goto err_buff;
+		goto err;
 	}
 	atomic_set(&sess->ib_dev_initialized, 1);
 
 	return 0;
 
-err_buff:
-	free_sess_init_bufs(sess);
-err_sess:
+err:
 	ibtrs_ib_dev_destroy(&sess->ib_dev);
-err_out:
 
 	return err;
 }
@@ -3382,7 +3373,6 @@ static void destroy_ib_dev(struct ibtrs_clt_sess *sess)
 		ibtrs_ib_dev_destroy(&sess->ib_dev);
 		free_sess_init_bufs(sess);
 		free_sess_io_bufs(sess);
-		destroy_workqueue(sess->msg_wq);
 	}
 }
 
