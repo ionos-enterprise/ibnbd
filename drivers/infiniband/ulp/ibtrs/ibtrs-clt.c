@@ -1686,8 +1686,8 @@ static int ibtrs_send_msg_user_ack(struct ibtrs_clt_con *con)
 		return -ECOMM;
 	}
 
-	err = ibtrs_write_empty_imm(con->ibtrs_con.qp, UINT_MAX - 1,
-				    IB_SEND_SIGNALED);
+	err = ibtrs_post_rdma_write_imm_empty(con->ibtrs_con.qp, UINT_MAX - 1,
+					      IB_SEND_SIGNALED);
 	rcu_read_unlock();
 	if (unlikely(err)) {
 		ibtrs_err_rl(con->sess, "Sending user msg ack failed, err: %d\n",
@@ -2608,7 +2608,8 @@ static int send_heartbeat(struct ibtrs_clt_sess *sess)
 		return -ECOMM;
 	}
 
-	err = ibtrs_write_empty_imm(con->ibtrs_con.qp, UINT_MAX, IB_SEND_SIGNALED);
+	err = ibtrs_post_rdma_write_imm_empty(con->ibtrs_con.qp, UINT_MAX,
+					      IB_SEND_SIGNALED);
 	rcu_read_unlock();
 	if (unlikely(err)) {
 		ibtrs_wrn(sess, "Sending heartbeat failed, posting msg to QP failed,"

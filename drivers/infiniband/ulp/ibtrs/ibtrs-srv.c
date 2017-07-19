@@ -762,10 +762,11 @@ static int send_io_resp_imm(struct ibtrs_srv_con *con, int msg_id, s16 errno)
 {
 	int err;
 
-	err = ibtrs_write_empty_imm(con->ibtrs_con.qp, (msg_id << 16) | (u16)errno,
-				    atomic_inc_return(&con->wr_cnt) %
-				    con->sess->queue_depth ? 0 :
-				    IB_SEND_SIGNALED);
+	err = ibtrs_post_rdma_write_imm_empty(
+				con->ibtrs_con.qp, (msg_id << 16) | (u16)errno,
+				atomic_inc_return(&con->wr_cnt) %
+				con->sess->queue_depth ? 0 :
+				IB_SEND_SIGNALED);
 	if (unlikely(err))
 		ibtrs_err_rl(con->sess, "Posting RDMA-Write-Request to QP failed,"
 			     " err: %d\n", err);
@@ -777,8 +778,9 @@ static int send_heartbeat_raw(struct ibtrs_srv_con *con)
 {
 	int err;
 
-	err = ibtrs_write_empty_imm(con->ibtrs_con.qp, UINT_MAX,
-				    IB_SEND_SIGNALED);
+	err = ibtrs_post_rdma_write_imm_empty(
+				con->ibtrs_con.qp, UINT_MAX,
+				IB_SEND_SIGNALED);
 	if (unlikely(err)) {
 		ibtrs_err(con->sess,
 			  "Sending heartbeat failed, posting msg to QP failed,"
@@ -1621,8 +1623,8 @@ static int ibtrs_send_usr_msg_ack(struct ibtrs_srv_con *con)
 		return -ECOMM;
 	}
 	pr_debug("Sending user message ack\n");
-	err = ibtrs_write_empty_imm(con->ibtrs_con.qp, UINT_MAX - 1,
-				    IB_SEND_SIGNALED);
+	err = ibtrs_post_rdma_write_imm_empty(con->ibtrs_con.qp, UINT_MAX - 1,
+					      IB_SEND_SIGNALED);
 	if (unlikely(err)) {
 		ibtrs_err_rl(sess, "Sending user Ack msg failed, err: %d\n",
 			     err);

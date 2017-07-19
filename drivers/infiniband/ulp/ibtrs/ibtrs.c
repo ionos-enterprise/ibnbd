@@ -4,19 +4,13 @@
 #include "ibtrs-pri.h"
 #include "ibtrs-log.h"
 
-int ibtrs_write_empty_imm(struct ib_qp *qp, u32 imm_data,
-			  enum ib_send_flags flags)
+int ibtrs_post_beacon(struct ibtrs_con *con)
 {
-	struct ib_send_wr wr, *bad_wr;
+	struct ib_send_wr *bad_wr;
 
-	memset(&wr, 0, sizeof(wr));
-	wr.send_flags	= flags;
-	wr.opcode	= IB_WR_RDMA_WRITE_WITH_IMM;
-	wr.ex.imm_data	= cpu_to_be32(imm_data);
-
-	return ib_post_send(qp, &wr, &bad_wr);
+	return ib_post_send(con->qp, &con->beacon, &bad_wr);
 }
-EXPORT_SYMBOL_GPL(ibtrs_write_empty_imm);
+EXPORT_SYMBOL_GPL(ibtrs_post_beacon);
 
 int ibtrs_post_send(struct ib_qp *qp, struct ib_mr *mr, struct ibtrs_iu *iu,
 		    u32 size)
@@ -72,6 +66,20 @@ int ibtrs_post_rdma_write_imm(struct ib_qp *qp, struct ib_cqe *cqe,
 	return ib_post_send(qp, &wr.wr, &bad_wr);
 }
 EXPORT_SYMBOL_GPL(ibtrs_post_rdma_write_imm);
+
+int ibtrs_post_rdma_write_imm_empty(struct ib_qp *qp, u32 imm_data,
+				    enum ib_send_flags flags)
+{
+	struct ib_send_wr wr, *bad_wr;
+
+	memset(&wr, 0, sizeof(wr));
+	wr.send_flags	= flags;
+	wr.opcode	= IB_WR_RDMA_WRITE_WITH_IMM;
+	wr.ex.imm_data	= cpu_to_be32(imm_data);
+
+	return ib_post_send(qp, &wr, &bad_wr);
+}
+EXPORT_SYMBOL_GPL(ibtrs_post_rdma_write_imm_empty);
 
 static const char *ib_event_str(enum ib_event_type ev)
 {
@@ -165,14 +173,6 @@ int ibtrs_request_cq_notifications(struct ibtrs_con *con)
 				IB_CQ_REPORT_MISSED_EVENTS);
 }
 EXPORT_SYMBOL_GPL(ibtrs_request_cq_notifications);
-
-int ibtrs_post_beacon(struct ibtrs_con *con)
-{
-	struct ib_send_wr *bad_wr;
-
-	return ib_post_send(con->qp, &con->beacon, &bad_wr);
-}
-EXPORT_SYMBOL_GPL(ibtrs_post_beacon);
 
 static int create_cq(struct ibtrs_con *con, struct rdma_cm_id *cm_id,
 		     int cq_vector, u16 cq_size, enum ib_poll_context poll_ctx)
