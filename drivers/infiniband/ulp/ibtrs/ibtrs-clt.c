@@ -2595,17 +2595,17 @@ static void query_fast_reg_mode(struct ibtrs_clt_sess *sess)
 static int send_heartbeat(struct ibtrs_clt_sess *sess)
 {
 	int err;
-	struct ibtrs_clt_con *con;
+	struct ibtrs_clt_con *usr_con;
 
-	con = &sess->con[0];
+	usr_con = &sess->con[0];
 
 	rcu_read_lock();
-	smp_rmb(); /* fence con->state check */
-	if (unlikely(con->state != CSM_STATE_CONNECTED)) {
+	smp_rmb(); /* fence usr_con->state check */
+	if (unlikely(usr_con->state != CSM_STATE_CONNECTED)) {
 		rcu_read_unlock();
 		ibtrs_err_rl(sess, "Sending heartbeat message failed, not connected."
 			     " Connection state changed to %s!\n",
-			     csm_state_str(con->state));
+			     csm_state_str(usr_con->state));
 		return -ECOMM;
 	}
 
