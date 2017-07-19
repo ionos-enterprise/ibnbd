@@ -180,8 +180,8 @@ static int create_cq(struct ibtrs_con *con, struct rdma_cm_id *cm_id,
 	struct ib_cq *cq;
 
 	cq = ib_alloc_cq(cm_id->device, con, cq_size * 2 + 1,
-			      cq_vector, poll_ctx);
-	if (IS_ERR(cq)) {
+			 cq_vector, poll_ctx);
+	if (unlikely(IS_ERR(cq))) {
 		ibtrs_err(con, "Creating completion queue failed, errno: %ld\n",
 			  PTR_ERR(cq));
 		return PTR_ERR(cq);
@@ -210,7 +210,7 @@ static int create_qp(struct ibtrs_con *con, struct rdma_cm_id *cm_id,
 	init_attr.sq_sig_type = IB_SIGNAL_REQ_WR;
 
 	ret = rdma_create_qp(cm_id, pd, &init_attr);
-	if (ret) {
+	if (unlikely(ret)) {
 		ibtrs_err(con, "Creating QP failed, err: %d\n", ret);
 		return ret;
 	}
