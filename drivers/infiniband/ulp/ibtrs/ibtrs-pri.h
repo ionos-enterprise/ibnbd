@@ -107,6 +107,9 @@ struct ibtrs_heartbeat {
 #define IO_MSG_SIZE 24
 #define IB_IMM_SIZE_BITS 32
 
+#define IBTRS_HB_IMM  UINT_MAX
+#define IBTRS_ACK_IMM (UINT_MAX-1)
+
 #define GCC_DIAGNOSTIC_AWARE ((__GNUC__ > 6))
 #if GCC_DIAGNOSTIC_AWARE
 #pragma GCC diagnostic push

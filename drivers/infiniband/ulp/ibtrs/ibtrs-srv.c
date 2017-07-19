@@ -778,9 +778,9 @@ static int send_heartbeat_raw(struct ibtrs_srv_con *con)
 {
 	int err;
 
-	err = ibtrs_post_rdma_write_imm_empty(
-				con->ibtrs_con.qp, UINT_MAX,
-				IB_SEND_SIGNALED);
+	err = ibtrs_post_rdma_write_imm_empty(con->ibtrs_con.qp,
+					      IBTRS_HB_IMM,
+					      IB_SEND_SIGNALED);
 	if (unlikely(err)) {
 		ibtrs_err(con->sess,
 			  "Sending heartbeat failed, posting msg to QP failed,"
@@ -1623,7 +1623,8 @@ static int ibtrs_send_usr_msg_ack(struct ibtrs_srv_con *con)
 		return -ECOMM;
 	}
 	pr_debug("Sending user message ack\n");
-	err = ibtrs_post_rdma_write_imm_empty(con->ibtrs_con.qp, UINT_MAX - 1,
+	err = ibtrs_post_rdma_write_imm_empty(con->ibtrs_con.qp,
+					      IBTRS_ACK_IMM,
 					      IB_SEND_SIGNALED);
 	if (unlikely(err)) {
 		ibtrs_err_rl(sess, "Sending user Ack msg failed, err: %d\n",
@@ -2086,7 +2087,7 @@ static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 
 		iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
 		imm = be32_to_cpu(wc->ex.imm_data);
-		if (imm == UINT_MAX) {
+		if (imm == IBTRS_HB_IMM) {
 			ret = ibtrs_post_recv(con, iu);
 			if (unlikely(ret != 0)) {
 				ibtrs_err(sess, "post receive buffer failed,"
@@ -2095,7 +2096,7 @@ static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 				return;
 			}
 			break;
-		} else if (imm == UINT_MAX - 1) {
+		} else if (imm == IBTRS_ACK_IMM) {
 			ret = ibtrs_post_recv(con, iu);
 			if (unlikely(ret))
 				ibtrs_err_rl(sess, "Posting receive buffer of"

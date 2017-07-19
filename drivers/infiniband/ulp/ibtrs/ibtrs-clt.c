@@ -1686,7 +1686,8 @@ static int ibtrs_send_msg_user_ack(struct ibtrs_clt_con *con)
 		return -ECOMM;
 	}
 
-	err = ibtrs_post_rdma_write_imm_empty(con->ibtrs_con.qp, UINT_MAX - 1,
+	err = ibtrs_post_rdma_write_imm_empty(con->ibtrs_con.qp,
+					      IBTRS_ACK_IMM,
 					      IB_SEND_SIGNALED);
 	rcu_read_unlock();
 	if (unlikely(err)) {
@@ -1917,9 +1918,9 @@ static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 			csm_schedule_event(con, CSM_EV_CON_ERROR);
 		}
 
-		if (imm == UINT_MAX)
+		if (imm == IBTRS_HB_IMM)
 			break;
-		else if (imm == UINT_MAX - 1) {
+		else if (imm == IBTRS_ACK_IMM) {
 			process_msg_user_ack(con);
 			break;
 		}
@@ -2608,7 +2609,8 @@ static int send_heartbeat(struct ibtrs_clt_sess *sess)
 		return -ECOMM;
 	}
 
-	err = ibtrs_post_rdma_write_imm_empty(con->ibtrs_con.qp, UINT_MAX,
+	err = ibtrs_post_rdma_write_imm_empty(usr_con->ibtrs_con.qp,
+					      IBTRS_HB_IMM,
 					      IB_SEND_SIGNALED);
 	rcu_read_unlock();
 	if (unlikely(err)) {
