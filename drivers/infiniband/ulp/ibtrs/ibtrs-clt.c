@@ -1899,6 +1899,9 @@ static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 
 	switch (wc->opcode) {
 	case IB_WC_SEND:
+		/*
+		 * post_send() completions: beacon, sess info, user messages
+		 */
 		if (con->user) {
 			if (iu == sess->info_tx_iu)
 				break;
@@ -1906,9 +1909,26 @@ static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 			wake_up(&sess->mu_iu_wait_q);
 		}
 		break;
+	case IB_WC_RECV:
+		/*
+		 * post_recv() completions: sess info resp, user messages
+		 */
+		ibtrs_heartbeat_set_recv_ts(&sess->heartbeat);
+
+		hdr = (struct ibtrs_msg_hdr *)iu->buf;
+		ibtrs_handle_recv(con, iu);
+		break;
 	case IB_WC_RDMA_WRITE:
+		/*
+		 * post_send() RDMA write completions of IO reqs (read/write),
+		 *             user messages acks, heartbeats
+		 */
 		break;
 	case IB_WC_RECV_RDMA_WITH_IMM:
+		/*
+		 * post_recv() RDMA write completions of IO reqs (read/write),
+		 *             user messages acks, heartbeats
+		 */
 		ibtrs_heartbeat_set_recv_ts(&sess->heartbeat);
 		imm = be32_to_cpu(wc->ex.imm_data);
 		err = ibtrs_post_recv(con, iu);
@@ -1927,13 +1947,6 @@ static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 		msg_id = imm >> 16;
 		err = (imm << 16) >> 16;
 		process_io_rsp(sess, msg_id, err);
-		break;
-
-	case IB_WC_RECV:
-		ibtrs_heartbeat_set_recv_ts(&sess->heartbeat);
-
-		hdr = (struct ibtrs_msg_hdr *)iu->buf;
-		ibtrs_handle_recv(con, iu);
 		break;
 
 	default:
