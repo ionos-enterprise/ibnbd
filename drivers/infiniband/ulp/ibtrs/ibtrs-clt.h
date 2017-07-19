@@ -91,8 +91,8 @@ struct ibtrs_clt_sess {
 	enum ssm_state		state;
 	struct ibtrs_clt_con	*con;
 	struct ibtrs_ib_dev	ib_dev;
-	struct ibtrs_iu		*rdma_info_iu;
-	struct ibtrs_iu		*sess_info_iu;
+	struct ibtrs_iu		*info_rx_iu;
+	struct ibtrs_iu		*info_tx_iu;
 	struct ibtrs_iu		*dummy_rx_iu;
 	struct ibtrs_iu		**usr_rx_ring;
 	struct ibtrs_iu		**io_tx_ius;

@@ -1899,7 +1899,7 @@ static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 	switch (wc->opcode) {
 	case IB_WC_SEND:
 		if (con->user) {
-			if (iu == sess->sess_info_iu)
+			if (iu == sess->info_tx_iu)
 				break;
 			put_u_msg_iu(sess, iu);
 			wake_up(&sess->mu_iu_wait_q);
@@ -2137,7 +2137,7 @@ static int post_recv_info(struct ibtrs_clt_sess *sess)
 	struct ibtrs_clt_con *usr_con = &sess->con[0];
 	int ret;
 
-	ret = ibtrs_post_recv(usr_con, sess->rdma_info_iu);
+	ret = ibtrs_post_recv(usr_con, sess->info_rx_iu);
 	if (unlikely(ret))
 		ibtrs_err(sess, "ibtrs_post_recv(), err: %d\n", ret);
 
@@ -2309,35 +2309,33 @@ static void free_sess_tr_bufs(struct ibtrs_clt_sess *sess)
 
 static void free_sess_init_bufs(struct ibtrs_clt_sess *sess)
 {
-	if (sess->rdma_info_iu) {
-		ibtrs_iu_free(sess->rdma_info_iu, DMA_FROM_DEVICE,
+	if (sess->info_tx_iu) {
+		ibtrs_iu_free(sess->info_tx_iu, DMA_TO_DEVICE,
 			      sess->ib_dev.dev);
-		sess->rdma_info_iu = NULL;
+		sess->info_tx_iu = NULL;
 	}
-
+	if (sess->info_rx_iu) {
+		ibtrs_iu_free(sess->info_rx_iu, DMA_FROM_DEVICE,
+			      sess->ib_dev.dev);
+		sess->info_rx_iu = NULL;
+	}
 	if (sess->dummy_rx_iu) {
 		ibtrs_iu_free(sess->dummy_rx_iu, DMA_FROM_DEVICE,
 			      sess->ib_dev.dev);
 		sess->dummy_rx_iu = NULL;
 	}
-
-	if (sess->sess_info_iu) {
-		ibtrs_iu_free(sess->sess_info_iu, DMA_TO_DEVICE,
-			      sess->ib_dev.dev);
-		sess->sess_info_iu = NULL;
-	}
 }
 
 static int alloc_sess_rx_bufs(struct ibtrs_clt_sess *sess)
 {
-	int i;
 	u32 max_req_size = sess->max_req_size;
+	int i;
 
 	sess->usr_rx_ring = kcalloc(USR_CON_BUF_SIZE,
 				    sizeof(*sess->usr_rx_ring),
 				    GFP_KERNEL);
-	if (!sess->usr_rx_ring)
-		goto err;
+	if (unlikely(!sess->usr_rx_ring))
+		return -ENOMEM;
 
 	for (i = 0; i < USR_CON_BUF_SIZE; ++i) {
 		/* alloc recv buffer, open rep is the biggest */
@@ -2345,7 +2343,7 @@ static int alloc_sess_rx_bufs(struct ibtrs_clt_sess *sess)
 						      GFP_KERNEL,
 						      sess->ib_dev.dev,
 						      DMA_FROM_DEVICE, true);
-		if (!sess->usr_rx_ring[i]) {
+		if (unlikely(!sess->usr_rx_ring[i])) {
 			ibtrs_wrn(sess, "Failed to allocate IU for RX ring\n");
 			goto err;
 		}
@@ -2361,32 +2359,29 @@ err:
 
 static int alloc_sess_init_bufs(struct ibtrs_clt_sess *sess)
 {
-	sess->sess_info_iu =
+	sess->info_tx_iu =
 		ibtrs_iu_alloc(0, MSG_SESS_INFO_SIZE, GFP_KERNEL,
-			       sess->ib_dev.dev, DMA_TO_DEVICE, true);
-	if (unlikely(!sess->sess_info_iu)) {
-		ibtrs_err_rl(sess, "Can't allocate transfer buffer for "
-			     "sess hostname\n");
+			       sess->ib_dev.dev,
+			       DMA_TO_DEVICE, true);
+	if (unlikely(!sess->info_tx_iu)) {
+		ibtrs_err_rl(sess, "ibtrs_iu_alloc(), err: %d\n", -ENOMEM);
 		return -ENOMEM;
 	}
-	sess->rdma_info_iu =
+	sess->info_rx_iu =
 		ibtrs_iu_alloc(0,
 			       IBTRS_MSG_SESS_OPEN_RESP_LEN(MAX_SESS_QUEUE_DEPTH),
 			       GFP_KERNEL, sess->ib_dev.dev,
 			       DMA_FROM_DEVICE, true);
-	if (!sess->rdma_info_iu) {
-		ibtrs_wrn(sess, "Failed to allocate IU to receive "
-			  "RDMA INFO message\n");
+	if (unlikely(!sess->info_rx_iu)) {
+		ibtrs_err_rl(sess, "ibtrs_iu_alloc(), err: %d\n", -ENOMEM);
 		goto err;
 	}
-
 	sess->dummy_rx_iu =
 		ibtrs_iu_alloc(0, IBTRS_HDR_LEN,
 			       GFP_KERNEL, sess->ib_dev.dev,
 			       DMA_FROM_DEVICE, true);
 	if (!sess->dummy_rx_iu) {
-		ibtrs_wrn(sess, "Failed to allocate IU to receive "
-			  "immediate messages on io connections\n");
+		ibtrs_err_rl(sess, "ibtrs_iu_alloc(), err: %d\n", -ENOMEM);
 		goto err;
 	}
 
@@ -3260,7 +3255,7 @@ static struct ibtrs_clt_sess *sess_init(const struct sockaddr_storage *addr,
 		goto err_free_sess;
 	}
 
-	sess->rdma_info_iu = NULL;
+	sess->info_rx_iu = NULL;
 	err = sess_init_cons(sess);
 	if (err) {
 		pr_err("Failed to initialize cons\n");
@@ -4167,12 +4162,12 @@ static int send_msg_sess_info(struct ibtrs_clt_con *con)
 	int err;
 	struct ibtrs_clt_sess *sess = con->sess;
 
-	msg = sess->sess_info_iu->buf;
+	msg = sess->info_tx_iu->buf;
 
 	fill_ibtrs_msg_sess_info(msg, hostname);
 
 	err = ibtrs_post_send(con->ibtrs_con.qp, con->sess->ib_dev.mr,
-			      sess->sess_info_iu, msg->hdr.tsize);
+			      sess->info_tx_iu, msg->hdr.tsize);
 	if (unlikely(err))
 		ibtrs_err(sess, "Sending sess info failed, "
 			  "posting msg to QP failed, err: %d\n", err);
