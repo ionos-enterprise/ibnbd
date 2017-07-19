@@ -2544,7 +2544,7 @@ static int resolve_route(struct ibtrs_clt_con *con)
 	return err;
 }
 
-static int query_fast_reg_mode(struct ibtrs_clt_sess *sess)
+static void query_fast_reg_mode(struct ibtrs_clt_sess *sess)
 {
 	struct ib_device_attr *dev_attr;
 	struct ib_device *ibdev;
@@ -2589,8 +2589,6 @@ static int query_fast_reg_mode(struct ibtrs_clt_sess *sess)
 		 "mr_max_size = %#x\n", ibdev->name, mr_page_shift,
 		 dev_attr->max_mr_size, dev_attr->max_fast_reg_page_list_len,
 		 sess->max_pages_per_mr, sess->mr_max_size);
-
-	return 0;
 }
 
 static int send_heartbeat(struct ibtrs_clt_sess *sess)
@@ -3326,12 +3324,8 @@ static int create_ib_dev(struct ibtrs_clt_sess *sess)
 			  err);
 		return err;
 	}
-	err = query_fast_reg_mode(sess);
-	if (unlikely(err)) {
-		ibtrs_wrn(sess, "Failed to query fast registration mode, err: %d\n",
-			  err);
-		goto err;
-	}
+	query_fast_reg_mode(sess);
+
 	err = alloc_sess_init_bufs(sess);
 	if (unlikely(err)) {
 		ibtrs_err(sess, "Failed to allocate session buffers, err: %d\n",
