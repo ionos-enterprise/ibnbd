@@ -1550,50 +1550,57 @@ static int ibtrs_post_send_rdma_more(struct ibtrs_clt_con *con,
 				     struct rdma_req *req,
 				     u64 addr, u32 size, u32 imm)
 {
-	int i, ret;
-	struct scatterlist *sg;
 	struct ib_device *ibdev = con->sess->ib_dev.dev;
-	size_t num_sge = 1 + req->sg_cnt;
+	struct ibtrs_clt_sess *sess = con->sess;
+	enum ib_send_flags flags;
+	struct scatterlist *sg;
 	struct ib_sge *list;
-	u32 cnt = atomic_inc_return(&con->io_cnt);
+	size_t num_sge;
+	int i, ret;
 
+	num_sge = 1 + req->sg_cnt;
 	list = kmalloc_array(num_sge, sizeof(*list), GFP_ATOMIC);
-
 	if (!list)
 		return -ENOMEM;
 
 	for_each_sg(req->sglist, sg, req->sg_cnt, i) {
 		list[i].addr   = ib_sg_dma_address(ibdev, sg);
 		list[i].length = ib_sg_dma_len(ibdev, sg);
-		list[i].lkey   = con->sess->ib_dev.pd->local_dma_lkey;
+		list[i].lkey   = sess->ib_dev.pd->local_dma_lkey;
 	}
 	list[i].addr   = req->iu->dma_addr;
 	list[i].length = size;
-	list[i].lkey   = con->sess->ib_dev.pd->local_dma_lkey;
+	list[i].lkey   = sess->ib_dev.pd->local_dma_lkey;
+
+	/*
+	 * From time to time we have to post signalled sends,
+	 * or send queue will fill up and only QP reset can help.
+	 */
+	flags = atomic_inc_return(&con->io_cnt) % sess->queue_depth ?
+			0 : IB_SEND_SIGNALED;
 
 	ret = ibtrs_post_rdma_write_imm(con->ibtrs_con.qp, &req->iu->cqe,
 					list, num_sge,
-					con->sess->srv_rdma_buf_rkey,
-					addr, imm,
-					cnt % (con->sess->queue_depth) ?
-					0 : IB_SEND_SIGNALED);
-
+					sess->srv_rdma_buf_rkey,
+					addr, imm, flags);
 	kfree(list);
+
 	return ret;
 }
 
 static int ibtrs_post_recv(struct ibtrs_clt_con *con, struct ibtrs_iu *iu)
 {
-	int err;
+	struct ibtrs_clt_sess *sess = con->sess;
 	struct ib_recv_wr wr, *bad_wr;
 	struct ib_sge list;
+	int err;
 
 	list.addr   = iu->dma_addr;
 	list.length = iu->size;
-	list.lkey   = con->sess->ib_dev.pd->local_dma_lkey;
+	list.lkey   = sess->ib_dev.pd->local_dma_lkey;
 
 	if (WARN_ON(list.length == 0)) {
-		ibtrs_wrn(con->sess, "Posting receive work request failed,"
+		ibtrs_wrn(sess, "Posting receive work request failed,"
 			  " sg list is empty\n");
 		return -EINVAL;
 	}
@@ -1607,7 +1614,7 @@ static int ibtrs_post_recv(struct ibtrs_clt_con *con, struct ibtrs_iu *iu)
 
 	err = ib_post_recv(con->ibtrs_con.qp, &wr, &bad_wr);
 	if (unlikely(err))
-		ibtrs_err(con->sess, "Posting receive work request failed, err:"
+		ibtrs_err(sess, "Posting receive work request failed, err:"
 			  " %d\n", err);
 
 	return err;
@@ -1716,16 +1723,16 @@ static int ibtrs_send_msg_user_ack(struct ibtrs_clt_con *con)
 			     err);
 		return err;
 	}
-
 	ibtrs_heartbeat_set_send_ts(&con->sess->heartbeat);
+
 	return 0;
 }
 
 static void process_msg_user(struct ibtrs_clt_con *con,
 			     struct ibtrs_msg_user *msg)
 {
-	int len;
 	struct ibtrs_clt_sess *sess = con->sess;
+	int len;
 
 	len = msg->hdr.tsize - IBTRS_HDR_LEN;
 
@@ -1740,7 +1747,7 @@ static void process_msg_user_ack(struct ibtrs_clt_con *con)
 	struct ibtrs_clt_sess *sess = con->sess;
 
 	atomic_inc(&sess->peer_usr_msg_bufs);
-	wake_up(&con->sess->mu_buf_wait_q);
+	wake_up(&sess->mu_buf_wait_q);
 }
 
 static void msg_worker(struct work_struct *work)
@@ -1786,8 +1793,8 @@ static int ibtrs_schedule_msg(struct ibtrs_clt_con *con,
 static void ibtrs_handle_recv(struct ibtrs_clt_con *con,
 			      struct ibtrs_iu *iu)
 {
-	struct ibtrs_msg_hdr *hdr;
 	struct ibtrs_clt_sess *sess = con->sess;
+	struct ibtrs_msg_hdr *hdr;
 	int ret;
 
 	hdr = (struct ibtrs_msg_hdr *)iu->buf;
@@ -1826,9 +1833,9 @@ static void ibtrs_handle_recv(struct ibtrs_clt_con *con,
 
 		err = process_open_rsp(con, iu->buf);
 		if (unlikely(err))
-			ssm_schedule_event(con->sess, SSM_EV_CON_ERROR);
+			ssm_schedule_event(sess, SSM_EV_CON_ERROR);
 		else
-			ssm_schedule_event(con->sess, SSM_EV_GOT_RDMA_INFO);
+			ssm_schedule_event(sess, SSM_EV_GOT_RDMA_INFO);
 		return;
 	}
 	default:
@@ -1853,7 +1860,6 @@ static void process_err_wc(struct ibtrs_clt_con *con,
 		csm_schedule_event(con, CSM_EV_BEACON_COMPLETED);
 		return;
 	}
-
 	if (wc->wr_cqe == &fast_reg_cqe || wc->wr_cqe == &local_inv_cqe) {
 		ibtrs_err_rl(con->sess, "Fast registration wr failed: wr_cqe: %p,"
 			     "status: %s\n", wc->wr_cqe,
@@ -2637,8 +2643,8 @@ static void query_fast_reg_mode(struct ibtrs_clt_sess *sess)
 
 static int send_heartbeat(struct ibtrs_clt_sess *sess)
 {
-	int err;
 	struct ibtrs_clt_con *usr_con;
+	int err;
 
 	usr_con = &sess->con[0];
 
@@ -2662,7 +2668,6 @@ static int send_heartbeat(struct ibtrs_clt_sess *sess)
 			  " err: %d\n", err);
 		return err;
 	}
-
 	ibtrs_heartbeat_set_send_ts(&sess->heartbeat);
 
 	return err;
@@ -3404,8 +3409,8 @@ static int create_con(struct ibtrs_clt_con *con)
 	u16 cq_size, wr_queue_size;
 	int err, cq_vector, num_wr;
 
-	num_wr = DIV_ROUND_UP(con->sess->max_pages_per_mr,
-			      con->sess->max_sge);
+	num_wr = DIV_ROUND_UP(sess->max_pages_per_mr,
+			      sess->max_sge);
 	if (con->user) {
 		err = create_ib_dev(sess);
 		if (err) {
@@ -3452,8 +3457,7 @@ static int create_con(struct ibtrs_clt_con *con)
 
 	err = connect_qp(con);
 	if (err) {
-		ibtrs_err(con->sess, "Failed to connect QP, err: %d\n",
-			  err);
+		ibtrs_err(sess, "Failed to connect QP, err: %d\n", err);
 		goto err_wq;
 	}
 
@@ -3689,12 +3693,15 @@ static int ibtrs_clt_rdma_write_desc(struct ibtrs_clt_con *con,
 	return ret;
 }
 
-static int ibtrs_clt_rdma_write_sg(struct ibtrs_clt_con *con, struct rdma_req *req,
-				   const struct kvec *vec, size_t u_msg_len,
+static int ibtrs_clt_rdma_write_sg(struct ibtrs_clt_con *con,
+				   struct rdma_req *req,
+				   const struct kvec *vec,
+				   size_t u_msg_len,
 				   size_t data_len)
 {
-	int count = 0;
+	struct ibtrs_clt_sess *sess = con->sess;
 	struct ibtrs_msg_rdma_write *msg;
+	int count = 0;
 	u32 imm;
 	int ret;
 	int buf_id;
@@ -3702,17 +3709,16 @@ static int ibtrs_clt_rdma_write_sg(struct ibtrs_clt_con *con, struct rdma_req *r
 
 	const u32 tsize = sizeof(*msg) + data_len + u_msg_len;
 
-	if (unlikely(tsize > con->sess->chunk_size)) {
-		ibtrs_wrn_rl(con->sess, "RDMA-Write failed, data size too big %d >"
-			     " %d\n", tsize, con->sess->chunk_size);
+	if (unlikely(tsize > sess->chunk_size)) {
+		ibtrs_wrn_rl(sess, "RDMA-Write failed, size too big %d > %d\n",
+			     tsize, sess->chunk_size);
 		return -EMSGSIZE;
 	}
 	if (req->sg_cnt) {
-		count = ib_dma_map_sg(con->sess->ib_dev.dev, req->sglist,
+		count = ib_dma_map_sg(sess->ib_dev.dev, req->sglist,
 				      req->sg_cnt, req->dir);
 		if (unlikely(!count)) {
-			ibtrs_wrn_rl(con->sess,
-				     "RDMA-Write failed, dma map failed\n");
+			ibtrs_wrn_rl(sess, "RDMA-Write failed, map failed\n");
 			return -EINVAL;
 		}
 	}
@@ -3729,7 +3735,7 @@ static int ibtrs_clt_rdma_write_sg(struct ibtrs_clt_con *con, struct rdma_req *r
 	buf_id = req->tag->mem_id;
 	req->sg_size = data_len + u_msg_len + sizeof(*msg);
 
-	buf = con->sess->srv_rdma_addr[buf_id];
+	buf = sess->srv_rdma_addr[buf_id];
 	if (count > fmr_sg_cnt)
 		return ibtrs_clt_rdma_write_desc(con, req, buf, u_msg_len, imm,
 						 msg);
@@ -3737,10 +3743,10 @@ static int ibtrs_clt_rdma_write_sg(struct ibtrs_clt_con *con, struct rdma_req *r
 	ret = ibtrs_post_send_rdma_more(con, req, buf, u_msg_len + sizeof(*msg),
 					imm);
 	if (unlikely(ret)) {
-		ibtrs_err(con->sess, "RDMA-Write failed, posting work"
+		ibtrs_err(sess, "RDMA-Write failed, posting work"
 			  " request failed, err: %d\n", ret);
 		if (count)
-			ib_dma_unmap_sg(con->sess->ib_dev.dev, req->sglist,
+			ib_dma_unmap_sg(sess->ib_dev.dev, req->sglist,
 					req->sg_cnt, req->dir);
 	}
 	return ret;

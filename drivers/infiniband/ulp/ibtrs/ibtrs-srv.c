@@ -1369,9 +1369,9 @@ static void free_sess_rx_bufs(struct ibtrs_srv_sess *sess)
 
 static int alloc_sess_tx_bufs(struct ibtrs_srv_sess *sess)
 {
-	struct ibtrs_iu *iu;
-	struct ibtrs_ops_id *id;
 	struct ib_device *ib_dev = sess->dev->ib_dev.dev;
+	struct ibtrs_ops_id *id;
+	struct ibtrs_iu *iu;
 	int i;
 
 	sess->rdma_info_iu =
@@ -2174,9 +2174,9 @@ static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 
 static int accept(struct ibtrs_srv_con *con)
 {
+	struct ibtrs_srv_sess *sess = con->sess;
 	struct rdma_conn_param conn_param;
 	int ret;
-	struct ibtrs_srv_sess *sess = con->sess;
 
 	memset(&conn_param, 0, sizeof(conn_param));
 	conn_param.retry_count = retry_count;
