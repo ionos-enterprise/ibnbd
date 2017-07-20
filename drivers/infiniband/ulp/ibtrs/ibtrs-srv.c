@@ -2084,11 +2084,12 @@ static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 {
 	struct ibtrs_srv_con *con = cq->cq_context;
 	struct ibtrs_srv_sess *sess = con->sess;
+	struct ibtrs_msg_hdr *hdr;
 	struct ibtrs_iu *iu;
+	u32 imm, msg_id, off;
 	int ret;
 
 	ibtrs_srv_update_wc_stats(con);
-
 	if (unlikely(wc->status != IB_WC_SUCCESS)) {
 		process_err_wc(con, wc);
 		return;
@@ -2096,20 +2097,37 @@ static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 
 	switch (wc->opcode) {
 	case IB_WC_SEND:
+		/*
+		 * post_send() completions: beacon, sess info resp, user msgs
+		 */
 		iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
-		if (iu == con->sess->rdma_info_iu)
+		if (iu == sess->rdma_info_iu)
 			break;
 		put_tx_iu(sess, iu);
 		if (con->user)
 			wake_up(&sess->mu_iu_wait_q);
 		break;
-
-	case IB_WC_RECV_RDMA_WITH_IMM: {
-		u32 imm, id, off;
-		struct ibtrs_msg_hdr *hdr;
-
+	case IB_WC_RECV:
+		/*
+		 * post_recv() completions: sess info, user msgs
+		 */
 		ibtrs_heartbeat_set_recv_ts(&sess->heartbeat);
-
+		iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
+		hdr = (struct ibtrs_msg_hdr *)iu->buf;
+		ibtrs_handle_recv(con, iu);
+		break;
+	case IB_WC_RDMA_WRITE:
+		/*
+		 * post_send() RDMA write completions of IO reqs (read/write),
+		 *             user msgs acks, heartbeats
+		 */
+		break;
+	case IB_WC_RECV_RDMA_WITH_IMM:
+		/*
+		 * post_recv() RDMA write completions of IO reqs (read/write),
+		 *             user msgs acks, heartbeats
+		 */
+		ibtrs_heartbeat_set_recv_ts(&sess->heartbeat);
 		iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
 		imm = be32_to_cpu(wc->ex.imm_data);
 		if (imm == IBTRS_HB_IMM) {
@@ -2130,10 +2148,10 @@ static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 			process_msg_user_ack(con);
 			break;
 		}
-		id = imm >> sess->off_len;
+		msg_id = imm >> sess->off_len;
 		off = imm & sess->off_mask;
 
-		if (id > sess->queue_depth || off > rcv_buf_size) {
+		if (msg_id > sess->queue_depth || off > rcv_buf_size) {
 			ibtrs_err(sess, "Processing I/O failed, contiguous "
 				  "buf addr is out of reserved area\n");
 			ret = ibtrs_post_recv(con, iu);
@@ -2146,25 +2164,10 @@ static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 		}
 
 		hdr = (struct ibtrs_msg_hdr *)
-			(sess->rcv_buf_pool->rcv_bufs[id].buf + off);
+			(sess->rcv_buf_pool->rcv_bufs[msg_id].buf + off);
 
-		ibtrs_handle_write(con, iu, hdr, id, off);
+		ibtrs_handle_write(con, iu, hdr, msg_id, off);
 		break;
-	}
-
-	case IB_WC_RDMA_WRITE:
-		break;
-
-	case IB_WC_RECV: {
-		struct ibtrs_msg_hdr *hdr;
-
-		ibtrs_heartbeat_set_recv_ts(&sess->heartbeat);
-		iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
-		hdr = (struct ibtrs_msg_hdr *)iu->buf;
-		ibtrs_handle_recv(con, iu);
-		break;
-	}
-
 	default:
 		ibtrs_wrn(sess, "Unexpected WC type: %s\n",
 			  ib_wc_opcode_str(wc->opcode));

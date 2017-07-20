@@ -1933,7 +1933,7 @@ static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 	switch (wc->opcode) {
 	case IB_WC_SEND:
 		/*
-		 * post_send() completions: beacon, sess info, user messages
+		 * post_send() completions: beacon, sess info, user msgs
 		 */
 		if (con->user) {
 			iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
@@ -1945,7 +1945,7 @@ static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 		break;
 	case IB_WC_RECV:
 		/*
-		 * post_recv() completions: sess info resp, user messages
+		 * post_recv() completions: sess info resp, user msgs
 		 */
 		ibtrs_heartbeat_set_recv_ts(&sess->heartbeat);
 
@@ -1956,13 +1956,13 @@ static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 	case IB_WC_RDMA_WRITE:
 		/*
 		 * post_send() RDMA write completions of IO reqs (read/write),
-		 *             user messages acks, heartbeats
+		 *             user msgs acks, heartbeats
 		 */
 		break;
 	case IB_WC_RECV_RDMA_WITH_IMM:
 		/*
 		 * post_recv() RDMA write completions of IO reqs (read/write),
-		 *             user messages acks, heartbeats
+		 *             user msgs acks, heartbeats
 		 */
 		ibtrs_heartbeat_set_recv_ts(&sess->heartbeat);
 		iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
@@ -1984,7 +1984,6 @@ static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 		err = (imm << 16) >> 16;
 		process_io_rsp(sess, msg_id, err);
 		break;
-
 	default:
 		ibtrs_wrn(sess, "Unexpected WC type: %s\n",
 			  ib_wc_opcode_str(wc->opcode));
