@@ -26,6 +26,10 @@ static int rcv_buf_size = DEFAULT_MAX_IO_SIZE + MAX_REQ_SIZE;
 
 static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc);
 
+static struct ib_cqe hb_and_ack_cqe = {
+	.done = ibtrs_srv_rdma_done
+};
+
 static int max_io_size_set(const char *val, const struct kernel_param *kp)
 {
 	int err, ival;
@@ -760,16 +764,23 @@ static int rdma_write_sg(struct ibtrs_ops_id *id)
 
 static int send_io_resp_imm(struct ibtrs_srv_con *con, int msg_id, s16 errno)
 {
+	struct ibtrs_srv_sess *sess = con->sess;
+	enum ib_send_flags flags;
+	u32 imm;
 	int err;
 
-	err = ibtrs_post_rdma_write_imm_empty(
-				con->ibtrs_con.qp, (msg_id << 16) | (u16)errno,
-				atomic_inc_return(&con->wr_cnt) %
-				con->sess->queue_depth ? 0 :
-				IB_SEND_SIGNALED);
+	/*
+	 * From time to time we have to post signalled sends,
+	 * or send queue will fill up and only QP reset can help.
+	 */
+	flags = atomic_inc_return(&con->wr_cnt) % sess->queue_depth ?
+			0 : IB_SEND_SIGNALED;
+	imm = (msg_id << 16) | (u16)errno;
+	err = ibtrs_post_rdma_write_imm_empty(con->ibtrs_con.qp,
+					      &hb_and_ack_cqe,
+					      imm, flags);
 	if (unlikely(err))
-		ibtrs_err_rl(con->sess, "Posting RDMA-Write-Request to QP failed,"
-			     " err: %d\n", err);
+		ibtrs_err_rl(sess, "ib_post_send(), err: %d\n", err);
 
 	return err;
 }
@@ -779,6 +790,7 @@ static int send_heartbeat_raw(struct ibtrs_srv_con *con)
 	int err;
 
 	err = ibtrs_post_rdma_write_imm_empty(con->ibtrs_con.qp,
+					      &hb_and_ack_cqe,
 					      IBTRS_HB_IMM,
 					      IB_SEND_SIGNALED);
 	if (unlikely(err)) {
@@ -1624,6 +1636,7 @@ static int ibtrs_send_usr_msg_ack(struct ibtrs_srv_con *con)
 	}
 	pr_debug("Sending user message ack\n");
 	err = ibtrs_post_rdma_write_imm_empty(con->ibtrs_con.qp,
+					      &hb_and_ack_cqe,
 					      IBTRS_ACK_IMM,
 					      IB_SEND_SIGNALED);
 	if (unlikely(err)) {
@@ -2019,10 +2032,16 @@ static void process_err_wc(struct ibtrs_srv_con *con, struct ib_wc *wc)
 		csm_schedule_event(con, CSM_EV_BEACON_COMPLETED);
 		return;
 	}
-
-	/* only wc->wr_cqe is ensured to be correct in erroneous WCs,
-	 * we can't rely on wc->opcode, use iu->direction to determine if it's
-	 * an tx or rx IU
+	if (wc->wr_cqe == &hb_and_ack_cqe) {
+		ibtrs_err_rl(con->sess, "ib_post_send() of hb or ack failed, "
+			     "status: %s\n", ib_wc_status_msg(wc->status));
+		csm_schedule_event(con, CSM_EV_CON_ERROR);
+		return;
+	}
+	/*
+	 * Only wc->wr_cqe is ensured to be correct in erroneous WCs,
+	 * we can't rely on wc->opcode, use iu->direction to determine
+	 * if it's an tx or rx IU.
 	 */
 	iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
 	if (iu && iu->direction == DMA_TO_DEVICE &&

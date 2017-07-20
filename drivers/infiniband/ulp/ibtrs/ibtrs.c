@@ -67,12 +67,13 @@ int ibtrs_post_rdma_write_imm(struct ib_qp *qp, struct ib_cqe *cqe,
 }
 EXPORT_SYMBOL_GPL(ibtrs_post_rdma_write_imm);
 
-int ibtrs_post_rdma_write_imm_empty(struct ib_qp *qp, u32 imm_data,
-				    enum ib_send_flags flags)
+int ibtrs_post_rdma_write_imm_empty(struct ib_qp *qp, struct ib_cqe *cqe,
+				    u32 imm_data, enum ib_send_flags flags)
 {
 	struct ib_send_wr wr, *bad_wr;
 
 	memset(&wr, 0, sizeof(wr));
+	wr.wr_cqe	= cqe;
 	wr.send_flags	= flags;
 	wr.opcode	= IB_WR_RDMA_WRITE_WITH_IMM;
 	wr.ex.imm_data	= cpu_to_be32(imm_data);

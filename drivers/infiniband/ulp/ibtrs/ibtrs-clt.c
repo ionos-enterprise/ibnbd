@@ -141,6 +141,9 @@ static struct ib_cqe fast_reg_cqe = {
 static struct ib_cqe local_inv_cqe = {
 	.done = ibtrs_clt_rdma_done
 };
+static struct ib_cqe hb_and_ack_cqe = {
+	.done = ibtrs_clt_rdma_done
+};
 
 static const struct ibtrs_clt_ops *clt_ops;
 static struct workqueue_struct *ibtrs_wq;
@@ -1687,6 +1690,7 @@ static int ibtrs_send_msg_user_ack(struct ibtrs_clt_con *con)
 	}
 
 	err = ibtrs_post_rdma_write_imm_empty(con->ibtrs_con.qp,
+					      &hb_and_ack_cqe,
 					      IBTRS_ACK_IMM,
 					      IB_SEND_SIGNALED);
 	rcu_read_unlock();
@@ -1840,9 +1844,16 @@ static void process_err_wc(struct ibtrs_clt_con *con,
 		csm_schedule_event(con, CSM_EV_WC_ERROR);
 		return;
 	}
-	/* only wc->wr_cqe is ensured to be correct in erroneous WCs,
-	 * we can't rely on wc->opcode, use iu->direction to determine if it's
-	 * an tx or rx IU
+	if (wc->wr_cqe == &hb_and_ack_cqe) {
+		ibtrs_err_rl(con->sess, "ib_post_send() of hb or ack failed, "
+			     "status: %s\n", ib_wc_status_msg(wc->status));
+		csm_schedule_event(con, CSM_EV_WC_ERROR);
+		return;
+	}
+	/*
+	 * Only wc->wr_cqe is ensured to be correct in erroneous WCs,
+	 * we can't rely on wc->opcode, use iu->direction to determine
+	 * if it's an tx or rx IU.
 	 */
 	iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
 	if (iu && iu->direction == DMA_TO_DEVICE && iu->is_msg)
@@ -1895,7 +1906,6 @@ static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 		process_err_wc(con, wc);
 		return;
 	}
-	iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
 
 	switch (wc->opcode) {
 	case IB_WC_SEND:
@@ -1903,6 +1913,7 @@ static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 		 * post_send() completions: beacon, sess info, user messages
 		 */
 		if (con->user) {
+			iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
 			if (iu == sess->info_tx_iu)
 				break;
 			put_u_msg_iu(sess, iu);
@@ -1915,6 +1926,7 @@ static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 		 */
 		ibtrs_heartbeat_set_recv_ts(&sess->heartbeat);
 
+		iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
 		hdr = (struct ibtrs_msg_hdr *)iu->buf;
 		ibtrs_handle_recv(con, iu);
 		break;
@@ -1930,7 +1942,7 @@ static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 		 *             user messages acks, heartbeats
 		 */
 		ibtrs_heartbeat_set_recv_ts(&sess->heartbeat);
-		imm = be32_to_cpu(wc->ex.imm_data);
+		iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
 		err = ibtrs_post_recv(con, iu);
 		if (err) {
 			ibtrs_err(sess, "Failed to post receive "
@@ -1938,6 +1950,7 @@ static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 			csm_schedule_event(con, CSM_EV_CON_ERROR);
 		}
 
+		imm = be32_to_cpu(wc->ex.imm_data);
 		if (imm == IBTRS_HB_IMM)
 			break;
 		else if (imm == IBTRS_ACK_IMM) {
@@ -2623,6 +2636,7 @@ static int send_heartbeat(struct ibtrs_clt_sess *sess)
 	}
 
 	err = ibtrs_post_rdma_write_imm_empty(usr_con->ibtrs_con.qp,
+					      &hb_and_ack_cqe,
 					      IBTRS_HB_IMM,
 					      IB_SEND_SIGNALED);
 	rcu_read_unlock();
