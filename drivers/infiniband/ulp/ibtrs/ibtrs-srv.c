@@ -706,10 +706,11 @@ static struct ibtrs_iu *get_tx_iu(struct ibtrs_srv_sess *sess)
 
 static int rdma_write_sg(struct ibtrs_ops_id *id)
 {
-	int err, i, offset;
-	struct ib_send_wr *bad_wr;
-	struct ib_rdma_wr *wr = NULL;
 	struct ibtrs_srv_sess *sess = id->con->sess;
+	struct ib_rdma_wr *wr = NULL;
+	struct ib_send_wr *bad_wr;
+	enum ib_send_flags flags;
+	int err, i, offset;
 
 	if (unlikely(id->req->sg_cnt == 0))
 		return -EINVAL;
@@ -746,11 +747,16 @@ static int rdma_write_sg(struct ibtrs_ops_id *id)
 			wr->wr.send_flags	= 0;
 		}
 	}
+	/*
+	 * From time to time we have to post signalled sends,
+	 * or send queue will fill up and only QP reset can help.
+	 */
+	flags = atomic_inc_return(&id->con->wr_cnt) % sess->queue_depth ?
+			0 : IB_SEND_SIGNALED;
 
 	wr->wr.opcode = IB_WR_RDMA_WRITE_WITH_IMM;
 	wr->wr.next = NULL;
-	wr->wr.send_flags = atomic_inc_return(&id->con->wr_cnt) %
-		sess->queue_depth ? 0 : IB_SEND_SIGNALED;
+	wr->wr.send_flags = flags;
 	wr->wr.ex.imm_data = cpu_to_be32(id->msg_id << 16);
 
 	err = ib_post_send(id->con->ibtrs_con.qp, &id->tx_wr[0].wr, &bad_wr);

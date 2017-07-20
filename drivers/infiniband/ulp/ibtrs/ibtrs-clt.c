@@ -1371,8 +1371,9 @@ unmap:
 static int ibtrs_post_send_rdma(struct ibtrs_clt_con *con, struct rdma_req *req,
 				u64 addr, u32 off, u32 imm)
 {
+	struct ibtrs_clt_sess *sess = con->sess;
+	enum ib_send_flags flags;
 	struct ib_sge list[1];
-	u32 cnt = atomic_inc_return(&con->io_cnt);
 
 	pr_debug("called, imm: %x\n", imm);
 	if (unlikely(!req->sg_size)) {
@@ -1385,11 +1386,16 @@ static int ibtrs_post_send_rdma(struct ibtrs_clt_con *con, struct rdma_req *req,
 	list[0].length = req->sg_size;
 	list[0].lkey   = con->sess->ib_dev.pd->local_dma_lkey;
 
+	/*
+	 * From time to time we have to post signalled sends,
+	 * or send queue will fill up and only QP reset can help.
+	 */
+	flags = atomic_inc_return(&con->io_cnt) % sess->queue_depth ?
+			0 : IB_SEND_SIGNALED;
+
 	return ibtrs_post_rdma_write_imm(con->ibtrs_con.qp, &req->iu->cqe,
 					 list, 1, con->sess->srv_rdma_buf_rkey,
-					 addr + off, imm,
-					 cnt % (con->sess->queue_depth) ?
-					 0 : IB_SEND_SIGNALED);
+					 addr + off, imm, flags);
 }
 
 static void ibtrs_set_sge_with_desc(struct ib_sge *list,
@@ -1409,9 +1415,9 @@ static void ibtrs_set_rdma_desc_last(struct ibtrs_clt_con *con,
 				     struct ibtrs_sg_desc *desc, int m,
 				     int n, u64 addr, u32 size, u32 imm)
 {
-	int i;
 	struct ibtrs_clt_sess *sess = con->sess;
-	u32 cnt = atomic_inc_return(&con->io_cnt);
+	enum ib_send_flags flags;
+	int i;
 
 	for (i = m; i < n; i++, desc++)
 		ibtrs_set_sge_with_desc(&list[i], desc);
@@ -1428,8 +1434,15 @@ static void ibtrs_set_rdma_desc_last(struct ibtrs_clt_con *con,
 	wr->remote_addr	= addr + offset;
 	wr->rkey = sess->srv_rdma_buf_rkey;
 
+	/*
+	 * From time to time we have to post signalled sends,
+	 * or send queue will fill up and only QP reset can help.
+	 */
+	flags = atomic_inc_return(&con->io_cnt) % sess->queue_depth ?
+			0 : IB_SEND_SIGNALED;
+
 	wr->wr.opcode = IB_WR_RDMA_WRITE_WITH_IMM;
-	wr->wr.send_flags  = cnt % (sess->queue_depth) ? 0 : IB_SEND_SIGNALED;
+	wr->wr.send_flags  = flags;
 	wr->wr.ex.imm_data = cpu_to_be32(imm);
 }
 
@@ -1495,32 +1508,36 @@ static int ibtrs_post_send_rdma_desc(struct ibtrs_clt_con *con,
 				     struct ibtrs_sg_desc *desc, int n,
 				     u64 addr, u32 size, u32 imm)
 {
-	size_t num_sge = 1 + n;
-	struct ib_sge *list;
-	int ret, i;
 	struct ibtrs_clt_sess *sess = con->sess;
+	enum ib_send_flags flags;
+	struct ib_sge *list;
+	size_t num_sge;
+	int ret, i;
 
+	num_sge = 1 + n;
 	list = kmalloc_array(num_sge, sizeof(*list), GFP_ATOMIC);
-
 	if (!list)
 		return -ENOMEM;
 
-	pr_debug("n is %d\n", n);
 	if (num_sge < sess->max_sge) {
-		u32 cnt = atomic_inc_return(&con->io_cnt);
-
 		for (i = 0; i < n; i++, desc++)
 			ibtrs_set_sge_with_desc(&list[i], desc);
 		list[i].addr   = req->iu->dma_addr;
 		list[i].length = size;
 		list[i].lkey   = sess->ib_dev.pd->local_dma_lkey;
 
-		ret = ibtrs_post_rdma_write_imm(con->ibtrs_con.qp, &req->iu->cqe,
+		/*
+		 * From time to time we have to post signalled sends,
+		 * or send queue will fill up and only QP reset can help.
+		 */
+		flags = atomic_inc_return(&con->io_cnt) % sess->queue_depth ?
+				0 : IB_SEND_SIGNALED;
+
+		ret = ibtrs_post_rdma_write_imm(con->ibtrs_con.qp,
+						&req->iu->cqe,
 						list, num_sge,
 						sess->srv_rdma_buf_rkey,
-						addr, imm,
-						cnt % (sess->queue_depth) ?
-						0 : IB_SEND_SIGNALED);
+						addr, imm, flags);
 	} else
 		ret = ibtrs_post_send_rdma_desc_more(con, list, req, desc, n,
 						     addr, size, imm);
