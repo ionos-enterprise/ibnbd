@@ -820,7 +820,7 @@ static int process_open_rsp(struct ibtrs_clt_con *con, const void *resp)
 static int wait_for_ssm_state(struct ibtrs_clt_sess *sess, enum ssm_state state)
 {
 	pr_debug("Waiting for state %s...\n", ssm_state_str(state));
-	wait_event(sess->wait_q, sess->state >= state);
+	wait_event(sess->state_wq, sess->state >= state);
 
 	if (unlikely(sess->state != state)) {
 		ibtrs_err(sess,
@@ -1747,7 +1747,7 @@ static void process_msg_user_ack(struct ibtrs_clt_con *con)
 	struct ibtrs_clt_sess *sess = con->sess;
 
 	atomic_inc(&sess->peer_usr_msg_bufs);
-	wake_up(&sess->mu_buf_wait_q);
+	wake_up(&sess->mu_buf_wq);
 }
 
 static void msg_worker(struct work_struct *work)
@@ -1940,7 +1940,7 @@ static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 			if (iu == sess->info_tx_iu)
 				break;
 			put_u_msg_iu(sess, iu);
-			wake_up(&sess->mu_iu_wait_q);
+			wake_up(&sess->mu_iu_wq);
 		}
 		break;
 	case IB_WC_RECV:
@@ -2804,8 +2804,8 @@ static void con_destroy(struct ibtrs_clt_con *con)
 	 * put back any tx_iu reserved
 	 */
 	if (con->user) {
-		wake_up(&con->sess->mu_buf_wait_q);
-		wake_up(&con->sess->mu_iu_wait_q);
+		wake_up(&con->sess->mu_buf_wq);
+		wake_up(&con->sess->mu_iu_wq);
 	}
 }
 
@@ -3321,9 +3321,9 @@ static struct ibtrs_clt_sess *sess_init(const struct sockaddr_storage *addr,
 	sess->reconnect_delay_sec	= reconnect_delay_sec;
 	sess->max_reconnect_attempts	= max_reconnect_attempts;
 	sess->max_pages_per_mr		= max_segments;
-	init_waitqueue_head(&sess->wait_q);
-	init_waitqueue_head(&sess->mu_iu_wait_q);
-	init_waitqueue_head(&sess->mu_buf_wait_q);
+	init_waitqueue_head(&sess->state_wq);
+	init_waitqueue_head(&sess->mu_iu_wq);
+	init_waitqueue_head(&sess->mu_buf_wq);
 
 	init_waitqueue_head(&sess->tags_wait);
 	sess->state = SSM_STATE_IDLE;
@@ -4057,7 +4057,7 @@ int ibtrs_clt_send(struct ibtrs_clt_sess *sess, const struct kvec *vec,
 		return -EMSGSIZE;
 	}
 
-	wait_event(sess->mu_buf_wait_q,
+	wait_event(sess->mu_buf_wq,
 		   (closed_st = (con->state != CSM_STATE_CONNECTED ||
 				 sess->state != SSM_STATE_CONNECTED)) ||
 		   ibtrs_clt_get_usr_msg_buf(sess));
@@ -4069,7 +4069,7 @@ int ibtrs_clt_send(struct ibtrs_clt_sess *sess, const struct kvec *vec,
 		return -ECOMM;
 	}
 
-	wait_event(sess->mu_iu_wait_q,
+	wait_event(sess->mu_iu_wq,
 		   (closed_st = (con->state != CSM_STATE_CONNECTED ||
 				 sess->state != SSM_STATE_CONNECTED)) ||
 		   (iu = get_u_msg_iu(sess)) != NULL);
@@ -4116,10 +4116,10 @@ int ibtrs_clt_send(struct ibtrs_clt_sess *sess, const struct kvec *vec,
 
 err_post_send:
 	put_u_msg_iu(sess, iu);
-	wake_up(&sess->mu_iu_wait_q);
+	wake_up(&sess->mu_iu_wq);
 err_iu:
 	atomic_inc(&sess->peer_usr_msg_bufs);
-	wake_up(&sess->mu_buf_wait_q);
+	wake_up(&sess->mu_buf_wq);
 	return err;
 }
 EXPORT_SYMBOL(ibtrs_clt_send);
@@ -4600,7 +4600,7 @@ static void ssm_open(struct ibtrs_clt_sess *sess, enum ssm_ev ev)
 		ibtrs_info(sess, "IBTRS session (QPs: %d) to server established\n",
 			   CONS_PER_SESSION);
 
-		wake_up(&sess->wait_q);
+		wake_up(&sess->state_wq);
 		break;
 	case SSM_EV_CON_CLOSED:
 		sess->active_cnt--;
@@ -4700,8 +4700,8 @@ static void ssm_connected(struct ibtrs_clt_sess *sess, enum ssm_ev ev)
 		else
 			ssm_init_state(sess, SSM_STATE_CLOSE_RECONNECT);
 
-		wake_up(&sess->mu_buf_wait_q);
-		wake_up(&sess->mu_iu_wait_q);
+		wake_up(&sess->mu_buf_wq);
+		wake_up(&sess->mu_iu_wq);
 		clt_ops->sess_ev(sess->priv, IBTRS_CLT_SESS_EV_DISCONNECTED, 0);
 		sess_disconnect_cons(sess);
 		synchronize_rcu();
@@ -4800,7 +4800,7 @@ static void ssm_close_destroy(struct ibtrs_clt_sess *sess, enum ssm_ev ev)
 			break;
 	case SSM_EV_ALL_CON_CLOSED:
 		ssm_init_state(sess, SSM_STATE_DESTROYED);
-		wake_up(&sess->wait_q);
+		wake_up(&sess->state_wq);
 		break;
 	case SSM_EV_SESS_CLOSE:
 	case SSM_EV_CON_ERROR:

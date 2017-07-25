@@ -943,7 +943,7 @@ int ibtrs_srv_send(struct ibtrs_srv_sess *sess, const struct kvec *vec,
 		return -EMSGSIZE;
 	}
 
-	wait_event(sess->mu_buf_wait_q,
+	wait_event(sess->mu_buf_wq,
 		   (closed_st = (con->state != CSM_STATE_CONNECTED)) ||
 		   ibtrs_srv_get_usr_msg_buf(sess));
 
@@ -953,7 +953,7 @@ int ibtrs_srv_send(struct ibtrs_srv_sess *sess, const struct kvec *vec,
 		return -ECOMM;
 	}
 
-	wait_event(sess->mu_iu_wait_q,
+	wait_event(sess->mu_iu_wq,
 		   (closed_st = (con->state != CSM_STATE_CONNECTED)) ||
 		   (iu = get_tx_iu(sess)) != NULL);
 
@@ -986,10 +986,10 @@ int ibtrs_srv_send(struct ibtrs_srv_sess *sess, const struct kvec *vec,
 
 err_post_send:
 	put_tx_iu(sess, iu);
-	wake_up(&con->sess->mu_iu_wait_q);
+	wake_up(&con->sess->mu_iu_wq);
 err_iu:
 	atomic_inc(&sess->peer_usr_msg_bufs);
-	wake_up(&con->sess->mu_buf_wait_q);
+	wake_up(&con->sess->mu_buf_wq);
 	return err;
 }
 EXPORT_SYMBOL(ibtrs_srv_send);
@@ -1679,7 +1679,7 @@ static void process_msg_user_ack(struct ibtrs_srv_con *con)
 	struct ibtrs_srv_sess *sess = con->sess;
 
 	atomic_inc(&sess->peer_usr_msg_bufs);
-	wake_up(&con->sess->mu_buf_wait_q);
+	wake_up(&con->sess->mu_buf_wq);
 }
 
 static void ibtrs_handle_write(struct ibtrs_srv_con *con, struct ibtrs_iu *iu,
@@ -1869,8 +1869,8 @@ static void close_con(struct ibtrs_srv_con *con)
 		 * user msg buffer so they can check the connection state, give
 		 * up waiting and put back any tx_iu reserved
 		 */
-		wake_up(&sess->mu_buf_wait_q);
-		wake_up(&sess->mu_iu_wait_q);
+		wake_up(&sess->mu_buf_wq);
+		wake_up(&sess->mu_iu_wq);
 		destroy_workqueue(sess->msg_wq);
 	}
 
@@ -2105,7 +2105,7 @@ static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 			break;
 		put_tx_iu(sess, iu);
 		if (con->user)
-			wake_up(&sess->mu_iu_wait_q);
+			wake_up(&sess->mu_iu_wq);
 		break;
 	case IB_WC_RECV:
 		/*
@@ -2225,8 +2225,8 @@ __create_sess(struct rdma_cm_id *cm_id, const struct ibtrs_msg_sess_open *req)
 	sess->ver		= min_t(u8, req->ver, IBTRS_VERSION);
 	sess->primary_port_num	= cm_id->port_num;
 
-	init_waitqueue_head(&sess->mu_iu_wait_q);
-	init_waitqueue_head(&sess->mu_buf_wait_q);
+	init_waitqueue_head(&sess->mu_iu_wq);
+	init_waitqueue_head(&sess->mu_buf_wq);
 	ibtrs_heartbeat_init(&sess->heartbeat,
 			     default_heartbeat_timeout_ms <
 			     MIN_HEARTBEAT_TIMEOUT_MS ?

@@ -112,8 +112,8 @@ struct ibtrs_srv_sess {
 	struct kobject		kobj_stats;
 	u8			primary_port_num;
 	struct ibtrs_srv_stats	stats;
-	wait_queue_head_t	mu_iu_wait_q;
-	wait_queue_head_t	mu_buf_wait_q;
+	wait_queue_head_t	mu_iu_wq;
+	wait_queue_head_t	mu_buf_wq;
 	atomic_t		peer_usr_msg_bufs;
 };
 
