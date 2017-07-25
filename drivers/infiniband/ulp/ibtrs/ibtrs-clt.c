@@ -782,7 +782,6 @@ static int process_open_rsp(struct ibtrs_clt_con *con, const void *resp)
 	sess->chunk_size = chunk_size;
 	sess->max_desc = (msg->max_req_size - IBTRS_HDR_LEN - sizeof(u32)
 			  - sizeof(u32) - IO_MSG_SIZE) / IBTRS_SG_DESC_LEN;
-	sess->ver = min_t(u8, msg->ver, IBTRS_VERSION);
 
 	/* if the server changed the queue_depth between the reconnect,
 	 * we need to reallocate all buffers that depend on it

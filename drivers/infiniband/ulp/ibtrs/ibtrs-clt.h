@@ -112,7 +112,6 @@ struct ibtrs_clt_sess {
 	atomic_t		refcount;
 	u8			active_cnt;
 	bool			enable_rdma_lat;
-	u8			ver;
 	u8			connected_cnt;
 	u32			retry_cnt;
 	s16			max_reconnect_attempts;

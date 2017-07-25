@@ -1335,7 +1335,7 @@ static void fill_ibtrs_msg_sess_open_resp(struct ibtrs_msg_sess_open_resp *msg,
 	msg->hdr.type   = IBTRS_MSG_SESS_OPEN_RESP;
 	msg->hdr.tsize  = IBTRS_MSG_SESS_OPEN_RESP_LEN(con->sess->queue_depth);
 
-	msg->ver = con->sess->ver;
+	msg->ver = IBTRS_VERSION;
 	strlcpy(msg->hostname, hostname, sizeof(msg->hostname));
 	msg->cnt = con->sess->queue_depth;
 	msg->rkey = con->sess->dev->ib_dev.pd->unsafe_global_rkey;
@@ -2222,7 +2222,6 @@ __create_sess(struct rdma_cm_id *cm_id, const struct ibtrs_msg_sess_open *req)
 	sess->wq_size		= cm_id->device->attrs.max_qp_wr - 1;
 	sess->queue_depth	= sess_queue_depth;
 	sess->con_cnt		= req->con_cnt;
-	sess->ver		= min_t(u8, req->ver, IBTRS_VERSION);
 	sess->primary_port_num	= cm_id->port_num;
 
 	init_waitqueue_head(&sess->mu_iu_wq);

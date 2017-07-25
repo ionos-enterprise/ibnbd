@@ -89,7 +89,6 @@ struct ibtrs_srv_sess {
 					     * connections
 					     */
 	u8			con_cnt;
-	u8			ver;
 	bool			state_in_sysfs;
 	bool			session_announced_to_user;
 	struct ibtrs_rcv_buf_pool *rcv_buf_pool;
