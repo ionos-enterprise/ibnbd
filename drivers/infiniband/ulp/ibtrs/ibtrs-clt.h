@@ -3,7 +3,7 @@
 
 #include "ibtrs-pri.h"
 
-enum ssm_state {
+enum ssm_state {  //XXXX DIE ASAP
 	_SSM_STATE_MIN,
 	SSM_STATE_IDLE,
 	SSM_STATE_IDLE_RECONNECT,
@@ -21,6 +21,38 @@ enum ssm_state {
 	SSM_STATE_DESTROYED,
 	_SSM_STATE_MAX
 };
+
+/**
+ * enum ibtrs_clt_state - Client states.
+ */
+enum ibtrs_clt_state_NEW {
+	IBTRS_CLT_CONNECTING,
+	IBTRS_CLT_CONNECTING_ERR,
+	IBTRS_CLT_RECONNECTING,
+	IBTRS_CLT_CONNECTED,
+	IBTRS_CLT_CLOSING,
+	IBTRS_CLT_CLOSED,
+};
+
+static inline const char *ibtrs_clt_state_str(enum ibtrs_clt_state_NEW state)
+{
+	switch (state) {
+	case IBTRS_CLT_CONNECTING:
+		return "IBTRS_CLT_CONNECTING";
+	case IBTRS_CLT_CONNECTING_ERR:
+		return "IBTRS_CLT_CONNECTING_ERR";
+	case IBTRS_CLT_RECONNECTING:
+		return "IBTRS_CLT_RECONNECTING";
+	case IBTRS_CLT_CONNECTED:
+		return "IBTRS_CLT_CONNECTED";
+	case IBTRS_CLT_CLOSING:
+		return "IBTRS_CLT_CLOSING";
+	case IBTRS_CLT_CLOSED:
+		return "IBTRS_CLT_CLOSED";
+	default:
+		return "UNKNOWN";
+	}
+}
 
 enum ibtrs_fast_reg {
 	IBTRS_FAST_MEM_NONE,
@@ -88,11 +120,12 @@ struct ibtrs_clt_stats {
 struct ibtrs_clt_sess {
 	struct ibtrs_sess	sess;
 	wait_queue_head_t	state_wq;
-	enum ssm_state		state;
+	enum ssm_state		state; //XXX DIE ASAP
+	enum ibtrs_clt_state_NEW	state_NEW;
 	struct ibtrs_clt_con	*con;
 	struct ibtrs_ib_dev	ib_dev;
-	struct ibtrs_iu		*info_rx_iu;
-	struct ibtrs_iu		*info_tx_iu;
+	struct ibtrs_iu		*info_rx_iu; //XXX DIE ASAP
+	struct ibtrs_iu		*info_tx_iu; //XXX DIE ASAP
 	struct ibtrs_iu		*dummy_rx_iu;
 	struct ibtrs_iu		**usr_rx_ring;
 	struct ibtrs_iu		**io_tx_ius;
@@ -108,9 +141,10 @@ struct ibtrs_clt_sess {
 	void			*priv;
 	struct delayed_work	heartbeat_dwork;
 	struct delayed_work	reconnect_dwork;
+	struct work_struct	close_work_NEW;
 	struct ibtrs_heartbeat	heartbeat;
 	atomic_t		refcount;
-	u8			active_cnt;
+	u8			active_cnt; /* XXX DIE */
 	bool			enable_rdma_lat;
 	u8			connected_cnt;
 	u32			retry_cnt;

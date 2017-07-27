@@ -20,6 +20,8 @@
 #define RECONNECT_SEED 8
 #define MAX_SEGMENTS 31
 
+#define IBTRS_CONNECT_TIMEOUT_MS 5000
+
 MODULE_AUTHOR("ibnbd@profitbricks.com");
 MODULE_DESCRIPTION("InfiniBand Transport Client");
 MODULE_VERSION(__stringify(IBTRS_VER));
@@ -320,7 +322,9 @@ struct ibtrs_clt_con {
 	atomic_t		io_cnt;
 	struct ibtrs_clt_sess	*sess;
 	struct ibtrs_fr_pool	*fr_pool;
-	struct rdma_cm_id	*cm_id;
+	struct rdma_cm_id	*cm_id; /* XXX should die, copy in ibtrs_con */
+	int			cm_err;
+	struct completion	cm_done;
 };
 
 struct sess_destroy_work {
@@ -915,19 +919,18 @@ EXPORT_SYMBOL(ibtrs_put_tag);
  */
 static void ibtrs_destroy_fr_pool(struct ibtrs_fr_pool *pool)
 {
-	int i;
 	struct ibtrs_fr_desc *d;
-	int ret;
+	int i, err;
 
 	if (!pool)
 		return;
 
 	for (i = 0, d = &pool->desc[0]; i < pool->size; i++, d++) {
 		if (d->mr) {
-			ret = ib_dereg_mr(d->mr);
-			if (ret)
+			err = ib_dereg_mr(d->mr);
+			if (err)
 				pr_err("Failed to deregister memory region,"
-				       " err: %d\n", ret);
+				       " err: %d\n", err);
 		}
 	}
 	kfree(pool);
@@ -1568,7 +1571,8 @@ static int ibtrs_post_send_rdma_more(struct ibtrs_clt_con *con,
 	return ret;
 }
 
-static int ibtrs_post_recv(struct ibtrs_clt_con *con, struct ibtrs_iu *iu)
+static int ibtrs_post_recv_cb(struct ibtrs_clt_con *con, struct ibtrs_iu *iu,
+			      void (*done)(struct ib_cq *cq, struct ib_wc *wc))
 {
 	struct ibtrs_clt_sess *sess = con->sess;
 	struct ib_recv_wr wr, *bad_wr;
@@ -1585,7 +1589,7 @@ static int ibtrs_post_recv(struct ibtrs_clt_con *con, struct ibtrs_iu *iu)
 		return -EINVAL;
 	}
 
-	iu->cqe.done = ibtrs_clt_rdma_done;
+	iu->cqe.done = done;
 
 	wr.next    = NULL;
 	wr.wr_cqe  = &iu->cqe;
@@ -1598,6 +1602,11 @@ static int ibtrs_post_recv(struct ibtrs_clt_con *con, struct ibtrs_iu *iu)
 			  " %d\n", err);
 
 	return err;
+}
+
+static int ibtrs_post_recv(struct ibtrs_clt_con *con, struct ibtrs_iu *iu)
+{
+	return ibtrs_post_recv_cb(con, iu, ibtrs_clt_rdma_done);
 }
 
 static inline int ibtrs_clt_ms_to_id(unsigned long ms)
@@ -2101,6 +2110,7 @@ static int ibtrs_clt_rdma_cm_ev_handler(struct rdma_cm_id *cm_id,
 	return 0;
 }
 
+//XXX WILL DIE ASAP
 static int post_recv_io(struct ibtrs_clt_con *con)
 {
 	struct ibtrs_clt_sess *sess = con->sess;
@@ -2117,22 +2127,24 @@ static int post_recv_io(struct ibtrs_clt_con *con)
 	return 0;
 }
 
+//XXX WILL DIE ASAP
 static int post_recv_usr(struct ibtrs_clt_sess *sess)
 {
 	struct ibtrs_clt_con *usr_con = &sess->con[0];
 	int i, ret;
 
+	/* Post buffers for all user one */
+
 	for (i = 0; i < USR_CON_BUF_SIZE; i++) {
 		ret = ibtrs_post_recv(usr_con, sess->usr_rx_ring[i]);
-		if (unlikely(ret)) {
-			ibtrs_err(sess, "ibtrs_post_recv(), err: %d\n", ret);
+		if (unlikely(ret))
 			return ret;
-		}
 	}
 
 	return 0;
 }
 
+//XXX DIE ASAP
 static int post_recv_info(struct ibtrs_clt_sess *sess)
 {
 	struct ibtrs_clt_con *usr_con = &sess->con[0];
@@ -2145,6 +2157,37 @@ static int post_recv_info(struct ibtrs_clt_sess *sess)
 	return ret;
 }
 
+static int post_recv_all_NEW(struct ibtrs_clt_sess *sess)
+{
+	struct ibtrs_clt_con *con;
+	struct ibtrs_iu *iu;
+	int num, err;
+	int i, cid;
+
+	/*
+	 * Post all buffers.  For user connection post from
+	 * user ring, for others post the whole queue depth.
+	 */
+
+	for (cid = 0; cid < CONS_PER_SESSION; cid++) {
+		con = &sess->con[cid];
+		num = (cid == 0 ? USR_CON_BUF_SIZE : sess->queue_depth);
+		for (i = 0; i < num; i++) {
+			iu = (cid == 0 ? sess->usr_rx_ring[i] :
+					 sess->dummy_rx_iu);
+			err = ibtrs_post_recv(con, iu);
+			if (unlikely(err)) {
+				ibtrs_err(sess, "ibtrs_post_recv(), err: %d\n",
+					  err);
+				return err;
+			}
+		}
+	}
+
+	return 0;
+}
+
+//XXX DIE ASAP
 static void fail_outstanding_reqs(struct ibtrs_clt_con *con)
 {
 	struct ibtrs_clt_sess *sess = con->sess;
@@ -3529,6 +3572,904 @@ int ibtrs_clt_close(struct ibtrs_clt_sess *sess)
 }
 EXPORT_SYMBOL(ibtrs_clt_close);
 
+static int alloc_sess_io_bufs(struct ibtrs_clt_sess *sess)
+{
+	int ret;
+
+	if (sess->io_bufs_initialized)
+		return 0;
+	ret = alloc_reqs(sess);
+	if (ret) {
+		ibtrs_err(sess, "alloc_reqs(), err: %d\n", ret);
+		return ret;
+	}
+	ret = alloc_sess_fast_pool(sess);
+	if (ret) {
+		ibtrs_err(sess, "alloc_sess_fast_pool(), err: %d\n", ret);
+		return ret;
+	}
+	ret = alloc_sess_tags(sess);
+	if (ret) {
+		ibtrs_err(sess, "alloc_sess_tags(), err: %d\n", ret);
+		return ret;
+	}
+	sess->io_bufs_initialized = true;
+
+	return 0;
+}
+
+static void free_sess_io_bufs(struct ibtrs_clt_sess *sess)
+{
+	free_reqs(sess);
+	free_sess_fast_pool(sess);
+	kfree(sess->tags_map);
+	sess->tags_map = NULL;
+	kfree(sess->tags);
+	sess->tags = NULL;
+	sess->io_bufs_initialized = false;
+}
+
+static bool __ibtrs_clt_change_state(struct ibtrs_clt_sess *sess,
+				     enum ibtrs_clt_state_NEW new_state)
+{
+	enum ibtrs_clt_state_NEW old_state;
+	bool changed = false;
+
+	old_state = sess->state_NEW;
+	switch (new_state) {
+	case IBTRS_CLT_RECONNECTING:
+		switch (old_state) {
+		case IBTRS_CLT_CONNECTED:
+		case IBTRS_CLT_CONNECTING_ERR:
+			changed = true;
+			/* FALLTHRU */
+		default:
+			break;
+		}
+		break;
+	case IBTRS_CLT_CONNECTED:
+		switch (old_state) {
+		case IBTRS_CLT_CONNECTING:
+			changed = true;
+			/* FALLTHRU */
+		default:
+			break;
+		}
+		break;
+	case IBTRS_CLT_CONNECTING_ERR:
+		switch (old_state) {
+		case IBTRS_CLT_CONNECTING:
+			changed = true;
+			/* FALLTHRU */
+		default:
+			break;
+		}
+		break;
+	case IBTRS_CLT_CLOSING:
+		switch (old_state) {
+		case IBTRS_CLT_CONNECTING:
+		case IBTRS_CLT_CONNECTING_ERR:
+		case IBTRS_CLT_RECONNECTING:
+		case IBTRS_CLT_CONNECTED:
+			changed = true;
+			/* FALLTHRU */
+		default:
+			break;
+		}
+	case IBTRS_CLT_CLOSED:
+		switch (old_state) {
+		case IBTRS_CLT_CLOSING:
+			changed = true;
+			/* FALLTHRU */
+		default:
+			break;
+		}
+		break;
+	default:
+		break;
+	}
+	if (changed) {
+		sess->state_NEW = new_state;
+		wake_up_locked(&sess->state_wq);
+	}
+
+	return changed;
+}
+
+static bool ibtrs_clt_change_state_from_to(struct ibtrs_clt_sess *sess,
+					   enum ibtrs_clt_state_NEW old_state,
+					   enum ibtrs_clt_state_NEW new_state)
+{
+	bool changed = false;
+
+	spin_lock_irq(&sess->state_wq.lock);
+	if (sess->state_NEW == old_state)
+		changed = __ibtrs_clt_change_state(sess, new_state);
+	spin_unlock_irq(&sess->state_wq.lock);
+
+	return changed;
+}
+
+static bool ibtrs_clt_change_state(struct ibtrs_clt_sess *sess,
+				   enum ibtrs_clt_state_NEW new_state)
+{
+	bool changed;
+
+	spin_lock_irq(&sess->state_wq.lock);
+	changed = __ibtrs_clt_change_state(sess, new_state);
+	spin_unlock_irq(&sess->state_wq.lock);
+
+	return changed;
+}
+
+static void ibtrs_clt_reconnect_work_NEW(struct work_struct *work);
+static void ibtrs_clt_close_work_NEW(struct work_struct *work);
+
+static void init_sess_NEW(struct ibtrs_clt_sess *sess,
+		      const struct sockaddr_storage *addr,
+		      size_t pdu_sz, void *priv,
+		      u8 reconnect_delay_sec,
+		      u16 max_segments,
+		      s16 max_reconnect_attempts)
+{
+	int i;
+
+	atomic_set(&sess->refcount, 1);
+	sess->peer_addr = *addr;
+	sess->pdu_sz = pdu_sz;
+	sess->priv = priv;
+	for (i = 0; i < CONS_PER_SESSION; i++)
+		sess->con->sess = sess;
+	sess->sess.addr.sockaddr = *addr;
+	sess->reconnect_delay_sec = reconnect_delay_sec;
+	sess->max_reconnect_attempts = max_reconnect_attempts;
+	sess->max_pages_per_mr = max_segments;
+	init_waitqueue_head(&sess->state_wq);
+	init_waitqueue_head(&sess->tags_wait);
+	sess->state_NEW = IBTRS_CLT_CONNECTING;
+	ibtrs_heartbeat_init(&sess->heartbeat,
+			     default_heartbeat_timeout_ms <
+			     MIN_HEARTBEAT_TIMEOUT_MS ?
+			     MIN_HEARTBEAT_TIMEOUT_MS :
+			     default_heartbeat_timeout_ms);
+	INIT_WORK(&sess->close_work_NEW, ibtrs_clt_close_work_NEW);
+	INIT_DELAYED_WORK(&sess->heartbeat_dwork, heartbeat_work);
+	INIT_DELAYED_WORK(&sess->reconnect_dwork, ibtrs_clt_reconnect_work_NEW);
+}
+
+static struct ibtrs_clt_sess *alloc_sess_NEW(const struct sockaddr_storage *addr,
+					size_t pdu_sz, void *priv,
+					u8 reconnect_delay_sec,
+					u16 max_segments,
+					s16 max_reconnect_attempts)
+{
+	struct ibtrs_clt_sess *sess;
+	int err = -ENOMEM;
+
+	sess = kzalloc(sizeof(*sess), GFP_KERNEL);
+	if (unlikely(!sess))
+		goto err;
+
+	sess->con = kcalloc(CONS_PER_SESSION, sizeof(*sess->con), GFP_KERNEL);
+	if (!sess->con)
+		goto err_free_sess;
+
+	init_sess_NEW(sess, addr, pdu_sz, priv, reconnect_delay_sec,
+		      max_segments, max_reconnect_attempts);
+	err = ibtrs_clt_init_stats(sess);
+	if (err) {
+		pr_err("Failed to initialize statistics\n");
+		goto err_free_con;
+	}
+
+	return sess;
+
+err_free_con:
+	kfree(sess->con);
+err_free_sess:
+	kfree(sess);
+err:
+	return ERR_PTR(err);
+}
+
+static void free_sess_NEW(struct ibtrs_clt_sess *sess)
+{
+	ibtrs_clt_free_stats(sess);
+	kfree(sess->con);
+	kfree(sess->srv_rdma_addr);
+	kfree(sess);
+}
+
+static int create_con_cq_qp_NEW(struct ibtrs_clt_con *con)
+{
+	struct ibtrs_clt_sess *sess = con->sess;
+	u16 cq_size, wr_queue_size;
+	int err, cq_vector, num_wr;
+
+	if (con->cid == 0) {
+		cq_size	      = USR_CON_BUF_SIZE + 1;
+		wr_queue_size = USR_CON_BUF_SIZE + 1;
+	} else {
+		num_wr = DIV_ROUND_UP(sess->max_pages_per_mr,
+				      sess->max_sge);
+		cq_size	      = sess->queue_depth;
+		wr_queue_size = sess->ib_dev.dev->attrs.max_qp_wr - 1;
+		wr_queue_size = min_t(int, wr_queue_size,
+				      sess->queue_depth * num_wr *
+				      (use_fr ? 3 : 2));
+
+		err = alloc_con_fast_pool(con);
+		if (unlikely(err))
+			return err;
+	}
+	cq_vector = con->cpu % sess->ib_dev.dev->num_comp_vectors;
+	err = ibtrs_cq_qp_create(&sess->sess, &con->ibtrs_con,
+				 con->cm_id, sess->max_sge,
+				 cq_vector, cq_size, wr_queue_size,
+				 &sess->ib_dev, IB_POLL_SOFTIRQ);
+	if (unlikely(err))
+		goto free_pool;
+
+	return 0;
+
+free_pool:
+	if (con->cid != 0)
+		free_con_fast_pool(con);
+
+	return err;
+}
+
+static void destroy_con_cq_qp_NEW(struct ibtrs_clt_con *con)
+{
+	ibtrs_cq_qp_destroy(&con->ibtrs_con);
+	if (con->cid != 0)
+		free_con_fast_pool(con);
+}
+
+
+static void stop_cm_NEW(struct ibtrs_clt_con *con)
+{
+	rdma_disconnect(con->ibtrs_con.cm_id);
+	ib_drain_qp(con->ibtrs_con.qp);
+}
+
+static void destroy_cm_NEW(struct ibtrs_clt_con *con)
+{
+	rdma_destroy_id(con->ibtrs_con.cm_id);
+}
+
+static int ibtrs_rdma_cm_handler_NEW(struct rdma_cm_id *cm_id,
+				     struct rdma_cm_event *ev);
+
+static int create_cm_NEW(struct ibtrs_clt_sess *sess, unsigned cid)
+{
+	struct ibtrs_clt_con *con;
+	int err;
+
+	con = &sess->con[cid];
+	con->sess = sess;
+	con->cid  = cid;
+	/* Map first two connections to the first CPU */
+	con->cpu  = (cid ? cid - 1 : 0) % num_online_cpus();
+	atomic_set(&con->io_cnt, 0);
+
+	con->cm_err = -ETIMEDOUT;
+	init_completion(&con->cm_done);
+
+	if (sess->peer_addr.ss_family == AF_IB)
+		con->cm_id = rdma_create_id(&init_net,
+					    ibtrs_rdma_cm_handler_NEW,
+					    con, RDMA_PS_IB, IB_QPT_RC);
+	else
+		con->cm_id = rdma_create_id(&init_net,
+					    ibtrs_rdma_cm_handler_NEW,
+					    con, RDMA_PS_TCP, IB_QPT_RC);
+	if (unlikely(IS_ERR(con->cm_id))) {
+		err = PTR_ERR(con->cm_id);
+		ibtrs_wrn(sess, "Failed to create CM ID, err: %d\n", err);
+
+		return err;
+	}
+	err = rdma_resolve_addr(con->cm_id, NULL,
+				(struct sockaddr *)&sess->peer_addr,
+				IBTRS_CONNECT_TIMEOUT_MS);
+	if (unlikely(err)) {
+		ibtrs_err(sess, "Failed to resolve address, err: %d\n", err);
+		rdma_destroy_id(con->cm_id);
+
+		return err;
+	}
+	wait_for_completion_interruptible_timeout(&con->cm_done,
+			  msecs_to_jiffies(IBTRS_CONNECT_TIMEOUT_MS));
+	if (unlikely(con->cm_err)) {
+		stop_cm_NEW(con);
+		/* Is safe to call destroy if cq_qp is not inited */
+		destroy_con_cq_qp_NEW(con);
+		destroy_cm_NEW(con);
+	}
+
+	return con->cm_err;
+}
+
+static int alloc_sess_bufs_NEW(struct ibtrs_clt_sess *sess)
+{
+	struct ibtrs_clt_con *usr_con = &sess->con[0];
+	int err;
+
+	err = ibtrs_ib_dev_init(&sess->ib_dev, usr_con->cm_id->device);
+	if (unlikely(err)) {
+		ibtrs_wrn(sess, "ibtrs_ib_dev_init(), err: %d\n", err);
+		return err;
+	}
+	query_fast_reg_mode(sess);
+
+	err = alloc_sess_init_bufs(sess);
+	if (unlikely(err))
+		goto free_ibdev;
+
+	err = alloc_sess_io_bufs(sess);
+	if (unlikely(err))
+		goto free_init_bufs;
+
+	err = alloc_sess_tr_bufs(sess);
+	if (unlikely(err))
+		goto free_io_bufs;
+
+	return 0;
+
+free_io_bufs:
+	free_sess_io_bufs(sess);
+free_init_bufs:
+	free_sess_init_bufs(sess);
+free_ibdev:
+	ibtrs_ib_dev_destroy(&sess->ib_dev);
+
+	return err;
+}
+
+static void free_sess_bufs_NEW(struct ibtrs_clt_sess *sess)
+{
+	free_sess_tr_bufs(sess);
+	free_sess_io_bufs(sess);
+	free_sess_init_bufs(sess);
+	ibtrs_ib_dev_destroy(&sess->ib_dev);
+}
+
+static void ibtrs_clt_stop_and_destroy_conns_NEW(struct ibtrs_clt_sess *sess)
+{
+	int cid;
+
+	WARN_ON(sess->state_NEW == IBTRS_CLT_CONNECTED);
+
+	//XXX STOP HEARTBEAT HERE (IF HEARTBEAT IS GOOD THING TO DO!!!)
+
+	/*
+	 * All IO paths must observe !CONNECTED state before we free everything.
+	 */
+	synchronize_rcu();
+
+	fail_all_outstanding_reqs(sess);
+	for (cid = 0; cid < CONS_PER_SESSION; cid++)
+		stop_cm_NEW(&sess->con[cid]);
+	free_sess_bufs_NEW(sess);
+	for (cid = 0; cid < CONS_PER_SESSION; cid++) {
+		destroy_con_cq_qp_NEW(&sess->con[cid]);
+		destroy_cm_NEW(&sess->con[cid]);
+	}
+}
+
+static void ibtrs_clt_close_work_NEW(struct work_struct *work)
+{
+	struct ibtrs_clt_sess *sess;
+
+	sess = container_of(work, struct ibtrs_clt_sess, close_work_NEW);
+	ibtrs_clt_stop_and_destroy_conns_NEW(sess);
+}
+
+static void ibtrs_clt_close_conns_NEW(struct ibtrs_clt_sess *sess, bool wait)
+{
+	if (ibtrs_clt_change_state(sess, IBTRS_CLT_CLOSING)) {
+		cancel_delayed_work_sync(&sess->reconnect_dwork);
+		queue_work(ibtrs_wq, &sess->close_work_NEW);
+	}
+	if (wait)
+		flush_work(&sess->close_work_NEW);
+}
+
+static int init_conns_NEW(struct ibtrs_clt_sess *sess)
+{
+	int cid, err;
+
+	/* Establish all RDMA connections  */
+	for (cid = 0; cid < CONS_PER_SESSION; cid++) {
+		err = create_cm_NEW(sess, cid);
+		if (unlikely(err))
+			goto destroy;
+	}
+	/* Allocate all session related buffers */
+	err = alloc_sess_bufs_NEW(sess);
+	if (unlikely(err))
+		goto destroy;
+
+	return 0;
+
+destroy:
+	while (cid) {
+		struct ibtrs_clt_con *con = &sess->con[cid];
+
+		stop_cm_NEW(con);
+		destroy_con_cq_qp_NEW(con);
+		destroy_cm_NEW(con);
+	}
+
+	return err;
+}
+
+static int ibtrs_rdma_addr_resolved(struct ibtrs_clt_con *con)
+{
+	struct ibtrs_clt_sess *sess = con->sess;
+	int err;
+
+	err = create_con_cq_qp_NEW(con);
+	if (unlikely(err)) {
+		ibtrs_err(sess, "create_con_cq_qp(), err: %d\n", err);
+		return err;
+	}
+	err = rdma_resolve_route(con->cm_id, IBTRS_CONNECT_TIMEOUT_MS);
+	if (unlikely(err)) {
+		ibtrs_err(sess, "Resolving route failed, err: %d\n", err);
+		destroy_con_cq_qp_NEW(con);
+	}
+
+	return err;
+}
+
+static int ibtrs_rdma_route_resolved(struct ibtrs_clt_con *con)
+{
+	struct ibtrs_msg_conn_req msg;
+	struct rdma_conn_param param;
+	struct ibtrs_clt_sess *sess;
+
+	int err;
+
+	sess = con->sess;
+	if (con->cid == 0) {
+		struct sockaddr_storage *peer_addr = &sess->peer_addr;
+		struct sockaddr_storage *self_addr = &sess->self_addr;
+
+		/* initiator is src, target is dst */
+		memcpy(peer_addr, &con->cm_id->route.addr.dst_addr,
+		       sizeof(*peer_addr));
+		memcpy(self_addr, &con->cm_id->route.addr.src_addr,
+		       sizeof(*self_addr));
+	}
+
+	memset(&param, 0, sizeof(param));
+	param.retry_count = retry_count;
+	param.rnr_retry_count = 7;
+	param.private_data = &msg;
+	param.private_data_len = sizeof(msg);
+
+	msg.magic = cpu_to_le16(IBTRS_MAGIC);
+	msg.version = cpu_to_le16(IBTRS_CURRENT_VER);
+	msg.cid = cpu_to_le16(con->cid);
+	msg.cid_num = cpu_to_le16(CONS_PER_SESSION);
+	memcpy(msg.uuid, uuid.b, IBTRS_UUID_SIZE);
+
+	err = rdma_connect(con->cm_id, &param);
+	if (err)
+		ibtrs_err(sess, "rdma_connect(): %d\n", err);
+
+	return err;
+}
+
+static int ibtrs_rdma_conn_established(struct ibtrs_clt_con *con,
+				       struct rdma_cm_event *ev)
+{
+	const struct ibtrs_msg_conn_rsp *msg;
+	struct ibtrs_clt_sess *sess;
+	u16 version, queue_depth;
+	int errno;
+	u8 len;
+
+	sess = con->sess;
+	msg = ev->param.conn.private_data;
+	len = ev->param.conn.private_data_len;
+	if (unlikely(len < sizeof(*msg))) {
+		ibtrs_err(sess, "Invalid IBTRS connection response");
+		return -ECONNRESET;
+	}
+	if (unlikely(le16_to_cpu(msg->magic) != IBTRS_MAGIC)) {
+		ibtrs_err(sess, "Invalid IBTRS magic");
+		return -ECONNRESET;
+	}
+	version = le16_to_cpu(msg->version);
+	if (unlikely(version >> 8 != IBTRS_CURRENT_VER >> 8)) {
+		ibtrs_err(sess, "Unsupported major IBTRS version: %d",
+			  version);
+		return -ECONNRESET;
+	}
+	errno = le16_to_cpu(msg->errno);
+	if (unlikely(errno)) {
+		ibtrs_err(sess, "Invalid IBTRS message: errno %d",
+			  errno);
+		return -ECONNRESET;
+	}
+	if (con->cid == 0) {
+		queue_depth = le16_to_cpu(msg->queue_depth);
+
+		if (queue_depth > MAX_SESS_QUEUE_DEPTH) {
+			ibtrs_err(sess, "Invalid IBTRS message: queue=%d\n",
+				  queue_depth);
+			return -ECONNRESET;
+		}
+		if (!sess->srv_rdma_addr || sess->queue_depth < queue_depth) {
+			kfree(sess->srv_rdma_addr);
+			sess->srv_rdma_addr = kcalloc(
+						sess->queue_depth,
+						sizeof(*sess->srv_rdma_addr),
+						GFP_KERNEL);
+			if (unlikely(!sess->srv_rdma_addr)) {
+				ibtrs_err(sess, "Failed to allocate queue_depth=%d\n",
+					  queue_depth);
+				return -ENOMEM;
+			}
+		}
+		sess->user_queue_depth = queue_depth;
+		sess->queue_depth = queue_depth;
+		sess->srv_rdma_buf_rkey = le32_to_cpu(msg->rkey);
+		sess->max_req_size = le16_to_cpu(msg->max_req_size);
+		sess->max_io_size = le16_to_cpu(msg->max_io_size);
+		sess->chunk_size = sess->max_io_size + sess->max_req_size;
+		sess->max_desc  = sess->max_req_size - IBTRS_HDR_LEN -
+				  sizeof(u32) - sizeof(u32) - IO_MSG_SIZE;
+		sess->max_desc /= IBTRS_SG_DESC_LEN;
+	}
+
+	return 0;
+}
+
+static int ibtrs_rdma_conn_rejected(struct ibtrs_clt_con *con,
+				    struct rdma_cm_event *ev)
+{
+	const struct ibtrs_msg_conn_rsp *msg;
+	const char *rej_msg;
+	u8 data_len;
+	int status;
+
+	status = ev->status;
+	rej_msg = rdma_reject_msg(con->cm_id, status);
+	msg = rdma_consumer_reject_data(con->cm_id, ev, &data_len);
+
+	if (msg && data_len >= sizeof(*msg))
+		ibtrs_err(con->sess,
+			  "Connect rejected: status %d (%s), ibtrs status %d\n",
+			  status, rej_msg, le16_to_cpu(msg->errno));
+	else
+		ibtrs_err(con->sess,
+			  "Connect rejected: status %d (%s)\n",
+			  status, rej_msg);
+
+	return -ECONNRESET;
+}
+
+static void ibtrs_rdma_error_recovery(struct ibtrs_clt_con *con)
+{
+	struct ibtrs_clt_sess *sess = con->sess;
+
+	if (ibtrs_clt_change_state_from_to(sess,
+				IBTRS_CLT_CONNECTED, IBTRS_CLT_RECONNECTING)) {
+		/*
+		 * Normal scenario, reconnect if we were successfully connected
+		 */
+		unsigned delay_ms = sess->reconnect_delay_sec * 1000;
+
+		queue_delayed_work(ibtrs_wq, &sess->reconnect_dwork,
+				   msecs_to_jiffies(delay_ms));
+	} else
+		/*
+		 * Error can happen just on establishing new connection,
+		 * so notify waiter with error state, waiter is responsible
+		 * for cleaning the rest and reconnect if needed.
+		 */
+		ibtrs_clt_change_state_from_to(sess,
+				IBTRS_CLT_CONNECTING, IBTRS_CLT_CONNECTING_ERR);
+}
+
+static int ibtrs_rdma_cm_handler_NEW(struct rdma_cm_id *cm_id,
+				     struct rdma_cm_event *ev)
+{
+	struct ibtrs_clt_con *con = cm_id->context;
+	struct ibtrs_clt_sess *sess = con->sess;
+	int cm_err = 0;
+
+	switch (ev->event) {
+	case RDMA_CM_EVENT_ADDR_RESOLVED:
+		cm_err = ibtrs_rdma_addr_resolved(con);
+		break;
+	case RDMA_CM_EVENT_ROUTE_RESOLVED:
+		cm_err = ibtrs_rdma_route_resolved(con);
+		break;
+	case RDMA_CM_EVENT_ESTABLISHED:
+		con->cm_err = ibtrs_rdma_conn_established(con, ev);
+		/* complete cm_done regardless of success/failure */
+		complete(&con->cm_done);
+		return 0;
+	case RDMA_CM_EVENT_REJECTED:
+		cm_err = ibtrs_rdma_conn_rejected(con, ev);
+		break;
+	case RDMA_CM_EVENT_ADDR_ERROR:
+	case RDMA_CM_EVENT_ROUTE_ERROR:
+	case RDMA_CM_EVENT_CONNECT_ERROR:
+	case RDMA_CM_EVENT_UNREACHABLE:
+		ibtrs_wrn(sess, "CM error event %d\n", ev->event);
+		cm_err = -ECONNRESET;
+		break;
+	case RDMA_CM_EVENT_DISCONNECTED:
+	case RDMA_CM_EVENT_ADDR_CHANGE:
+	case RDMA_CM_EVENT_TIMEWAIT_EXIT:
+		ibtrs_info(sess, "disconnect received - connection closed\n");
+		ibtrs_rdma_error_recovery(con);
+		break;
+	case RDMA_CM_EVENT_DEVICE_REMOVAL:
+		/* Schedule closing session, but do not wait */
+		ibtrs_clt_close_conns_NEW(sess, false);
+		break;
+	default:
+		ibtrs_err(sess, "Unexpected RDMA CM event (%d)\n", ev->event);
+		ibtrs_rdma_error_recovery(con);
+		break;
+	}
+
+	if (cm_err) {
+		con->cm_err = cm_err;
+		complete(&con->cm_done);
+	}
+
+	return 0;
+}
+
+static void ibtrs_clt_info_req_done(struct ib_cq *cq, struct ib_wc *wc)
+{
+	struct ibtrs_clt_con *con = cq->cq_context;
+	struct ibtrs_clt_sess *sess = con->sess;
+	struct ibtrs_iu *iu;
+
+	iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
+	ibtrs_iu_free(iu, DMA_TO_DEVICE, sess->ib_dev.dev);
+
+	if (unlikely(wc->status != IB_WC_SUCCESS))
+		ibtrs_clt_change_state(sess, IBTRS_CLT_CONNECTING_ERR);
+}
+
+static int process_info_rsp(struct ibtrs_clt_sess *sess,
+			    const struct ibtrs_msg_info_rsp *msg)
+{
+	unsigned addr_num;
+	int i;
+
+	addr_num = le16_to_cpu(msg->addr_num);
+	/*
+	 * Check if IB immediate data size is enough to hold the mem_id and
+	 * the offset inside the memory chunk.
+	 */
+	if (unlikely(ilog2(addr_num - 1) + ilog2(sess->chunk_size - 1) >
+		     IB_IMM_SIZE_BITS)) {
+		ibtrs_err(sess, "RDMA immediate size (%db) not enough to encode "
+			  "%d buffers of size %dB\n", IB_IMM_SIZE_BITS, addr_num,
+			  sess->chunk_size);
+		return -EINVAL;
+	}
+	if (unlikely(addr_num > sess->queue_depth)) {
+		ibtrs_err(sess, "Incorrect addr_num=%d\n", addr_num);
+		return -EINVAL;
+	}
+	for (i = 0; i < msg->addr_num; i++)
+		sess->srv_rdma_addr[i] = le64_to_cpu(msg->addr[i]);
+
+	memcpy(sess->sess.addr.hostname, msg->hostname, sizeof(msg->hostname));
+
+	return 0;
+}
+
+static void ibtrs_clt_info_rsp_done(struct ib_cq *cq, struct ib_wc *wc)
+{
+	struct ibtrs_clt_con *con = cq->cq_context;
+	struct ibtrs_clt_sess *sess = con->sess;
+	bool state = IBTRS_CLT_CONNECTING_ERR;
+	struct ibtrs_iu *iu;
+	int err;
+
+	iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
+	if (unlikely(wc->status != IB_WC_SUCCESS))
+		goto out;
+
+	err = process_info_rsp(sess, iu->buf);
+	if (unlikely(err))
+		goto out;
+
+	err = post_recv_all_NEW(sess);
+	if (unlikely(err))
+		goto out;
+
+	state = IBTRS_CLT_CONNECTED;
+
+out:
+	ibtrs_iu_free(iu, DMA_FROM_DEVICE, sess->ib_dev.dev);
+	ibtrs_clt_change_state(sess, state);
+}
+
+static int ibtrs_send_sess_info_NEW(struct ibtrs_clt_sess *sess,
+				    bool timeout_wait)
+{
+	struct ibtrs_clt_con *usr_con = &sess->con[0];
+	struct ibtrs_msg_info_req *msg;
+	struct ibtrs_iu *tx_iu, *rx_iu;
+	size_t rx_sz;
+	int err;
+
+	rx_sz  = sizeof(struct ibtrs_msg_info_rsp);
+	rx_sz += sizeof(u64) * MAX_SESS_QUEUE_DEPTH;
+
+	tx_iu = ibtrs_iu_alloc(0, sizeof(struct ibtrs_msg_info_req),
+			       GFP_KERNEL, sess->ib_dev.dev,
+			       DMA_TO_DEVICE, true);
+	rx_iu = ibtrs_iu_alloc(0, rx_sz, GFP_KERNEL,
+			       sess->ib_dev.dev,
+			       DMA_FROM_DEVICE, true);
+	if (unlikely(!tx_iu || !rx_sz)) {
+		ibtrs_err(sess, "ibtrs_iu_alloc(), err: %d\n", -ENOMEM);
+		err = -ENOMEM;
+		goto out;
+	}
+	/* Prepare for getting info response */
+	err = ibtrs_post_recv_cb(usr_con, rx_iu, ibtrs_clt_info_rsp_done);
+	if (unlikely(err)) {
+		ibtrs_err(sess, "ibtrs_post_recv(), err: %d\n", err);
+		goto out;
+	}
+	rx_iu = NULL;
+
+	msg = tx_iu->buf;
+	msg->type = cpu_to_le16(IBTRS_MSG_INFO_REQ);
+	memcpy(msg->hostname, hostname, sizeof(msg->hostname));
+
+	/* Send info request */
+	tx_iu->cqe.done = ibtrs_clt_info_req_done;
+	err = ibtrs_post_send(usr_con->ibtrs_con.qp, sess->ib_dev.mr,
+			      tx_iu, sizeof(*msg));
+	if (unlikely(err)) {
+		ibtrs_err(sess, "ibtrs_post_send(), err: %d\n", err);
+		goto out;
+	}
+	tx_iu = NULL;
+
+	/* Wait for state change */
+	if (timeout_wait)
+		wait_event_interruptible_timeout(sess->state_wq,
+			   sess->state_NEW != IBTRS_CLT_CONNECTING,
+			   msecs_to_jiffies(IBTRS_CONNECT_TIMEOUT_MS));
+	else
+		wait_event(sess->state_wq,
+			   sess->state_NEW != IBTRS_CLT_CONNECTING);
+	if (unlikely(sess->state_NEW != IBTRS_CLT_CONNECTED)) {
+		if (sess->state_NEW == IBTRS_CLT_CONNECTING_ERR)
+			err = -ECONNRESET;
+		else
+			err = -ETIMEDOUT;
+		goto out;
+	}
+
+out:
+	if (tx_iu)
+		ibtrs_iu_free(tx_iu, DMA_TO_DEVICE, sess->ib_dev.dev);
+	if (rx_iu)
+		ibtrs_iu_free(rx_iu, DMA_FROM_DEVICE, sess->ib_dev.dev);
+
+	return err;
+}
+
+static void ibtrs_clt_reconnect_work_NEW(struct work_struct *work)
+{
+	struct ibtrs_clt_sess *sess;
+	unsigned delay_ms;
+	int err;
+
+	sess = container_of(to_delayed_work(work), struct ibtrs_clt_sess,
+			    reconnect_dwork);
+
+	/* Stop everything */
+	ibtrs_clt_stop_and_destroy_conns_NEW(sess);
+
+	if (!ibtrs_clt_change_state(sess, IBTRS_CLT_CONNECTING))
+		/* User requested closing */
+		return;
+
+	err = init_conns_NEW(sess);
+	if (unlikely(err)) {
+		ibtrs_err(sess, "Establishing session to server failed,"
+			  " failed to init connections, err: %d\n", err);
+		goto reconnect_again;
+	}
+	err = ibtrs_send_sess_info_NEW(sess, false);
+	if (unlikely(err)) {
+		ibtrs_err(sess, "Sending session info failed, err: %d\n", err);
+		goto reconnect_again;
+	}
+
+	return;
+
+reconnect_again:
+	if (ibtrs_clt_change_state(sess, IBTRS_CLT_RECONNECTING)) {
+		delay_ms = sess->reconnect_delay_sec * 1000;
+		queue_delayed_work(ibtrs_wq, &sess->reconnect_dwork,
+				   msecs_to_jiffies(delay_ms));
+	}
+}
+
+struct ibtrs_clt_sess *ibtrs_clt_open_NEW(const struct sockaddr_storage *addr,
+				      size_t pdu_sz, void *priv,
+				      u8 reconnect_delay_sec, u16 max_segments,
+				      s16 max_reconnect_attempts)
+{
+	char str_addr[MAXHOSTNAMELEN];
+	struct ibtrs_clt_sess *sess;
+	int err;
+
+	if (!clt_ops_are_valid(clt_ops)) {
+		pr_err("User module did not register ops callbacks\n");
+		err = -EINVAL;
+		goto out;
+	}
+	sockaddr_to_str(addr, str_addr, sizeof(str_addr));
+	sess = alloc_sess_NEW(addr, pdu_sz, priv, reconnect_delay_sec,
+			      max_segments, max_reconnect_attempts);
+	if (unlikely(IS_ERR(sess))) {
+		pr_err("Establishing session to %s failed, err: %ld\n",
+		       str_addr, PTR_ERR(sess));
+		err = PTR_ERR(sess);
+		goto out;
+	}
+	err = init_conns_NEW(sess);
+	if (unlikely(err)) {
+		ibtrs_err(sess, "Establishing session to server failed,"
+			  " failed to init connections, err: %d\n", err);
+		err = -EHOSTUNREACH;
+		goto free_sess;
+	}
+	err = ibtrs_send_sess_info_NEW(sess, true);
+	if (unlikely(err)) {
+		ibtrs_err(sess, "Sending session info failed, err: %d\n", err);
+		goto close_sess;
+	}
+	err = ibtrs_clt_create_sess_files(&sess->kobj, &sess->kobj_stats,
+					  str_addr);
+	if (unlikely(err)) {
+		ibtrs_err(sess, "Establishing session to server failed,"
+			  " failed to create session sysfs files, err: %d\n",
+			  err);
+		goto close_sess;
+	}
+
+	return sess;
+
+close_sess:
+	ibtrs_clt_close_conns_NEW(sess, true);
+free_sess:
+	free_sess_NEW(sess);
+
+out:
+	return ERR_PTR(err);
+}
+EXPORT_SYMBOL(ibtrs_clt_open_NEW);
+
+void ibtrs_clt_close_NEW(struct ibtrs_clt_sess *sess)
+{
+	ibtrs_clt_close_conns_NEW(sess, true);
+	free_sess_NEW(sess);
+}
+EXPORT_SYMBOL(ibtrs_clt_close_NEW);
+
 int ibtrs_clt_reconnect(struct ibtrs_clt_sess *sess)
 {
 	ssm_schedule_event(sess, SSM_EV_RECONNECT_USER);
@@ -4389,43 +5330,6 @@ static void queue_destroy_sess(struct ibtrs_clt_sess *sess)
 	sess->srv_rdma_addr = NULL;
 	destroy_ib_dev(sess);
 	sess_schedule_destroy(sess);
-}
-
-static int alloc_sess_io_bufs(struct ibtrs_clt_sess *sess)
-{
-	int ret;
-
-	if (sess->io_bufs_initialized)
-		return 0;
-	ret = alloc_reqs(sess);
-	if (ret) {
-		ibtrs_err(sess, "alloc_reqs(), err: %d\n", ret);
-		return ret;
-	}
-	ret = alloc_sess_fast_pool(sess);
-	if (ret) {
-		ibtrs_err(sess, "alloc_sess_fast_pool(), err: %d\n", ret);
-		return ret;
-	}
-	ret = alloc_sess_tags(sess);
-	if (ret) {
-		ibtrs_err(sess, "alloc_sess_tags(), err: %d\n", ret);
-		return ret;
-	}
-	sess->io_bufs_initialized = true;
-
-	return 0;
-}
-
-static void free_sess_io_bufs(struct ibtrs_clt_sess *sess)
-{
-	free_reqs(sess);
-	free_sess_fast_pool(sess);
-	kfree(sess->tags_map);
-	sess->tags_map = NULL;
-	kfree(sess->tags);
-	sess->tags = NULL;
-	sess->io_bufs_initialized = false;
 }
 
 static int ssm_open_init(struct ibtrs_clt_sess *sess)

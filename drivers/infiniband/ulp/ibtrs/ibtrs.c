@@ -252,9 +252,12 @@ void ibtrs_cq_qp_destroy(struct ibtrs_con *con)
 {
 	int err;
 
-	rdma_destroy_qp(con->cm_id);
-	err = ib_destroy_cq(con->cq);
-	if (err)
-		ibtrs_err(con, "Destroying CQ failed, err: %d\n", err);
+	if (con->cm_id)
+		rdma_destroy_qp(con->cm_id);
+	if (con->cq) {
+		err = ib_destroy_cq(con->cq);
+		if (err)
+			ibtrs_err(con, "Destroying CQ failed, err: %d\n", err);
+	}
 }
 EXPORT_SYMBOL_GPL(ibtrs_cq_qp_destroy);

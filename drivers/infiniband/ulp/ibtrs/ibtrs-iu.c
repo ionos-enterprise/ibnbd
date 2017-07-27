@@ -153,7 +153,7 @@ EXPORT_SYMBOL_GPL(ibtrs_iu_alloc);
 void ibtrs_iu_free(struct ibtrs_iu *iu, enum dma_data_direction dir,
 		   struct ib_device *ib_dev)
 {
-	if (WARN_ON(!iu))
+	if (!iu)
 		return;
 
 	ib_dma_unmap_single(ib_dev, iu->dma_addr, iu->size, dir);

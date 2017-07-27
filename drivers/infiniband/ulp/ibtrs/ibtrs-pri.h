@@ -115,32 +115,120 @@ struct ibtrs_heartbeat {
 #define IBTRS_HB_IMM  UINT_MAX
 #define IBTRS_ACK_IMM (UINT_MAX-1)
 
+//XXX OLD STUFF, DIE ASAP BEGIN
+
 #define GCC_DIAGNOSTIC_AWARE ((__GNUC__ > 6))
 #if GCC_DIAGNOSTIC_AWARE
 #pragma GCC diagnostic push
 #pragma GCC diagnostic warning "-Wpadded"
 #endif
 
+//XXX OLD STUFF, DIE ASAP END
+
+
 /**
- * enum ibtrs_msg_types - IBTRS message types. DO NOT REMOVE OR REORDER!!!
- * @IBTRS_MSG_SESS_OPEN:	Client requests new session on Server
- * @IBTRS_MSG_SESS_OPEN_RESP:	Server informs Client about session parameters
- * @IBTRS_MSG_CON_OPEN:		Client requests new connection to server
+ * enum ibtrs_msg_types - IBTRS message types.
+ * @IBTRS_MSG_INFO_REQ:		Client additional info request to the server
+ * @IBTRS_MSG_INFO_RSP:		Server additional info response to the client
+ *
+ * DIE ASAP @IBTRS_MSG_SESS_OPEN:	Client requests new session on Server
+ * DIE ASAP @IBTRS_MSG_SESS_OPEN_RESP:	Server informs Client about session parameters
+ * DIE ASAP @IBTRS_MSG_CON_OPEN:	Client requests new connection to server
  * @IBTRS_MSG_RDMA_WRITE:	Client writes data per RDMA to Server
  * @IBTRS_MSG_REQ_RDMA_WRITE:	Client requests data transfer per RDMA
  * @IBTRS_MSG_USER:		Data transfer per Infiniband message
- * @IBTRS_MSG_ERR:		Fatal Error happened
- * @IBTRS_MSG_SESS_INFO:	Client requests about session info
+ * DIE ASAP @IBTRS_MSG_ERR:		Fatal Error happened
+ * DIE ASAP @IBTRS_MSG_SESS_INFO:	Client requests about session info
  */
 enum ibtrs_msg_types {
-	IBTRS_MSG_SESS_OPEN,
-	IBTRS_MSG_SESS_OPEN_RESP,
-	IBTRS_MSG_CON_OPEN,
+	IBTRS_MSG_INFO_REQ,
+	IBTRS_MSG_INFO_RSP,
+
+	IBTRS_MSG_SESS_OPEN,        /* XXX DIE ASAP */
+	IBTRS_MSG_SESS_OPEN_RESP,   /* XXX DIE ASAP */
+	IBTRS_MSG_CON_OPEN,         /* XXX DIE ASAP */
 	IBTRS_MSG_RDMA_WRITE,
 	IBTRS_MSG_REQ_RDMA_WRITE,
 	IBTRS_MSG_USER,
-	IBTRS_MSG_ERROR,
-	IBTRS_MSG_SESS_INFO,
+	IBTRS_MSG_ERROR,            /* XXX DIE ASAP */
+	IBTRS_MSG_SESS_INFO,        /* XXX DIE ASAP */
+};
+
+enum {
+	IBTRS_MAGIC   = 0x1BBD,
+	IBTRS_VER_1_0 = 0x0100,
+};
+
+#define IBTRS_CURRENT_VER IBTRS_VER_1_0
+
+/**
+ * struct ibtrs_msg_conn_req - Client connection request to the server
+ * @magic:	   IBTRS magic
+ * @version:	   IBTRS protocol version
+ * @cid:	   Current connection id
+ * @cid_num:	   Number of connections per session
+ * @uuid:	   Client UUID
+ *
+ * NOTE: max size 56 bytes, see man rdma_connect().
+ */
+struct ibtrs_msg_conn_req {
+	__le16		magic;
+	__le16		version;
+	__le16		cid;
+	__le16		cid_num;
+	u8		uuid[IBTRS_UUID_SIZE];
+	u8		reserved[32];
+};
+
+/**
+ * struct ibtrs_msg_conn_rsp - Server connection response to the client
+ * @magic:	   IBTRS magic
+ * @version:	   IBTRS protocol version
+ * @errno:	   If rdma_accept() then 0, if rdma_reject() indicates error
+ * @queue_depth:   max inflight messages (queue-depth) in this session
+ * @rkey:	   remote key to allow client to access buffers
+ * @max_io_size:   max io size server supports
+ * @max_req_size:  max infiniband message size server supports
+ * @uuid:	   Server UUID
+ *
+ * NOTE: size is 56 bytes, max possible is 136 bytes, see man rdma_accept().
+ */
+struct ibtrs_msg_conn_rsp {
+	__le16		magic;
+	__le16		version;
+	__le16		errno;
+	__le16		queue_depth;
+	__le32		rkey;
+	__le32		max_io_size;
+	__le32		max_req_size;
+	u8		uuid[IBTRS_UUID_SIZE];
+	u8		reserved[20];
+};
+
+/**
+ * struct ibtrs_msg_info_req
+ * @type:		@IBTRS_MSG_INFO_REQ
+ * @hostname:		Client host name
+ */
+struct ibtrs_msg_info_req {
+	__le16		type;
+	u8		hostname[MAXHOSTNAMELEN];
+	u8		reserved[14];
+};
+
+/**
+ * struct ibtrs_msg_info_rsp
+ * @type:		@IBTRS_MSG_INFO_RSP
+ * @addr_num:		Number of rdma addresses
+ * @hostname:		Server host name
+ * @addr:		RDMA addresses of buffers
+ */
+struct ibtrs_msg_info_rsp {
+	__le16		type;
+	__le16		addr_num;
+	u8		hostname[MAXHOSTNAMELEN];
+	u8		reserved[12];
+	__le64		addr[];
 };
 
 /**
@@ -156,6 +244,8 @@ struct ibtrs_msg_hdr {
 };
 
 #define IBTRS_HDR_LEN sizeof(struct ibtrs_msg_hdr)
+
+//XXX OLD STUFF, DIE ASAP BEGIN
 
 /**
  * struct ibtrs_msg_session_open - Opens a new session between client and server
@@ -186,6 +276,8 @@ struct ibtrs_msg_sess_info {
 	u8                      hostname[MAXHOSTNAMELEN];
 };
 
+//XXX OLD STUFF, DIE ASAP END
+
 #define MSG_SESS_INFO_SIZE sizeof(struct ibtrs_msg_sess_info)
 
 /*
@@ -213,6 +305,9 @@ struct ibtrs_msg_sess_info {
  */
 
 #define IBTRS_MSG_RESV_LEN 128
+
+//XXX OLD STUFF, DIE ASAP BEGIN
+
 /**
  * struct ibtrs_msg_sess_open_resp - Servers response to %IBTRS_MSG_SESS_OPEN
  * @hdr:	message header
@@ -251,6 +346,8 @@ struct ibtrs_msg_con_open {
 	struct ibtrs_msg_hdr	hdr;
 	u8			uuid[IBTRS_UUID_SIZE];
 };
+
+//XXX OLD STUFF, DIE ASAP END
 
 /**
  * struct ibtrs_msg_user - Data exchanged a Infiniband message
@@ -297,6 +394,8 @@ struct ibtrs_msg_rdma_write {
 	struct ibtrs_msg_hdr	hdr;
 };
 
+//XXX OLD STUFF, DIE ASAP BEGIN
+
 /**
  * struct ibtrs_msg_error - Error message
  * @hdr:		message header
@@ -311,6 +410,8 @@ struct ibtrs_msg_error {
 #if GCC_DIAGNOSTIC_AWARE
 #pragma GCC diagnostic pop
 #endif
+
+//XXX OLD STUFF, DIE ASAP BEGIN
 
 int ibtrs_validate_message(const struct ibtrs_msg_hdr *hdr);
 
