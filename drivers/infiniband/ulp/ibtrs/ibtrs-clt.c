@@ -1667,24 +1667,14 @@ static inline void ibtrs_clt_decrease_inflight(struct ibtrs_clt_stats *s)
 	s->rdma_stats[raw_smp_processor_id()].inflight--;
 }
 
-static void process_io_rsp(struct ibtrs_clt_sess *sess, u32 msg_id, s16 errno)
+static void complete_rdma_req(struct ibtrs_clt_sess *sess,
+			      struct rdma_req *req, int errno)
 {
-	struct rdma_req *req;
-	void *priv;
 	enum dma_data_direction dir;
+	void *priv;
 
-	if (unlikely(msg_id >= sess->queue_depth)) {
-		ibtrs_err(sess,
-			  "Immediate message with invalid msg id received: %d\n",
-			  msg_id);
+	if (WARN_ON(!req->in_use))
 		return;
-	}
-
-	req = &sess->reqs[msg_id];
-
-	pr_debug("Processing io resp for msg_id: %u, %s\n", msg_id,
-		 req->dir == DMA_FROM_DEVICE ? "read" : "write");
-
 	if (req->sg_cnt > fmr_sg_cnt)
 		ibtrs_unmap_fast_reg_data(req->con, req);
 	if (req->sg_cnt)
@@ -1705,6 +1695,14 @@ static void process_io_rsp(struct ibtrs_clt_sess *sess, u32 msg_id, s16 errno)
 	clt_ops->rdma_ev(priv, dir == DMA_FROM_DEVICE ?
 			 IBTRS_CLT_RDMA_EV_RDMA_REQUEST_WRITE_COMPL :
 			 IBTRS_CLT_RDMA_EV_RDMA_WRITE_COMPL, errno);
+}
+
+static void process_io_rsp(struct ibtrs_clt_sess *sess, u32 msg_id, s16 errno)
+{
+	if (WARN_ON(msg_id >= sess->queue_depth))
+		return;
+
+	complete_rdma_req(sess, &sess->reqs[msg_id], errno);
 }
 
 static int ibtrs_send_msg_user_ack(struct ibtrs_clt_con *con)
@@ -2201,55 +2199,35 @@ static int post_recv_info(struct ibtrs_clt_sess *sess)
 	return ret;
 }
 
-static void fail_outstanding_req(struct ibtrs_clt_con *con,
-				 struct rdma_req *req)
-{
-	void *priv;
-	enum dma_data_direction dir;
-
-	if (!req->in_use)
-		return;
-
-	if (req->sg_cnt > fmr_sg_cnt)
-		ibtrs_unmap_fast_reg_data(con, req);
-	if (req->sg_cnt)
-		ib_dma_unmap_sg(con->sess->ib_dev.dev, req->sglist,
-				req->sg_cnt, req->dir);
-	ibtrs_clt_decrease_inflight(&con->sess->stats);
-
-	req->in_use = false;
-	req->con    = NULL;
-	priv = req->priv;
-	dir = req->dir;
-
-	clt_ops->rdma_ev(priv, dir == DMA_FROM_DEVICE ?
-			 IBTRS_CLT_RDMA_EV_RDMA_REQUEST_WRITE_COMPL :
-			 IBTRS_CLT_RDMA_EV_RDMA_WRITE_COMPL, -ECONNABORTED);
-
-	pr_debug("Canceled outstanding request\n");
-}
-
 static void fail_outstanding_reqs(struct ibtrs_clt_con *con)
 {
 	struct ibtrs_clt_sess *sess = con->sess;
+	struct rdma_req *req;
 	int i;
 
-	if (!sess->reqs)
+	if (WARN_ON(!sess->reqs))
 		return;
 	for (i = 0; i < sess->queue_depth; ++i) {
-		if (sess->reqs[i].con == con)
-			fail_outstanding_req(con, &sess->reqs[i]);
+		if (sess->reqs[i].con == con) {
+			req = &sess->reqs[i];
+			if (req->in_use)
+				complete_rdma_req(sess, req, -ECONNABORTED);
+		}
 	}
 }
 
 static void fail_all_outstanding_reqs(struct ibtrs_clt_sess *sess)
 {
+	struct rdma_req *req;
 	int i;
 
-	if (!sess->reqs)
+	if (WARN_ON(!sess->reqs))
 		return;
-	for (i = 0; i < sess->queue_depth; ++i)
-		fail_outstanding_req(sess->reqs[i].con, &sess->reqs[i]);
+	for (i = 0; i < sess->queue_depth; ++i) {
+		req = &sess->reqs[i];
+		if (req->in_use)
+			complete_rdma_req(sess, req, -ECONNABORTED);
+	}
 }
 
 static void free_reqs(struct ibtrs_clt_sess *sess)
