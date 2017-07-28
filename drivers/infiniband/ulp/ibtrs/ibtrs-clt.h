@@ -139,9 +139,6 @@ struct ibtrs_clt_sess {
 	struct kobject		kobj;
 	struct kobject		kobj_stats;
 	struct ibtrs_clt_stats  stats;
-	wait_queue_head_t	mu_iu_wq;
-	wait_queue_head_t	mu_buf_wq;
-	atomic_t		peer_usr_msg_bufs;
 	bool			device_removed;
 };
 

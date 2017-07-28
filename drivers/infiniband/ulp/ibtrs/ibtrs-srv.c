@@ -660,7 +660,6 @@ static void free_id(struct ibtrs_ops_id *id)
 
 static void free_sess_tx_bufs(struct ibtrs_srv_sess *sess)
 {
-	struct ibtrs_iu *e, *next;
 	int i;
 
 	if (sess->rdma_info_iu) {
@@ -668,12 +667,7 @@ static void free_sess_tx_bufs(struct ibtrs_srv_sess *sess)
 			      sess->dev->ib_dev.dev);
 		sess->rdma_info_iu = NULL;
 	}
-
-	WARN_ON(sess->tx_bufs_used);
-	list_for_each_entry_safe(e, next, &sess->tx_bufs, list) {
-		list_del(&e->list);
-		ibtrs_iu_free(e, DMA_TO_DEVICE, sess->dev->ib_dev.dev);
-	}
+	ibtrs_usr_msg_free_list(&sess->sess, &sess->dev->ib_dev);
 
 	if (sess->ops_ids) {
 		for (i = 0; i < sess->queue_depth; i++)
@@ -681,27 +675,6 @@ static void free_sess_tx_bufs(struct ibtrs_srv_sess *sess)
 		kfree(sess->ops_ids);
 		sess->ops_ids = NULL;
 	}
-}
-
-static void put_tx_iu(struct ibtrs_srv_sess *sess, struct ibtrs_iu *iu)
-{
-	spin_lock(&sess->tx_bufs_lock);
-	ibtrs_iu_put(&sess->tx_bufs, iu);
-	sess->tx_bufs_used--;
-	spin_unlock(&sess->tx_bufs_lock);
-}
-
-static struct ibtrs_iu *get_tx_iu(struct ibtrs_srv_sess *sess)
-{
-	struct ibtrs_iu *iu;
-
-	spin_lock(&sess->tx_bufs_lock);
-	iu = ibtrs_iu_get(&sess->tx_bufs);
-	if (iu)
-		sess->tx_bufs_used++;
-	spin_unlock(&sess->tx_bufs_lock);
-
-	return iu;
 }
 
 static int rdma_write_sg(struct ibtrs_ops_id *id)
@@ -909,11 +882,6 @@ int ibtrs_srv_resp_rdma(struct ibtrs_ops_id *id, int status)
 }
 EXPORT_SYMBOL(ibtrs_srv_resp_rdma);
 
-static bool ibtrs_srv_get_usr_msg_buf(struct ibtrs_srv_sess *sess)
-{
-	return atomic_dec_if_positive(&sess->peer_usr_msg_bufs) >= 0;
-}
-
 int ibtrs_srv_send(struct ibtrs_srv_sess *sess, const struct kvec *vec,
 		   size_t nr)
 {
@@ -921,7 +889,6 @@ int ibtrs_srv_send(struct ibtrs_srv_sess *sess, const struct kvec *vec,
 	struct ibtrs_srv_con *con;
 	struct ibtrs_msg_user *msg;
 	size_t len;
-	bool closed_st = false;
 	int err;
 
 	if (WARN_ONCE(list_empty(&sess->con_list),
@@ -942,26 +909,11 @@ int ibtrs_srv_send(struct ibtrs_srv_sess *sess, const struct kvec *vec,
 			     " %zu > %lu\n", len, MAX_REQ_SIZE - IBTRS_HDR_LEN);
 		return -EMSGSIZE;
 	}
-
-	wait_event(sess->mu_buf_wq,
-		   (closed_st = (con->state != CSM_STATE_CONNECTED)) ||
-		   ibtrs_srv_get_usr_msg_buf(sess));
-
-	if (unlikely(closed_st)) {
-		ibtrs_err_rl(sess, "Sending message failed, not connected (state"
-			     " %s)\n", csm_state_str(con->state));
+	iu = ibtrs_usr_msg_get(&sess->sess);
+	if (unlikely(!iu)) {
+		/* We are in disconnecting state, just return */
+		ibtrs_err_rl(sess, "Sending user message failed, disconnecting");
 		return -ECOMM;
-	}
-
-	wait_event(sess->mu_iu_wq,
-		   (closed_st = (con->state != CSM_STATE_CONNECTED)) ||
-		   (iu = get_tx_iu(sess)) != NULL);
-
-	if (unlikely(closed_st)) {
-		ibtrs_err_rl(sess, "Sending message failed, not connected (state"
-			     " %s)\n", csm_state_str(con->state));
-		err = -ECOMM;
-		goto err_iu;
 	}
 
 	msg		= iu->buf;
@@ -985,11 +937,9 @@ int ibtrs_srv_send(struct ibtrs_srv_sess *sess, const struct kvec *vec,
 	return 0;
 
 err_post_send:
-	put_tx_iu(sess, iu);
-	wake_up(&con->sess->mu_iu_wq);
-err_iu:
-	atomic_inc(&sess->peer_usr_msg_bufs);
-	wake_up(&con->sess->mu_buf_wq);
+	ibtrs_usr_msg_return_iu(&sess->sess, iu);
+	ibtrs_usr_msg_put(&sess->sess);
+
 	return err;
 }
 EXPORT_SYMBOL(ibtrs_srv_send);
@@ -1371,43 +1321,35 @@ static int alloc_sess_tx_bufs(struct ibtrs_srv_sess *sess)
 {
 	struct ib_device *ib_dev = sess->dev->ib_dev.dev;
 	struct ibtrs_ops_id *id;
-	struct ibtrs_iu *iu;
-	int i;
+	int i, err;
 
 	sess->rdma_info_iu =
 		ibtrs_iu_alloc(0, IBTRS_MSG_SESS_OPEN_RESP_LEN(
 				       sess->queue_depth), GFP_KERNEL, ib_dev,
 			       DMA_TO_DEVICE, true);
 	if (unlikely(!sess->rdma_info_iu)) {
-		ibtrs_err_rl(sess, "Can't allocate transfer buffer for "
-			     "sess open resp\n");
+		ibtrs_err(sess, "Allocation failed\n");
 		return -ENOMEM;
 	}
-
 	sess->ops_ids = kcalloc(sess->queue_depth, sizeof(*sess->ops_ids),
 				GFP_KERNEL);
 	if (unlikely(!sess->ops_ids)) {
-		ibtrs_err_rl(sess, "Can't alloc ops_ids for the session\n");
+		ibtrs_err(sess, "Allocation failed\n");
 		goto err;
 	}
-
 	for (i = 0; i < sess->queue_depth; ++i) {
 		id = kzalloc(sizeof(*id), GFP_KERNEL);
 		if (unlikely(!id)) {
-			ibtrs_err_rl(sess, "Can't alloc ops id for session\n");
+			ibtrs_err(sess, "Allocation failed\n");
 			goto err;
 		}
 		sess->ops_ids[i] = id;
 	}
-
-	for (i = 0; i < USR_MSG_CNT; ++i) {
-		iu = ibtrs_iu_alloc(i, MAX_REQ_SIZE, GFP_KERNEL,
-				    ib_dev, DMA_TO_DEVICE, true);
-		if (!iu) {
-			ibtrs_err_rl(sess, "Can't alloc tx bufs for user msgs\n");
-			goto err;
-		}
-		list_add(&iu->list, &sess->tx_bufs);
+	err = ibtrs_usr_msg_alloc_list(&sess->sess, &sess->dev->ib_dev,
+				       MAX_REQ_SIZE);
+	if (unlikely(err)) {
+		ibtrs_err(sess, "Allocation failed\n");
+		goto err;
 	}
 
 	return 0;
@@ -1678,8 +1620,7 @@ static void process_msg_user_ack(struct ibtrs_srv_con *con)
 {
 	struct ibtrs_srv_sess *sess = con->sess;
 
-	atomic_inc(&sess->peer_usr_msg_bufs);
-	wake_up(&con->sess->mu_buf_wq);
+	ibtrs_usr_msg_put(&sess->sess);
 }
 
 static void ibtrs_handle_write(struct ibtrs_srv_con *con, struct ibtrs_iu *iu,
@@ -1864,15 +1805,8 @@ static void close_con(struct ibtrs_srv_con *con)
 	if (!con->user && !con->device_being_removed)
 		rdma_destroy_id(con->cm_id);
 
-	if (con->user) {
-		/* notify possible user msg ACK thread waiting for a tx iu or
-		 * user msg buffer so they can check the connection state, give
-		 * up waiting and put back any tx_iu reserved
-		 */
-		wake_up(&sess->mu_buf_wq);
-		wake_up(&sess->mu_iu_wq);
+	if (con->user)
 		destroy_workqueue(sess->msg_wq);
-	}
 
 	con->sess->active_cnt--;
 }
@@ -2031,6 +1965,7 @@ static void ibtrs_srv_sess_destroy(struct ibtrs_srv_sess *sess)
 
 static void process_err_wc(struct ibtrs_srv_con *con, struct ib_wc *wc)
 {
+	struct ibtrs_srv_sess *sess = con->sess;
 	struct ibtrs_iu *iu;
 
 	if (wc->wr_cqe == &con->ibtrs_con.beacon_cqe) {
@@ -2039,7 +1974,7 @@ static void process_err_wc(struct ibtrs_srv_con *con, struct ib_wc *wc)
 		return;
 	}
 	if (wc->wr_cqe == &hb_and_ack_cqe) {
-		ibtrs_err_rl(con->sess, "ib_post_send() of hb or ack failed, "
+		ibtrs_err_rl(sess, "ib_post_send() of hb or ack failed, "
 			     "status: %s\n", ib_wc_status_msg(wc->status));
 		csm_schedule_event(con, CSM_EV_CON_ERROR);
 		return;
@@ -2050,9 +1985,8 @@ static void process_err_wc(struct ibtrs_srv_con *con, struct ib_wc *wc)
 	 * if it's an tx or rx IU.
 	 */
 	iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
-	if (iu && iu->direction == DMA_TO_DEVICE &&
-	    iu != con->sess->rdma_info_iu)
-		put_tx_iu(con->sess, iu);
+	if (iu && iu->direction == DMA_TO_DEVICE && iu != sess->rdma_info_iu)
+		ibtrs_usr_msg_return_iu(&sess->sess, iu);
 
 	if (wc->status != IB_WC_WR_FLUSH_ERR ||
 	    (con->state != CSM_STATE_CLOSING &&
@@ -2062,7 +1996,7 @@ static void process_err_wc(struct ibtrs_srv_con *con, struct ib_wc *wc)
 		 * DISCONNECTING state waiting for the second
 		 * CM_DISCONNECTED event
 		 */
-		ibtrs_err_rl(con->sess, "%s (wr_cqe: %p,"
+		ibtrs_err_rl(sess, "%s (wr_cqe: %p,"
 			     " type: %s, vendor_err: 0x%x, len: %u)\n",
 			     ib_wc_status_msg(wc->status), wc->wr_cqe,
 			     ib_wc_opcode_str(wc->opcode),
@@ -2103,9 +2037,9 @@ static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 		iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
 		if (iu == sess->rdma_info_iu)
 			break;
-		put_tx_iu(sess, iu);
 		if (con->user)
-			wake_up(&sess->mu_iu_wq);
+			//XXX WTF? should be WARN_ON if !con->user
+			ibtrs_usr_msg_return_iu(&sess->sess, iu);
 		break;
 	case IB_WC_RECV:
 		/*
@@ -2216,23 +2150,17 @@ __create_sess(struct rdma_cm_id *cm_id, const struct ibtrs_msg_sess_open *req)
 	INIT_LIST_HEAD(&sess->con_list);
 	mutex_init(&sess->lock);
 
-	INIT_LIST_HEAD(&sess->tx_bufs);
-	spin_lock_init(&sess->tx_bufs_lock);
-
 	sess->wq_size		= cm_id->device->attrs.max_qp_wr - 1;
 	sess->queue_depth	= sess_queue_depth;
 	sess->con_cnt		= req->con_cnt;
 	sess->primary_port_num	= cm_id->port_num;
 
-	init_waitqueue_head(&sess->mu_iu_wq);
-	init_waitqueue_head(&sess->mu_buf_wq);
 	ibtrs_heartbeat_init(&sess->heartbeat,
 			     default_heartbeat_timeout_ms <
 			     MIN_HEARTBEAT_TIMEOUT_MS ?
 			     MIN_HEARTBEAT_TIMEOUT_MS :
 			     default_heartbeat_timeout_ms);
 
-	atomic_set(&sess->peer_usr_msg_bufs, USR_MSG_CNT);
 	sess->dev = ibtrs_find_get_device(cm_id);
 	if (!sess->dev) {
 		err = -ENOMEM;

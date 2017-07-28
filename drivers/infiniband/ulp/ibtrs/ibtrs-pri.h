@@ -72,6 +72,11 @@ struct ibtrs_addr {
 struct ibtrs_sess {
 	struct list_head	list;
 	struct ibtrs_addr	addr;
+	bool			usr_freed;
+	spinlock_t		usr_lock;
+	struct completion	usr_comp;
+	atomic_t		usr_msg_cnt;
+	struct list_head	usr_iu_list;
 };
 
 struct ibtrs_con {
@@ -326,9 +331,12 @@ s64 ibtrs_heartbeat_send_ts_diff_ms(const struct ibtrs_heartbeat *h);
 s64 ibtrs_heartbeat_recv_ts_diff_ms(const struct ibtrs_heartbeat *h);
 int ibtrs_heartbeat_timeout_validate(int timeout);
 
-void ibtrs_iu_put(struct list_head *iu_list, struct ibtrs_iu *iu);
-struct ibtrs_iu *ibtrs_iu_get(struct list_head *iu_list);
-
+int ibtrs_usr_msg_alloc_list(struct ibtrs_sess *sess, struct ibtrs_ib_dev *dev,
+			     unsigned max_req_size);
+void ibtrs_usr_msg_free_list(struct ibtrs_sess *sess, struct ibtrs_ib_dev *dev);
+struct ibtrs_iu *ibtrs_usr_msg_get(struct ibtrs_sess *sess);
+void ibtrs_usr_msg_return_iu(struct ibtrs_sess *sess, struct ibtrs_iu *iu);
+void ibtrs_usr_msg_put(struct ibtrs_sess *sess);
 struct ibtrs_iu *ibtrs_iu_alloc(u32 tag, size_t size, gfp_t t,
 				struct ib_device *dev,
 				enum dma_data_direction, bool is_msg);

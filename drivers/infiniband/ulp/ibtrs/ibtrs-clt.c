@@ -917,27 +917,6 @@ void ibtrs_put_tag(struct ibtrs_clt_sess *sess, struct ibtrs_tag *tag)
 }
 EXPORT_SYMBOL(ibtrs_put_tag);
 
-static void put_u_msg_iu(struct ibtrs_clt_sess *sess, struct ibtrs_iu *iu)
-{
-	unsigned long flags;
-
-	spin_lock_irqsave(&sess->u_msg_ius_lock, flags);
-	ibtrs_iu_put(&sess->u_msg_ius_list, iu);
-	spin_unlock_irqrestore(&sess->u_msg_ius_lock, flags);
-}
-
-static struct ibtrs_iu *get_u_msg_iu(struct ibtrs_clt_sess *sess)
-{
-	struct ibtrs_iu *iu;
-	unsigned long flags;
-
-	spin_lock_irqsave(&sess->u_msg_ius_lock, flags);
-	iu = ibtrs_iu_get(&sess->u_msg_ius_list);
-	spin_unlock_irqrestore(&sess->u_msg_ius_lock, flags);
-
-	return iu;
-}
-
 /**
  * ibtrs_destroy_fr_pool() - free the resources owned by a pool
  * @pool: Fast registration pool to be destroyed.
@@ -1752,8 +1731,7 @@ static void process_msg_user_ack(struct ibtrs_clt_con *con)
 {
 	struct ibtrs_clt_sess *sess = con->sess;
 
-	atomic_inc(&sess->peer_usr_msg_bufs);
-	wake_up(&sess->mu_buf_wq);
+	ibtrs_usr_msg_put(&sess->sess);
 }
 
 static void msg_worker(struct work_struct *work)
@@ -1886,7 +1864,7 @@ static void process_err_wc(struct ibtrs_clt_con *con,
 	 */
 	iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
 	if (iu && iu->direction == DMA_TO_DEVICE && iu->is_msg)
-		put_u_msg_iu(con->sess, iu);
+		ibtrs_usr_msg_return_iu(&con->sess->sess, iu);
 
 	/* suppress FLUSH_ERR log when the connection is being disconnected */
 	if (unlikely(wc->status != IB_WC_WR_FLUSH_ERR ||
@@ -1942,11 +1920,11 @@ static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 		 * post_send() completions: beacon, sess info, user msgs
 		 */
 		if (con->user) {
+			//XXX WTF? should be WARN_ON if !con->user
 			iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
 			if (iu == sess->info_tx_iu)
 				break;
-			put_u_msg_iu(sess, iu);
-			wake_up(&sess->mu_iu_wq);
+			ibtrs_usr_msg_return_iu(&sess->sess, iu);
 		}
 		break;
 	case IB_WC_RECV:
@@ -2310,9 +2288,8 @@ static void free_sess_rx_bufs(struct ibtrs_clt_sess *sess)
 	sess->usr_rx_ring = NULL;
 }
 
-static void free_sess_tx_bufs(struct ibtrs_clt_sess *sess, bool check)
+static void free_sess_tx_bufs(struct ibtrs_clt_sess *sess)
 {
-	struct ibtrs_iu *e, *next;
 	int i;
 
 	if (!sess->io_tx_ius)
@@ -2326,20 +2303,13 @@ static void free_sess_tx_bufs(struct ibtrs_clt_sess *sess, bool check)
 	kfree(sess->io_tx_ius);
 	sess->io_tx_ius = NULL;
 
-	i = 0;
-	list_for_each_entry_safe(e, next, &sess->u_msg_ius_list, list) {
-		list_del(&e->list);
-		ibtrs_iu_free(e, DMA_TO_DEVICE, sess->ib_dev.dev);
-		i++;
-	}
-	WARN_ON(check && i != USR_CON_BUF_SIZE);
-
+	ibtrs_usr_msg_free_list(&sess->sess, &sess->ib_dev);
 }
 
 static void free_sess_tr_bufs(struct ibtrs_clt_sess *sess)
 {
 	free_sess_rx_bufs(sess);
-	free_sess_tx_bufs(sess, true);
+	free_sess_tx_bufs(sess);
 }
 
 static void free_sess_init_bufs(struct ibtrs_clt_sess *sess)
@@ -2430,42 +2400,40 @@ err:
 
 static int alloc_sess_tx_bufs(struct ibtrs_clt_sess *sess)
 {
-	int i;
-	struct ibtrs_iu *iu;
 	u32 max_req_size = sess->max_req_size;
+	struct ibtrs_iu *iu;
+	int i, err;
+
 
 	INIT_LIST_HEAD(&sess->u_msg_ius_list);
 	spin_lock_init(&sess->u_msg_ius_lock);
 
 	sess->io_tx_ius = kcalloc(sess->queue_depth, sizeof(*sess->io_tx_ius),
 				  GFP_KERNEL);
-	if (!sess->io_tx_ius)
+	if (unlikely(!sess->io_tx_ius)) {
+		ibtrs_err(sess, "Allocation failed\n");
 		goto err;
-
+	}
 	for (i = 0; i < sess->queue_depth; ++i) {
 		iu = ibtrs_iu_alloc(i, max_req_size, GFP_KERNEL,
 				    sess->ib_dev.dev, DMA_TO_DEVICE,false);
-		if (!iu) {
-			ibtrs_wrn(sess, "Failed to allocate IU for TX buffer\n");
+		if (unlikely(!iu)) {
+			ibtrs_err(sess, "Allocation failed\n");
 			goto err;
 		}
 		sess->io_tx_ius[i] = iu;
 	}
-
-	for (i = 0; i < USR_MSG_CNT; ++i) {
-		iu = ibtrs_iu_alloc(i, max_req_size, GFP_KERNEL,
-				    sess->ib_dev.dev, DMA_TO_DEVICE,
-				    true);
-		if (!iu) {
-			ibtrs_wrn(sess, "Failed to allocate IU for TX buffer\n");
-			goto err;
-		}
-		list_add(&iu->list, &sess->u_msg_ius_list);
+	err = ibtrs_usr_msg_alloc_list(&sess->sess, &sess->ib_dev,
+				       max_req_size);
+	if (unlikely(err)) {
+		ibtrs_err(sess, "Allocation failed\n");
+		goto err;
 	}
+
 	return 0;
 
 err:
-	free_sess_tx_bufs(sess, false);
+	free_sess_tx_bufs(sess);
 
 	return -ENOMEM;
 }
@@ -2773,25 +2741,17 @@ static void ibtrs_clt_destroy_cm_id(struct ibtrs_clt_con *con)
 
 static void con_destroy(struct ibtrs_clt_con *con)
 {
-	if (con->user) {
-		cancel_delayed_work_sync(&con->sess->heartbeat_dwork);
-	}
+	struct ibtrs_clt_sess *sess = con->sess;
+
+	if (con->user)
+		cancel_delayed_work_sync(&sess->heartbeat_dwork);
 	fail_outstanding_reqs(con);
 	ibtrs_cq_qp_destroy(&con->ibtrs_con);
 	if (con->user)
-		free_sess_tr_bufs(con->sess);
+		free_sess_tr_bufs(sess);
 	else
 		free_con_fast_pool(con);
 	ibtrs_clt_destroy_cm_id(con);
-
-	/* notify possible user msg ACK thread waiting for a tx iu or user msg
-	 * buffer so they can check the connection state, give up waiting and
-	 * put back any tx_iu reserved
-	 */
-	if (con->user) {
-		wake_up(&con->sess->mu_buf_wq);
-		wake_up(&con->sess->mu_iu_wq);
-	}
 }
 
 int ibtrs_clt_stats_migration_cnt_to_str(struct ibtrs_clt_sess *sess, char *buf,
@@ -3307,9 +3267,6 @@ static struct ibtrs_clt_sess *sess_init(const struct sockaddr_storage *addr,
 	sess->max_reconnect_attempts	= max_reconnect_attempts;
 	sess->max_pages_per_mr		= max_segments;
 	init_waitqueue_head(&sess->state_wq);
-	init_waitqueue_head(&sess->mu_iu_wq);
-	init_waitqueue_head(&sess->mu_buf_wq);
-
 	init_waitqueue_head(&sess->tags_wait);
 	sess->state = SSM_STATE_IDLE;
 	mutex_lock(&sess_mutex);
@@ -4004,20 +3961,14 @@ int ibtrs_clt_request_rdma_write(struct ibtrs_clt_sess *sess,
 }
 EXPORT_SYMBOL(ibtrs_clt_request_rdma_write);
 
-static bool ibtrs_clt_get_usr_msg_buf(struct ibtrs_clt_sess *sess)
-{
-	return atomic_dec_if_positive(&sess->peer_usr_msg_bufs) >= 0;
-}
-
 int ibtrs_clt_send(struct ibtrs_clt_sess *sess, const struct kvec *vec,
 		   size_t nr)
 {
-	struct ibtrs_clt_con *con;
 	struct ibtrs_iu *iu = NULL;
+	struct ibtrs_clt_con *con;
 	struct ibtrs_msg_user *msg;
 	size_t len;
-	bool closed_st = false;
-	int err = 0;
+	int err;
 
 	con = &sess->con[0];
 
@@ -4032,39 +3983,17 @@ int ibtrs_clt_send(struct ibtrs_clt_sess *sess, const struct kvec *vec,
 
 	len = kvec_length(vec, nr);
 
-	pr_debug("send user msg length=%zu, peer_msg_buf %d\n", len,
-		 atomic_read(&sess->peer_usr_msg_bufs));
 	if (len > sess->max_req_size - IBTRS_HDR_LEN) {
 		ibtrs_err_rl(sess, "Sending user message failed,"
 			     " user message length too large (len: %zu)\n", len);
 		return -EMSGSIZE;
 	}
-
-	wait_event(sess->mu_buf_wq,
-		   (closed_st = (con->state != CSM_STATE_CONNECTED ||
-				 sess->state != SSM_STATE_CONNECTED)) ||
-		   ibtrs_clt_get_usr_msg_buf(sess));
-
-	if (unlikely(closed_st)) {
-		ibtrs_err_rl(sess, "Sending user message failed, not connected"
-			     " Connection state is %s, Session state is %s\n",
-			     csm_state_str(con->state), ssm_state_str(sess->state));
+	iu = ibtrs_usr_msg_get(&sess->sess);
+	if (unlikely(!iu)) {
+		/* We are in disconnecting state, just return */
+		ibtrs_err_rl(sess, "Sending user message failed, disconnecting");
 		return -ECOMM;
 	}
-
-	wait_event(sess->mu_iu_wq,
-		   (closed_st = (con->state != CSM_STATE_CONNECTED ||
-				 sess->state != SSM_STATE_CONNECTED)) ||
-		   (iu = get_u_msg_iu(sess)) != NULL);
-
-	if (unlikely(closed_st)) {
-		ibtrs_err_rl(sess, "Sending user message failed, not connected"
-			     " Connection state is %s, Session state is %s\n",
-			     csm_state_str(con->state), ssm_state_str(sess->state));
-		err = -ECOMM;
-		goto err_iu;
-	}
-
 	ibtrs_clt_state_lock();
 	if (unlikely(con->state != CSM_STATE_CONNECTED)) {
 		ibtrs_clt_state_unlock();
@@ -4097,11 +4026,9 @@ int ibtrs_clt_send(struct ibtrs_clt_sess *sess, const struct kvec *vec,
 	return 0;
 
 err_post_send:
-	put_u_msg_iu(sess, iu);
-	wake_up(&sess->mu_iu_wq);
-err_iu:
-	atomic_inc(&sess->peer_usr_msg_bufs);
-	wake_up(&sess->mu_buf_wq);
+	ibtrs_usr_msg_return_iu(&sess->sess, iu);
+	ibtrs_usr_msg_put(&sess->sess);
+
 	return err;
 }
 EXPORT_SYMBOL(ibtrs_clt_send);
@@ -4645,8 +4572,6 @@ static void ssm_open_reconnect(struct ibtrs_clt_sess *sess, enum ssm_ev ev)
 
 static int ssm_connected_init(struct ibtrs_clt_sess *sess)
 {
-	atomic_set(&sess->peer_usr_msg_bufs, USR_MSG_CNT);
-
 	return 0;
 }
 
@@ -4681,8 +4606,6 @@ static void ssm_connected(struct ibtrs_clt_sess *sess, enum ssm_ev ev)
 		else
 			ssm_init_state(sess, SSM_STATE_CLOSE_RECONNECT);
 
-		wake_up(&sess->mu_buf_wq);
-		wake_up(&sess->mu_iu_wq);
 		clt_ops->sess_ev(sess->priv, IBTRS_CLT_SESS_EV_DISCONNECTED, 0);
 		sess_disconnect_cons(sess);
 		synchronize_rcu();

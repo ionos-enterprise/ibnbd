@@ -81,9 +81,6 @@ struct ibtrs_srv_sess {
 	struct ibtrs_iu		*dummy_rx_iu;
 	struct ibtrs_iu		**usr_rx_ring;
 	struct ibtrs_ops_id	**ops_ids;
-	spinlock_t              tx_bufs_lock;
-	struct list_head	tx_bufs;
-	u16			tx_bufs_used;
 	unsigned int		est_cnt; /* number of established connections */
 	unsigned int		active_cnt; /* number of active (not closed)
 					     * connections
@@ -111,9 +108,6 @@ struct ibtrs_srv_sess {
 	struct kobject		kobj_stats;
 	u8			primary_port_num;
 	struct ibtrs_srv_stats	stats;
-	wait_queue_head_t	mu_iu_wq;
-	wait_queue_head_t	mu_buf_wq;
-	atomic_t		peer_usr_msg_bufs;
 };
 
 void ibtrs_srv_queue_close(struct ibtrs_srv_sess *sess);
