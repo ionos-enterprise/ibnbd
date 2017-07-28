@@ -324,7 +324,6 @@ struct ibtrs_clt_con {
 	struct ibtrs_clt_sess	*sess;
 	struct ibtrs_fr_pool	*fr_pool;
 	struct rdma_cm_id	*cm_id;
-	struct ib_wc		wcs[WC_ARRAY_SIZE];
 };
 
 struct sess_destroy_work {
