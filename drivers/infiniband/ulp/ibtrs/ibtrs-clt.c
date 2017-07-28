@@ -349,6 +349,18 @@ struct msg_work {
 	void                    *msg;
 };
 
+static inline void ibtrs_clt_state_lock(void)
+{
+	rcu_read_lock();
+	/* Paired with state change */
+	smp_rmb();
+}
+
+static inline void ibtrs_clt_state_unlock(void)
+{
+	rcu_read_unlock();
+}
+
 static void ibtrs_clt_free_sg_list_distr_stats(struct ibtrs_clt_sess *sess)
 {
 	int i;
@@ -748,17 +760,16 @@ static int process_open_rsp(struct ibtrs_clt_con *con, const void *resp)
 	u32 chunk_size;
 	int i;
 
-	rcu_read_lock();
-	smp_rmb(); /* fence con->state check */
+	ibtrs_clt_state_lock();
 	if (unlikely(con->state != CSM_STATE_CONNECTED)) {
-		rcu_read_unlock();
+		ibtrs_clt_state_unlock();
 		ibtrs_info(sess, "Process open response failed, disconnected."
 			   " Connection state is %s, Session state is %s\n",
 			   csm_state_str(con->state),
 			   ssm_state_str(sess->state));
 		return -ECOMM;
 	}
-	rcu_read_unlock();
+	ibtrs_clt_state_unlock();
 
 	chunk_size = msg->max_io_size + msg->max_req_size;
 	/* check if IB immediate data size is enough to hold the mem_id and the
@@ -1700,10 +1711,9 @@ static int ibtrs_send_msg_user_ack(struct ibtrs_clt_con *con)
 {
 	int err;
 
-	rcu_read_lock();
-	smp_rmb(); /* fence con->state check */
+	ibtrs_clt_state_lock();
 	if (unlikely(con->state != CSM_STATE_CONNECTED)) {
-		rcu_read_unlock();
+		ibtrs_clt_state_unlock();
 		ibtrs_info(con->sess, "Sending user msg ack failed, disconnected"
 			   " Connection state is %s, Session state is %s\n",
 			   csm_state_str(con->state),
@@ -1715,7 +1725,7 @@ static int ibtrs_send_msg_user_ack(struct ibtrs_clt_con *con)
 					      &hb_and_ack_cqe,
 					      IBTRS_ACK_IMM,
 					      IB_SEND_SIGNALED);
-	rcu_read_unlock();
+	ibtrs_clt_state_unlock();
 	if (unlikely(err)) {
 		ibtrs_err_rl(con->sess, "Sending user msg ack failed, err: %d\n",
 			     err);
@@ -2645,10 +2655,9 @@ static int send_heartbeat(struct ibtrs_clt_sess *sess)
 
 	usr_con = &sess->con[0];
 
-	rcu_read_lock();
-	smp_rmb(); /* fence usr_con->state check */
+	ibtrs_clt_state_lock();
 	if (unlikely(usr_con->state != CSM_STATE_CONNECTED)) {
-		rcu_read_unlock();
+		ibtrs_clt_state_unlock();
 		ibtrs_err_rl(sess, "Sending heartbeat message failed, not connected."
 			     " Connection state changed to %s!\n",
 			     csm_state_str(usr_con->state));
@@ -2659,7 +2668,7 @@ static int send_heartbeat(struct ibtrs_clt_sess *sess)
 					      &hb_and_ack_cqe,
 					      IBTRS_HB_IMM,
 					      IB_SEND_SIGNALED);
-	rcu_read_unlock();
+	ibtrs_clt_state_unlock();
 	if (unlikely(err)) {
 		ibtrs_wrn(sess, "Sending heartbeat failed, posting msg to QP failed,"
 			  " err: %d\n", err);
@@ -3809,10 +3818,9 @@ int ibtrs_clt_rdma_write(struct ibtrs_clt_sess *sess, struct ibtrs_tag *tag,
 	if (WARN_ON(con_id >= CONS_PER_SESSION))
 		return -EINVAL;
 	con = &sess->con[con_id];
-	rcu_read_lock();
-	smp_rmb(); /* fence con->state check */
+	ibtrs_clt_state_lock();
 	if (unlikely(con->state != CSM_STATE_CONNECTED)) {
-		rcu_read_unlock();
+		ibtrs_clt_state_unlock();
 		ibtrs_err_rl(sess, "RDMA-Write failed, not connected"
 			     " (connection %d state %s)\n",
 			     con_id,
@@ -3835,7 +3843,7 @@ int ibtrs_clt_rdma_write(struct ibtrs_clt_sess *sess, struct ibtrs_tag *tag,
 	req->dir        = DMA_TO_DEVICE;
 
 	err = ibtrs_clt_rdma_write_sg(con, req, vec, u_msg_len, data_len);
-	rcu_read_unlock();
+	ibtrs_clt_state_unlock();
 	if (unlikely(err)) {
 		req->in_use = false;
 		ibtrs_err_rl(sess, "RDMA-Write failed, failed to transfer scatter"
@@ -3974,10 +3982,9 @@ int ibtrs_clt_request_rdma_write(struct ibtrs_clt_sess *sess,
 	if (WARN_ON(con_id >= CONS_PER_SESSION))
 		return -EINVAL;
 	con = &sess->con[con_id];
-	rcu_read_lock();
-	smp_rmb(); /* fence con->state check */
+	ibtrs_clt_state_lock();
 	if (unlikely(con->state != CSM_STATE_CONNECTED)) {
-		rcu_read_unlock();
+		ibtrs_clt_state_unlock();
 		ibtrs_err_rl(sess, "RDMA-Write failed, not connected"
 			     " (connection %d state %s)\n",
 			     con_id,
@@ -4001,7 +4008,7 @@ int ibtrs_clt_request_rdma_write(struct ibtrs_clt_sess *sess,
 
 	err = ibtrs_clt_request_rdma_write_sg(con, req, vec,
 					      u_msg_len, result_len);
-	rcu_read_unlock();
+	ibtrs_clt_state_unlock();
 	if (unlikely(err)) {
 		req->in_use = false;
 		ibtrs_err_rl(sess, "Request-RDMA-Write failed, failed to transfer"
@@ -4080,10 +4087,9 @@ int ibtrs_clt_send(struct ibtrs_clt_sess *sess, const struct kvec *vec,
 		goto err_iu;
 	}
 
-	rcu_read_lock();
-	smp_rmb(); /* fence con->state check */
+	ibtrs_clt_state_lock();
 	if (unlikely(con->state != CSM_STATE_CONNECTED)) {
-		rcu_read_unlock();
+		ibtrs_clt_state_unlock();
 		ibtrs_err_rl(sess, "Sending user message failed, not connected,"
 			     " Connection state is %s, Session state is %s\n",
 			     csm_state_str(con->state), ssm_state_str(sess->state));
@@ -4098,7 +4104,7 @@ int ibtrs_clt_send(struct ibtrs_clt_sess *sess, const struct kvec *vec,
 
 	err = ibtrs_post_send(con->ibtrs_con.qp, con->sess->ib_dev.mr, iu,
 			      msg->hdr.tsize);
-	rcu_read_unlock();
+	ibtrs_clt_state_unlock();
 	if (unlikely(err)) {
 		ibtrs_err_rl(sess, "Sending user message failed, posting work"
 			     " request failed, err: %d\n", err);
@@ -4673,11 +4679,10 @@ static int sess_disconnect_cons(struct ibtrs_clt_sess *sess)
 	for (i = 0; i < CONS_PER_SESSION; i++) {
 		struct ibtrs_clt_con *con = &sess->con[i];
 
-		rcu_read_lock();
-		smp_rmb(); /* fence con->state check */
+		ibtrs_clt_state_lock();
 		if (con->state == CSM_STATE_CONNECTED)
 			rdma_disconnect(con->cm_id);
-		rcu_read_unlock();
+		ibtrs_clt_state_unlock();
 	}
 
 	return 0;
