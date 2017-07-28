@@ -2452,7 +2452,7 @@ static int alloc_sess_tx_bufs(struct ibtrs_clt_sess *sess)
 		sess->io_tx_ius[i] = iu;
 	}
 
-	for (i = 0; i < USR_CON_BUF_SIZE; ++i) {
+	for (i = 0; i < USR_MSG_CNT; ++i) {
 		iu = ibtrs_iu_alloc(i, max_req_size, GFP_KERNEL,
 				    sess->ib_dev.dev, DMA_TO_DEVICE,
 				    true);
