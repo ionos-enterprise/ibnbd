@@ -2006,6 +2006,7 @@ static int ibtrs_clt_rdma_cm_ev_handler(struct rdma_cm_id *cm_id,
 					struct rdma_cm_event *event)
 {
 	struct ibtrs_clt_con *con = cm_id->context;
+	struct ibtrs_clt_sess *sess = con->sess;
 
 	switch (event->event) {
 	case RDMA_CM_EVENT_ADDR_RESOLVED:
@@ -2014,8 +2015,8 @@ static int ibtrs_clt_rdma_cm_ev_handler(struct rdma_cm_id *cm_id,
 		break;
 
 	case RDMA_CM_EVENT_ROUTE_RESOLVED: {
-		struct sockaddr_storage *peer_addr = &con->sess->peer_addr;
-		struct sockaddr_storage *self_addr = &con->sess->self_addr;
+		struct sockaddr_storage *peer_addr = &sess->peer_addr;
+		struct sockaddr_storage *self_addr = &sess->self_addr;
 
 		pr_debug("route resolved on cma_id is %p\n", cm_id);
 		/* initiator is src, target is dst */
@@ -2059,7 +2060,7 @@ static int ibtrs_clt_rdma_cm_ev_handler(struct rdma_cm_id *cm_id,
 	case RDMA_CM_EVENT_ADDR_ERROR:
 	case RDMA_CM_EVENT_ROUTE_ERROR:
 	case RDMA_CM_EVENT_CONNECT_ERROR:
-		ibtrs_err(con->sess, "Connection establishment error"
+		ibtrs_err(sess, "Connection establishment error"
 			  " (CM event: %s, err: %d)\n",
 			  rdma_event_msg(event->event), event->status);
 		csm_schedule_event(con, CSM_EV_CON_ERROR);
@@ -2072,7 +2073,7 @@ static int ibtrs_clt_rdma_cm_ev_handler(struct rdma_cm_id *cm_id,
 
 	case RDMA_CM_EVENT_REJECTED:
 		/* reject status is defined in enum, not errno */
-		ibtrs_err_rl(con->sess,
+		ibtrs_err_rl(sess,
 			     "Connection rejected (CM event: %s, err: %s)\n",
 			     rdma_event_msg(event->event),
 			     rdma_reject_msg(cm_id, event->status));
@@ -2082,7 +2083,7 @@ static int ibtrs_clt_rdma_cm_ev_handler(struct rdma_cm_id *cm_id,
 
 	case RDMA_CM_EVENT_UNREACHABLE:
 	case RDMA_CM_EVENT_ADDR_CHANGE: {
-		ibtrs_err_rl(con->sess, "CM error (CM event: %s, err: %d)\n",
+		ibtrs_err_rl(sess, "CM error (CM event: %s, err: %d)\n",
 			     rdma_event_msg(event->event), event->status);
 
 		csm_schedule_event(con, CSM_EV_CON_ERROR);
@@ -2092,7 +2093,7 @@ static int ibtrs_clt_rdma_cm_ev_handler(struct rdma_cm_id *cm_id,
 		/* Device removal is handled via the ib_client API */
 		break;
 	default:
-		ibtrs_wrn(con->sess, "Ignoring unexpected CM event %s, err: %d\n",
+		ibtrs_wrn(sess, "Ignoring unexpected CM event %s, err: %d\n",
 			  rdma_event_msg(event->event), event->status);
 		break;
 	}
