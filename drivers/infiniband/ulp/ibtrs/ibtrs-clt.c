@@ -147,9 +147,6 @@ static struct ib_cqe hb_and_ack_cqe = {
 
 static const struct ibtrs_clt_ops *clt_ops;
 static struct workqueue_struct *ibtrs_wq;
-static LIST_HEAD(sess_list);
-static DEFINE_MUTEX(sess_mutex);
-
 static uuid_le uuid;
 
 enum csm_state {
@@ -429,9 +426,6 @@ static void put_sess(struct ibtrs_clt_sess *sess)
 		sess->con = NULL;
 		ibtrs_clt_free_stats(sess);
 		destroy_completion = sess->destroy_completion;
-		mutex_lock(&sess_mutex);
-		list_del(&sess->sess.list);
-		mutex_unlock(&sess_mutex);
 		ibtrs_info(sess, "Session is disconnected\n");
 		kfree(sess);
 		if (destroy_completion)
@@ -3241,9 +3235,6 @@ static struct ibtrs_clt_sess *sess_init(const struct sockaddr_storage *addr,
 	init_waitqueue_head(&sess->state_wq);
 	init_waitqueue_head(&sess->tags_wait);
 	sess->state = SSM_STATE_IDLE;
-	mutex_lock(&sess_mutex);
-	list_add(&sess->sess.list, &sess_list);
-	mutex_unlock(&sess_mutex);
 	ibtrs_heartbeat_init(&sess->heartbeat,
 			     default_heartbeat_timeout_ms <
 			     MIN_HEARTBEAT_TIMEOUT_MS ?
@@ -3515,9 +3506,6 @@ err1:
 	kfree(sess->con);
 	sess->con = NULL;
 	ibtrs_clt_free_stats(sess);
-	mutex_lock(&sess_mutex);
-	list_del(&sess->sess.list);
-	mutex_unlock(&sess_mutex);
 	kfree(sess);
 err:
 	return ERR_PTR(err);
@@ -4840,13 +4828,6 @@ void ibtrs_clt_unregister(const struct ibtrs_clt_ops *ops)
 		return;
 
 	flush_workqueue(ibtrs_wq);
-
-	mutex_lock(&sess_mutex);
-	WARN(!list_empty(&sess_list),
-	     "BUG: user module didn't close all sessions before calling %s\n",
-	     __func__);
-	mutex_unlock(&sess_mutex);
-
 	clt_ops = NULL;
 }
 EXPORT_SYMBOL(ibtrs_clt_unregister);
@@ -4995,10 +4976,6 @@ static void __exit ibtrs_client_exit(void)
 {
 	pr_info("Unloading module\n");
 
-	mutex_lock(&sess_mutex);
-	WARN(!list_empty(&sess_list),
-	     "Session(s) still exist on module unload\n");
-	mutex_unlock(&sess_mutex);
 	ibtrs_clt_destroy_sysfs_files();
 	destroy_workqueue(ibtrs_wq);
 
