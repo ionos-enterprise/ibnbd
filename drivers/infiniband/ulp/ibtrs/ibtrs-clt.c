@@ -2090,7 +2090,12 @@ static int ibtrs_clt_rdma_cm_ev_handler(struct rdma_cm_id *cm_id,
 		break;
 	}
 	case RDMA_CM_EVENT_DEVICE_REMOVAL:
-		/* Device removal is handled via the ib_client API */
+		/*
+		 * Just mark device as removed and schedule
+		 * a connection error event.
+		 */
+		 csm_schedule_event(con, CSM_EV_CON_ERROR);
+		 sess->device_removed = true;
 		break;
 	default:
 		ibtrs_wrn(sess, "Ignoring unexpected CM event %s, err: %d\n",
@@ -2099,38 +2104,6 @@ static int ibtrs_clt_rdma_cm_ev_handler(struct rdma_cm_id *cm_id,
 	}
 	return 0;
 }
-
-static void ibtrs_clt_ib_client_remove(struct ib_device *ib_device,
-				       void *client_data)
-{
-	struct ibtrs_clt_sess *clt_sess;
-	struct ibtrs_sess *sess;
-
-	/* Remove sessions using this device */
-	mutex_lock(&sess_mutex);
-	list_for_each_entry(sess, &sess_list, list) {
-		clt_sess = container_of(sess, struct ibtrs_clt_sess, sess);
-		if (clt_sess->ib_dev.dev != ib_device)
-			continue;
-		ibtrs_info(clt_sess, "removing session\n");
-		/*
-		 * Generating a CON_ERROR event will cause the SSM to close
-		 * all the connections and try to reconnect, in order to avoid
-		 * reconnections mark device as removed.
-		 */
-		clt_sess->device_removed = true;
-		ssm_schedule_event(clt_sess, SSM_EV_CON_ERROR);
-	}
-	mutex_unlock(&sess_mutex);
-
-	/* Ensure scheduled event is completed */
-	flush_workqueue(ibtrs_wq);
-}
-
-static struct ib_client ibtrs_clt_ib_client = {
-       .name   = "ibtrs_client",
-       .remove = ibtrs_clt_ib_client_remove
-};
 
 static int post_recv_io(struct ibtrs_clt_con *con)
 {
@@ -4997,31 +4970,21 @@ static int __init ibtrs_client_init(void)
 		       " err: %d\n", err);
 		return err;
 	}
-
 	ibtrs_wq = create_workqueue("ibtrs_client_wq");
 	if (!ibtrs_wq) {
 		pr_err("Failed to load module, alloc ibtrs_client_wq failed\n");
 		return -ENOMEM;
 	}
-
-	err = ib_register_client(&ibtrs_clt_ib_client);
-	if (err) {
-		goto out_destroy_wq;
-		return err;
-	}
-
 	err = ibtrs_clt_create_sysfs_files();
 	if (err) {
 		pr_err("Failed to load module, can't create sysfs files,"
 		       " err: %d\n", err);
-		goto out_unregister_client;
+		goto out_destroy_wq;
 	}
 	uuid_le_gen(&uuid);
 
 	return 0;
 
-out_unregister_client:
-	ib_unregister_client(&ibtrs_clt_ib_client);
 out_destroy_wq:
 	destroy_workqueue(ibtrs_wq);
 
@@ -5036,7 +4999,6 @@ static void __exit ibtrs_client_exit(void)
 	WARN(!list_empty(&sess_list),
 	     "Session(s) still exist on module unload\n");
 	mutex_unlock(&sess_mutex);
-	ib_unregister_client(&ibtrs_clt_ib_client);
 	ibtrs_clt_destroy_sysfs_files();
 	destroy_workqueue(ibtrs_wq);
 
