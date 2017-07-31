@@ -70,47 +70,7 @@ ibtrs_validate_msg_req_rdma_write(const struct ibtrs_msg_req_rdma_write *msg)
 	return 0;
 }
 
-static int
-ibtrs_validate_msg_con_open(const struct ibtrs_msg_con_open *msg)
-{
-	if (unlikely(msg->hdr.tsize != sizeof(*msg))) {
-		pr_err("Con Open msg received with invalid length: %d"
-		       " expected %lu\n", msg->hdr.tsize, sizeof(*msg));
-		return -EINVAL;
-	}
-
-	return 0;
-}
-
-static int
-ibtrs_validate_msg_sess_open(const struct ibtrs_msg_sess_open *msg)
-{
-	if (msg->hdr.tsize != sizeof(*msg)) {
-		pr_err("Sess open msg received with invalid length: %d"
-		       " expected %lu\n", msg->hdr.tsize, sizeof(*msg));
-		return -EPROTONOSUPPORT;
-	}
-
-	if (msg->ver != IBTRS_VERSION) {
-		pr_warn("Sess open msg version mismatch: client version %d,"
-			" server version: %d\n", msg->ver, IBTRS_VERSION);
-	}
-
-	return 0;
-}
-
 static int ibtrs_validate_msg_sess_info(const struct ibtrs_msg_sess_info *msg)
-{
-	if (msg->hdr.tsize != sizeof(*msg)) {
-		pr_err("Error message received with invalid length: %d,"
-		       " expected %lu\n", msg->hdr.tsize, sizeof(*msg));
-		return -EPROTONOSUPPORT;
-	}
-
-	return 0;
-}
-
-static int ibtrs_validate_msg_error(const struct ibtrs_msg_error *msg)
 {
 	if (msg->hdr.tsize != sizeof(*msg)) {
 		pr_err("Error message received with invalid length: %d,"
@@ -154,24 +114,6 @@ int ibtrs_validate_message(const struct ibtrs_msg_hdr *hdr)
 		msg = container_of(hdr, typeof(*msg), hdr);
 		return ibtrs_validate_msg_user(msg);
 	}
-	case IBTRS_MSG_CON_OPEN: {
-		const struct ibtrs_msg_con_open *msg;
-
-		msg = container_of(hdr, typeof(*msg), hdr);
-		return ibtrs_validate_msg_con_open(msg);
-	}
-	case IBTRS_MSG_SESS_OPEN: {
-		const struct ibtrs_msg_sess_open *msg;
-
-		msg = container_of(hdr, typeof(*msg), hdr);
-		return ibtrs_validate_msg_sess_open(msg);
-	}
-	case IBTRS_MSG_ERROR: {
-		const struct ibtrs_msg_error *msg;
-
-		msg = container_of(hdr, typeof(*msg), hdr);
-		return ibtrs_validate_msg_error(msg);
-	}
 	default:
 		pr_err("Received IBTRS message with unknown type\n");
 		return -EINVAL;
@@ -179,32 +121,3 @@ int ibtrs_validate_message(const struct ibtrs_msg_hdr *hdr)
 	return 0;
 }
 EXPORT_SYMBOL_GPL(ibtrs_validate_message);
-
-void fill_ibtrs_msg_sess_open(struct ibtrs_msg_sess_open *msg, u8 con_cnt,
-			      const uuid_le *uuid)
-{
-	msg->hdr.type		= IBTRS_MSG_SESS_OPEN;
-	msg->hdr.tsize		= sizeof(*msg);
-	msg->ver		= IBTRS_VERSION;
-	msg->con_cnt		= con_cnt;
-
-	memcpy(msg->uuid, uuid->b, IBTRS_UUID_SIZE);
-}
-EXPORT_SYMBOL_GPL(fill_ibtrs_msg_sess_open);
-
-void fill_ibtrs_msg_con_open(struct ibtrs_msg_con_open *msg,
-			     const uuid_le *uuid)
-{
-	msg->hdr.type		= IBTRS_MSG_CON_OPEN;
-	msg->hdr.tsize		= sizeof(*msg);
-	memcpy(msg->uuid, uuid->b, IBTRS_UUID_SIZE);
-}
-EXPORT_SYMBOL_GPL(fill_ibtrs_msg_con_open);
-
-void fill_ibtrs_msg_sess_info(struct ibtrs_msg_sess_info *msg,
-			      const char *hostname) {
-	msg->hdr.type		= IBTRS_MSG_SESS_INFO;
-	msg->hdr.tsize		= sizeof(*msg);
-	memcpy(msg->hostname, hostname, sizeof(msg->hostname));
-}
-EXPORT_SYMBOL_GPL(fill_ibtrs_msg_sess_info);

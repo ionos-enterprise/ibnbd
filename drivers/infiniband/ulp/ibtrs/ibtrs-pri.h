@@ -415,15 +415,6 @@ struct ibtrs_msg_error {
 
 int ibtrs_validate_message(const struct ibtrs_msg_hdr *hdr);
 
-void fill_ibtrs_msg_sess_open(struct ibtrs_msg_sess_open *msg, u8 con_cnt,
-			      const uuid_le *uuid);
-
-void fill_ibtrs_msg_con_open(struct ibtrs_msg_con_open *msg,
-			     const uuid_le *uuid);
-
-void fill_ibtrs_msg_sess_info(struct ibtrs_msg_sess_info *msg,
-			      const char *hostname);
-
 void ibtrs_heartbeat_init(struct ibtrs_heartbeat *h, u32 timeout_ms);
 void ibtrs_heartbeat_set_timeout_ms(struct ibtrs_heartbeat *h, u32 timeout_ms);
 void ibtrs_heartbeat_set_send_ts(struct ibtrs_heartbeat *h);

@@ -3,25 +3,6 @@
 
 #include "ibtrs-pri.h"
 
-enum ssm_state {  //XXXX DIE ASAP
-	_SSM_STATE_MIN,
-	SSM_STATE_IDLE,
-	SSM_STATE_IDLE_RECONNECT,
-	SSM_STATE_WF_INFO,
-	SSM_STATE_WF_INFO_RECONNECT,
-	SSM_STATE_OPEN,
-	SSM_STATE_OPEN_RECONNECT,
-	SSM_STATE_CONNECTED,
-	SSM_STATE_RECONNECT,
-	SSM_STATE_RECONNECT_IMM,
-	SSM_STATE_CLOSE_DESTROY,
-	SSM_STATE_CLOSE_RECONNECT,
-	SSM_STATE_CLOSE_RECONNECT_IMM,
-	SSM_STATE_DISCONNECTED,
-	SSM_STATE_DESTROYED,
-	_SSM_STATE_MAX
-};
-
 /**
  * enum ibtrs_clt_state - Client states.
  */
@@ -120,12 +101,9 @@ struct ibtrs_clt_stats {
 struct ibtrs_clt_sess {
 	struct ibtrs_sess	sess;
 	wait_queue_head_t	state_wq;
-	enum ssm_state		state; //XXX DIE ASAP
 	enum ibtrs_clt_state_NEW	state_NEW;
 	struct ibtrs_clt_con	*con;
 	struct ibtrs_ib_dev	ib_dev;
-	struct ibtrs_iu		*info_rx_iu; //XXX DIE ASAP
-	struct ibtrs_iu		*info_tx_iu; //XXX DIE ASAP
 	struct ibtrs_iu		*dummy_rx_iu;
 	struct ibtrs_iu		**usr_rx_ring;
 	struct ibtrs_iu		**io_tx_ius;
@@ -139,12 +117,10 @@ struct ibtrs_clt_sess {
 	bool			io_bufs_initialized;
 	size_t			pdu_sz;
 	void			*priv;
-	struct delayed_work	heartbeat_dwork;
 	struct delayed_work	reconnect_dwork;
 	struct work_struct	close_work_NEW;
 	struct ibtrs_heartbeat	heartbeat;
 	atomic_t		refcount;
-	u8			active_cnt; /* XXX DIE */
 	bool			enable_rdma_lat;
 	u8			connected_cnt;
 	u32			retry_cnt;
