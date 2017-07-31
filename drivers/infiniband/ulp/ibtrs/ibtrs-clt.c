@@ -318,8 +318,8 @@ struct rdma_req {
 struct ibtrs_clt_con {
 	struct ibtrs_con	ibtrs_con;
 	enum  csm_state		state;
-	short			cpu;
-	bool			user; /* true if con is for user msg only */
+	unsigned		cid;
+	unsigned		cpu;
 	atomic_t		io_cnt;
 	struct ibtrs_clt_sess	*sess;
 	struct ibtrs_fr_pool	*fr_pool;
@@ -466,8 +466,6 @@ static void csm_connected(struct ibtrs_clt_con *con, enum csm_ev ev);
 static void csm_flushing(struct ibtrs_clt_con *con, enum csm_ev ev);
 static void csm_closing(struct ibtrs_clt_con *con, enum csm_ev ev);
 
-static int init_con(struct ibtrs_clt_sess *sess, struct ibtrs_clt_con *con,
-		    short cpu, bool user);
 /* ignore all event for safefy */
 static void csm_closed(struct ibtrs_clt_con *con, enum csm_ev ev)
 {
@@ -1882,14 +1880,14 @@ static void process_err_wc(struct ibtrs_clt_con *con,
 
 static void ibtrs_clt_update_wc_stats(struct ibtrs_clt_con *con)
 {
-	short cpu = con->cpu;
+	unsigned cpu = con->cpu;
 
 	if (unlikely(con->cpu != cpu)) {
 		pr_debug_ratelimited("WC processing is migrated from CPU %d to "
 				     "%d, cstate %s, sstate %s, user: %s\n",
 				     con->cpu, cpu, csm_state_str(con->state),
 				     ssm_state_str(con->sess->state),
-				     con->user ? "true" : "false");
+				     con->cid == 0 ? "true" : "false");
 		atomic_inc(&con->sess->stats.cpu_migr.from[con->cpu]);
 		con->sess->stats.cpu_migr.to[cpu]++;
 	}
@@ -1919,8 +1917,8 @@ static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 		/*
 		 * post_send() completions: beacon, sess info, user msgs
 		 */
-		if (con->user) {
-			//XXX WTF? should be WARN_ON if !con->user
+		if (con->cid == 0) {
+			//XXX WTF? should be WARN_ON if con->cid != 0
 			iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
 			if (iu == sess->info_tx_iu)
 				break;
@@ -2497,7 +2495,7 @@ static int connect_qp(struct ibtrs_clt_con *con)
 	memset(&conn_param, 0, sizeof(conn_param));
 	conn_param.retry_count = retry_count;
 
-	if (con->user) {
+	if (con->cid == 0) {
 		fill_ibtrs_msg_sess_open(&somsg, CONS_PER_SESSION, &uuid);
 		conn_param.private_data		= &somsg;
 		conn_param.private_data_len	= sizeof(somsg);
@@ -2743,11 +2741,11 @@ static void con_destroy(struct ibtrs_clt_con *con)
 {
 	struct ibtrs_clt_sess *sess = con->sess;
 
-	if (con->user)
+	if (con->cid == 0)
 		cancel_delayed_work_sync(&sess->heartbeat_dwork);
 	fail_outstanding_reqs(con);
 	ibtrs_cq_qp_destroy(&con->ibtrs_con);
-	if (con->user)
+	if (con->cid == 0)
 		free_sess_tr_bufs(sess);
 	else
 		free_con_fast_pool(con);
@@ -3352,7 +3350,7 @@ static int create_con(struct ibtrs_clt_con *con)
 
 	num_wr = DIV_ROUND_UP(sess->max_pages_per_mr,
 			      sess->max_sge);
-	if (con->user) {
+	if (con->cid == 0) {
 		err = create_ib_dev(sess);
 		if (err) {
 			ibtrs_err(sess,
@@ -3389,7 +3387,7 @@ static int create_con(struct ibtrs_clt_con *con)
 	con->ibtrs_con.beacon_cqe.done = ibtrs_clt_rdma_done;
 
 	pr_debug("setup_buffers successful\n");
-	if (con->user)
+	if (con->cid == 0)
 		err = post_recv_info(sess);
 	else
 		err = post_recv_io(con);
@@ -3411,7 +3409,7 @@ err_wq:
 err_con:
 	ibtrs_cq_qp_destroy(&con->ibtrs_con);
 err_pool:
-	if (!con->user)
+	if (con->cid != 0)
 		free_con_fast_pool(con);
 err_cm_id:
 	ibtrs_clt_destroy_cm_id(con);
@@ -3444,14 +3442,16 @@ static int create_cm_id_con(const struct sockaddr_storage *addr,
 	return 0;
 }
 
-static int init_con(struct ibtrs_clt_sess *sess, struct ibtrs_clt_con *con,
-		    short cpu, bool user)
+static int init_con(struct ibtrs_clt_sess *sess, unsigned cid)
 {
+	struct ibtrs_clt_con *con;
 	int err;
 
+	con = &sess->con[cid];
 	con->sess = sess;
-	con->cpu  = cpu;
-	con->user = user;
+	con->cid  = cid;
+	/* Map first two connections to the first CPU */
+	con->cpu  = (cid ? cid - 1 : 0) % num_online_cpus();
 
 	err = create_cm_id_con(&sess->peer_addr, con);
 	if (err) {
@@ -3503,7 +3503,7 @@ struct ibtrs_clt_sess *ibtrs_clt_open(const struct sockaddr_storage *addr,
 	}
 
 	get_sess(sess);
-	err = init_con(sess, &sess->con[0], 0, true);
+	err = init_con(sess, 0);
 	if (err) {
 		ibtrs_err(sess, "Establishing session to server failed,"
 			  " failed to init user connection, err: %d\n",
@@ -4137,7 +4137,7 @@ static void csm_connecting(struct ibtrs_clt_con *con, enum csm_ev ev)
 	switch (ev) {
 	case CSM_EV_CON_ESTABLISHED:
 		csm_set_state(con, CSM_STATE_CONNECTED);
-		if (con->user) {
+		if (con->cid == 0) {
 			if (send_msg_sess_info(con))
 				goto destroy;
 		}
@@ -4311,7 +4311,7 @@ static int ssm_idle_reconnect_init(struct ibtrs_clt_sess *sess)
 		con->sess = sess;
 	}
 	sess->connected_cnt = 0;
-	err = init_con(sess, &sess->con[0], 0, true);
+	err = init_con(sess, 0);
 	if (err)
 		ibtrs_info(sess, "Reconnecting session failed, err: %d\n",
 			   err);
@@ -4484,8 +4484,7 @@ static int ssm_open_init(struct ibtrs_clt_sess *sess)
 	if (unlikely(ret))
 		return ret;
 	for (i = 1; i < CONS_PER_SESSION; i++) {
-		ret = init_con(sess, &sess->con[i], (i - 1) % num_online_cpus(),
-			       false);
+		ret = init_con(sess, i);
 		if (ret)
 			return ret;
 	}
