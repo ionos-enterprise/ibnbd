@@ -439,12 +439,12 @@ static void put_sess(struct ibtrs_clt_sess *sess)
 	}
 }
 
-inline int ibtrs_clt_get_user_queue_depth(struct ibtrs_clt_sess *sess)
+int ibtrs_clt_get_user_queue_depth(struct ibtrs_clt_sess *sess)
 {
 	return sess->user_queue_depth;
 }
 
-inline int ibtrs_clt_set_user_queue_depth(struct ibtrs_clt_sess *sess,
+int ibtrs_clt_set_user_queue_depth(struct ibtrs_clt_sess *sess,
 					  u16 queue_depth)
 {
 	if (queue_depth < 1 ||
@@ -518,7 +518,7 @@ static void csm_set_state(struct ibtrs_clt_con *con, enum csm_state s)
 	}
 }
 
-inline bool ibtrs_clt_sess_is_connected(const struct ibtrs_clt_sess *sess)
+bool ibtrs_clt_sess_is_connected(const struct ibtrs_clt_sess *sess)
 {
 	return sess->state == SSM_STATE_CONNECTED;
 }
