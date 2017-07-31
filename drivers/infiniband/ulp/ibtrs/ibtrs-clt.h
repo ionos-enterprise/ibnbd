@@ -6,7 +6,7 @@
 /**
  * enum ibtrs_clt_state - Client states.
  */
-enum ibtrs_clt_state_NEW {
+enum ibtrs_clt_state {
 	IBTRS_CLT_CONNECTING,
 	IBTRS_CLT_CONNECTING_ERR,
 	IBTRS_CLT_RECONNECTING,
@@ -15,7 +15,7 @@ enum ibtrs_clt_state_NEW {
 	IBTRS_CLT_CLOSED,
 };
 
-static inline const char *ibtrs_clt_state_str(enum ibtrs_clt_state_NEW state)
+static inline const char *ibtrs_clt_state_str(enum ibtrs_clt_state state)
 {
 	switch (state) {
 	case IBTRS_CLT_CONNECTING:
@@ -101,7 +101,7 @@ struct ibtrs_clt_stats {
 struct ibtrs_clt_sess {
 	struct ibtrs_sess	sess;
 	wait_queue_head_t	state_wq;
-	enum ibtrs_clt_state_NEW	state_NEW;
+	enum ibtrs_clt_state	state;
 	struct ibtrs_clt_con	*con;
 	struct ibtrs_ib_dev	ib_dev;
 	struct ibtrs_iu		*dummy_rx_iu;
@@ -118,7 +118,7 @@ struct ibtrs_clt_sess {
 	size_t			pdu_sz;
 	void			*priv;
 	struct delayed_work	reconnect_dwork;
-	struct work_struct	close_work_NEW;
+	struct work_struct	close_work;
 	struct ibtrs_heartbeat	heartbeat;
 	atomic_t		refcount;
 	bool			enable_rdma_lat;

@@ -246,7 +246,7 @@ int ibtrs_clt_set_user_queue_depth(struct ibtrs_clt_sess *sess,
 
 bool ibtrs_clt_sess_is_connected(const struct ibtrs_clt_sess *sess)
 {
-	return sess->state_NEW == IBTRS_CLT_CONNECTED;
+	return sess->state == IBTRS_CLT_CONNECTED;
 }
 
 static inline bool clt_ops_are_valid(const struct ibtrs_clt_ops *ops)
@@ -1171,11 +1171,11 @@ static int ibtrs_send_msg_user_ack(struct ibtrs_clt_con *con)
 	int err;
 
 	ibtrs_clt_state_lock();
-	if (unlikely(sess->state_NEW != IBTRS_CLT_CONNECTED)) {
+	if (unlikely(sess->state != IBTRS_CLT_CONNECTED)) {
 		ibtrs_clt_state_unlock();
 		ibtrs_info(sess, "Sending user msg ack failed, disconnected."
 			   " Session state is %s\n",
-			   ibtrs_clt_state_str(sess->state_NEW));
+			   ibtrs_clt_state_str(sess->state));
 		return -ECOMM;
 	}
 
@@ -1347,7 +1347,7 @@ static void ibtrs_clt_update_wc_stats(struct ibtrs_clt_con *con)
 		pr_debug_ratelimited("WC processing is migrated from CPU %d to "
 				     "%d, state %s, user: %s\n",
 				     con->cpu, cpu,
-				     ibtrs_clt_state_str(sess->state_NEW),
+				     ibtrs_clt_state_str(sess->state),
 				     con->cid == 0 ? "true" : "false");
 		atomic_inc(&sess->stats.cpu_migr.from[con->cpu]);
 		sess->stats.cpu_migr.to[cpu]++;
@@ -1431,7 +1431,7 @@ static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 	}
 }
 
-static int post_recv_all_NEW(struct ibtrs_clt_sess *sess)
+static int post_recv_all(struct ibtrs_clt_sess *sess)
 {
 	struct ibtrs_clt_con *con;
 	struct ibtrs_iu *iu;
@@ -2305,12 +2305,12 @@ static void free_sess_io_bufs(struct ibtrs_clt_sess *sess)
 }
 
 static bool __ibtrs_clt_change_state(struct ibtrs_clt_sess *sess,
-				     enum ibtrs_clt_state_NEW new_state)
+				     enum ibtrs_clt_state new_state)
 {
-	enum ibtrs_clt_state_NEW old_state;
+	enum ibtrs_clt_state old_state;
 	bool changed = false;
 
-	old_state = sess->state_NEW;
+	old_state = sess->state;
 	switch (new_state) {
 	case IBTRS_CLT_RECONNECTING:
 		switch (old_state) {
@@ -2364,7 +2364,7 @@ static bool __ibtrs_clt_change_state(struct ibtrs_clt_sess *sess,
 		break;
 	}
 	if (changed) {
-		sess->state_NEW = new_state;
+		sess->state = new_state;
 		wake_up_locked(&sess->state_wq);
 	}
 
@@ -2372,13 +2372,13 @@ static bool __ibtrs_clt_change_state(struct ibtrs_clt_sess *sess,
 }
 
 static bool ibtrs_clt_change_state_from_to(struct ibtrs_clt_sess *sess,
-					   enum ibtrs_clt_state_NEW old_state,
-					   enum ibtrs_clt_state_NEW new_state)
+					   enum ibtrs_clt_state old_state,
+					   enum ibtrs_clt_state new_state)
 {
 	bool changed = false;
 
 	spin_lock_irq(&sess->state_wq.lock);
-	if (sess->state_NEW == old_state)
+	if (sess->state == old_state)
 		changed = __ibtrs_clt_change_state(sess, new_state);
 	spin_unlock_irq(&sess->state_wq.lock);
 
@@ -2386,7 +2386,7 @@ static bool ibtrs_clt_change_state_from_to(struct ibtrs_clt_sess *sess,
 }
 
 static bool ibtrs_clt_change_state(struct ibtrs_clt_sess *sess,
-				   enum ibtrs_clt_state_NEW new_state)
+				   enum ibtrs_clt_state new_state)
 {
 	bool changed;
 
@@ -2397,10 +2397,10 @@ static bool ibtrs_clt_change_state(struct ibtrs_clt_sess *sess,
 	return changed;
 }
 
-static void ibtrs_clt_reconnect_work_NEW(struct work_struct *work);
-static void ibtrs_clt_close_work_NEW(struct work_struct *work);
+static void ibtrs_clt_reconnect_work(struct work_struct *work);
+static void ibtrs_clt_close_work(struct work_struct *work);
 
-static void init_sess_NEW(struct ibtrs_clt_sess *sess,
+static void init_sess(struct ibtrs_clt_sess *sess,
 		      const struct sockaddr_storage *addr,
 		      size_t pdu_sz, void *priv,
 		      u8 reconnect_delay_sec,
@@ -2421,7 +2421,7 @@ static void init_sess_NEW(struct ibtrs_clt_sess *sess,
 	sess->max_pages_per_mr = max_segments;
 	init_waitqueue_head(&sess->state_wq);
 	init_waitqueue_head(&sess->tags_wait);
-	sess->state_NEW = IBTRS_CLT_CONNECTING;
+	sess->state = IBTRS_CLT_CONNECTING;
 	/*XXX
 	ibtrs_heartbeat_init(&sess->heartbeat,
 			     default_heartbeat_timeout_ms <
@@ -2429,12 +2429,12 @@ static void init_sess_NEW(struct ibtrs_clt_sess *sess,
 			     MIN_HEARTBEAT_TIMEOUT_MS :
 			     default_heartbeat_timeout_ms);
 	*/
-	INIT_WORK(&sess->close_work_NEW, ibtrs_clt_close_work_NEW);
+	INIT_WORK(&sess->close_work, ibtrs_clt_close_work);
 	//XXX INIT_DELAYED_WORK(&sess->heartbeat_dwork, heartbeat_work);
-	INIT_DELAYED_WORK(&sess->reconnect_dwork, ibtrs_clt_reconnect_work_NEW);
+	INIT_DELAYED_WORK(&sess->reconnect_dwork, ibtrs_clt_reconnect_work);
 }
 
-static struct ibtrs_clt_sess *alloc_sess_NEW(const struct sockaddr_storage *addr,
+static struct ibtrs_clt_sess *alloc_sess(const struct sockaddr_storage *addr,
 					size_t pdu_sz, void *priv,
 					u8 reconnect_delay_sec,
 					u16 max_segments,
@@ -2451,7 +2451,7 @@ static struct ibtrs_clt_sess *alloc_sess_NEW(const struct sockaddr_storage *addr
 	if (!sess->con)
 		goto err_free_sess;
 
-	init_sess_NEW(sess, addr, pdu_sz, priv, reconnect_delay_sec,
+	init_sess(sess, addr, pdu_sz, priv, reconnect_delay_sec,
 		      max_segments, max_reconnect_attempts);
 	err = ibtrs_clt_init_stats(sess);
 	if (err) {
@@ -2469,7 +2469,7 @@ err:
 	return ERR_PTR(err);
 }
 
-static void free_sess_NEW(struct ibtrs_clt_sess *sess)
+static void free_sess(struct ibtrs_clt_sess *sess)
 {
 	ibtrs_clt_free_stats(sess);
 	kfree(sess->con);
@@ -2477,7 +2477,7 @@ static void free_sess_NEW(struct ibtrs_clt_sess *sess)
 	kfree(sess);
 }
 
-static int create_con_cq_qp_NEW(struct ibtrs_clt_con *con)
+static int create_con_cq_qp(struct ibtrs_clt_con *con)
 {
 	struct ibtrs_clt_sess *sess = con->sess;
 	u16 cq_size, wr_queue_size;
@@ -2516,7 +2516,7 @@ free_pool:
 	return err;
 }
 
-static void destroy_con_cq_qp_NEW(struct ibtrs_clt_con *con)
+static void destroy_con_cq_qp(struct ibtrs_clt_con *con)
 {
 	ibtrs_cq_qp_destroy(&con->ibtrs_con);
 	if (con->cid != 0)
@@ -2524,21 +2524,21 @@ static void destroy_con_cq_qp_NEW(struct ibtrs_clt_con *con)
 }
 
 
-static void stop_cm_NEW(struct ibtrs_clt_con *con)
+static void stop_cm(struct ibtrs_clt_con *con)
 {
 	rdma_disconnect(con->ibtrs_con.cm_id);
 	ib_drain_qp(con->ibtrs_con.qp);
 }
 
-static void destroy_cm_NEW(struct ibtrs_clt_con *con)
+static void destroy_cm(struct ibtrs_clt_con *con)
 {
 	rdma_destroy_id(con->ibtrs_con.cm_id);
 }
 
-static int ibtrs_rdma_cm_handler_NEW(struct rdma_cm_id *cm_id,
+static int ibtrs_rdma_cm_handler(struct rdma_cm_id *cm_id,
 				     struct rdma_cm_event *ev);
 
-static int create_cm_NEW(struct ibtrs_clt_sess *sess, unsigned cid)
+static int create_cm(struct ibtrs_clt_sess *sess, unsigned cid)
 {
 	struct ibtrs_clt_con *con;
 	int err;
@@ -2555,11 +2555,11 @@ static int create_cm_NEW(struct ibtrs_clt_sess *sess, unsigned cid)
 
 	if (sess->peer_addr.ss_family == AF_IB)
 		con->cm_id = rdma_create_id(&init_net,
-					    ibtrs_rdma_cm_handler_NEW,
+					    ibtrs_rdma_cm_handler,
 					    con, RDMA_PS_IB, IB_QPT_RC);
 	else
 		con->cm_id = rdma_create_id(&init_net,
-					    ibtrs_rdma_cm_handler_NEW,
+					    ibtrs_rdma_cm_handler,
 					    con, RDMA_PS_TCP, IB_QPT_RC);
 	if (unlikely(IS_ERR(con->cm_id))) {
 		err = PTR_ERR(con->cm_id);
@@ -2579,16 +2579,16 @@ static int create_cm_NEW(struct ibtrs_clt_sess *sess, unsigned cid)
 	wait_for_completion_interruptible_timeout(&con->cm_done,
 			  msecs_to_jiffies(IBTRS_CONNECT_TIMEOUT_MS));
 	if (unlikely(con->cm_err)) {
-		stop_cm_NEW(con);
+		stop_cm(con);
 		/* Is safe to call destroy if cq_qp is not inited */
-		destroy_con_cq_qp_NEW(con);
-		destroy_cm_NEW(con);
+		destroy_con_cq_qp(con);
+		destroy_cm(con);
 	}
 
 	return con->cm_err;
 }
 
-static int alloc_sess_bufs_NEW(struct ibtrs_clt_sess *sess)
+static int alloc_sess_bufs(struct ibtrs_clt_sess *sess)
 {
 	struct ibtrs_clt_con *usr_con = &sess->con[0];
 	int err;
@@ -2624,7 +2624,7 @@ free_ibdev:
 	return err;
 }
 
-static void free_sess_bufs_NEW(struct ibtrs_clt_sess *sess)
+static void free_sess_bufs(struct ibtrs_clt_sess *sess)
 {
 	free_sess_tr_bufs(sess);
 	free_sess_io_bufs(sess);
@@ -2632,11 +2632,11 @@ static void free_sess_bufs_NEW(struct ibtrs_clt_sess *sess)
 	ibtrs_ib_dev_destroy(&sess->ib_dev);
 }
 
-static void ibtrs_clt_stop_and_destroy_conns_NEW(struct ibtrs_clt_sess *sess)
+static void ibtrs_clt_stop_and_destroy_conns(struct ibtrs_clt_sess *sess)
 {
 	int cid;
 
-	WARN_ON(sess->state_NEW == IBTRS_CLT_CONNECTED);
+	WARN_ON(sess->state == IBTRS_CLT_CONNECTED);
 
 	//XXX STOP HEARTBEAT HERE (IF HEARTBEAT IS GOOD THING TO DO!!!)
 
@@ -2647,44 +2647,44 @@ static void ibtrs_clt_stop_and_destroy_conns_NEW(struct ibtrs_clt_sess *sess)
 
 	fail_all_outstanding_reqs(sess);
 	for (cid = 0; cid < CONS_PER_SESSION; cid++)
-		stop_cm_NEW(&sess->con[cid]);
-	free_sess_bufs_NEW(sess);
+		stop_cm(&sess->con[cid]);
+	free_sess_bufs(sess);
 	for (cid = 0; cid < CONS_PER_SESSION; cid++) {
-		destroy_con_cq_qp_NEW(&sess->con[cid]);
-		destroy_cm_NEW(&sess->con[cid]);
+		destroy_con_cq_qp(&sess->con[cid]);
+		destroy_cm(&sess->con[cid]);
 	}
 }
 
-static void ibtrs_clt_close_work_NEW(struct work_struct *work)
+static void ibtrs_clt_close_work(struct work_struct *work)
 {
 	struct ibtrs_clt_sess *sess;
 
-	sess = container_of(work, struct ibtrs_clt_sess, close_work_NEW);
-	ibtrs_clt_stop_and_destroy_conns_NEW(sess);
+	sess = container_of(work, struct ibtrs_clt_sess, close_work);
+	ibtrs_clt_stop_and_destroy_conns(sess);
 }
 
-static void ibtrs_clt_close_conns_NEW(struct ibtrs_clt_sess *sess, bool wait)
+static void ibtrs_clt_close_conns(struct ibtrs_clt_sess *sess, bool wait)
 {
 	if (ibtrs_clt_change_state(sess, IBTRS_CLT_CLOSING)) {
 		cancel_delayed_work_sync(&sess->reconnect_dwork);
-		queue_work(ibtrs_wq, &sess->close_work_NEW);
+		queue_work(ibtrs_wq, &sess->close_work);
 	}
 	if (wait)
-		flush_work(&sess->close_work_NEW);
+		flush_work(&sess->close_work);
 }
 
-static int init_conns_NEW(struct ibtrs_clt_sess *sess)
+static int init_conns(struct ibtrs_clt_sess *sess)
 {
 	int cid, err;
 
 	/* Establish all RDMA connections  */
 	for (cid = 0; cid < CONS_PER_SESSION; cid++) {
-		err = create_cm_NEW(sess, cid);
+		err = create_cm(sess, cid);
 		if (unlikely(err))
 			goto destroy;
 	}
 	/* Allocate all session related buffers */
-	err = alloc_sess_bufs_NEW(sess);
+	err = alloc_sess_bufs(sess);
 	if (unlikely(err))
 		goto destroy;
 
@@ -2694,9 +2694,9 @@ destroy:
 	while (cid) {
 		struct ibtrs_clt_con *con = &sess->con[cid];
 
-		stop_cm_NEW(con);
-		destroy_con_cq_qp_NEW(con);
-		destroy_cm_NEW(con);
+		stop_cm(con);
+		destroy_con_cq_qp(con);
+		destroy_cm(con);
 	}
 
 	return err;
@@ -2707,7 +2707,7 @@ static int ibtrs_rdma_addr_resolved(struct ibtrs_clt_con *con)
 	struct ibtrs_clt_sess *sess = con->sess;
 	int err;
 
-	err = create_con_cq_qp_NEW(con);
+	err = create_con_cq_qp(con);
 	if (unlikely(err)) {
 		ibtrs_err(sess, "create_con_cq_qp(), err: %d\n", err);
 		return err;
@@ -2715,7 +2715,7 @@ static int ibtrs_rdma_addr_resolved(struct ibtrs_clt_con *con)
 	err = rdma_resolve_route(con->cm_id, IBTRS_CONNECT_TIMEOUT_MS);
 	if (unlikely(err)) {
 		ibtrs_err(sess, "Resolving route failed, err: %d\n", err);
-		destroy_con_cq_qp_NEW(con);
+		destroy_con_cq_qp(con);
 	}
 
 	return err;
@@ -2873,7 +2873,7 @@ static void ibtrs_rdma_error_recovery(struct ibtrs_clt_con *con)
 				IBTRS_CLT_CONNECTING, IBTRS_CLT_CONNECTING_ERR);
 }
 
-static int ibtrs_rdma_cm_handler_NEW(struct rdma_cm_id *cm_id,
+static int ibtrs_rdma_cm_handler(struct rdma_cm_id *cm_id,
 				     struct rdma_cm_event *ev)
 {
 	struct ibtrs_clt_con *con = cm_id->context;
@@ -2910,7 +2910,7 @@ static int ibtrs_rdma_cm_handler_NEW(struct rdma_cm_id *cm_id,
 		break;
 	case RDMA_CM_EVENT_DEVICE_REMOVAL:
 		/* Schedule closing session, but do not wait */
-		ibtrs_clt_close_conns_NEW(sess, false);
+		ibtrs_clt_close_conns(sess, false);
 		break;
 	default:
 		ibtrs_err(sess, "Unexpected RDMA CM event (%d)\n", ev->event);
@@ -2985,7 +2985,7 @@ static void ibtrs_clt_info_rsp_done(struct ib_cq *cq, struct ib_wc *wc)
 	if (unlikely(err))
 		goto out;
 
-	err = post_recv_all_NEW(sess);
+	err = post_recv_all(sess);
 	if (unlikely(err))
 		goto out;
 
@@ -2996,7 +2996,7 @@ out:
 	ibtrs_clt_change_state(sess, state);
 }
 
-static int ibtrs_send_sess_info_NEW(struct ibtrs_clt_sess *sess,
+static int ibtrs_send_sess_info(struct ibtrs_clt_sess *sess,
 				    bool timeout_wait)
 {
 	struct ibtrs_clt_con *usr_con = &sess->con[0];
@@ -3044,13 +3044,13 @@ static int ibtrs_send_sess_info_NEW(struct ibtrs_clt_sess *sess,
 	/* Wait for state change */
 	if (timeout_wait)
 		wait_event_interruptible_timeout(sess->state_wq,
-			   sess->state_NEW != IBTRS_CLT_CONNECTING,
+			   sess->state != IBTRS_CLT_CONNECTING,
 			   msecs_to_jiffies(IBTRS_CONNECT_TIMEOUT_MS));
 	else
 		wait_event(sess->state_wq,
-			   sess->state_NEW != IBTRS_CLT_CONNECTING);
-	if (unlikely(sess->state_NEW != IBTRS_CLT_CONNECTED)) {
-		if (sess->state_NEW == IBTRS_CLT_CONNECTING_ERR)
+			   sess->state != IBTRS_CLT_CONNECTING);
+	if (unlikely(sess->state != IBTRS_CLT_CONNECTED)) {
+		if (sess->state == IBTRS_CLT_CONNECTING_ERR)
 			err = -ECONNRESET;
 		else
 			err = -ETIMEDOUT;
@@ -3066,7 +3066,7 @@ out:
 	return err;
 }
 
-static void ibtrs_clt_reconnect_work_NEW(struct work_struct *work)
+static void ibtrs_clt_reconnect_work(struct work_struct *work)
 {
 	struct ibtrs_clt_sess *sess;
 	unsigned delay_ms;
@@ -3076,19 +3076,19 @@ static void ibtrs_clt_reconnect_work_NEW(struct work_struct *work)
 			    reconnect_dwork);
 
 	/* Stop everything */
-	ibtrs_clt_stop_and_destroy_conns_NEW(sess);
+	ibtrs_clt_stop_and_destroy_conns(sess);
 
 	if (!ibtrs_clt_change_state(sess, IBTRS_CLT_CONNECTING))
 		/* User requested closing */
 		return;
 
-	err = init_conns_NEW(sess);
+	err = init_conns(sess);
 	if (unlikely(err)) {
 		ibtrs_err(sess, "Establishing session to server failed,"
 			  " failed to init connections, err: %d\n", err);
 		goto reconnect_again;
 	}
-	err = ibtrs_send_sess_info_NEW(sess, false);
+	err = ibtrs_send_sess_info(sess, false);
 	if (unlikely(err)) {
 		ibtrs_err(sess, "Sending session info failed, err: %d\n", err);
 		goto reconnect_again;
@@ -3104,7 +3104,7 @@ reconnect_again:
 	}
 }
 
-struct ibtrs_clt_sess *ibtrs_clt_open_NEW(const struct sockaddr_storage *addr,
+struct ibtrs_clt_sess *ibtrs_clt_open(const struct sockaddr_storage *addr,
 				      size_t pdu_sz, void *priv,
 				      u8 reconnect_delay_sec, u16 max_segments,
 				      s16 max_reconnect_attempts)
@@ -3119,7 +3119,7 @@ struct ibtrs_clt_sess *ibtrs_clt_open_NEW(const struct sockaddr_storage *addr,
 		goto out;
 	}
 	sockaddr_to_str(addr, str_addr, sizeof(str_addr));
-	sess = alloc_sess_NEW(addr, pdu_sz, priv, reconnect_delay_sec,
+	sess = alloc_sess(addr, pdu_sz, priv, reconnect_delay_sec,
 			      max_segments, max_reconnect_attempts);
 	if (unlikely(IS_ERR(sess))) {
 		pr_err("Establishing session to %s failed, err: %ld\n",
@@ -3127,14 +3127,14 @@ struct ibtrs_clt_sess *ibtrs_clt_open_NEW(const struct sockaddr_storage *addr,
 		err = PTR_ERR(sess);
 		goto out;
 	}
-	err = init_conns_NEW(sess);
+	err = init_conns(sess);
 	if (unlikely(err)) {
 		ibtrs_err(sess, "Establishing session to server failed,"
 			  " failed to init connections, err: %d\n", err);
 		err = -EHOSTUNREACH;
 		goto free_sess;
 	}
-	err = ibtrs_send_sess_info_NEW(sess, true);
+	err = ibtrs_send_sess_info(sess, true);
 	if (unlikely(err)) {
 		ibtrs_err(sess, "Sending session info failed, err: %d\n", err);
 		goto close_sess;
@@ -3151,21 +3151,21 @@ struct ibtrs_clt_sess *ibtrs_clt_open_NEW(const struct sockaddr_storage *addr,
 	return sess;
 
 close_sess:
-	ibtrs_clt_close_conns_NEW(sess, true);
+	ibtrs_clt_close_conns(sess, true);
 free_sess:
-	free_sess_NEW(sess);
+	free_sess(sess);
 
 out:
 	return ERR_PTR(err);
 }
-EXPORT_SYMBOL(ibtrs_clt_open_NEW);
+EXPORT_SYMBOL(ibtrs_clt_open);
 
-void ibtrs_clt_close_NEW(struct ibtrs_clt_sess *sess)
+void ibtrs_clt_close(struct ibtrs_clt_sess *sess)
 {
-	ibtrs_clt_close_conns_NEW(sess, true);
-	free_sess_NEW(sess);
+	ibtrs_clt_close_conns(sess, true);
+	free_sess(sess);
 }
-EXPORT_SYMBOL(ibtrs_clt_close_NEW);
+EXPORT_SYMBOL(ibtrs_clt_close);
 
 int ibtrs_clt_reconnect(struct ibtrs_clt_sess *sess)
 {
@@ -3353,12 +3353,12 @@ int ibtrs_clt_rdma_write(struct ibtrs_clt_sess *sess, struct ibtrs_tag *tag,
 		return -EINVAL;
 	con = &sess->con[con_id];
 	ibtrs_clt_state_lock();
-	if (unlikely(sess->state_NEW != IBTRS_CLT_CONNECTED)) {
+	if (unlikely(sess->state != IBTRS_CLT_CONNECTED)) {
 		ibtrs_clt_state_unlock();
 		ibtrs_err_rl(sess, "RDMA-Write failed, not connected"
 			     " (connection %d state %s)\n",
 			     con_id,
-			     ibtrs_clt_state_str(sess->state_NEW));
+			     ibtrs_clt_state_str(sess->state));
 		return -ECOMM;
 	}
 
@@ -3509,12 +3509,12 @@ int ibtrs_clt_request_rdma_write(struct ibtrs_clt_sess *sess,
 		return -EINVAL;
 	con = &sess->con[con_id];
 	ibtrs_clt_state_lock();
-	if (unlikely(sess->state_NEW != IBTRS_CLT_CONNECTED)) {
+	if (unlikely(sess->state != IBTRS_CLT_CONNECTED)) {
 		ibtrs_clt_state_unlock();
 		ibtrs_err_rl(sess, "RDMA-Write failed, not connected"
 			     " (connection %d state %s)\n",
 			     con_id,
-			     ibtrs_clt_state_str(sess->state_NEW));
+			     ibtrs_clt_state_str(sess->state));
 		return -ECOMM;
 	}
 
@@ -3575,11 +3575,11 @@ int ibtrs_clt_send(struct ibtrs_clt_sess *sess, const struct kvec *vec,
 		return -ECOMM;
 	}
 	ibtrs_clt_state_lock();
-	if (unlikely(sess->state_NEW != IBTRS_CLT_CONNECTED)) {
+	if (unlikely(sess->state != IBTRS_CLT_CONNECTED)) {
 		ibtrs_clt_state_unlock();
 		ibtrs_err_rl(sess, "Sending user message failed, not connected."
 			     " Session state is %s\n",
-			     ibtrs_clt_state_str(sess->state_NEW));
+			     ibtrs_clt_state_str(sess->state));
 		err = -ECOMM;
 		goto err_post_send;
 	}
@@ -3643,7 +3643,7 @@ EXPORT_SYMBOL(ibtrs_clt_unregister);
 
 int ibtrs_clt_query(struct ibtrs_clt_sess *sess, struct ibtrs_attrs *attr)
 {
-	if (unlikely(sess->state_NEW != IBTRS_CLT_CONNECTED))
+	if (unlikely(sess->state != IBTRS_CLT_CONNECTED))
 		return -ECOMM;
 
 	attr->queue_depth      = sess->queue_depth;
