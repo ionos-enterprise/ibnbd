@@ -1678,12 +1678,13 @@ static void process_io_rsp(struct ibtrs_clt_sess *sess, u32 msg_id, s16 errno)
 
 static int ibtrs_send_msg_user_ack(struct ibtrs_clt_con *con)
 {
+	struct ibtrs_clt_sess *sess = con->sess;
 	int err;
 
 	ibtrs_clt_state_lock();
 	if (unlikely(con->state != CSM_STATE_CONNECTED)) {
 		ibtrs_clt_state_unlock();
-		ibtrs_info(con->sess, "Sending user msg ack failed, disconnected"
+		ibtrs_info(sess, "Sending user msg ack failed, disconnected"
 			   " Connection state is %s, Session state is %s\n",
 			   csm_state_str(con->state),
 			   ssm_state_str(con->sess->state));
@@ -1696,11 +1697,11 @@ static int ibtrs_send_msg_user_ack(struct ibtrs_clt_con *con)
 					      IB_SEND_SIGNALED);
 	ibtrs_clt_state_unlock();
 	if (unlikely(err)) {
-		ibtrs_err_rl(con->sess, "Sending user msg ack failed, err: %d\n",
+		ibtrs_err_rl(sess, "Sending user msg ack failed, err: %d\n",
 			     err);
 		return err;
 	}
-	ibtrs_heartbeat_set_send_ts(&con->sess->heartbeat);
+	ibtrs_heartbeat_set_send_ts(&sess->heartbeat);
 
 	return 0;
 }
@@ -1874,6 +1875,7 @@ static void process_err_wc(struct ibtrs_clt_con *con,
 
 static void ibtrs_clt_update_wc_stats(struct ibtrs_clt_con *con)
 {
+	struct ibtrs_clt_sess *sess = con->sess;
 	unsigned cpu = con->cpu;
 
 	if (unlikely(con->cpu != cpu)) {
@@ -1882,13 +1884,13 @@ static void ibtrs_clt_update_wc_stats(struct ibtrs_clt_con *con)
 				     con->cpu, cpu, csm_state_str(con->state),
 				     ssm_state_str(con->sess->state),
 				     con->cid == 0 ? "true" : "false");
-		atomic_inc(&con->sess->stats.cpu_migr.from[con->cpu]);
-		con->sess->stats.cpu_migr.to[cpu]++;
+		atomic_inc(&sess->stats.cpu_migr.from[con->cpu]);
+		sess->stats.cpu_migr.to[cpu]++;
 	}
 	//XXX remove ASAP
-	con->sess->stats.wc_comp[cpu].max_wc_cnt = 1;
-	con->sess->stats.wc_comp[cpu].cnt++;
-	con->sess->stats.wc_comp[cpu].total_cnt++;
+	sess->stats.wc_comp[cpu].max_wc_cnt = 1;
+	sess->stats.wc_comp[cpu].cnt++;
+	sess->stats.wc_comp[cpu].total_cnt++;
 }
 
 static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
