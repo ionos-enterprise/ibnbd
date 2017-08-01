@@ -1590,9 +1590,8 @@ static int alloc_sess_rx_bufs(struct ibtrs_clt_sess *sess)
 	struct ibtrs_iu *iu;
 	int i;
 
-	sess->dummy_rx_iu = ibtrs_iu_alloc(0, IBTRS_HDR_LEN,
-					   GFP_KERNEL, sess->ib_dev.dev,
-					   DMA_FROM_DEVICE, true);
+	sess->dummy_rx_iu = ibtrs_iu_alloc(0, IBTRS_HDR_LEN, GFP_KERNEL,
+					   sess->ib_dev.dev, DMA_FROM_DEVICE);
 	if (unlikely(!sess->dummy_rx_iu))
 		goto err;
 
@@ -1604,7 +1603,7 @@ static int alloc_sess_rx_bufs(struct ibtrs_clt_sess *sess)
 
 	for (i = 0; i < USR_CON_BUF_SIZE; ++i) {
 		iu = ibtrs_iu_alloc(i, max_req_size, GFP_KERNEL,
-				    sess->ib_dev.dev, DMA_FROM_DEVICE, true);
+				    sess->ib_dev.dev, DMA_FROM_DEVICE);
 		if (unlikely(!iu))
 			goto err;
 		sess->usr_rx_ring[i] = iu;
@@ -1632,7 +1631,7 @@ static int alloc_sess_tx_bufs(struct ibtrs_clt_sess *sess)
 
 	for (i = 0; i < sess->queue_depth; ++i) {
 		iu = ibtrs_iu_alloc(i, max_req_size, GFP_KERNEL,
-				    sess->ib_dev.dev, DMA_TO_DEVICE,false);
+				    sess->ib_dev.dev, DMA_TO_DEVICE);
 		if (unlikely(!iu))
 			goto err;
 		sess->io_tx_ius[i] = iu;
@@ -2968,11 +2967,9 @@ static int ibtrs_send_sess_info(struct ibtrs_clt_sess *sess,
 	rx_sz += sizeof(u64) * MAX_SESS_QUEUE_DEPTH;
 
 	tx_iu = ibtrs_iu_alloc(0, sizeof(struct ibtrs_msg_info_req),
-			       GFP_KERNEL, sess->ib_dev.dev,
-			       DMA_TO_DEVICE, true);
+			       GFP_KERNEL, sess->ib_dev.dev, DMA_TO_DEVICE);
 	rx_iu = ibtrs_iu_alloc(0, rx_sz, GFP_KERNEL,
-			       sess->ib_dev.dev,
-			       DMA_FROM_DEVICE, true);
+			       sess->ib_dev.dev, DMA_FROM_DEVICE);
 	if (unlikely(!tx_iu || !rx_sz)) {
 		ibtrs_err(sess, "ibtrs_iu_alloc(), err: %d\n", -ENOMEM);
 		err = -ENOMEM;

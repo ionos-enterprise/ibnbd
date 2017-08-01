@@ -1325,8 +1325,8 @@ static int alloc_sess_tx_bufs(struct ibtrs_srv_sess *sess)
 
 	sess->rdma_info_iu =
 		ibtrs_iu_alloc(0, IBTRS_MSG_SESS_OPEN_RESP_LEN(
-				       sess->queue_depth), GFP_KERNEL, ib_dev,
-			       DMA_TO_DEVICE, true);
+				       sess->queue_depth), GFP_KERNEL,
+			       ib_dev, DMA_TO_DEVICE);
 	if (unlikely(!sess->rdma_info_iu)) {
 		ibtrs_err(sess, "Allocation failed\n");
 		return -ENOMEM;
@@ -1364,8 +1364,8 @@ static int alloc_sess_rx_bufs(struct ibtrs_srv_sess *sess)
 	int i;
 
 	sess->dummy_rx_iu =
-		ibtrs_iu_alloc(0, IBTRS_HDR_LEN, GFP_KERNEL, sess->dev->ib_dev.dev,
-			       DMA_FROM_DEVICE, true);
+		ibtrs_iu_alloc(0, IBTRS_HDR_LEN, GFP_KERNEL,
+			       sess->dev->ib_dev.dev, DMA_FROM_DEVICE);
 	if (!sess->dummy_rx_iu) {
 		ibtrs_err(sess, "Failed to allocate dummy IU to receive "
 			  "immediate messages on io connections\n");
@@ -1382,8 +1382,7 @@ static int alloc_sess_rx_bufs(struct ibtrs_srv_sess *sess)
 	for (i = 0; i < USR_CON_BUF_SIZE; ++i) {
 		sess->usr_rx_ring[i] =
 			ibtrs_iu_alloc(i, MAX_REQ_SIZE, GFP_KERNEL,
-				       sess->dev->ib_dev.dev, DMA_FROM_DEVICE,
-				       true);
+				       sess->dev->ib_dev.dev, DMA_FROM_DEVICE);
 		if (!sess->usr_rx_ring[i]) {
 			ibtrs_err(sess, "Failed to allocate iu for usr_rx_ring\n");
 			goto err;

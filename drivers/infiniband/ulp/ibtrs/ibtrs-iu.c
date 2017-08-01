@@ -31,7 +31,7 @@ int ibtrs_usr_msg_alloc_list(struct ibtrs_sess *sess,
 
 	for (i = 0; i < msg_cnt; ++i) {
 		iu = ibtrs_iu_alloc(i, max_req_size, GFP_KERNEL,
-				    dev->dev, DMA_TO_DEVICE, true);
+				    dev->dev, DMA_TO_DEVICE);
 		if (unlikely(!iu))
 			goto err;
 
@@ -120,32 +120,33 @@ EXPORT_SYMBOL_GPL(ibtrs_usr_msg_put);
 
 struct ibtrs_iu *ibtrs_iu_alloc(u32 tag, size_t size, gfp_t gfp_mask,
 				struct ib_device *dma_dev,
-				enum dma_data_direction direction, bool is_msg)
+				enum dma_data_direction direction)
 {
 	struct ibtrs_iu *iu;
 
 	iu = kmalloc(sizeof(*iu), gfp_mask);
-	if (!iu)
+	if (unlikely(!iu))
 		return NULL;
 
 	iu->buf = kzalloc(size, gfp_mask);
-	if (!iu->buf)
+	if (unlikely(!iu->buf))
 		goto err1;
 
 	iu->dma_addr = ib_dma_map_single(dma_dev, iu->buf, size, direction);
-	if (ib_dma_mapping_error(dma_dev, iu->dma_addr))
+	if (unlikely(ib_dma_mapping_error(dma_dev, iu->dma_addr)))
 		goto err2;
 
 	iu->size      = size;
 	iu->direction = direction;
 	iu->tag       = tag;
-	iu->is_msg     = is_msg;
+
 	return iu;
 
 err2:
 	kfree(iu->buf);
 err1:
 	kfree(iu);
+
 	return NULL;
 }
 EXPORT_SYMBOL_GPL(ibtrs_iu_alloc);

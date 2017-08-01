@@ -97,7 +97,6 @@ struct ibtrs_iu {
 	void                    *buf;
 	size_t                  size;
 	enum dma_data_direction direction;
-	bool			is_msg;
 	u32			tag;
 };
 
@@ -431,7 +430,7 @@ void ibtrs_usr_msg_return_iu(struct ibtrs_sess *sess, struct ibtrs_iu *iu);
 void ibtrs_usr_msg_put(struct ibtrs_sess *sess);
 struct ibtrs_iu *ibtrs_iu_alloc(u32 tag, size_t size, gfp_t t,
 				struct ib_device *dev,
-				enum dma_data_direction, bool is_msg);
+				enum dma_data_direction);
 
 void ibtrs_iu_free(struct ibtrs_iu *iu, enum dma_data_direction dir,
 		   struct ib_device *dev);
