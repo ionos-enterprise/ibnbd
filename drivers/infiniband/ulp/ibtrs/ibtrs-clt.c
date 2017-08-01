@@ -1474,51 +1474,40 @@ static void fail_all_outstanding_reqs(struct ibtrs_clt_sess *sess)
 	}
 }
 
-static void free_reqs(struct ibtrs_clt_sess *sess)
+static void free_sess_reqs(struct ibtrs_clt_sess *sess)
 {
 	struct rdma_req *req;
 	int i;
 
-	if (!sess->reqs)
-		return;
-
 	for (i = 0; i < sess->queue_depth; ++i) {
 		req = &sess->reqs[i];
-
-		if (sess->fast_reg_mode == IBTRS_FAST_MEM_FR) {
+		if (sess->fast_reg_mode == IBTRS_FAST_MEM_FR)
 			kfree(req->fr_list);
-			req->fr_list = NULL;
-		} else if (sess->fast_reg_mode == IBTRS_FAST_MEM_FMR) {
+		else if (sess->fast_reg_mode == IBTRS_FAST_MEM_FMR)
 			kfree(req->fmr_list);
-			req->fmr_list = NULL;
-		}
-
 		kfree(req->map_page);
-		req->map_page = NULL;
 	}
-
 	kfree(sess->reqs);
 	sess->reqs = NULL;
 }
 
-static int alloc_reqs(struct ibtrs_clt_sess *sess)
+static int alloc_sess_reqs(struct ibtrs_clt_sess *sess)
 {
-	struct rdma_req *req = NULL;
-	void *mr_list = NULL;
+	struct rdma_req *req;
+	void *mr_list;
 	int i;
 
 	sess->reqs = kcalloc(sess->queue_depth, sizeof(*sess->reqs),
 			     GFP_KERNEL);
-	if (!sess->reqs)
+	if (unlikely(!sess->reqs))
 		return -ENOMEM;
 
 	for (i = 0; i < sess->queue_depth; ++i) {
 		req = &sess->reqs[i];
 		mr_list = kmalloc_array(sess->max_pages_per_mr,
 					sizeof(void *), GFP_KERNEL);
-		if (!mr_list)
+		if (unlikely(!mr_list))
 			goto out;
-
 		if (sess->fast_reg_mode == IBTRS_FAST_MEM_FR)
 			req->fr_list = mr_list;
 		else if (sess->fast_reg_mode == IBTRS_FAST_MEM_FMR)
@@ -1526,14 +1515,15 @@ static int alloc_reqs(struct ibtrs_clt_sess *sess)
 
 		req->map_page = kmalloc(sess->max_pages_per_mr *
 					sizeof(void *), GFP_KERNEL);
-		if (!req->map_page)
+		if (unlikely(!req->map_page))
 			goto out;
 	}
 
 	return 0;
 
 out:
-	free_reqs(sess);
+	free_sess_reqs(sess);
+
 	return -ENOMEM;
 }
 
@@ -1541,98 +1531,70 @@ static void free_sess_rx_bufs(struct ibtrs_clt_sess *sess)
 {
 	int i;
 
-	if (!sess->usr_rx_ring)
-		return;
-
-	for (i = 0; i < USR_CON_BUF_SIZE; ++i)
-		if (sess->usr_rx_ring[i])
-			ibtrs_iu_free(sess->usr_rx_ring[i],
-				      DMA_FROM_DEVICE,
-				      sess->ib_dev.dev);
-
-	kfree(sess->usr_rx_ring);
-	sess->usr_rx_ring = NULL;
+	if (sess->dummy_rx_iu) {
+		ibtrs_iu_free(sess->dummy_rx_iu, DMA_FROM_DEVICE,
+			      sess->ib_dev.dev);
+		sess->dummy_rx_iu = NULL;
+	}
+	if (sess->usr_rx_ring) {
+		for (i = 0; i < USR_CON_BUF_SIZE; ++i) {
+			if (sess->usr_rx_ring[i])
+				ibtrs_iu_free(sess->usr_rx_ring[i],
+					      DMA_FROM_DEVICE,
+					      sess->ib_dev.dev);
+		}
+		kfree(sess->usr_rx_ring);
+		sess->usr_rx_ring = NULL;
+	}
 }
 
 static void free_sess_tx_bufs(struct ibtrs_clt_sess *sess)
 {
 	int i;
 
-	if (!sess->io_tx_ius)
-		return;
+	if (sess->io_tx_ius) {
+		for (i = 0; i < sess->queue_depth; i++)
+			if (sess->io_tx_ius[i])
+				ibtrs_iu_free(sess->io_tx_ius[i], DMA_TO_DEVICE,
+					      sess->ib_dev.dev);
 
-	for (i = 0; i < sess->queue_depth; i++)
-		if (sess->io_tx_ius[i])
-			ibtrs_iu_free(sess->io_tx_ius[i], DMA_TO_DEVICE,
-				      sess->ib_dev.dev);
-
-	kfree(sess->io_tx_ius);
-	sess->io_tx_ius = NULL;
-
-	ibtrs_usr_msg_free_list(&sess->sess, &sess->ib_dev);
-}
-
-static void free_sess_tr_bufs(struct ibtrs_clt_sess *sess)
-{
-	free_sess_rx_bufs(sess);
-	free_sess_tx_bufs(sess);
-}
-
-static void free_sess_init_bufs(struct ibtrs_clt_sess *sess)
-{
-	if (sess->dummy_rx_iu) {
-		ibtrs_iu_free(sess->dummy_rx_iu, DMA_FROM_DEVICE,
-			      sess->ib_dev.dev);
-		sess->dummy_rx_iu = NULL;
+		kfree(sess->io_tx_ius);
+		sess->io_tx_ius = NULL;
 	}
+	ibtrs_usr_msg_free_list(&sess->sess, &sess->ib_dev);
 }
 
 static int alloc_sess_rx_bufs(struct ibtrs_clt_sess *sess)
 {
 	u32 max_req_size = sess->max_req_size;
+	struct ibtrs_iu *iu;
 	int i;
+
+	sess->dummy_rx_iu = ibtrs_iu_alloc(0, IBTRS_HDR_LEN,
+					   GFP_KERNEL, sess->ib_dev.dev,
+					   DMA_FROM_DEVICE, true);
+	if (unlikely(!sess->dummy_rx_iu))
+		goto err;
 
 	sess->usr_rx_ring = kcalloc(USR_CON_BUF_SIZE,
 				    sizeof(*sess->usr_rx_ring),
 				    GFP_KERNEL);
 	if (unlikely(!sess->usr_rx_ring))
-		return -ENOMEM;
+		goto err;
 
 	for (i = 0; i < USR_CON_BUF_SIZE; ++i) {
-		/* alloc recv buffer, open rep is the biggest */
-		sess->usr_rx_ring[i] = ibtrs_iu_alloc(i, max_req_size,
-						      GFP_KERNEL,
-						      sess->ib_dev.dev,
-						      DMA_FROM_DEVICE, true);
-		if (unlikely(!sess->usr_rx_ring[i])) {
-			ibtrs_wrn(sess, "Failed to allocate IU for RX ring\n");
+		iu = ibtrs_iu_alloc(i, max_req_size, GFP_KERNEL,
+				    sess->ib_dev.dev, DMA_FROM_DEVICE, true);
+		if (unlikely(!iu))
 			goto err;
-		}
+		sess->usr_rx_ring[i] = iu;
 	}
 
 	return 0;
 
 err:
+	ibtrs_err(sess, "ibtrs_iu_alloc() failed\n");
 	free_sess_rx_bufs(sess);
-
-	return -ENOMEM;
-}
-
-static int alloc_sess_init_bufs(struct ibtrs_clt_sess *sess)
-{
-	sess->dummy_rx_iu =
-		ibtrs_iu_alloc(0, IBTRS_HDR_LEN,
-			       GFP_KERNEL, sess->ib_dev.dev,
-			       DMA_FROM_DEVICE, true);
-	if (!sess->dummy_rx_iu) {
-		ibtrs_err_rl(sess, "ibtrs_iu_alloc(), err: %d\n", -ENOMEM);
-		goto err;
-	}
-
-	return 0;
-
-err:
-	free_sess_init_bufs(sess);
 
 	return -ENOMEM;
 }
@@ -1643,49 +1605,30 @@ static int alloc_sess_tx_bufs(struct ibtrs_clt_sess *sess)
 	struct ibtrs_iu *iu;
 	int i, err;
 
-
-	INIT_LIST_HEAD(&sess->u_msg_ius_list);
-	spin_lock_init(&sess->u_msg_ius_lock);
-
 	sess->io_tx_ius = kcalloc(sess->queue_depth, sizeof(*sess->io_tx_ius),
 				  GFP_KERNEL);
-	if (unlikely(!sess->io_tx_ius)) {
-		ibtrs_err(sess, "Allocation failed\n");
+	if (unlikely(!sess->io_tx_ius))
 		goto err;
-	}
+
 	for (i = 0; i < sess->queue_depth; ++i) {
 		iu = ibtrs_iu_alloc(i, max_req_size, GFP_KERNEL,
 				    sess->ib_dev.dev, DMA_TO_DEVICE,false);
-		if (unlikely(!iu)) {
-			ibtrs_err(sess, "Allocation failed\n");
+		if (unlikely(!iu))
 			goto err;
-		}
 		sess->io_tx_ius[i] = iu;
 	}
 	err = ibtrs_usr_msg_alloc_list(&sess->sess, &sess->ib_dev,
 				       max_req_size);
-	if (unlikely(err)) {
-		ibtrs_err(sess, "Allocation failed\n");
+	if (unlikely(err))
 		goto err;
-	}
 
 	return 0;
 
 err:
+	ibtrs_err(sess, "ibtrs_iu_alloc() failed\n");
 	free_sess_tx_bufs(sess);
 
 	return -ENOMEM;
-}
-
-static int alloc_sess_tr_bufs(struct ibtrs_clt_sess *sess)
-{
-	int err;
-
-	err = alloc_sess_rx_bufs(sess);
-	if (!err)
-		err = alloc_sess_tx_bufs(sess);
-
-	return err;
 }
 
 static int alloc_sess_tags(struct ibtrs_clt_sess *sess)
@@ -1779,8 +1722,6 @@ static int alloc_con_fast_pool(struct ibtrs_clt_con *con)
 	struct ibtrs_fr_pool *fr_pool;
 	int err = 0;
 
-	if (sess->fast_reg_mode == IBTRS_FAST_MEM_FMR)
-		return 0;
 	if (sess->fast_reg_mode == IBTRS_FAST_MEM_FR) {
 		fr_pool = ibtrs_create_fr_pool(sess->ib_dev.dev,
 					       sess->ib_dev.pd,
@@ -1800,9 +1741,7 @@ static int alloc_con_fast_pool(struct ibtrs_clt_con *con)
 
 static void free_con_fast_pool(struct ibtrs_clt_con *con)
 {
-	if (con->sess->fast_reg_mode == IBTRS_FAST_MEM_FMR)
-		return;
-	if (con->sess->fast_reg_mode == IBTRS_FAST_MEM_FR) {
+	if (con->fr_pool) {
 		ibtrs_destroy_fr_pool(con->fr_pool);
 		con->fr_pool = NULL;
 	}
@@ -1826,7 +1765,7 @@ static int alloc_sess_fast_pool(struct ibtrs_clt_sess *sess)
 					       IB_ACCESS_REMOTE_WRITE);
 
 		fmr_pool = ib_create_fmr_pool(sess->ib_dev.pd, &fmr_param);
-		if (IS_ERR(fmr_pool)) {
+		if (unlikely(IS_ERR(fmr_pool))) {
 			err = PTR_ERR(fmr_pool);
 			ibtrs_err(sess, "FMR pool allocation failed, err: %d\n",
 				  err);
@@ -1840,8 +1779,7 @@ static int alloc_sess_fast_pool(struct ibtrs_clt_sess *sess)
 
 static void free_sess_fast_pool(struct ibtrs_clt_sess *sess)
 {
-	if (sess->fast_reg_mode == IBTRS_FAST_MEM_FMR &&
-	    sess->fmr_pool) {
+	if (sess->fmr_pool) {
 		ib_destroy_fmr_pool(sess->fmr_pool);
 		sess->fmr_pool = NULL;
 	}
@@ -1882,9 +1820,9 @@ int ibtrs_clt_reset_reconnects_stat(struct ibtrs_clt_sess *sess, bool enable)
 		memset(&sess->stats.reconnects, 0,
 		       sizeof(sess->stats.reconnects));
 		return 0;
-	} else {
-		return -EINVAL;
 	}
+
+	return -EINVAL;
 }
 
 int ibtrs_clt_stats_reconnects_to_str(struct ibtrs_clt_sess *sess, char *buf,
@@ -1901,9 +1839,9 @@ int ibtrs_clt_reset_user_ib_msgs_stats(struct ibtrs_clt_sess *sess, bool enable)
 		memset(&sess->stats.user_ib_msgs, 0,
 		       sizeof(sess->stats.user_ib_msgs));
 		return 0;
-	} else {
-		return -EINVAL;
 	}
+
+	return -EINVAL;
 }
 
 int ibtrs_clt_stats_user_ib_msgs_to_str(struct ibtrs_clt_sess *sess, char *buf,
@@ -1955,9 +1893,9 @@ int ibtrs_clt_reset_wc_comp_stats(struct ibtrs_clt_sess *sess, bool enable)
 		memset(sess->stats.wc_comp, 0,
 		       num_online_cpus() * sizeof(*sess->stats.wc_comp));
 		return 0;
-	} else {
-		return -EINVAL;
 	}
+
+	return -EINVAL;
 }
 
 static int ibtrs_clt_init_wc_comp_stats(struct ibtrs_clt_sess *sess)
@@ -1965,7 +1903,7 @@ static int ibtrs_clt_init_wc_comp_stats(struct ibtrs_clt_sess *sess)
 	sess->stats.wc_comp = kcalloc(num_online_cpus(),
 				      sizeof(*sess->stats.wc_comp),
 				      GFP_KERNEL);
-	if (!sess->stats.wc_comp)
+	if (unlikely(!sess->stats.wc_comp))
 		return -ENOMEM;
 
 	return 0;
@@ -1981,9 +1919,9 @@ int ibtrs_clt_reset_cpu_migr_stats(struct ibtrs_clt_sess *sess, bool enable)
 		memset(sess->stats.cpu_migr.to, 0,
 		       num_online_cpus() * sizeof(*sess->stats.cpu_migr.to));
 		return 0;
-	} else {
-		return -EINVAL;
 	}
+
+	return -EINVAL;
 }
 
 static int ibtrs_clt_init_cpu_migr_stats(struct ibtrs_clt_sess *sess)
@@ -1991,15 +1929,16 @@ static int ibtrs_clt_init_cpu_migr_stats(struct ibtrs_clt_sess *sess)
 	sess->stats.cpu_migr.from = kcalloc(num_online_cpus(),
 					    sizeof(*sess->stats.cpu_migr.from),
 					    GFP_KERNEL);
-	if (!sess->stats.cpu_migr.from)
+	if (unlikely(!sess->stats.cpu_migr.from))
 		return -ENOMEM;
 
 	sess->stats.cpu_migr.to = kcalloc(num_online_cpus(),
 					  sizeof(*sess->stats.cpu_migr.to),
 					  GFP_KERNEL);
-	if (!sess->stats.cpu_migr.to) {
+	if (unlikely(!sess->stats.cpu_migr.to)) {
 		kfree(sess->stats.cpu_migr.from);
 		sess->stats.cpu_migr.from = NULL;
+
 		return -ENOMEM;
 	}
 
@@ -2014,7 +1953,7 @@ static int ibtrs_clt_init_sg_list_distr_stats(struct ibtrs_clt_sess *sess)
 						  sizeof(*sess->stats.sg_list_distr),
 						  GFP_KERNEL);
 
-	if (!sess->stats.sg_list_distr)
+	if (unlikely(!sess->stats.sg_list_distr))
 		return -ENOMEM;
 
 	for (i = 0; i < num_online_cpus(); i++) {
@@ -2022,21 +1961,20 @@ static int ibtrs_clt_init_sg_list_distr_stats(struct ibtrs_clt_sess *sess)
 			kzalloc_node(sizeof(*sess->stats.sg_list_distr[0]) *
 				     (SG_DISTR_LEN + 1),
 				     GFP_KERNEL, cpu_to_node(i));
-		if (!sess->stats.sg_list_distr[i])
+		if (unlikely(!sess->stats.sg_list_distr[i]))
 			goto err;
 	}
-
 	sess->stats.sg_list_total = kcalloc(num_online_cpus(),
 					    sizeof(*sess->stats.sg_list_total),
 					    GFP_KERNEL);
-	if (!sess->stats.sg_list_total)
+	if (unlikely(!sess->stats.sg_list_total))
 		goto err;
 
 	return 0;
 
 err:
-	for (; i > 0; i--)
-		kfree(sess->stats.sg_list_distr[i - 1]);
+	while (i--)
+		kfree(sess->stats.sg_list_distr[i]);
 
 	kfree(sess->stats.sg_list_distr);
 	sess->stats.sg_list_distr = NULL;
@@ -2059,9 +1997,9 @@ int ibtrs_clt_reset_sg_list_distr_stats(struct ibtrs_clt_sess *sess,
 			       sizeof(*sess->stats.sg_list_distr[0]) *
 			       (SG_DISTR_LEN + 1));
 		return 0;
-	} else {
-		return -EINVAL;
 	}
+
+	return -EINVAL;
 }
 
 ssize_t ibtrs_clt_stats_rdma_lat_distr_to_str(struct ibtrs_clt_sess *sess,
@@ -2122,23 +2060,24 @@ int ibtrs_clt_reset_rdma_lat_distr_stats(struct ibtrs_clt_sess *sess,
 			       (MAX_LOG_LATENCY - MIN_LOG_LATENCY + 2));
 	}
 	sess->enable_rdma_lat = enable;
+
 	return 0;
 }
 
 static int ibtrs_clt_init_rdma_lat_distr_stats(struct ibtrs_clt_sess *sess)
 {
-	int i;
 	struct ibtrs_clt_stats *s = &sess->stats;
+	int i;
 
 	s->rdma_lat_max = kzalloc(num_online_cpus() *
 				  sizeof(*s->rdma_lat_max), GFP_KERNEL);
-	if (!s->rdma_lat_max)
+	if (unlikely(!s->rdma_lat_max))
 		return -ENOMEM;
 
 	s->rdma_lat_distr = kmalloc_array(num_online_cpus(),
 					  sizeof(*s->rdma_lat_distr),
 					  GFP_KERNEL);
-	if (!s->rdma_lat_distr)
+	if (unlikely(!s->rdma_lat_distr))
 		goto err1;
 
 	for (i = 0; i < num_online_cpus(); i++) {
@@ -2146,14 +2085,14 @@ static int ibtrs_clt_init_rdma_lat_distr_stats(struct ibtrs_clt_sess *sess)
 			kzalloc_node(sizeof(*s->rdma_lat_distr[0]) *
 				     (MAX_LOG_LATENCY - MIN_LOG_LATENCY + 2),
 				     GFP_KERNEL, cpu_to_node(i));
-		if (!s->rdma_lat_distr[i])
+		if (unlikely(!s->rdma_lat_distr[i]))
 			goto err2;
 	}
 
 	return 0;
 
 err2:
-	for (; i >= 0; i--)
+	while (i--)
 		kfree(s->rdma_lat_distr[i]);
 
 	kfree(s->rdma_lat_distr);
@@ -2173,9 +2112,9 @@ int ibtrs_clt_reset_rdma_stats(struct ibtrs_clt_sess *sess, bool enable)
 		memset(s->rdma_stats, 0,
 		       num_online_cpus() * sizeof(*s->rdma_stats));
 		return 0;
-	} else {
-		return -EINVAL;
 	}
+
+	return -EINVAL;
 }
 
 static int ibtrs_clt_init_rdma_stats(struct ibtrs_clt_sess *sess)
@@ -2184,7 +2123,7 @@ static int ibtrs_clt_init_rdma_stats(struct ibtrs_clt_sess *sess)
 
 	s->rdma_stats = kcalloc(num_online_cpus(), sizeof(*s->rdma_stats),
 				GFP_KERNEL);
-	if (!s->rdma_stats)
+	if (unlikely(!s->rdma_stats))
 		return -ENOMEM;
 
 	return 0;
@@ -2206,10 +2145,11 @@ int ibtrs_clt_reset_all_stats(struct ibtrs_clt_sess *sess, bool enable)
 		ibtrs_clt_reset_user_ib_msgs_stats(sess, enable);
 		ibtrs_clt_reset_reconnects_stat(sess, enable);
 		ibtrs_clt_reset_wc_comp_stats(sess, enable);
+
 		return 0;
-	} else {
-		return -EINVAL;
 	}
+
+	return -EINVAL;
 }
 
 static int ibtrs_clt_init_stats(struct ibtrs_clt_sess *sess)
@@ -2217,37 +2157,33 @@ static int ibtrs_clt_init_stats(struct ibtrs_clt_sess *sess)
 	int err;
 
 	err = ibtrs_clt_init_sg_list_distr_stats(sess);
-	if (err) {
+	if (unlikely(err)) {
 		ibtrs_err(sess,
 			  "Failed to init S/G list distribution stats, err: %d\n",
 			  err);
 		return err;
 	}
-
 	err = ibtrs_clt_init_cpu_migr_stats(sess);
-	if (err) {
+	if (unlikely(err)) {
 		ibtrs_err(sess, "Failed to init CPU migration stats, err: %d\n",
 			  err);
 		goto err_sg_list;
 	}
-
 	err = ibtrs_clt_init_rdma_lat_distr_stats(sess);
-	if (err) {
+	if (unlikely(err)) {
 		ibtrs_err(sess,
 			  "Failed to init RDMA lat distribution stats, err: %d\n",
 			  err);
 		goto err_migr;
 	}
-
 	err = ibtrs_clt_init_wc_comp_stats(sess);
-	if (err) {
+	if (unlikely(err)) {
 		ibtrs_err(sess, "Failed to init WC completion stats, err: %d\n",
 			  err);
 		goto err_rdma_lat;
 	}
-
 	err = ibtrs_clt_init_rdma_stats(sess);
-	if (err) {
+	if (unlikely(err)) {
 		ibtrs_err(sess, "Failed to init RDMA stats, err: %d\n",
 			  err);
 		goto err_wc_comp;
@@ -2263,6 +2199,7 @@ err_migr:
 	ibtrs_clt_free_cpu_migr_stats(sess);
 err_sg_list:
 	ibtrs_clt_free_sg_list_distr_stats(sess);
+
 	return err;
 }
 
@@ -2270,37 +2207,40 @@ static int alloc_sess_io_bufs(struct ibtrs_clt_sess *sess)
 {
 	int ret;
 
-	if (sess->io_bufs_initialized)
-		return 0;
-	ret = alloc_reqs(sess);
-	if (ret) {
-		ibtrs_err(sess, "alloc_reqs(), err: %d\n", ret);
+	ret = alloc_sess_reqs(sess);
+	if (unlikely(ret)) {
+		ibtrs_err(sess, "alloc_sess_reqs(), err: %d\n", ret);
 		return ret;
 	}
 	ret = alloc_sess_fast_pool(sess);
-	if (ret) {
+	if (unlikely(ret)) {
 		ibtrs_err(sess, "alloc_sess_fast_pool(), err: %d\n", ret);
-		return ret;
+		goto free_reqs;
 	}
 	ret = alloc_sess_tags(sess);
-	if (ret) {
+	if (unlikely(ret)) {
 		ibtrs_err(sess, "alloc_sess_tags(), err: %d\n", ret);
-		return ret;
+		goto free_fast_pool;
 	}
-	sess->io_bufs_initialized = true;
 
 	return 0;
+
+free_fast_pool:
+	free_sess_fast_pool(sess);
+free_reqs:
+	free_sess_reqs(sess);
+
+	return ret;
 }
 
 static void free_sess_io_bufs(struct ibtrs_clt_sess *sess)
 {
-	free_reqs(sess);
+	free_sess_reqs(sess);
 	free_sess_fast_pool(sess);
 	kfree(sess->tags_map);
 	sess->tags_map = NULL;
 	kfree(sess->tags);
 	sess->tags = NULL;
-	sess->io_bufs_initialized = false;
 }
 
 static bool __ibtrs_clt_change_state(struct ibtrs_clt_sess *sess,
@@ -2587,7 +2527,7 @@ static int create_cm(struct ibtrs_clt_sess *sess, unsigned cid)
 	return con->cm_err;
 }
 
-static int alloc_sess_bufs(struct ibtrs_clt_sess *sess)
+static int alloc_sess_all_bufs(struct ibtrs_clt_sess *sess)
 {
 	struct ibtrs_clt_con *usr_con = &sess->con[0];
 	int err;
@@ -2599,35 +2539,35 @@ static int alloc_sess_bufs(struct ibtrs_clt_sess *sess)
 	}
 	query_fast_reg_mode(sess);
 
-	err = alloc_sess_init_bufs(sess);
+	err = alloc_sess_io_bufs(sess);
 	if (unlikely(err))
 		goto free_ibdev;
 
-	err = alloc_sess_io_bufs(sess);
-	if (unlikely(err))
-		goto free_init_bufs;
-
-	err = alloc_sess_tr_bufs(sess);
+	err = alloc_sess_rx_bufs(sess);
 	if (unlikely(err))
 		goto free_io_bufs;
 
+	err = alloc_sess_tx_bufs(sess);
+	if (unlikely(err))
+		goto free_rx_bufs;
+
 	return 0;
 
+free_rx_bufs:
+	free_sess_rx_bufs(sess);
 free_io_bufs:
 	free_sess_io_bufs(sess);
-free_init_bufs:
-	free_sess_init_bufs(sess);
 free_ibdev:
 	ibtrs_ib_dev_destroy(&sess->ib_dev);
 
 	return err;
 }
 
-static void free_sess_bufs(struct ibtrs_clt_sess *sess)
+static void free_sess_all_bufs(struct ibtrs_clt_sess *sess)
 {
-	free_sess_tr_bufs(sess);
+	free_sess_tx_bufs(sess);
+	free_sess_rx_bufs(sess);
 	free_sess_io_bufs(sess);
-	free_sess_init_bufs(sess);
 	ibtrs_ib_dev_destroy(&sess->ib_dev);
 }
 
@@ -2647,7 +2587,7 @@ static void ibtrs_clt_stop_and_destroy_conns(struct ibtrs_clt_sess *sess)
 	fail_all_outstanding_reqs(sess);
 	for (cid = 0; cid < CONS_PER_SESSION; cid++)
 		stop_cm(&sess->con[cid]);
-	free_sess_bufs(sess);
+	free_sess_all_bufs(sess);
 	for (cid = 0; cid < CONS_PER_SESSION; cid++) {
 		destroy_con_cq_qp(&sess->con[cid]);
 		destroy_cm(&sess->con[cid]);
@@ -2683,7 +2623,7 @@ static int init_conns(struct ibtrs_clt_sess *sess)
 			goto destroy;
 	}
 	/* Allocate all session related buffers */
-	err = alloc_sess_bufs(sess);
+	err = alloc_sess_all_bufs(sess);
 	if (unlikely(err))
 		goto destroy;
 

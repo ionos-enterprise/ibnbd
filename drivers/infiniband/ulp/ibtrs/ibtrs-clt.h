@@ -108,13 +108,8 @@ struct ibtrs_clt_sess {
 	struct ibtrs_iu		**usr_rx_ring;
 	struct ibtrs_iu		**io_tx_ius;
 
-	spinlock_t              u_msg_ius_lock;
-	struct list_head	u_msg_ius_list;
-
 	struct rdma_req		*reqs;
 	struct ib_fmr_pool	*fmr_pool;
-	atomic_t		ib_dev_initialized;
-	bool			io_bufs_initialized;
 	size_t			pdu_sz;
 	void			*priv;
 	struct delayed_work	reconnect_dwork;
