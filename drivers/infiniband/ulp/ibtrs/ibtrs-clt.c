@@ -1378,11 +1378,10 @@ static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 		/*
 		 * post_send() completions: user msgs
 		 */
-		if (con->cid == 0) {
-			//XXX WTF? should be WARN_ON if con->cid != 0
-			iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
-			ibtrs_usr_msg_return_iu(&sess->sess, iu);
-		}
+		if (WARN_ON(con->cid))
+			break;
+		iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
+		ibtrs_usr_msg_return_iu(&sess->sess, iu);
 		break;
 	case IB_WC_RECV:
 		/*
