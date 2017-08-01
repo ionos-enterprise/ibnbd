@@ -102,17 +102,8 @@ MODULE_PARM_DESC(hostname, "Sets hostname of local server, will send to the"
 		 " other side if set,  will display togather with addr "
 		 "(default: empty)");
 
+static void ibtrs_rdma_error_recovery(struct ibtrs_clt_con *con);
 static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc);
-
-static struct ib_cqe fast_reg_cqe = {
-	.done = ibtrs_clt_rdma_done
-};
-static struct ib_cqe local_inv_cqe = {
-	.done = ibtrs_clt_rdma_done
-};
-static struct ib_cqe hb_and_ack_cqe = {
-	.done = ibtrs_clt_rdma_done
-};
 
 static const struct ibtrs_clt_ops *clt_ops;
 static struct workqueue_struct *ibtrs_wq;
@@ -558,6 +549,23 @@ static int ibtrs_map_finish_fmr(struct ibtrs_map_state *state,
 
 	return 0;
 }
+
+static void ibtrs_clt_fast_reg_done(struct ib_cq *cq, struct ib_wc *wc)
+{
+	struct ibtrs_clt_con *con = cq->cq_context;
+	struct ibtrs_clt_sess *sess = con->sess;
+
+	if (unlikely(wc->status != IB_WC_SUCCESS)) {
+		ibtrs_err(sess, "Failed IB_WR_REG_MR: %s\n",
+			  ib_wc_status_msg(wc->status));
+		ibtrs_rdma_error_recovery(con);
+	}
+}
+
+static struct ib_cqe fast_reg_cqe = {
+	.done = ibtrs_clt_fast_reg_done
+};
+
 /* TODO */
 static int ibtrs_map_finish_fr(struct ibtrs_map_state *state,
 			       struct ibtrs_clt_con *con, int sg_cnt,
@@ -753,6 +761,22 @@ out:
 	req->nmdesc = state->nmdesc;
 	return ret;
 }
+
+static void ibtrs_clt_inv_rkey_done(struct ib_cq *cq, struct ib_wc *wc)
+{
+	struct ibtrs_clt_con *con = cq->cq_context;
+	struct ibtrs_clt_sess *sess = con->sess;
+
+	if (unlikely(wc->status != IB_WC_SUCCESS)) {
+		ibtrs_err(sess, "Failed IB_WR_LOCAL_INV: %s\n",
+			  ib_wc_status_msg(wc->status));
+		ibtrs_rdma_error_recovery(con);
+	}
+}
+
+static struct ib_cqe local_inv_cqe = {
+	.done = ibtrs_clt_inv_rkey_done
+};
 
 static int ibtrs_inv_rkey(struct ibtrs_clt_con *con, u32 rkey)
 {
@@ -1165,6 +1189,22 @@ static void process_io_rsp(struct ibtrs_clt_sess *sess, u32 msg_id, s16 errno)
 	complete_rdma_req(sess, &sess->reqs[msg_id], errno);
 }
 
+static void ibtrs_clt_ack_done(struct ib_cq *cq, struct ib_wc *wc)
+{
+	struct ibtrs_clt_con *con = cq->cq_context;
+	struct ibtrs_clt_sess *sess = con->sess;
+
+	if (unlikely(wc->status != IB_WC_SUCCESS)) {
+		ibtrs_err(sess, "Failed ACK: %s\n",
+			  ib_wc_status_msg(wc->status));
+		ibtrs_rdma_error_recovery(con);
+	}
+}
+
+static struct ib_cqe ack_cqe = {
+	.done = ibtrs_clt_ack_done
+};
+
 static int ibtrs_send_msg_user_ack(struct ibtrs_clt_con *con)
 {
 	struct ibtrs_clt_sess *sess = con->sess;
@@ -1180,7 +1220,7 @@ static int ibtrs_send_msg_user_ack(struct ibtrs_clt_con *con)
 	}
 
 	err = ibtrs_post_rdma_write_imm_empty(con->ibtrs_con.qp,
-					      &hb_and_ack_cqe,
+					      &ack_cqe,
 					      IBTRS_ACK_IMM,
 					      IB_SEND_SIGNALED);
 	ibtrs_clt_state_unlock();
@@ -1255,8 +1295,6 @@ static int ibtrs_schedule_msg(struct ibtrs_clt_con *con,
 	return 0;
 }
 
-static void ibtrs_rdma_error_recovery(struct ibtrs_clt_con *con);
-
 static void ibtrs_handle_recv(struct ibtrs_clt_con *con,
 			      struct ibtrs_iu *iu)
 {
@@ -1313,19 +1351,6 @@ static void process_err_wc(struct ibtrs_clt_con *con,
 {
 	struct ibtrs_iu *iu;
 
-	if (wc->wr_cqe == &fast_reg_cqe || wc->wr_cqe == &local_inv_cqe) {
-		ibtrs_err_rl(con->sess, "Fast registration wr failed: wr_cqe: %p,"
-			     "status: %s\n", wc->wr_cqe,
-			     ib_wc_status_msg(wc->status));
-		ibtrs_rdma_error_recovery(con);
-		return;
-	}
-	if (wc->wr_cqe == &hb_and_ack_cqe) {
-		ibtrs_err_rl(con->sess, "ib_post_send() of hb or ack failed, "
-			     "status: %s\n", ib_wc_status_msg(wc->status));
-		ibtrs_rdma_error_recovery(con);
-		return;
-	}
 	/*
 	 * Only wc->wr_cqe is ensured to be correct in erroneous WCs,
 	 * we can't rely on wc->opcode, use iu->direction to determine
@@ -1395,8 +1420,7 @@ static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 		break;
 	case IB_WC_RDMA_WRITE:
 		/*
-		 * post_send() RDMA write completions of IO reqs (read/write),
-		 *             user msgs acks, heartbeats
+		 * post_send() RDMA write completions of IO reqs (read/write)
 		 */
 		break;
 	case IB_WC_RECV_RDMA_WITH_IMM:
