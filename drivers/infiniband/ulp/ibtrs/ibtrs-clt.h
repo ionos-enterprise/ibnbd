@@ -111,7 +111,7 @@ struct ibtrs_clt_sess {
 	struct rdma_req		*reqs;
 	struct ib_fmr_pool	*fmr_pool;
 	size_t			pdu_sz;
-	void			*priv;
+	struct ibtrs_clt_ops	ops;
 	struct delayed_work	reconnect_dwork;
 	struct work_struct	close_work;
 	struct ibtrs_heartbeat	heartbeat;

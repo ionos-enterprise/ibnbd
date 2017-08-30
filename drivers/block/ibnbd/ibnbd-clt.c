@@ -27,7 +27,6 @@ static DEFINE_SPINLOCK(dev_lock);
 static LIST_HEAD(session_list);
 static LIST_HEAD(devs_list);
 static DECLARE_WAIT_QUEUE_HEAD(sess_list_waitq);
-static struct ibtrs_clt_ops ops;
 
 static bool softirq_enable;
 module_param(softirq_enable, bool, 0444);
@@ -935,8 +934,9 @@ static void destroy_mq_tags(struct ibnbd_clt_session *sess)
 struct ibnbd_clt_session *ibnbd_create_session(const struct sockaddr_storage *addr)
 {
 	struct ibnbd_clt_session *sess;
-	struct ibtrs_attrs attrs;
 	char str_addr[MAXHOSTNAMELEN];
+	struct ibtrs_clt_ops ops;
+	struct ibtrs_attrs attrs;
 	int err;
 	int cpu;
 
@@ -1001,7 +1001,12 @@ struct ibnbd_clt_session *ibnbd_create_session(const struct sockaddr_storage *ad
 	kref_init(&sess->refcount);
 	sess->state = CLT_SESS_STATE_DISCONNECTED;
 
-	sess->sess = ibtrs_clt_open(addr, sizeof(struct ibnbd_iu), sess,
+	ops.priv    = sess;
+	ops.recv    = ibnbd_clt_recv;
+	ops.rdma_ev = ibnbd_clt_rdma_ev;
+	ops.sess_ev = ibnbd_clt_sess_ev;
+
+	sess->sess = ibtrs_clt_open(&ops, addr, sizeof(struct ibnbd_iu),
 				    RECONNECT_DELAY, BMAX_SEGMENTS,
 				    MAX_RECONNECTS);
 	if (!IS_ERR(sess->sess)) {
@@ -1924,28 +1929,16 @@ static int __init ibnbd_client_init(void)
 		goto out;
 	}
 
-	ops.owner	= THIS_MODULE;
-	ops.recv	= ibnbd_clt_recv;
-	ops.rdma_ev	= ibnbd_clt_rdma_ev;
-	ops.sess_ev	= ibnbd_clt_sess_ev;
-	err = ibtrs_clt_register(&ops);
-	if (err) {
-		pr_err("Failed to load module, IBTRS registration failed, "
-		       "err: %d\n", err);
-		goto out_unregister_blk;
-	}
 	err = ibnbd_clt_create_sysfs_files();
 	if (err) {
 		pr_err("Failed to load module,"
 		       " creating sysfs device files failed, err: %d\n",
 		       err);
-		goto out_unregister;
+		goto out_unregister_blk;
 	}
 
 	return 0;
 
-out_unregister:
-	ibtrs_clt_unregister(&ops);
 out_unregister_blk:
 	unregister_blkdev(ibnbd_client_major, "ibnbd");
 out:
@@ -1960,7 +1953,6 @@ static void __exit ibnbd_client_exit(void)
 	ibnbd_destroy_sessions();
 	wait_event(sess_list_waitq, list_empty(&session_list));
 	ibnbd_clt_destroy_sysfs_files();
-	ibtrs_clt_unregister(&ops);
 	unregister_blkdev(ibnbd_client_major, "ibnbd");
 	idr_destroy(&g_index_idr);
 	pr_info("Module unloaded\n");

@@ -105,7 +105,6 @@ MODULE_PARM_DESC(hostname, "Sets hostname of local server, will send to the"
 static void ibtrs_rdma_error_recovery(struct ibtrs_clt_con *con);
 static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc);
 
-static const struct ibtrs_clt_ops *clt_ops;
 static struct workqueue_struct *ibtrs_wq;
 static uuid_le uuid;
 
@@ -1171,9 +1170,9 @@ static void complete_rdma_req(struct ibtrs_clt_sess *sess,
 	priv = req->priv;
 	dir = req->dir;
 
-	clt_ops->rdma_ev(priv, dir == DMA_FROM_DEVICE ?
-			 IBTRS_CLT_RDMA_EV_RDMA_REQUEST_WRITE_COMPL :
-			 IBTRS_CLT_RDMA_EV_RDMA_WRITE_COMPL, errno);
+	sess->ops.rdma_ev(priv, dir == DMA_FROM_DEVICE ?
+			  IBTRS_CLT_RDMA_EV_RDMA_REQUEST_WRITE_COMPL :
+			  IBTRS_CLT_RDMA_EV_RDMA_WRITE_COMPL, errno);
 }
 
 static void process_io_rsp(struct ibtrs_clt_sess *sess, u32 msg_id, s16 errno)
@@ -1240,7 +1239,7 @@ static void process_msg_user(struct ibtrs_clt_con *con,
 	sess->stats.user_ib_msgs.recv_msg_cnt++;
 	sess->stats.user_ib_msgs.recv_size += len;
 
-	clt_ops->recv(sess->priv, (const void *)msg->payl, len);
+	sess->ops.recv(sess->ops.priv, (const void *)msg->payl, len);
 }
 
 static void process_msg_user_ack(struct ibtrs_clt_con *con)
@@ -2359,8 +2358,9 @@ static void ibtrs_clt_reconnect_work(struct work_struct *work);
 static void ibtrs_clt_close_work(struct work_struct *work);
 
 static void init_sess(struct ibtrs_clt_sess *sess,
+		      const struct ibtrs_clt_ops *ops,
 		      const struct sockaddr_storage *addr,
-		      size_t pdu_sz, void *priv,
+		      size_t pdu_sz,
 		      u8 reconnect_delay_sec,
 		      u16 max_segments,
 		      s16 max_reconnect_attempts)
@@ -2370,7 +2370,7 @@ static void init_sess(struct ibtrs_clt_sess *sess,
 	atomic_set(&sess->refcount, 1);
 	sess->peer_addr = *addr;
 	sess->pdu_sz = pdu_sz;
-	sess->priv = priv;
+	sess->ops = *ops;
 	for (i = 0; i < CONS_PER_SESSION; i++)
 		sess->con->sess = sess;
 	sess->sess.addr.sockaddr = *addr;
@@ -2392,11 +2392,11 @@ static void init_sess(struct ibtrs_clt_sess *sess,
 	INIT_DELAYED_WORK(&sess->reconnect_dwork, ibtrs_clt_reconnect_work);
 }
 
-static struct ibtrs_clt_sess *alloc_sess(const struct sockaddr_storage *addr,
-					size_t pdu_sz, void *priv,
-					u8 reconnect_delay_sec,
-					u16 max_segments,
-					s16 max_reconnect_attempts)
+static struct ibtrs_clt_sess *alloc_sess(const struct ibtrs_clt_ops *ops,
+					 const struct sockaddr_storage *addr,
+					 size_t pdu_sz, u8 reconnect_delay_sec,
+					 u16 max_segments,
+					 s16 max_reconnect_attempts)
 {
 	struct ibtrs_clt_sess *sess;
 	int err = -ENOMEM;
@@ -2409,8 +2409,8 @@ static struct ibtrs_clt_sess *alloc_sess(const struct sockaddr_storage *addr,
 	if (!sess->con)
 		goto err_free_sess;
 
-	init_sess(sess, addr, pdu_sz, priv, reconnect_delay_sec,
-		      max_segments, max_reconnect_attempts);
+	init_sess(sess, ops, addr, pdu_sz, reconnect_delay_sec,
+		  max_segments, max_reconnect_attempts);
 	err = ibtrs_clt_init_stats(sess);
 	if (err) {
 		pr_err("Failed to initialize statistics\n");
@@ -3060,23 +3060,24 @@ reconnect_again:
 	}
 }
 
-struct ibtrs_clt_sess *ibtrs_clt_open(const struct sockaddr_storage *addr,
-				      size_t pdu_sz, void *priv,
-				      u8 reconnect_delay_sec, u16 max_segments,
+struct ibtrs_clt_sess *ibtrs_clt_open(const struct ibtrs_clt_ops *ops,
+				      const struct sockaddr_storage *addr,
+				      size_t pdu_sz, u8 reconnect_delay_sec,
+				      u16 max_segments,
 				      s16 max_reconnect_attempts)
 {
 	char str_addr[MAXHOSTNAMELEN];
 	struct ibtrs_clt_sess *sess;
 	int err;
 
-	if (!clt_ops_are_valid(clt_ops)) {
-		pr_err("User module did not register ops callbacks\n");
+	if (unlikely(!clt_ops_are_valid(ops))) {
+		pr_err("Callbacks are invalid\n");
 		err = -EINVAL;
 		goto out;
 	}
 	sockaddr_to_str(addr, str_addr, sizeof(str_addr));
-	sess = alloc_sess(addr, pdu_sz, priv, reconnect_delay_sec,
-			      max_segments, max_reconnect_attempts);
+	sess = alloc_sess(ops, addr, pdu_sz, reconnect_delay_sec,
+			  max_segments, max_reconnect_attempts);
 	if (unlikely(IS_ERR(sess))) {
 		pr_err("Establishing session to %s failed, err: %ld\n",
 		       str_addr, PTR_ERR(sess));
@@ -3569,34 +3570,6 @@ err_post_send:
 	return err;
 }
 EXPORT_SYMBOL(ibtrs_clt_send);
-
-int ibtrs_clt_register(const struct ibtrs_clt_ops *ops)
-{
-	if (clt_ops) {
-		pr_err("Module %s already registered, only one user module"
-		       " supported\n", clt_ops->owner->name);
-		return -ENOTSUPP;
-	}
-	if (!clt_ops_are_valid(ops))
-		return -EINVAL;
-	clt_ops = ops;
-
-	return 0;
-}
-EXPORT_SYMBOL(ibtrs_clt_register);
-
-void ibtrs_clt_unregister(const struct ibtrs_clt_ops *ops)
-{
-	if (WARN_ON(!clt_ops))
-		return;
-
-	if (memcmp(clt_ops->owner, ops->owner, sizeof(*clt_ops)))
-		return;
-
-	flush_workqueue(ibtrs_wq);
-	clt_ops = NULL;
-}
-EXPORT_SYMBOL(ibtrs_clt_unregister);
 
 int ibtrs_clt_query(struct ibtrs_clt_sess *sess, struct ibtrs_attrs *attr)
 {
