@@ -2665,47 +2665,6 @@ err_cm_ib:
 	return ret;
 }
 
-static void ibtrs_srv_destroy_buf_pool(void)
-{
-	struct ibtrs_rcv_buf_pool *pool, *pool_next;
-
-	mutex_lock(&buf_pool_mutex);
-	list_for_each_entry_safe(pool, pool_next, &free_buf_pool_list, list) {
-		list_del(&pool->list);
-		nr_free_buf_pool--;
-		free_recv_buf_pool(pool);
-	}
-	mutex_unlock(&buf_pool_mutex);
-}
-
-static void ibtrs_srv_alloc_ini_buf_pool(void)
-{
-	struct ibtrs_rcv_buf_pool *pool;
-	int i;
-
-	if (init_pool_size == 0)
-		return;
-
-	pr_info("Trying to allocate RDMA buffers pool for %d client(s)\n",
-		init_pool_size);
-	for (i = 0; i < init_pool_size; i++) {
-		pool = alloc_rcv_buf_pool();
-		if (!pool) {
-			pr_err("Failed to allocate initial RDMA buffer pool"
-			       " #%d\n", i + 1);
-			break;
-		}
-		mutex_lock(&buf_pool_mutex);
-		list_add(&pool->list, &free_buf_pool_list);
-		nr_free_buf_pool++;
-		nr_total_buf_pool++;
-		mutex_unlock(&buf_pool_mutex);
-		pr_debug("Allocated buffer pool #%d\n", i);
-	}
-
-	pr_info("Allocated RDMA buffers pool for %d client(s)\n", i);
-}
-
 int ibtrs_srv_register(const struct ibtrs_srv_ops *ops)
 {
 	int err;
@@ -2723,7 +2682,6 @@ int ibtrs_srv_register(const struct ibtrs_srv_ops *ops)
 		return -EFAULT;
 	}
 
-	ibtrs_srv_alloc_ini_buf_pool();
 
 	err = ibtrs_srv_rdma_init(ops);
 	if (err) {
@@ -2782,7 +2740,6 @@ void ibtrs_srv_unregister(const struct ibtrs_srv_ops *ops)
 	cm_id_ib = NULL;
 	close_sessions();
 	flush_workqueue(destroy_wq);
-	ibtrs_srv_destroy_buf_pool();
 	srv_ops = NULL;
 }
 EXPORT_SYMBOL(ibtrs_srv_unregister);
@@ -3451,6 +3408,35 @@ static void ibtrs_srv_destroy_debugfs_files(void)
 	debugfs_remove_recursive(ibtrs_srv_debugfs_dir);
 }
 
+static void ibtrs_srv_free_buf_pool(void)
+{
+	struct ibtrs_rcv_buf_pool *pool, *pool_next;
+
+	list_for_each_entry_safe(pool, pool_next, &free_buf_pool_list, list) {
+		list_del(&pool->list);
+		nr_free_buf_pool--;
+		free_recv_buf_pool(pool);
+	}
+}
+
+static void ibtrs_srv_alloc_buf_pool(void)
+{
+	struct ibtrs_rcv_buf_pool *pool;
+	int i;
+
+	for (i = 0; i < init_pool_size; i++) {
+		pool = alloc_rcv_buf_pool();
+		if (!pool) {
+			pr_warn("Failed to allocate initial RDMA buffer pool"
+				" #%d\n", i + 1);
+			break;
+		}
+		list_add(&pool->list, &free_buf_pool_list);
+		nr_free_buf_pool++;
+		nr_total_buf_pool++;
+	}
+}
+
 static int __init ibtrs_server_init(void)
 {
 	int err;
@@ -3476,25 +3462,24 @@ static int __init ibtrs_server_init(void)
 		       " err: %d\n", err);
 		return err;
 	}
-
 	destroy_wq = alloc_workqueue("ibtrs_server_destroy_wq", 0, 0);
 	if (!destroy_wq) {
 		pr_err("Failed to load module,"
 		       " alloc ibtrs_server_destroy_wq failed\n");
 		return -ENOMEM;
 	}
-
 	err = ibtrs_srv_create_sysfs_files();
 	if (err) {
 		pr_err("Failed to load module, can't create sysfs files,"
 		       " err: %d\n", err);
 		goto out_destroy_wq;
 	}
-
 	err = ibtrs_srv_create_debugfs_files();
 	if (err)
 		pr_warn("Unable to create debugfs files, err: %d."
 			" Continuing without debugfs\n", err);
+
+	ibtrs_srv_alloc_buf_pool();
 
 	return 0;
 
@@ -3505,12 +3490,10 @@ out_destroy_wq:
 
 static void __exit ibtrs_server_exit(void)
 {
-	pr_info("Unloading module\n");
 	ibtrs_srv_destroy_debugfs_files();
 	ibtrs_srv_destroy_sysfs_files();
 	destroy_workqueue(destroy_wq);
-
-	pr_info("Module unloaded\n");
+	ibtrs_srv_free_buf_pool();
 }
 
 module_init(ibtrs_server_init);
