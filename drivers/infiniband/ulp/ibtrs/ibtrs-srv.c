@@ -239,11 +239,6 @@ MODULE_PARM_DESC(hostname, "Sets hostname of local server, will send to the"
 static struct dentry *ibtrs_srv_debugfs_dir;
 static struct dentry *mempool_debugfs_dir;
 
-static struct rdma_cm_id	*cm_id_ip;
-static struct rdma_cm_id	*cm_id_ib;
-static DEFINE_MUTEX(sess_mutex);
-static LIST_HEAD(sess_list);
-static DECLARE_WAIT_QUEUE_HEAD(sess_list_waitq);
 static struct workqueue_struct *destroy_wq;
 
 static LIST_HEAD(device_list);
@@ -255,7 +250,15 @@ static int nr_free_buf_pool;
 static int nr_total_buf_pool;
 static int nr_active_sessions;
 
-static const struct ibtrs_srv_ops *srv_ops;
+struct ibtrs_srv_ctx {
+	struct ibtrs_srv_ops ops;
+	struct rdma_cm_id *cm_id_ip;
+	struct rdma_cm_id *cm_id_ib;
+	struct mutex sess_mutex;
+	struct list_head sess_list;
+	wait_queue_head_t sess_list_waitq;
+};
+
 enum ssm_ev {
 	SSM_EV_CON_DISCONNECTED,
 	SSM_EV_CON_EST_ERR,
@@ -640,6 +643,8 @@ static inline bool srv_ops_are_valid(const struct ibtrs_srv_ops *ops)
 static int ibtrs_srv_sess_ev(struct ibtrs_srv_sess *sess,
 			     enum ibtrs_srv_sess_ev ev)
 {
+	struct ibtrs_srv_ctx *ctx = sess->ctx;
+
 	if (!sess->session_announced_to_user &&
 	    ev != IBTRS_SRV_SESS_EV_CONNECTED)
 		return 0;
@@ -647,7 +652,7 @@ static int ibtrs_srv_sess_ev(struct ibtrs_srv_sess *sess,
 	if (ev == IBTRS_SRV_SESS_EV_CONNECTED)
 		sess->session_announced_to_user = true;
 
-	return srv_ops->sess_ev(sess, ev, sess->priv);
+	return ctx->ops.sess_ev(sess, ev, sess->priv);
 }
 
 static void free_id(struct ibtrs_srv_op *id)
@@ -1474,6 +1479,7 @@ static void process_rdma_write_req(struct ibtrs_srv_con *con,
 				   u32 buf_id, u32 off)
 {
 	struct ibtrs_srv_sess *sess = con->sess;
+	struct ibtrs_srv_ctx *ctx = sess->ctx;
 	struct ibtrs_srv_op *id;
 	int ret;
 
@@ -1504,7 +1510,7 @@ static void process_rdma_write_req(struct ibtrs_srv_con *con,
 	}
 
 	id->data_dma_addr = sess->rcv_buf_pool->rcv_bufs[buf_id].rdma_addr;
-	ret = srv_ops->rdma_ev(con->sess, sess->priv, id,
+	ret = ctx->ops.rdma_ev(con->sess, sess->priv, id,
 			       IBTRS_SRV_RDMA_EV_WRITE_REQ,
 			       sess->rcv_buf_pool->rcv_bufs[buf_id].buf, off);
 
@@ -1532,6 +1538,7 @@ static void process_rdma_write(struct ibtrs_srv_con *con,
 			       u32 buf_id, u32 off)
 {
 	struct ibtrs_srv_sess *sess = con->sess;
+	struct ibtrs_srv_ctx *ctx = sess->ctx;
 	struct ibtrs_srv_op *id;
 	int ret;
 
@@ -1549,7 +1556,7 @@ static void process_rdma_write(struct ibtrs_srv_con *con,
 	id->dir    = WRITE;
 	id->msg_id = buf_id;
 
-	ret = srv_ops->rdma_ev(sess, sess->priv, id, IBTRS_SRV_RDMA_EV_RECV,
+	ret = ctx->ops.rdma_ev(sess, sess->priv, id, IBTRS_SRV_RDMA_EV_RECV,
 			       sess->rcv_buf_pool->rcv_bufs[buf_id].buf, off);
 	if (unlikely(ret)) {
 		ibtrs_err_rl(sess, "Processing RDMA-Write failed, user module"
@@ -1600,8 +1607,9 @@ static int ibtrs_send_usr_msg_ack(struct ibtrs_srv_con *con)
 static void process_msg_user(struct ibtrs_srv_con *con,
 			     struct ibtrs_msg_user *msg)
 {
-	int len;
 	struct ibtrs_srv_sess *sess = con->sess;
+	struct ibtrs_srv_ctx *ctx = sess->ctx;
+	int len;
 
 	len = msg->hdr.tsize - IBTRS_HDR_LEN;
 	if (unlikely(sess->state < SSM_STATE_CONNECTED || !sess->priv)) {
@@ -1610,7 +1618,7 @@ static void process_msg_user(struct ibtrs_srv_con *con,
 		return;
 	}
 
-	srv_ops->recv(sess, sess->priv, msg->payl, len);
+	ctx->ops.recv(sess, sess->priv, msg->payl, len);
 
 	atomic64_inc(&sess->stats.user_ib_msgs.recv_msg_cnt);
 	atomic64_add(len, &sess->stats.user_ib_msgs.recv_size);
@@ -1821,8 +1829,10 @@ static void destroy_sess(struct kref *kref)
 {
 	struct ibtrs_srv_con *con, *con_next;
 	struct ibtrs_srv_sess *sess;
+	struct ibtrs_srv_ctx *ctx;
 
 	sess = container_of(kref, struct ibtrs_srv_sess, kref);
+	ctx = sess->ctx;
 	if (sess->cm_id)
 		rdma_destroy_id(sess->cm_id);
 
@@ -1831,10 +1841,10 @@ static void destroy_sess(struct kref *kref)
 	list_for_each_entry_safe(con, con_next, &sess->con_list, list)
 		destroy_con(con);
 
-	mutex_lock(&sess_mutex);
+	mutex_lock(&ctx->sess_mutex);
 	list_del(&sess->sess.list);
-	mutex_unlock(&sess_mutex);
-	wake_up(&sess_list_waitq);
+	mutex_unlock(&ctx->sess_mutex);
+	wake_up(&ctx->sess_list_waitq);
 
 	ibtrs_info(sess, "Session is closed\n");
 	kfree(sess);
@@ -2132,7 +2142,8 @@ static int accept(struct ibtrs_srv_con *con)
 }
 
 static struct ibtrs_srv_sess *
-__create_sess(struct rdma_cm_id *cm_id, const struct ibtrs_msg_sess_open *req)
+__create_sess(struct ibtrs_srv_ctx *ctx, struct rdma_cm_id *cm_id,
+	      const struct ibtrs_msg_sess_open *req)
 {
 	struct ibtrs_srv_sess *sess;
 	int err;
@@ -2143,6 +2154,7 @@ __create_sess(struct rdma_cm_id *cm_id, const struct ibtrs_msg_sess_open *req)
 		goto out;
 	}
 
+	sess->ctx = ctx;
 	sess->sess.addr.sockaddr = cm_id->route.addr.dst_addr;
 	sess->est_cnt = 0;
 	sess->state_in_sysfs = false;
@@ -2181,7 +2193,7 @@ __create_sess(struct rdma_cm_id *cm_id, const struct ibtrs_msg_sess_open *req)
 	kref_init(&sess->kref);
 	init_waitqueue_head(&sess->bufs_wait);
 
-	list_add(&sess->sess.list, &sess_list);
+	list_add(&sess->sess.list, &ctx->sess_list);
 	ibtrs_info(sess, "IBTRS Session created (queue depth: %d)\n",
 		   sess->queue_depth);
 
@@ -2216,12 +2228,13 @@ int ibtrs_srv_get_sess_qdepth(struct ibtrs_srv_sess *sess)
 }
 EXPORT_SYMBOL(ibtrs_srv_get_sess_qdepth);
 
-static struct ibtrs_srv_sess *__find_active_sess(const char *uuid)
+static struct ibtrs_srv_sess *
+__find_sess(struct ibtrs_srv_ctx *ctx, const char *uuid)
 {
 	struct ibtrs_sess *sess;
 	struct ibtrs_srv_sess *srv_sess;
 
-	list_for_each_entry(sess, &sess_list, list) {
+	list_for_each_entry(sess, &ctx->sess_list, list) {
 		srv_sess = container_of(sess, typeof(*srv_sess), sess);
 		if (!memcmp(srv_sess->uuid, uuid, sizeof(srv_sess->uuid)) &&
 		    srv_sess->state != SSM_STATE_CLOSING &&
@@ -2404,21 +2417,15 @@ static int ssm_schedule_create_con(struct ibtrs_srv_sess *sess,
 	return 0;
 }
 
-static int rdma_con_establish(struct rdma_cm_id *cm_id, const void *data,
+static int rdma_con_establish(struct rdma_cm_id *cm_id,
+			      const struct ibtrs_msg_hdr *hdr,
 			      size_t size)
 {
-	const struct ibtrs_msg_hdr *hdr = data;
+	struct ibtrs_srv_ctx *ctx = cm_id->context;
 	struct ibtrs_srv_sess *sess;
 	const char *uuid = NULL;
 	bool user = false;
 	int ret;
-
-	if (unlikely(!srv_ops_are_valid(srv_ops))) {
-		pr_err("Establishing connection failed, "
-		       "no user module registered!\n");
-		ret = -ECOMM;
-		goto err_reject;
-	}
 
 	if (unlikely((size < sizeof(struct ibtrs_msg_con_open)) ||
 		     (size < sizeof(struct ibtrs_msg_sess_open)) ||
@@ -2433,30 +2440,30 @@ static int rdma_con_establish(struct rdma_cm_id *cm_id, const void *data,
 	}
 
 	if (hdr->type == IBTRS_MSG_SESS_OPEN)
-		uuid = ((struct ibtrs_msg_sess_open *)data)->uuid;
+		uuid = ((struct ibtrs_msg_sess_open *)hdr)->uuid;
 	else if (hdr->type == IBTRS_MSG_CON_OPEN)
-		uuid = ((struct ibtrs_msg_con_open *)data)->uuid;
+		uuid = ((struct ibtrs_msg_con_open *)hdr)->uuid;
 
-	mutex_lock(&sess_mutex);
-	sess = __find_active_sess(uuid);
+	mutex_lock(&ctx->sess_mutex);
+	sess = __find_sess(ctx, uuid);
 	if (sess) {
 		if (unlikely(hdr->type == IBTRS_MSG_SESS_OPEN)) {
 			ibtrs_info(sess, "Connection request rejected, "
 				   "session already exists\n");
-			mutex_unlock(&sess_mutex);
+			mutex_unlock(&ctx->sess_mutex);
 			ret = -EEXIST;
 			goto err_reject;
 		}
 		if (!ibtrs_srv_sess_get(sess)) {
 			ibtrs_info(sess, "Connection request rejected,"
 				   " session is being closed\n");
-			mutex_unlock(&sess_mutex);
+			mutex_unlock(&ctx->sess_mutex);
 			ret = -EINVAL;
 			goto err_reject;
 		}
 	} else {
 		if (unlikely(hdr->type == IBTRS_MSG_CON_OPEN)) {
-			mutex_unlock(&sess_mutex);
+			mutex_unlock(&ctx->sess_mutex);
 			pr_info("Connection request rejected,"
 				" received con_open msg but no active session"
 				" exists.\n");
@@ -2464,9 +2471,10 @@ static int rdma_con_establish(struct rdma_cm_id *cm_id, const void *data,
 			goto err_reject;
 		}
 
-		sess = __create_sess(cm_id, (struct ibtrs_msg_sess_open *)data);
+		sess = __create_sess(ctx, cm_id,
+				     (const struct ibtrs_msg_sess_open *)hdr);
 		if (IS_ERR(sess)) {
-			mutex_unlock(&sess_mutex);
+			mutex_unlock(&ctx->sess_mutex);
 			ret = PTR_ERR(sess);
 			pr_err("Establishing connection failed, "
 			       "creating local session resource failed, err:"
@@ -2477,7 +2485,7 @@ static int rdma_con_establish(struct rdma_cm_id *cm_id, const void *data,
 		user = true;
 	}
 
-	mutex_unlock(&sess_mutex);
+	mutex_unlock(&ctx->sess_mutex);
 
 	ret = ssm_schedule_create_con(sess, cm_id, user);
 	if (ret) {
@@ -2500,14 +2508,21 @@ err_reject:
 static int ibtrs_srv_rdma_cm_ev_handler(struct rdma_cm_id *cm_id,
 					struct rdma_cm_event *event)
 {
-	struct ibtrs_srv_con *con = cm_id->context;
+	struct ibtrs_srv_con *con = NULL;
 	int ret = 0;
 
 	pr_debug("cma_event type %d cma_id %p(%s) on con: %p\n", event->event,
 		 cm_id, rdma_event_msg(event->event), con);
+
+	if (cm_id->qp) {
+		struct ibtrs_con *ibtrs_con = cm_id->qp->qp_context;
+
+		con = container_of(ibtrs_con, struct ibtrs_srv_con, ibtrs_con);
+	}
 	if (!con && event->event != RDMA_CM_EVENT_CONNECT_REQUEST) {
 		pr_info("Ignore cma_event type %d cma_id %p(%s)\n",
 			event->event, cm_id, rdma_event_msg(event->event));
+		/* XXX: FIXME: WTF? */
 		return 0;
 	}
 
@@ -2571,28 +2586,27 @@ static int ibtrs_srv_rdma_cm_ev_handler(struct rdma_cm_id *cm_id,
 	return ret;
 }
 
-static int ibtrs_srv_cm_init(struct rdma_cm_id **cm_id, struct sockaddr *addr,
-			     enum rdma_port_space ps)
+static struct rdma_cm_id *ibtrs_srv_cm_init(struct ibtrs_srv_ctx *ctx,
+					    struct sockaddr *addr,
+					    enum rdma_port_space ps)
 {
+	struct rdma_cm_id *cm_id;
 	int ret;
 
-	*cm_id = rdma_create_id(&init_net, ibtrs_srv_rdma_cm_ev_handler, NULL,
-				ps, IB_QPT_RC);
-	if (IS_ERR(*cm_id)) {
-		ret = PTR_ERR(*cm_id);
+	cm_id = rdma_create_id(&init_net, ibtrs_srv_rdma_cm_ev_handler, ctx,
+			       ps, IB_QPT_RC);
+	if (IS_ERR(cm_id)) {
+		ret = PTR_ERR(cm_id);
 		pr_err("Creating id for RDMA connection failed, err: %d\n",
 		       ret);
 		goto err_out;
 	}
-	pr_debug("created cm_id %p\n", *cm_id);
-	ret = rdma_bind_addr(*cm_id, addr);
+	ret = rdma_bind_addr(cm_id, addr);
 	if (ret) {
 		pr_err("Binding RDMA address failed, err: %d\n", ret);
 		goto err_cm;
 	}
-	pr_debug("rdma_bind_addr successful\n");
-	/* we currently accept 64 rdma_connects */
-	ret = rdma_listen(*cm_id, 64);
+	ret = rdma_listen(cm_id, 64);
 	if (ret) {
 		pr_err("Listening on RDMA connection failed, err: %d\n",
 		       ret);
@@ -2610,37 +2624,38 @@ static int ibtrs_srv_cm_init(struct rdma_cm_id **cm_id, struct sockaddr *addr,
 		break;
 	case AF_IB:
 		pr_debug("listening on service id 0x%016llx\n",
-			 be64_to_cpu(rdma_get_service_id(*cm_id, addr)));
+			 be64_to_cpu(rdma_get_service_id(cm_id, addr)));
 		break;
 	default:
 		pr_debug("listening on address family %u\n", addr->sa_family);
 	}
 
-	return 0;
+	return cm_id;
 
 err_cm:
-	rdma_destroy_id(*cm_id);
+	rdma_destroy_id(cm_id);
 err_out:
-	return ret;
+
+	return ERR_PTR(ret);
 }
 
-static int ibtrs_srv_rdma_init(const struct ibtrs_srv_ops *ops)
+static int ibtrs_srv_rdma_init(struct ibtrs_srv_ctx *ctx, unsigned port)
 {
-	int ret = 0;
 	struct sockaddr_in6 sin = {
 		.sin6_family	= AF_INET6,
 		.sin6_addr	= IN6ADDR_ANY_INIT,
-		.sin6_port	= htons(ops->port),
+		.sin6_port	= htons(port),
 	};
 	struct sockaddr_ib sib = {
 		.sib_family			= AF_IB,
 		.sib_addr.sib_subnet_prefix	= 0ULL,
 		.sib_addr.sib_interface_id	= 0ULL,
-		.sib_sid	= cpu_to_be64(RDMA_IB_IP_PS_IB |
-					      ops->port),
+		.sib_sid	= cpu_to_be64(RDMA_IB_IP_PS_IB | port),
 		.sib_sid_mask	= cpu_to_be64(0xffffffffffffffffULL),
 		.sib_pkey	= cpu_to_be16(0xffff),
 	};
+	struct rdma_cm_id *cm_ip, *cm_ib;
+	int ret = 0;
 
 	/*
 	 * We accept both IPoIB and IB connections, so we need to keep
@@ -2649,100 +2664,105 @@ static int ibtrs_srv_rdma_init(const struct ibtrs_srv_ops *ops)
 	 * everything.
 	 */
 
-	ret = ibtrs_srv_cm_init(&cm_id_ip, (struct sockaddr *)&sin,
-				RDMA_PS_TCP);
-	if (ret)
-		return ret;
+	cm_ip = ibtrs_srv_cm_init(ctx, (struct sockaddr *)&sin, RDMA_PS_TCP);
+	if (unlikely((IS_ERR(cm_ip))))
+	    return PTR_ERR(cm_ip);
 
-	ret = ibtrs_srv_cm_init(&cm_id_ib, (struct sockaddr *)&sib, RDMA_PS_IB);
-	if (ret)
-		goto err_cm_ib;
+	cm_ib = ibtrs_srv_cm_init(ctx, (struct sockaddr *)&sib, RDMA_PS_IB);
+	if (unlikely((IS_ERR(cm_ib))))
+		goto free_cm_ip;
+
+	ctx->cm_id_ip = cm_ip;
+	ctx->cm_id_ib = cm_ib;
 
 	return ret;
 
-err_cm_ib:
-	rdma_destroy_id(cm_id_ip);
+free_cm_ip:
+	rdma_destroy_id(cm_ip);
+
 	return ret;
 }
 
-int ibtrs_srv_register(const struct ibtrs_srv_ops *ops)
+static struct ibtrs_srv_ctx *alloc_srv_ctx(const struct ibtrs_srv_ops *ops)
 {
-	int err;
+	struct ibtrs_srv_ctx *ctx;
 
-	if (srv_ops) {
-		pr_err("Registration failed, module %s already registered,"
-		       " only 1 user module supported\n",
-		       srv_ops->owner->name);
-		return -ENOTSUPP;
-	}
+	ctx = kzalloc(sizeof(*ctx), GFP_KERNEL);
+	if (!ctx)
+		return NULL;
+
+	ctx->ops = *ops;
+	mutex_init(&ctx->sess_mutex);
+	INIT_LIST_HEAD(&ctx->sess_list);
+	init_waitqueue_head(&ctx->sess_list_waitq);
+
+	return ctx;
+}
+
+static void free_srv_ctx(struct ibtrs_srv_ctx *ctx)
+{
+	WARN_ON(!list_empty(&ctx->sess_list));
+	kfree(ctx);
+}
+
+struct ibtrs_srv_ctx *ibtrs_srv_open(const struct ibtrs_srv_ops *ops,
+				     unsigned int port)
+{
+	struct ibtrs_srv_ctx *ctx;
+	int err;
 
 	if (unlikely(!srv_ops_are_valid(ops))) {
 		pr_err("Registration failed, user module supploed invalid ops"
 		       " parameter\n");
-		return -EFAULT;
+		return ERR_PTR(-EINVAL);
 	}
+	ctx = alloc_srv_ctx(ops);
+	if (unlikely(!ctx))
+		return ERR_PTR(-ENOMEM);
 
-
-	err = ibtrs_srv_rdma_init(ops);
+	err = ibtrs_srv_rdma_init(ctx, port);
 	if (err) {
+		free_srv_ctx(ctx);
 		pr_err("Can't init RDMA resource, err: %d\n", err);
-		return err;
+		return ERR_PTR(err);
 	}
-	srv_ops = ops;
 
-	return 0;
+	return ctx;
 }
-EXPORT_SYMBOL(ibtrs_srv_register);
+EXPORT_SYMBOL(ibtrs_srv_open);
 
 void ibtrs_srv_queue_close(struct ibtrs_srv_sess *sess)
 {
 	ssm_schedule_event(sess, SSM_EV_SYSFS_DISCONNECT);
 }
 
-static void close_sessions(void)
+static void close_sessions(struct ibtrs_srv_ctx *ctx)
 {
 	struct ibtrs_srv_sess *srv_sess;
 	struct ibtrs_sess *sess;
 
-	mutex_lock(&sess_mutex);
-	list_for_each_entry(sess, &sess_list, list) {
+	mutex_lock(&ctx->sess_mutex);
+	list_for_each_entry(sess, &ctx->sess_list, list) {
 		srv_sess = container_of(sess, typeof(*srv_sess), sess);
 		if (!ibtrs_srv_sess_get(srv_sess))
 			continue;
 		ssm_schedule_event(srv_sess, SSM_EV_SESS_CLOSE);
 		ibtrs_srv_sess_put(srv_sess);
 	}
-	mutex_unlock(&sess_mutex);
+	mutex_unlock(&ctx->sess_mutex);
 
-	wait_event(sess_list_waitq, list_empty(&sess_list));
+	wait_event(ctx->sess_list_waitq, list_empty(&ctx->sess_list));
 }
 
-void ibtrs_srv_unregister(const struct ibtrs_srv_ops *ops)
+void ibtrs_srv_close(struct ibtrs_srv_ctx *ctx)
 {
-	if (!srv_ops) {
-		pr_warn("Nothing to unregister - srv_ops = NULL\n");
-		return;
-	}
-
-	/* TODO: in order to support registration of multiple modules,
-	 * introduce a list with srv_ops and search for the correct
-	 * one.
-	 */
-
-	if (srv_ops != ops) {
-		pr_err("Ops is not the ops we have registered\n");
-		return;
-	}
-
-	rdma_destroy_id(cm_id_ip);
-	cm_id_ip = NULL;
-	rdma_destroy_id(cm_id_ib);
-	cm_id_ib = NULL;
-	close_sessions();
+	rdma_destroy_id(ctx->cm_id_ip);
+	rdma_destroy_id(ctx->cm_id_ib);
+	close_sessions(ctx);
 	flush_workqueue(destroy_wq);
-	srv_ops = NULL;
+	free_srv_ctx(ctx);
 }
-EXPORT_SYMBOL(ibtrs_srv_unregister);
+EXPORT_SYMBOL(ibtrs_srv_close);
 
 static int check_module_params(void)
 {

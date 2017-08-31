@@ -77,8 +77,6 @@ struct ibnbd_io_private {
 	struct ibnbd_srv_sess_dev	*sess_dev;
 };
 
-static struct ibtrs_srv_ops ibnbd_srv_ops;
-
 static void ibnbd_sess_dev_release(struct kref *kref)
 {
 	struct ibnbd_srv_sess_dev *sess_dev;
@@ -981,38 +979,32 @@ int ibnbd_srv_revalidate_dev(struct ibnbd_srv_dev *dev)
 	return 0;
 }
 
+static struct ibtrs_srv_ctx *ibtrs_ctx;
+
 static int __init ibnbd_srv_init_module(void)
 {
+	struct ibtrs_srv_ops ibtrs_ops;
 	int err;
 
-	pr_info("Loading module ibnbd_server, version: %s (dev_search_path: "
-		"'%s', def_io_mode: '%s')\n", __stringify(IBNBD_VER),
-		dev_search_path, ibnbd_io_mode_str(def_io_mode));
+	ibtrs_ops.recv    = ibnbd_srv_recv;
+	ibtrs_ops.rdma_ev = ibnbd_srv_rdma_ev;
+	ibtrs_ops.sess_ev = ibnbd_srv_sess_ev;
 
-	ibnbd_srv_ops.owner	= THIS_MODULE;
-	ibnbd_srv_ops.port	= IBTRS_PORT;
-	ibnbd_srv_ops.recv	= ibnbd_srv_recv;
-	ibnbd_srv_ops.rdma_ev	= ibnbd_srv_rdma_ev;
-	ibnbd_srv_ops.sess_ev	= ibnbd_srv_sess_ev;
-
-	err = ibtrs_srv_register(&ibnbd_srv_ops);
-	if (err) {
-		pr_err("Failed to load module, IBTRS registration failed,"
-		       " err: %d\n", err);
+	ibtrs_ctx = ibtrs_srv_open(&ibtrs_ops, IBTRS_PORT);
+	if (unlikely(IS_ERR(ibtrs_ctx))) {
+		err = PTR_ERR(ibtrs_ctx);
+		pr_err("ibtrs_srv_open(), err: %d\n", err);
 		goto out;
 	}
-
 	err = ibnbd_dev_init();
 	if (err) {
-		pr_err("Failed to load module, init device resources failed,"
-		       " err: %d\n", err);
-		goto unreg;
+		pr_err("ibnbd_dev_init(), err: %d\n", err);
+		goto srv_close;
 	}
 
 	err = ibnbd_srv_create_sysfs_files();
 	if (err) {
-		pr_err("Failed to load module, create sysfs files failed,"
-		       " err: %d\n", err);
+		pr_err("ibnbd_srv_create_sysfs_files(), err: %d\n", err);
 		goto dev_destroy;
 	}
 
@@ -1020,20 +1012,19 @@ static int __init ibnbd_srv_init_module(void)
 
 dev_destroy:
 	ibnbd_dev_destroy();
-unreg:
-	ibtrs_srv_unregister(&ibnbd_srv_ops);
+srv_close:
+	ibtrs_srv_close(ibtrs_ctx);
 out:
+
 	return err;
 }
 
 static void __exit ibnbd_srv_cleanup_module(void)
 {
-	pr_info("Unloading module\n");
-	ibtrs_srv_unregister(&ibnbd_srv_ops);
+	ibtrs_srv_close(ibtrs_ctx);
 	WARN_ON(!list_empty(&sess_list));
 	ibnbd_srv_destroy_sysfs_files();
 	ibnbd_dev_destroy();
-	pr_info("Module unloaded\n");
 }
 
 module_init(ibnbd_srv_init_module);

@@ -2833,7 +2833,7 @@ static void ibtrs_rdma_error_recovery(struct ibtrs_clt_con *con)
 }
 
 static int ibtrs_rdma_cm_handler(struct rdma_cm_id *cm_id,
-				     struct rdma_cm_event *ev)
+				 struct rdma_cm_event *ev)
 {
 	struct ibtrs_clt_con *con = cm_id->context;
 	struct ibtrs_clt_sess *sess = con->sess;

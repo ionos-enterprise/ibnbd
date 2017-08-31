@@ -68,6 +68,7 @@ struct ibtrs_srv_stats {
 
 struct ibtrs_srv_sess {
 	struct ibtrs_sess	sess;
+	struct ibtrs_srv_ctx	*ctx;
 	enum ssm_state		state;
 	struct kref		kref;
 	struct workqueue_struct *sm_wq;	/* event processing */
