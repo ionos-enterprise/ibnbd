@@ -415,7 +415,7 @@ struct ibtrs_device {
 	struct kref		ref;
 };
 
-struct ibtrs_ops_id {
+struct ibtrs_srv_op {
 	struct ibtrs_srv_con		*con;
 	u32				msg_id;
 	u8				dir;
@@ -650,7 +650,7 @@ static int ibtrs_srv_sess_ev(struct ibtrs_srv_sess *sess,
 	return srv_ops->sess_ev(sess, ev, sess->priv);
 }
 
-static void free_id(struct ibtrs_ops_id *id)
+static void free_id(struct ibtrs_srv_op *id)
 {
 	if (!id)
 		return;
@@ -678,7 +678,7 @@ static void free_sess_tx_bufs(struct ibtrs_srv_sess *sess)
 	}
 }
 
-static int rdma_write_sg(struct ibtrs_ops_id *id)
+static int rdma_write_sg(struct ibtrs_srv_op *id)
 {
 	struct ibtrs_srv_sess *sess = id->con->sess;
 	struct ib_rdma_wr *wr = NULL;
@@ -800,7 +800,7 @@ static int send_heartbeat(struct ibtrs_srv_sess *sess)
 	return send_heartbeat_raw(con);
 }
 
-static int ibtrs_srv_queue_resp_rdma(struct ibtrs_ops_id *id)
+static int ibtrs_srv_queue_resp_rdma(struct ibtrs_srv_op *id)
 {
 	if (unlikely(id->con->state != CSM_STATE_CONNECTED)) {
 		ibtrs_err_rl(id->con->sess, "Sending I/O response failed, "
@@ -821,11 +821,11 @@ static int ibtrs_srv_queue_resp_rdma(struct ibtrs_ops_id *id)
 
 static void ibtrs_srv_resp_rdma_worker(struct work_struct *work)
 {
-	struct ibtrs_ops_id *id;
-	int err;
 	struct ibtrs_srv_sess *sess;
+	struct ibtrs_srv_op *id;
+	int err;
 
-	id = container_of(work, struct ibtrs_ops_id, work);
+	id = container_of(work, struct ibtrs_srv_op, work);
 	sess = id->con->sess;
 
 	if (id->status || id->dir == WRITE) {
@@ -864,7 +864,7 @@ static void ibtrs_srv_resp_rdma_worker(struct work_struct *work)
  * callback on the user module. Queue the real work on a workqueue so we don't
  * need to hold an irq spinlock.
  */
-int ibtrs_srv_resp_rdma(struct ibtrs_ops_id *id, int status)
+int ibtrs_srv_resp_rdma(struct ibtrs_srv_op *id, int status)
 {
 	int err = 0;
 
@@ -1321,7 +1321,7 @@ static void free_sess_rx_bufs(struct ibtrs_srv_sess *sess)
 static int alloc_sess_tx_bufs(struct ibtrs_srv_sess *sess)
 {
 	struct ib_device *ib_dev = sess->dev->ib_dev.dev;
-	struct ibtrs_ops_id *id;
+	struct ibtrs_srv_op *id;
 	int i, err;
 
 	sess->rdma_info_iu =
@@ -1473,9 +1473,9 @@ static void process_rdma_write_req(struct ibtrs_srv_con *con,
 				   struct ibtrs_msg_req_rdma_write *req,
 				   u32 buf_id, u32 off)
 {
-	int ret;
-	struct ibtrs_ops_id *id;
 	struct ibtrs_srv_sess *sess = con->sess;
+	struct ibtrs_srv_op *id;
+	int ret;
 
 	if (unlikely(sess->state != SSM_STATE_CONNECTED ||
 		     con->state != CSM_STATE_CONNECTED)) {
@@ -1531,9 +1531,9 @@ static void process_rdma_write(struct ibtrs_srv_con *con,
 			       struct ibtrs_msg_rdma_write *req,
 			       u32 buf_id, u32 off)
 {
-	int ret;
-	struct ibtrs_ops_id *id;
 	struct ibtrs_srv_sess *sess = con->sess;
+	struct ibtrs_srv_op *id;
+	int ret;
 
 	if (unlikely(sess->state != SSM_STATE_CONNECTED ||
 		     con->state != CSM_STATE_CONNECTED)) {

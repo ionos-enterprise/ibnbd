@@ -73,7 +73,7 @@ static LIST_HEAD(dev_list);
 
 
 struct ibnbd_io_private {
-	struct ibtrs_ops_id		*id;
+	struct ibtrs_srv_op		*id;
 	struct ibnbd_srv_sess_dev	*sess_dev;
 };
 
@@ -128,7 +128,7 @@ ibnbd_get_sess_dev(int dev_id, struct ibnbd_srv_session *srv_sess)
 
 static int process_rdma(struct ibtrs_srv_sess *sess,
 			struct ibnbd_srv_session *srv_sess,
-			struct ibtrs_ops_id *id, void *data, u32 len)
+			struct ibtrs_srv_op *id, void *data, u32 len)
 {
 	struct ibnbd_io_private *priv;
 	struct ibnbd_srv_sess_dev *sess_dev;
@@ -351,7 +351,7 @@ static int ibnbd_srv_sess_ev(struct ibtrs_srv_sess *sess,
 }
 
 static int ibnbd_srv_rdma_ev(struct ibtrs_srv_sess *sess, void *priv,
-			     struct ibtrs_ops_id *id, enum ibtrs_srv_rdma_ev ev,
+			     struct ibtrs_srv_op *id, enum ibtrs_srv_rdma_ev ev,
 			     void *data, size_t len)
 {
 	struct ibnbd_srv_session *srv_sess = priv;
