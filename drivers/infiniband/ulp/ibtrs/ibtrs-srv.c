@@ -503,12 +503,13 @@ int ibtrs_srv_current_hca_port_to_str(struct ibtrs_srv_sess *sess,
 			 ibtrs_srv_get_sess_current_port_num(sess));
 }
 
-inline const char *ibtrs_srv_get_sess_hca_name(struct ibtrs_srv_sess *sess)
+const char *ibtrs_srv_get_sess_hca_name(struct ibtrs_srv_sess *sess)
 {
 	struct ibtrs_srv_con *con = ibtrs_srv_get_user_con(sess);
 
 	if (con)
 		return sess->dev->ib_dev.dev->name;
+
 	return "n/a";
 }
 
@@ -2735,7 +2736,7 @@ int ibtrs_srv_register(const struct ibtrs_srv_ops *ops)
 }
 EXPORT_SYMBOL(ibtrs_srv_register);
 
-inline void ibtrs_srv_queue_close(struct ibtrs_srv_sess *sess)
+void ibtrs_srv_queue_close(struct ibtrs_srv_sess *sess)
 {
 	ssm_schedule_event(sess, SSM_EV_SYSFS_DISCONNECT);
 }

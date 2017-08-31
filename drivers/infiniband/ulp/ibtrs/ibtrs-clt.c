@@ -2956,7 +2956,7 @@ out:
 }
 
 static int ibtrs_send_sess_info(struct ibtrs_clt_sess *sess,
-				    bool timeout_wait)
+				bool timeout_wait)
 {
 	struct ibtrs_clt_con *usr_con = &sess->con[0];
 	struct ibtrs_msg_info_req *msg;
