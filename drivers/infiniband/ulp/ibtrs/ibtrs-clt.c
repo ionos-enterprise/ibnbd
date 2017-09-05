@@ -2709,7 +2709,7 @@ static int ibtrs_rdma_route_resolved(struct ibtrs_clt_con *con)
 	msg.version = cpu_to_le16(IBTRS_CURRENT_VER);
 	msg.cid = cpu_to_le16(con->cid);
 	msg.cid_num = cpu_to_le16(CONS_PER_SESSION);
-	memcpy(msg.uuid, sess->uuid.b, IBTRS_UUID_SIZE);
+	memcpy(msg.uuid, sess->uuid.b, sizeof(msg.uuid));
 
 	err = rdma_connect(con->cm_id, &param);
 	if (err)

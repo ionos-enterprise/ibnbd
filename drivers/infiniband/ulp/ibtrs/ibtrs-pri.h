@@ -107,7 +107,6 @@ struct ibtrs_heartbeat {
 };
 
 #define IBTRS_VERSION 2
-#define IBTRS_UUID_SIZE 16
 #define IO_MSG_SIZE 24
 #define IB_IMM_SIZE_BITS 32
 
@@ -175,7 +174,7 @@ struct ibtrs_msg_conn_req {
 	__le16		version;
 	__le16		cid;
 	__le16		cid_num;
-	u8		uuid[IBTRS_UUID_SIZE];
+	u8		uuid[16];
 	u8		reserved[32];
 };
 
@@ -200,7 +199,7 @@ struct ibtrs_msg_conn_rsp {
 	__le32		rkey;
 	__le32		max_io_size;
 	__le32		max_req_size;
-	u8		uuid[IBTRS_UUID_SIZE];
+	u8		uuid[16];
 	u8		reserved[20];
 };
 
@@ -259,7 +258,7 @@ struct ibtrs_msg_hdr {
  */
 struct ibtrs_msg_sess_open {
 	struct ibtrs_msg_hdr	hdr;
-	u8			uuid[IBTRS_UUID_SIZE];
+	u8			uuid[16];
 	u8			ver;
 	u8			con_cnt;
 	u8			reserved[30];
@@ -343,7 +342,7 @@ struct ibtrs_msg_sess_open_resp {
  */
 struct ibtrs_msg_con_open {
 	struct ibtrs_msg_hdr	hdr;
-	u8			uuid[IBTRS_UUID_SIZE];
+	u8			uuid[16];
 };
 
 //XXX OLD STUFF, DIE ASAP END
