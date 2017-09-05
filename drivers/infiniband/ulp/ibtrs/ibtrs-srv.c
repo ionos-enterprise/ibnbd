@@ -239,7 +239,7 @@ MODULE_PARM_DESC(hostname, "Sets hostname of local server, will send to the"
 static struct dentry *ibtrs_srv_debugfs_dir;
 static struct dentry *mempool_debugfs_dir;
 
-static struct workqueue_struct *destroy_wq;
+static struct workqueue_struct *ibtrs_wq;
 
 static LIST_HEAD(device_list);
 static DEFINE_MUTEX(device_list_mutex);
@@ -1712,7 +1712,7 @@ static int ibtrs_schedule_msg(struct ibtrs_srv_con *con,
 	}
 	memcpy(w->msg, msg, msg->hdr.tsize);
 	INIT_WORK(&w->work, msg_worker);
-	queue_work(con->sess->msg_wq, &w->work);
+	queue_work(ibtrs_wq, &w->work);
 	return 0;
 }
 
@@ -1813,9 +1813,6 @@ static void close_con(struct ibtrs_srv_con *con)
 	if (!con->user && !con->device_being_removed)
 		rdma_destroy_id(con->cm_id);
 
-	if (con->user)
-		destroy_workqueue(sess->msg_wq);
-
 	con->sess->active_cnt--;
 }
 
@@ -1887,7 +1884,7 @@ static void schedule_sess_put(struct ibtrs_srv_sess *sess)
 	 */
 	w->sess = sess;
 	INIT_WORK(&w->work, sess_put_worker);
-	queue_work(destroy_wq, &w->work);
+	queue_work(ibtrs_wq, &w->work);
 }
 
 static void ibtrs_srv_sysfs_put_worker(struct work_struct *work)
@@ -1913,7 +1910,7 @@ static void ibtrs_srv_schedule_sysfs_put(struct ibtrs_srv_sess *sess)
 	w->sess	= sess;
 
 	INIT_WORK(&w->work, ibtrs_srv_sysfs_put_worker);
-	queue_work(destroy_wq, &w->work);
+	queue_work(ibtrs_wq, &w->work);
 }
 
 static void ibtrs_free_dev(struct kref *ref)
@@ -2359,20 +2356,9 @@ static void ssm_create_con_worker(struct work_struct *work)
 	add_con_to_list(sess, con);
 
 	cm_id->context = con;
-	if (con->user) {
-		con->sess->msg_wq = alloc_ordered_workqueue("sess_msg_wq", 0);
-		if (!con->sess->msg_wq) {
-			ibtrs_err(con->sess, "Failed to create user message"
-				  " workqueue\n");
-			ret = -ENOMEM;
-			goto err_accept;
-		}
-	}
-
-	pr_debug("accept request\n");
 	ret = accept(con);
 	if (ret)
-		goto err_msg;
+		goto err_accept;
 
 	if (con->user)
 		con->sess->cm_id = cm_id;
@@ -2380,9 +2366,7 @@ static void ssm_create_con_worker(struct work_struct *work)
 	con->sess->active_cnt++;
 
 	return;
-err_msg:
-	if (con->user)
-		destroy_workqueue(con->sess->msg_wq);
+
 err_accept:
 	cm_id->context = NULL;
 	remove_con_from_list(con);
@@ -2759,7 +2743,7 @@ void ibtrs_srv_close(struct ibtrs_srv_ctx *ctx)
 	rdma_destroy_id(ctx->cm_id_ip);
 	rdma_destroy_id(ctx->cm_id_ib);
 	close_sessions(ctx);
-	flush_workqueue(destroy_wq);
+	flush_workqueue(ibtrs_wq);
 	free_srv_ctx(ctx);
 }
 EXPORT_SYMBOL(ibtrs_srv_close);
@@ -3482,17 +3466,16 @@ static int __init ibtrs_server_init(void)
 		       " err: %d\n", err);
 		return err;
 	}
-	destroy_wq = alloc_workqueue("ibtrs_server_destroy_wq", 0, 0);
-	if (!destroy_wq) {
-		pr_err("Failed to load module,"
-		       " alloc ibtrs_server_destroy_wq failed\n");
+	ibtrs_wq = create_workqueue("ibtrs_server_wq");
+	if (!ibtrs_wq) {
+		pr_err("Failed to load module, alloc ibtrs_server_wq failed\n");
 		return -ENOMEM;
 	}
 	err = ibtrs_srv_create_sysfs_files();
 	if (err) {
 		pr_err("Failed to load module, can't create sysfs files,"
 		       " err: %d\n", err);
-		goto out_destroy_wq;
+		goto out_ibtrs_wq;
 	}
 	err = ibtrs_srv_create_debugfs_files();
 	if (err)
@@ -3503,8 +3486,8 @@ static int __init ibtrs_server_init(void)
 
 	return 0;
 
-out_destroy_wq:
-	destroy_workqueue(destroy_wq);
+out_ibtrs_wq:
+	destroy_workqueue(ibtrs_wq);
 	return err;
 }
 
@@ -3512,7 +3495,7 @@ static void __exit ibtrs_server_exit(void)
 {
 	ibtrs_srv_destroy_debugfs_files();
 	ibtrs_srv_destroy_sysfs_files();
-	destroy_workqueue(destroy_wq);
+	destroy_workqueue(ibtrs_wq);
 	ibtrs_srv_free_buf_pool();
 }
 

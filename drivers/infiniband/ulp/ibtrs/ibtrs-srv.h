@@ -72,7 +72,6 @@ struct ibtrs_srv_sess {
 	enum ssm_state		state;
 	struct kref		kref;
 	struct workqueue_struct *sm_wq;	/* event processing */
-	struct workqueue_struct *msg_wq;
 	struct ibtrs_device	*dev; /* ib dev with mempool */
 	struct rdma_cm_id	*cm_id;	/* cm_id used to create the session */
 	struct mutex            lock; /* to protect con_list */
