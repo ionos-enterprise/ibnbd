@@ -1,6 +1,8 @@
 #ifndef IBTRS_CLT_H
 #define IBTRS_CLT_H
 
+#include <linux/uuid.h>
+
 #include "ibtrs-pri.h"
 
 /**
@@ -107,6 +109,7 @@ struct ibtrs_clt_sess {
 	struct ibtrs_iu		*dummy_rx_iu;
 	struct ibtrs_iu		**usr_rx_ring;
 	struct ibtrs_iu		**io_tx_ius;
+	uuid_le			uuid;
 
 	struct rdma_req		*reqs;
 	struct ib_fmr_pool	*fmr_pool;

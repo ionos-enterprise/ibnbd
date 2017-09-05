@@ -4,7 +4,6 @@
 #include <linux/wait.h>
 #include <linux/scatterlist.h>
 #include <linux/random.h>
-#include <linux/uuid.h>
 #include <linux/utsname.h>
 #include <rdma/rdma_cm.h>
 #include <rdma/ib_cm.h>
@@ -106,7 +105,6 @@ static void ibtrs_rdma_error_recovery(struct ibtrs_clt_con *con);
 static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc);
 
 static struct workqueue_struct *ibtrs_wq;
-static uuid_le uuid;
 
 /* rdma_req which connect iu with sglist received from user */
 struct rdma_req {
@@ -2635,6 +2633,9 @@ static int init_conns(struct ibtrs_clt_sess *sess)
 {
 	int cid, err;
 
+	/* Before connecting generate new session UUID */
+	uuid_le_gen(&sess->uuid);
+
 	/* Establish all RDMA connections  */
 	for (cid = 0; cid < CONS_PER_SESSION; cid++) {
 		err = create_cm(sess, cid);
@@ -2709,7 +2710,7 @@ static int ibtrs_rdma_route_resolved(struct ibtrs_clt_con *con)
 	msg.version = cpu_to_le16(IBTRS_CURRENT_VER);
 	msg.cid = cpu_to_le16(con->cid);
 	msg.cid_num = cpu_to_le16(CONS_PER_SESSION);
-	memcpy(msg.uuid, uuid.b, IBTRS_UUID_SIZE);
+	memcpy(msg.uuid, sess->uuid.b, IBTRS_UUID_SIZE);
 
 	err = rdma_connect(con->cm_id, &param);
 	if (err)
@@ -3703,7 +3704,6 @@ static int __init ibtrs_client_init(void)
 		       " err: %d\n", err);
 		goto out_destroy_wq;
 	}
-	uuid_le_gen(&uuid);
 
 	return 0;
 
