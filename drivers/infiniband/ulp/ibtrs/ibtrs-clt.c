@@ -3702,12 +3702,12 @@ static int __init ibtrs_client_init(void)
 	if (err) {
 		pr_err("Failed to load module, can't create sysfs files,"
 		       " err: %d\n", err);
-		goto out_destroy_wq;
+		goto out_ibtrs_wq;
 	}
 
 	return 0;
 
-out_destroy_wq:
+out_ibtrs_wq:
 	destroy_workqueue(ibtrs_wq);
 
 	return err;
