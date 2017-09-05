@@ -389,13 +389,10 @@ struct ibtrs_srv_con {
 	enum csm_state		state;
 	/* true if con is for user msg only */
 	bool			user;
-	bool			failover_enabled;
 	atomic_t		wr_cnt;
 	struct rdma_cm_id	*cm_id;
-	int			cq_vector;
 	struct ibtrs_srv_sess	*sess;
 	struct workqueue_struct *rdma_resp_wq;
-	struct ib_wc		wcs[WC_ARRAY_SIZE];
 	bool			device_being_removed;
 };
 
@@ -2162,7 +2159,6 @@ __create_sess(struct ibtrs_srv_ctx *ctx, struct rdma_cm_id *cm_id,
 	sess->wq_size		= cm_id->device->attrs.max_qp_wr - 1;
 	sess->queue_depth	= sess_queue_depth;
 	sess->con_cnt		= req->con_cnt;
-	sess->primary_port_num	= cm_id->port_num;
 
 	ibtrs_heartbeat_init(&sess->heartbeat,
 			     default_heartbeat_timeout_ms <
@@ -2283,8 +2279,8 @@ static void ssm_create_con_worker(struct work_struct *work)
 	u16 cq_size, wr_queue_size;
 	struct ibtrs_srv_con *con;
 	struct rdma_cm_id *cm_id;
+	int cq_vector, ret;
 	bool user;
-	int ret;
 
 	ssm_w = container_of(work, struct ssm_create_con_work, work);
 	sess = ssm_w->sess;
@@ -2322,11 +2318,11 @@ static void ssm_create_con_worker(struct work_struct *work)
 		wr_queue_size	= sess->wq_size;
 	}
 
-	con->cq_vector = ibtrs_srv_get_next_cq_vector(sess);
+	cq_vector = ibtrs_srv_get_next_cq_vector(sess);
 
 	/* TODO: SOFTIRQ can be faster, but be careful with softirq context */
 	ret = ibtrs_cq_qp_create(&sess->sess, &con->ibtrs_con, con->cm_id,
-				 1, con->cq_vector, cq_size, wr_queue_size,
+				 1, cq_vector, cq_size, wr_queue_size,
 				 &con->sess->dev->ib_dev, IB_POLL_WORKQUEUE);
 	if (ret) {
 		ibtrs_err(sess, "Failed to initialize IB connection, err: %d\n",
