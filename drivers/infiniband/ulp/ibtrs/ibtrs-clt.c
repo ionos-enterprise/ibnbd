@@ -3120,6 +3120,7 @@ EXPORT_SYMBOL(ibtrs_clt_open);
 
 void ibtrs_clt_close(struct ibtrs_clt_sess *sess)
 {
+	ibtrs_clt_destroy_sess_files(&sess->kobj, &sess->kobj_stats);
 	ibtrs_clt_close_conns(sess, true);
 	free_sess(sess);
 }
