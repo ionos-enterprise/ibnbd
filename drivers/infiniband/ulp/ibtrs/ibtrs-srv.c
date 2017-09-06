@@ -1836,7 +1836,7 @@ static void destroy_sess(struct kref *kref)
 		destroy_con(con);
 
 	mutex_lock(&ctx->sess_mutex);
-	list_del(&sess->sess.list);
+	list_del(&sess->ctx_list);
 	mutex_unlock(&ctx->sess_mutex);
 	wake_up(&ctx->sess_list_waitq);
 
@@ -2189,7 +2189,7 @@ __create_sess(struct ibtrs_srv_ctx *ctx, struct rdma_cm_id *cm_id,
 	kref_init(&sess->kref);
 	init_waitqueue_head(&sess->bufs_wait);
 
-	list_add(&sess->sess.list, &ctx->sess_list);
+	list_add(&sess->ctx_list, &ctx->sess_list);
 	ibtrs_info(sess, "IBTRS Session created (queue depth: %d)\n",
 		   sess->queue_depth);
 
@@ -2227,15 +2227,13 @@ EXPORT_SYMBOL(ibtrs_srv_get_sess_qdepth);
 static struct ibtrs_srv_sess *
 __find_sess(struct ibtrs_srv_ctx *ctx, const char *uuid)
 {
-	struct ibtrs_sess *sess;
-	struct ibtrs_srv_sess *srv_sess;
+	struct ibtrs_srv_sess *sess;
 
-	list_for_each_entry(sess, &ctx->sess_list, list) {
-		srv_sess = container_of(sess, typeof(*srv_sess), sess);
-		if (!memcmp(srv_sess->uuid.b, uuid, sizeof(srv_sess->uuid.b)) &&
-		    srv_sess->state != SSM_STATE_CLOSING &&
-		    srv_sess->state != SSM_STATE_CLOSED)
-			return srv_sess;
+	list_for_each_entry(sess, &ctx->sess_list, ctx_list) {
+		if (!memcmp(sess->uuid.b, uuid, sizeof(sess->uuid.b)) &&
+		    sess->state != SSM_STATE_CLOSING &&
+		    sess->state != SSM_STATE_CLOSED)
+			return sess;
 	}
 
 	return NULL;
@@ -2721,16 +2719,14 @@ void ibtrs_srv_queue_close(struct ibtrs_srv_sess *sess)
 
 static void close_sessions(struct ibtrs_srv_ctx *ctx)
 {
-	struct ibtrs_srv_sess *srv_sess;
-	struct ibtrs_sess *sess;
+	struct ibtrs_srv_sess *sess;
 
 	mutex_lock(&ctx->sess_mutex);
-	list_for_each_entry(sess, &ctx->sess_list, list) {
-		srv_sess = container_of(sess, typeof(*srv_sess), sess);
-		if (!ibtrs_srv_sess_get(srv_sess))
+	list_for_each_entry(sess, &ctx->sess_list, ctx_list) {
+		if (!ibtrs_srv_sess_get(sess))
 			continue;
-		ssm_schedule_event(srv_sess, SSM_EV_SESS_CLOSE);
-		ibtrs_srv_sess_put(srv_sess);
+		ssm_schedule_event(sess, SSM_EV_SESS_CLOSE);
+		ibtrs_srv_sess_put(sess);
 	}
 	mutex_unlock(&ctx->sess_mutex);
 

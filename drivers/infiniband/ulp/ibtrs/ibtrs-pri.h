@@ -65,7 +65,6 @@ struct ibtrs_addr {
 };
 
 struct ibtrs_sess {
-	struct list_head	list;
 	struct ibtrs_addr	addr;
 	bool			usr_freed;
 	spinlock_t		usr_lock;
