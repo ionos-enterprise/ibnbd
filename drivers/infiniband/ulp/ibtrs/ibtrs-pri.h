@@ -59,11 +59,6 @@ struct ibtrs_ib_dev {
 	struct ib_device	*dev;
 };
 
-struct ibtrs_ib_path {
-	union ib_gid    p_sgid;
-	union ib_gid    p_dgid;
-};
-
 struct ibtrs_addr {
 	struct sockaddr_storage sockaddr;
 	char	hostname[MAXHOSTNAMELEN];
@@ -86,8 +81,6 @@ struct ibtrs_con {
 	struct ib_send_wr	beacon;      /* XXX die ASAP */
 	struct ib_cqe		beacon_cqe;  /* XXX die ASAP */
 	struct rdma_cm_id	*cm_id;
-	struct ibtrs_ib_path	pri_path;
-	struct ibtrs_ib_path	cur_path;
 };
 
 struct ibtrs_iu {
