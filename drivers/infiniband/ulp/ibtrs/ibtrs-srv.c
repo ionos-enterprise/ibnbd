@@ -463,44 +463,18 @@ static void csm_schedule_event(struct ibtrs_srv_con *con, enum csm_ev ev);
 static int ssm_init(struct ibtrs_srv_sess *sess);
 static int ssm_schedule_event(struct ibtrs_srv_sess *sess, enum ssm_ev ev);
 
-static int ibtrs_srv_get_sess_current_port_num(struct ibtrs_srv_sess *sess)
-{
-	struct ibtrs_srv_con *con, *next;
-	struct ibtrs_srv_con *ucon = ibtrs_srv_get_user_con(sess);
-
-	if (sess->state != SSM_STATE_CONNECTED || !ucon)
-		return -ECOMM;
-
-	mutex_lock(&sess->lock);
-	if (WARN_ON(!sess->cm_id)) {
-		mutex_unlock(&sess->lock);
-		return -ENODEV;
-	}
-	list_for_each_entry_safe(con, next, &sess->con_list, list) {
-		if (unlikely(con->state != CSM_STATE_CONNECTED)) {
-			mutex_unlock(&sess->lock);
-			return -ECOMM;
-		}
-		if (con->cm_id->port_num != sess->cm_id->port_num) {
-			mutex_unlock(&sess->lock);
-			return 0;
-		}
-	}
-	mutex_unlock(&sess->lock);
-	return sess->cm_id->port_num;
-}
-
 int ibtrs_srv_current_hca_port_to_str(struct ibtrs_srv_sess *sess,
 				      char *buf, size_t len)
 {
-	if (!ibtrs_srv_get_sess_current_port_num(sess))
-		return scnprintf(buf, len, "migrating\n");
+	struct ibtrs_srv_con *con = ibtrs_srv_get_user_con(sess);
+	char str[16] = "n/a\n";
+	int sz = 4;
 
-	if (ibtrs_srv_get_sess_current_port_num(sess) < 0)
-		return ibtrs_srv_get_sess_current_port_num(sess);
+	if (con)
+		len = scnprintf(str, sizeof(str), "%u\n", con->cm_id->port_num);
+	strncpy(buf, str, len);
 
-	return scnprintf(buf, len, "%u\n",
-			 ibtrs_srv_get_sess_current_port_num(sess));
+	return sz;
 }
 
 const char *ibtrs_srv_get_sess_hca_name(struct ibtrs_srv_sess *sess)
@@ -1807,7 +1781,7 @@ static void close_con(struct ibtrs_srv_con *con)
 	destroy_workqueue(con->rdma_resp_wq);
 
 	ibtrs_cq_qp_destroy(&con->ibtrs_con);
-	if (!con->user && !con->device_being_removed)
+	if (!con->device_being_removed)
 		rdma_destroy_id(con->cm_id);
 
 	con->sess->active_cnt--;
@@ -1827,8 +1801,6 @@ static void destroy_sess(struct kref *kref)
 
 	sess = container_of(kref, struct ibtrs_srv_sess, kref);
 	ctx = sess->ctx;
-	if (sess->cm_id)
-		rdma_destroy_id(sess->cm_id);
 
 	destroy_workqueue(sess->sm_wq);
 
@@ -2356,9 +2328,6 @@ static void ssm_create_con_worker(struct work_struct *work)
 	ret = accept(con);
 	if (ret)
 		goto err_accept;
-
-	if (con->user)
-		con->sess->cm_id = cm_id;
 
 	con->sess->active_cnt++;
 
