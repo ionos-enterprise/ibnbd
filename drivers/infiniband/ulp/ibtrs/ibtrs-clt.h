@@ -118,10 +118,7 @@ struct ibtrs_clt_sess {
 	struct delayed_work	reconnect_dwork;
 	struct work_struct	close_work;
 	struct ibtrs_heartbeat	heartbeat;
-	atomic_t		refcount;
 	bool			enable_rdma_lat;
-	u8			connected_cnt;
-	u32			retry_cnt;
 	s16			max_reconnect_attempts;
 	u8			reconnect_delay_sec;
 	void			*tags;
@@ -147,7 +144,6 @@ struct ibtrs_clt_sess {
 	struct kobject		kobj;
 	struct kobject		kobj_stats;
 	struct ibtrs_clt_stats  stats;
-	bool			device_removed;
 };
 
 #define TAG_SIZE(sess) (sizeof(struct ibtrs_tag) + (sess)->pdu_sz)

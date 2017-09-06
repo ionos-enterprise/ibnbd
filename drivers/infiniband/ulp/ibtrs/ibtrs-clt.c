@@ -2365,7 +2365,6 @@ static void init_sess(struct ibtrs_clt_sess *sess,
 {
 	int i;
 
-	atomic_set(&sess->refcount, 1);
 	sess->peer_addr = *addr;
 	sess->pdu_sz = pdu_sz;
 	sess->ops = *ops;
