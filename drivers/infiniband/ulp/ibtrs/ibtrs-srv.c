@@ -408,7 +408,7 @@ struct msg_work {
 	void                    *msg;
 };
 
-struct ibtrs_device {
+struct ibtrs_srv_dev {
 	struct list_head	entry;
 	struct ibtrs_ib_dev	ib_dev;
 	struct completion	*ib_dev_destroy_completion;
@@ -1910,61 +1910,64 @@ static void ibtrs_srv_schedule_sysfs_put(struct ibtrs_srv_sess *sess)
 	queue_work(ibtrs_wq, &w->work);
 }
 
-static void ibtrs_free_dev(struct kref *ref)
+static struct ibtrs_srv_dev *
+ibtrs_dev_find_get(struct rdma_cm_id *cm_id)
 {
-	struct ibtrs_device *ndev =
-		container_of(ref, struct ibtrs_device, ref);
-
-	mutex_lock(&device_list_mutex);
-	list_del(&ndev->entry);
-	mutex_unlock(&device_list_mutex);
-	ibtrs_ib_dev_destroy(&ndev->ib_dev);
-	if (ndev->ib_dev_destroy_completion)
-		complete_all(ndev->ib_dev_destroy_completion);
-	kfree(ndev);
-}
-
-static struct ibtrs_device *
-ibtrs_find_get_device(struct rdma_cm_id *cm_id)
-{
-	struct ibtrs_device *ndev;
+	struct ibtrs_srv_dev *dev;
 	int err;
 
 	mutex_lock(&device_list_mutex);
-	list_for_each_entry(ndev, &device_list, entry) {
-		if (ndev->ib_dev.dev->node_guid == cm_id->device->node_guid &&
-		    kref_get_unless_zero(&ndev->ref))
+	list_for_each_entry(dev, &device_list, entry) {
+		if (dev->ib_dev.dev->node_guid == cm_id->device->node_guid &&
+		    kref_get_unless_zero(&dev->ref))
 			goto out_unlock;
 	}
-
-	ndev = kzalloc(sizeof(*ndev), GFP_KERNEL);
-	if (!ndev)
+	dev = kzalloc(sizeof(*dev), GFP_KERNEL);
+	if (unlikely(!dev))
 		goto out_err;
-
-	kref_init(&ndev->ref);
-
-	err = ibtrs_ib_dev_init(&ndev->ib_dev, cm_id->device);
-	if (err)
+	kref_init(&dev->ref);
+	err = ibtrs_ib_dev_init(&dev->ib_dev, cm_id->device);
+	if (unlikely(err))
 		goto out_free;
-
-	list_add(&ndev->entry, &device_list);
-	pr_debug("added %s.\n", ndev->ib_dev.dev->name);
+	list_add(&dev->entry, &device_list);
 out_unlock:
 	mutex_unlock(&device_list_mutex);
-	return ndev;
+
+	return dev;
 
 out_free:
-	kfree(ndev);
+	kfree(dev);
 out_err:
 	mutex_unlock(&device_list_mutex);
+
 	return NULL;
+}
+
+static void ibtrs_dev_free(struct kref *ref)
+{
+	struct ibtrs_srv_dev *dev;
+
+	dev = container_of(ref, struct ibtrs_srv_dev, ref);
+
+	mutex_lock(&device_list_mutex);
+	list_del(&dev->entry);
+	mutex_unlock(&device_list_mutex);
+	ibtrs_ib_dev_destroy(&dev->ib_dev);
+	if (dev->ib_dev_destroy_completion)
+		complete_all(dev->ib_dev_destroy_completion);
+	kfree(dev);
+}
+
+static void ibtrs_dev_put(struct ibtrs_srv_dev *dev)
+{
+	kref_put(&dev->ref, ibtrs_dev_free);
 }
 
 static void ibtrs_srv_sess_destroy(struct ibtrs_srv_sess *sess)
 {
 	release_cont_bufs(sess);
 	free_sess_bufs(sess);
-	kref_put(&sess->dev->ref, ibtrs_free_dev);
+	ibtrs_dev_put(sess->dev);
 }
 
 static void process_err_wc(struct ibtrs_srv_con *con, struct ib_wc *wc)
@@ -2166,10 +2169,10 @@ __create_sess(struct ibtrs_srv_ctx *ctx, struct rdma_cm_id *cm_id,
 			     MIN_HEARTBEAT_TIMEOUT_MS :
 			     default_heartbeat_timeout_ms);
 
-	sess->dev = ibtrs_find_get_device(cm_id);
+	sess->dev = ibtrs_dev_find_get(cm_id);
 	if (!sess->dev) {
 		err = -ENOMEM;
-		ibtrs_wrn(sess, "Failed to alloc ibtrs_device\n");
+		ibtrs_wrn(sess, "Failed to alloc ibtrs_srv_dev\n");
 		goto err1;
 	}
 	err = setup_cont_bufs(sess);
@@ -2195,7 +2198,7 @@ __create_sess(struct ibtrs_srv_ctx *ctx, struct rdma_cm_id *cm_id,
 err3:
 	release_cont_bufs(sess);
 err2:
-	kref_put(&sess->dev->ref, ibtrs_free_dev);
+	ibtrs_dev_put(sess->dev);
 err1:
 	kfree(sess);
 out:
