@@ -2355,21 +2355,31 @@ static bool ibtrs_clt_change_state(struct ibtrs_clt_sess *sess,
 static void ibtrs_clt_reconnect_work(struct work_struct *work);
 static void ibtrs_clt_close_work(struct work_struct *work);
 
-static void init_sess(struct ibtrs_clt_sess *sess,
-		      const struct ibtrs_clt_ops *ops,
-		      const struct sockaddr_storage *addr,
-		      size_t pdu_sz,
-		      u8 reconnect_delay_sec,
-		      u16 max_segments,
-		      s16 max_reconnect_attempts)
+static struct ibtrs_clt_sess *alloc_sess(const struct ibtrs_clt_ops *ops,
+					 const struct sockaddr_storage *addr,
+					 size_t pdu_sz, u8 reconnect_delay_sec,
+					 u16 max_segments,
+					 s16 max_reconnect_attempts)
 {
-	int i;
+	struct ibtrs_clt_sess *sess;
+	int err, i;
+
+	sess = kzalloc(sizeof(*sess), GFP_KERNEL);
+	if (unlikely(!sess)) {
+		err = -ENOMEM;
+		goto err;
+	}
+	sess->con = kcalloc(CONS_PER_SESSION, sizeof(*sess->con), GFP_KERNEL);
+	if (unlikely(!sess->con)) {
+		err = -ENOMEM;
+		goto err_free_sess;
+	}
+	for (i = 0; i < CONS_PER_SESSION; i++)
+		sess->con->sess = sess;
 
 	sess->peer_addr = *addr;
 	sess->pdu_sz = pdu_sz;
 	sess->ops = *ops;
-	for (i = 0; i < CONS_PER_SESSION; i++)
-		sess->con->sess = sess;
 	sess->sess.addr.sockaddr = *addr;
 	sess->reconnect_delay_sec = reconnect_delay_sec;
 	sess->max_reconnect_attempts = max_reconnect_attempts;
@@ -2387,29 +2397,9 @@ static void init_sess(struct ibtrs_clt_sess *sess,
 	INIT_WORK(&sess->close_work, ibtrs_clt_close_work);
 	//XXX INIT_DELAYED_WORK(&sess->heartbeat_dwork, heartbeat_work);
 	INIT_DELAYED_WORK(&sess->reconnect_dwork, ibtrs_clt_reconnect_work);
-}
 
-static struct ibtrs_clt_sess *alloc_sess(const struct ibtrs_clt_ops *ops,
-					 const struct sockaddr_storage *addr,
-					 size_t pdu_sz, u8 reconnect_delay_sec,
-					 u16 max_segments,
-					 s16 max_reconnect_attempts)
-{
-	struct ibtrs_clt_sess *sess;
-	int err = -ENOMEM;
-
-	sess = kzalloc(sizeof(*sess), GFP_KERNEL);
-	if (unlikely(!sess))
-		goto err;
-
-	sess->con = kcalloc(CONS_PER_SESSION, sizeof(*sess->con), GFP_KERNEL);
-	if (!sess->con)
-		goto err_free_sess;
-
-	init_sess(sess, ops, addr, pdu_sz, reconnect_delay_sec,
-		  max_segments, max_reconnect_attempts);
 	err = ibtrs_clt_init_stats(sess);
-	if (err) {
+	if (unlikely(err)) {
 		pr_err("Failed to initialize statistics\n");
 		goto err_free_con;
 	}
