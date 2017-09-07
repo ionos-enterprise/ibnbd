@@ -148,7 +148,7 @@ static void qp_event_handler(struct ib_event *ev, void *ctx)
 	}
 }
 
-int ibtrs_ib_dev_init(struct ibtrs_ib_dev *d, struct ib_device *dev)
+static int ibtrs_ib_dev_init(struct ibtrs_ib_dev *d, struct ib_device *dev)
 {
 	d->pd = ib_alloc_pd(dev, IB_PD_UNSAFE_GLOBAL_RKEY);
 	if (IS_ERR(d->pd))
@@ -158,9 +158,8 @@ int ibtrs_ib_dev_init(struct ibtrs_ib_dev *d, struct ib_device *dev)
 
 	return 0;
 }
-EXPORT_SYMBOL_GPL(ibtrs_ib_dev_init);
 
-void ibtrs_ib_dev_destroy(struct ibtrs_ib_dev *d)
+static void ibtrs_ib_dev_destroy(struct ibtrs_ib_dev *d)
 {
 	if (d->pd) {
 		ib_dealloc_pd(d->pd);
