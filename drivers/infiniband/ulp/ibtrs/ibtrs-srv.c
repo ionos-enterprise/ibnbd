@@ -889,7 +889,7 @@ int ibtrs_srv_send(struct ibtrs_srv_sess *sess, const struct kvec *vec,
 	copy_from_kvec(msg->payl, vec, len);
 
 	err = ibtrs_post_send(con->ibtrs_con.qp,
-			      con->sess->s.ib_dev->pd->__internal_mr,
+			      con->sess->s.ib_dev->mr,
 			      iu, msg->hdr.tsize);
 	if (unlikely(err)) {
 		ibtrs_err_rl(sess, "Sending message failed, posting message to QP"
