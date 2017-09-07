@@ -69,6 +69,7 @@ struct ibtrs_addr {
 
 struct ibtrs_sess {
 	struct ibtrs_addr	addr;
+	struct ibtrs_ib_dev	*ib_dev;
 	bool			usr_freed;
 	spinlock_t		usr_lock;
 	struct completion	usr_comp;
