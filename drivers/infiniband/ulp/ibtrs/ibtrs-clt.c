@@ -1244,7 +1244,7 @@ static void process_msg_user_ack(struct ibtrs_clt_con *con)
 {
 	struct ibtrs_clt_sess *sess = con->sess;
 
-	ibtrs_usr_msg_put(&sess->sess);
+	ibtrs_usr_msg_put(&sess->s);
 }
 
 static void msg_worker(struct work_struct *work)
@@ -1367,7 +1367,7 @@ static void ibtrs_clt_usr_send_done(struct ib_cq *cq, struct ib_wc *wc)
 	struct ibtrs_iu *iu;
 
 	iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
-	ibtrs_usr_msg_return_iu(&sess->sess, iu);
+	ibtrs_usr_msg_return_iu(&sess->s, iu);
 	iu = NULL;
 
 	if (unlikely(wc->status != IB_WC_SUCCESS)) {
@@ -1578,7 +1578,7 @@ static void free_sess_tx_bufs(struct ibtrs_clt_sess *sess)
 		kfree(sess->io_tx_ius);
 		sess->io_tx_ius = NULL;
 	}
-	ibtrs_usr_msg_free_list(&sess->sess, sess->ib_dev);
+	ibtrs_usr_msg_free_list(&sess->s, sess->ib_dev);
 }
 
 static int alloc_sess_rx_bufs(struct ibtrs_clt_sess *sess)
@@ -1633,7 +1633,7 @@ static int alloc_sess_tx_bufs(struct ibtrs_clt_sess *sess)
 			goto err;
 		sess->io_tx_ius[i] = iu;
 	}
-	err = ibtrs_usr_msg_alloc_list(&sess->sess, sess->ib_dev,
+	err = ibtrs_usr_msg_alloc_list(&sess->s, sess->ib_dev,
 				       max_req_size);
 	if (unlikely(err))
 		goto err;
@@ -2380,7 +2380,7 @@ static struct ibtrs_clt_sess *alloc_sess(const struct ibtrs_clt_ops *ops,
 	sess->peer_addr = *addr;
 	sess->pdu_sz = pdu_sz;
 	sess->ops = *ops;
-	sess->sess.addr.sockaddr = *addr;
+	sess->s.addr.sockaddr = *addr;
 	sess->reconnect_delay_sec = reconnect_delay_sec;
 	sess->max_reconnect_attempts = max_reconnect_attempts;
 	sess->max_pages_per_mr = max_segments;
@@ -2445,7 +2445,7 @@ static int create_con_cq_qp(struct ibtrs_clt_con *con)
 			return err;
 	}
 	cq_vector = con->cpu % sess->ib_dev->dev->num_comp_vectors;
-	err = ibtrs_cq_qp_create(&sess->sess, &con->ibtrs_con,
+	err = ibtrs_cq_qp_create(&sess->s, &con->ibtrs_con,
 				 con->cm_id, sess->max_sge,
 				 cq_vector, cq_size, wr_queue_size,
 				 sess->ib_dev, IB_POLL_SOFTIRQ);
@@ -2912,7 +2912,7 @@ static int process_info_rsp(struct ibtrs_clt_sess *sess,
 	for (i = 0; i < msg->addr_num; i++)
 		sess->srv_rdma_addr[i] = le64_to_cpu(msg->addr[i]);
 
-	memcpy(sess->sess.addr.hostname, msg->hostname, sizeof(msg->hostname));
+	memcpy(sess->s.addr.hostname, msg->hostname, sizeof(msg->hostname));
 
 	return 0;
 }
@@ -3516,7 +3516,7 @@ int ibtrs_clt_send(struct ibtrs_clt_sess *sess, const struct kvec *vec,
 			     " user message length too large (len: %zu)\n", len);
 		return -EMSGSIZE;
 	}
-	iu = ibtrs_usr_msg_get(&sess->sess);
+	iu = ibtrs_usr_msg_get(&sess->s);
 	if (unlikely(!iu)) {
 		/* We are in disconnecting state, just return */
 		ibtrs_err_rl(sess, "Sending user message failed, disconnecting");
@@ -3555,8 +3555,8 @@ int ibtrs_clt_send(struct ibtrs_clt_sess *sess, const struct kvec *vec,
 	return 0;
 
 err_post_send:
-	ibtrs_usr_msg_return_iu(&sess->sess, iu);
-	ibtrs_usr_msg_put(&sess->sess);
+	ibtrs_usr_msg_return_iu(&sess->s, iu);
+	ibtrs_usr_msg_put(&sess->s);
 
 	return err;
 }
@@ -3574,7 +3574,7 @@ int ibtrs_clt_query(struct ibtrs_clt_sess *sess, struct ibtrs_attrs *attr)
 	attr->max_pages_per_mr = sess->max_pages_per_mr;
 	attr->max_sge          = sess->max_sge;
 	attr->max_io_size      = sess->max_io_size;
-	strlcpy(attr->hostname, sess->sess.addr.hostname,
+	strlcpy(attr->hostname, sess->s.addr.hostname,
 		sizeof(attr->hostname));
 
 	return 0;

@@ -634,7 +634,7 @@ static void free_sess_tx_bufs(struct ibtrs_srv_sess *sess)
 			      sess->ib_dev->dev);
 		sess->rdma_info_iu = NULL;
 	}
-	ibtrs_usr_msg_free_list(&sess->sess, sess->ib_dev);
+	ibtrs_usr_msg_free_list(&sess->s, sess->ib_dev);
 
 	if (sess->ops_ids) {
 		for (i = 0; i < sess->queue_depth; i++)
@@ -876,7 +876,7 @@ int ibtrs_srv_send(struct ibtrs_srv_sess *sess, const struct kvec *vec,
 			     " %zu > %lu\n", len, MAX_REQ_SIZE - IBTRS_HDR_LEN);
 		return -EMSGSIZE;
 	}
-	iu = ibtrs_usr_msg_get(&sess->sess);
+	iu = ibtrs_usr_msg_get(&sess->s);
 	if (unlikely(!iu)) {
 		/* We are in disconnecting state, just return */
 		ibtrs_err_rl(sess, "Sending user message failed, disconnecting");
@@ -904,8 +904,8 @@ int ibtrs_srv_send(struct ibtrs_srv_sess *sess, const struct kvec *vec,
 	return 0;
 
 err_post_send:
-	ibtrs_usr_msg_return_iu(&sess->sess, iu);
-	ibtrs_usr_msg_put(&sess->sess);
+	ibtrs_usr_msg_return_iu(&sess->s, iu);
+	ibtrs_usr_msg_put(&sess->s);
 
 	return err;
 }
@@ -1311,7 +1311,7 @@ static int alloc_sess_tx_bufs(struct ibtrs_srv_sess *sess)
 		}
 		sess->ops_ids[i] = id;
 	}
-	err = ibtrs_usr_msg_alloc_list(&sess->sess, sess->ib_dev,
+	err = ibtrs_usr_msg_alloc_list(&sess->s, sess->ib_dev,
 				       MAX_REQ_SIZE);
 	if (unlikely(err)) {
 		ibtrs_err(sess, "Allocation failed\n");
@@ -1588,7 +1588,7 @@ static void process_msg_user_ack(struct ibtrs_srv_con *con)
 {
 	struct ibtrs_srv_sess *sess = con->sess;
 
-	ibtrs_usr_msg_put(&sess->sess);
+	ibtrs_usr_msg_put(&sess->s);
 }
 
 static void ibtrs_handle_write(struct ibtrs_srv_con *con, struct ibtrs_iu *iu,
@@ -1725,7 +1725,7 @@ static void ibtrs_handle_recv(struct ibtrs_srv_con *con, struct ibtrs_iu *iu)
 			goto err2;
 		}
 		req = (struct ibtrs_msg_sess_info *)hdr;
-		memcpy(sess->sess.addr.hostname, req->hostname,
+		memcpy(sess->s.addr.hostname, req->hostname,
 		       sizeof(req->hostname));
 		return;
 	default:
@@ -1901,7 +1901,7 @@ static void process_err_wc(struct ibtrs_srv_con *con, struct ib_wc *wc)
 	 */
 	iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
 	if (iu && iu->direction == DMA_TO_DEVICE && iu != sess->rdma_info_iu)
-		ibtrs_usr_msg_return_iu(&sess->sess, iu);
+		ibtrs_usr_msg_return_iu(&sess->s, iu);
 
 	if (wc->status != IB_WC_WR_FLUSH_ERR ||
 	    (con->state != CSM_STATE_CLOSING &&
@@ -1954,7 +1954,7 @@ static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 			break;
 		if (con->user)
 			//XXX WTF? should be WARN_ON if !con->user
-			ibtrs_usr_msg_return_iu(&sess->sess, iu);
+			ibtrs_usr_msg_return_iu(&sess->s, iu);
 		break;
 	case IB_WC_RECV:
 		/*
@@ -2060,7 +2060,7 @@ __create_sess(struct ibtrs_srv_ctx *ctx, struct rdma_cm_id *cm_id,
 	}
 
 	sess->ctx = ctx;
-	sess->sess.addr.sockaddr = cm_id->route.addr.dst_addr;
+	sess->s.addr.sockaddr = cm_id->route.addr.dst_addr;
 	sess->est_cnt = 0;
 	sess->state_in_sysfs = false;
 	sess->cur_cq_vector = -1;
@@ -2115,14 +2115,14 @@ out:
 
 const char *ibtrs_srv_get_sess_hostname(struct ibtrs_srv_sess *sess)
 {
-	return sess->sess.addr.hostname;
+	return sess->s.addr.hostname;
 }
 EXPORT_SYMBOL(ibtrs_srv_get_sess_hostname);
 
 const struct sockaddr_storage *
 ibtrs_srv_get_sess_sockaddr(struct ibtrs_srv_sess *sess)
 {
-	return &sess->sess.addr.sockaddr;
+	return &sess->s.addr.sockaddr;
 }
 EXPORT_SYMBOL(ibtrs_srv_get_sess_sockaddr);
 
@@ -2230,7 +2230,7 @@ static void ssm_create_con_worker(struct work_struct *work)
 	cq_vector = ibtrs_srv_get_next_cq_vector(sess);
 
 	/* TODO: SOFTIRQ can be faster, but be careful with softirq context */
-	ret = ibtrs_cq_qp_create(&sess->sess, &con->ibtrs_con, con->cm_id,
+	ret = ibtrs_cq_qp_create(&sess->s, &con->ibtrs_con, con->cm_id,
 				 1, cq_vector, cq_size, wr_queue_size,
 				 con->sess->ib_dev, IB_POLL_WORKQUEUE);
 	if (ret) {

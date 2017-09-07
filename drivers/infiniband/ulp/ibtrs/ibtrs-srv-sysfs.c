@@ -109,7 +109,7 @@ static ssize_t hostname_show(struct kobject *kobj,
 
 	sess = container_of(kobj, struct ibtrs_srv_sess, kobj);
 
-	return sprintf(page, "%s\n", sess->sess.addr.hostname);
+	return sprintf(page, "%s\n", sess->s.addr.hostname);
 }
 
 static struct kobj_attribute hostname_attr =
@@ -213,7 +213,7 @@ int ibtrs_srv_create_sess_files(struct ibtrs_srv_sess *sess)
 	if (WARN_ON(!ibtrs_srv_sess_get(sess)))
 		return -EINVAL;
 
-	sockaddr_to_str(&sess->sess.addr.sockaddr, buf, sizeof(buf));
+	sockaddr_to_str(&sess->s.addr.sockaddr, buf, sizeof(buf));
 	ret = kobject_init_and_add(&sess->kobj, &ibtrs_srv_sess_ktype,
 				   ibtrs_srv_sessions_kobj, "%s", buf);
 	if (ret) {

@@ -67,7 +67,7 @@ struct ibtrs_srv_stats {
 };
 
 struct ibtrs_srv_sess {
-	struct ibtrs_sess	sess;
+	struct ibtrs_sess	s;
 	struct ibtrs_srv_ctx	*ctx;
 	struct list_head	ctx_list;
 	enum ssm_state		state;

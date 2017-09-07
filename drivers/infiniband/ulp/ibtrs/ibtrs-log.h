@@ -2,7 +2,7 @@
 #define IBTRS_LOG_H
 
 struct fake_sess {
-	struct ibtrs_sess sess;
+	struct ibtrs_sess s;
 };
 
 #define FAKE_OR_REAL(dev)						\
@@ -22,7 +22,7 @@ struct fake_sess {
 		__builtin_types_compatible_p(			\
 			typeof(dev), struct ibtrs_con *),	\
 		addr = &((struct ibtrs_con *)dev)->sess->addr,	\
-		addr = &((FAKE_OR_REAL(dev))(dev))->sess.addr	\
+		addr = &((FAKE_OR_REAL(dev))(dev))->s.addr	\
 	);							\
 								\
 	if (addr->hostname[0])					\

@@ -101,7 +101,7 @@ struct ibtrs_clt_stats {
 };
 
 struct ibtrs_clt_sess {
-	struct ibtrs_sess	sess;
+	struct ibtrs_sess	s;
 	wait_queue_head_t	state_wq;
 	enum ibtrs_clt_state	state;
 	struct ibtrs_clt_con	*con;
