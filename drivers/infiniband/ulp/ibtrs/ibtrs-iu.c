@@ -162,3 +162,58 @@ void ibtrs_iu_free(struct ibtrs_iu *iu, enum dma_data_direction dir,
 	kfree(iu);
 }
 EXPORT_SYMBOL_GPL(ibtrs_iu_free);
+
+int ibtrs_iu_alloc_sess_rx_bufs(struct ibtrs_sess *sess, size_t max_req_size)
+{
+	struct ibtrs_iu *iu;
+	int i;
+
+	sess->dummy_rx_iu = ibtrs_iu_alloc(0, IBTRS_HDR_LEN, GFP_KERNEL,
+					   sess->ib_dev->dev, DMA_FROM_DEVICE);
+	if (unlikely(!sess->dummy_rx_iu))
+		goto err;
+
+	sess->usr_rx_ring = kcalloc(USR_CON_BUF_SIZE,
+				    sizeof(*sess->usr_rx_ring),
+				    GFP_KERNEL);
+	if (unlikely(!sess->usr_rx_ring))
+		goto err;
+
+	for (i = 0; i < USR_CON_BUF_SIZE; ++i) {
+		iu = ibtrs_iu_alloc(i, max_req_size, GFP_KERNEL,
+				    sess->ib_dev->dev, DMA_FROM_DEVICE);
+		if (unlikely(!iu))
+			goto err;
+		sess->usr_rx_ring[i] = iu;
+	}
+
+	return 0;
+
+err:
+	ibtrs_iu_free_sess_rx_bufs(sess);
+
+	return -ENOMEM;
+}
+EXPORT_SYMBOL_GPL(ibtrs_iu_alloc_sess_rx_bufs);
+
+void ibtrs_iu_free_sess_rx_bufs(struct ibtrs_sess *sess)
+{
+	int i;
+
+	if (sess->dummy_rx_iu) {
+		ibtrs_iu_free(sess->dummy_rx_iu, DMA_FROM_DEVICE,
+			      sess->ib_dev->dev);
+		sess->dummy_rx_iu = NULL;
+	}
+	if (sess->usr_rx_ring) {
+		for (i = 0; i < USR_CON_BUF_SIZE; ++i) {
+			if (sess->usr_rx_ring[i])
+				ibtrs_iu_free(sess->usr_rx_ring[i],
+					      DMA_FROM_DEVICE,
+					      sess->ib_dev->dev);
+		}
+		kfree(sess->usr_rx_ring);
+		sess->usr_rx_ring = NULL;
+	}
+}
+EXPORT_SYMBOL_GPL(ibtrs_iu_free_sess_rx_bufs);

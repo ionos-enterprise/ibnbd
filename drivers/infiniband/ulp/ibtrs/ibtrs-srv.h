@@ -77,8 +77,6 @@ struct ibtrs_srv_sess {
 	int			cur_cq_vector;
 	struct list_head        con_list;
 	struct ibtrs_iu		*rdma_info_iu;
-	struct ibtrs_iu		*dummy_rx_iu;
-	struct ibtrs_iu		**usr_rx_ring;
 	struct ibtrs_srv_op	**ops_ids;
 	unsigned int		est_cnt; /* number of established connections */
 	unsigned int		active_cnt; /* number of active (not closed)

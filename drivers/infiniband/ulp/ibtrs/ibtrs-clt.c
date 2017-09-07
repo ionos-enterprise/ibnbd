@@ -1459,10 +1459,10 @@ static int post_recv_all(struct ibtrs_clt_sess *sess)
 		num = (cid == 0 ? USR_CON_BUF_SIZE : sess->queue_depth);
 		for (i = 0; i < num; i++) {
 			if (cid == 0) {
-				iu = sess->usr_rx_ring[i];
+				iu = sess->s.usr_rx_ring[i];
 				done = ibtrs_clt_usr_recv_done;
 			} else {
-				iu =sess->dummy_rx_iu;
+				iu =sess->s.dummy_rx_iu;
 				done = ibtrs_clt_rdma_done;
 			}
 			err = ibtrs_post_recv_cb(con, iu, done);
@@ -1544,27 +1544,6 @@ out:
 	return -ENOMEM;
 }
 
-static void free_sess_rx_bufs(struct ibtrs_clt_sess *sess)
-{
-	int i;
-
-	if (sess->dummy_rx_iu) {
-		ibtrs_iu_free(sess->dummy_rx_iu, DMA_FROM_DEVICE,
-			      sess->s.ib_dev->dev);
-		sess->dummy_rx_iu = NULL;
-	}
-	if (sess->usr_rx_ring) {
-		for (i = 0; i < USR_CON_BUF_SIZE; ++i) {
-			if (sess->usr_rx_ring[i])
-				ibtrs_iu_free(sess->usr_rx_ring[i],
-					      DMA_FROM_DEVICE,
-					      sess->s.ib_dev->dev);
-		}
-		kfree(sess->usr_rx_ring);
-		sess->usr_rx_ring = NULL;
-	}
-}
-
 static void free_sess_tx_bufs(struct ibtrs_clt_sess *sess)
 {
 	int i;
@@ -1579,40 +1558,6 @@ static void free_sess_tx_bufs(struct ibtrs_clt_sess *sess)
 		sess->io_tx_ius = NULL;
 	}
 	ibtrs_usr_msg_free_list(&sess->s, sess->s.ib_dev);
-}
-
-static int alloc_sess_rx_bufs(struct ibtrs_clt_sess *sess)
-{
-	u32 max_req_size = sess->max_req_size;
-	struct ibtrs_iu *iu;
-	int i;
-
-	sess->dummy_rx_iu = ibtrs_iu_alloc(0, IBTRS_HDR_LEN, GFP_KERNEL,
-					   sess->s.ib_dev->dev, DMA_FROM_DEVICE);
-	if (unlikely(!sess->dummy_rx_iu))
-		goto err;
-
-	sess->usr_rx_ring = kcalloc(USR_CON_BUF_SIZE,
-				    sizeof(*sess->usr_rx_ring),
-				    GFP_KERNEL);
-	if (unlikely(!sess->usr_rx_ring))
-		goto err;
-
-	for (i = 0; i < USR_CON_BUF_SIZE; ++i) {
-		iu = ibtrs_iu_alloc(i, max_req_size, GFP_KERNEL,
-				    sess->s.ib_dev->dev, DMA_FROM_DEVICE);
-		if (unlikely(!iu))
-			goto err;
-		sess->usr_rx_ring[i] = iu;
-	}
-
-	return 0;
-
-err:
-	ibtrs_err(sess, "ibtrs_iu_alloc() failed\n");
-	free_sess_rx_bufs(sess);
-
-	return -ENOMEM;
 }
 
 static int alloc_sess_tx_bufs(struct ibtrs_clt_sess *sess)
@@ -2549,7 +2494,7 @@ static int alloc_sess_all_bufs(struct ibtrs_clt_sess *sess)
 	if (unlikely(err))
 		goto free_ibdev;
 
-	err = alloc_sess_rx_bufs(sess);
+	err = ibtrs_iu_alloc_sess_rx_bufs(&sess->s, sess->max_req_size);
 	if (unlikely(err))
 		goto free_io_bufs;
 
@@ -2560,7 +2505,7 @@ static int alloc_sess_all_bufs(struct ibtrs_clt_sess *sess)
 	return 0;
 
 free_rx_bufs:
-	free_sess_rx_bufs(sess);
+	ibtrs_iu_free_sess_rx_bufs(&sess->s);
 free_io_bufs:
 	free_sess_io_bufs(sess);
 free_ibdev:
@@ -2572,7 +2517,7 @@ free_ibdev:
 static void free_sess_all_bufs(struct ibtrs_clt_sess *sess)
 {
 	free_sess_tx_bufs(sess);
-	free_sess_rx_bufs(sess);
+	ibtrs_iu_free_sess_rx_bufs(&sess->s);
 	free_sess_io_bufs(sess);
 	ibtrs_ib_dev_put(sess->s.ib_dev);
 }

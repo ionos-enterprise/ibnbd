@@ -1263,27 +1263,6 @@ static void fill_ibtrs_msg_sess_open_resp(struct ibtrs_msg_sess_open_resp *msg,
 		msg->addr[i] = con->sess->rcv_buf_pool->rcv_bufs[i].rdma_addr;
 }
 
-static void free_sess_rx_bufs(struct ibtrs_srv_sess *sess)
-{
-	int i;
-
-	if (sess->dummy_rx_iu) {
-		ibtrs_iu_free(sess->dummy_rx_iu, DMA_FROM_DEVICE,
-			      sess->s.ib_dev->dev);
-		sess->dummy_rx_iu = NULL;
-	}
-
-	if (sess->usr_rx_ring) {
-		for (i = 0; i < USR_CON_BUF_SIZE; ++i)
-			if (sess->usr_rx_ring[i])
-				ibtrs_iu_free(sess->usr_rx_ring[i],
-					      DMA_FROM_DEVICE,
-					      sess->s.ib_dev->dev);
-		kfree(sess->usr_rx_ring);
-		sess->usr_rx_ring = NULL;
-	}
-}
-
 static int alloc_sess_tx_bufs(struct ibtrs_srv_sess *sess)
 {
 	struct ibtrs_srv_op *id;
@@ -1325,48 +1304,11 @@ err:
 	return -ENOMEM;
 }
 
-static int alloc_sess_rx_bufs(struct ibtrs_srv_sess *sess)
-{
-	int i;
-
-	sess->dummy_rx_iu =
-		ibtrs_iu_alloc(0, IBTRS_HDR_LEN, GFP_KERNEL,
-			       sess->s.ib_dev->dev, DMA_FROM_DEVICE);
-	if (!sess->dummy_rx_iu) {
-		ibtrs_err(sess, "Failed to allocate dummy IU to receive "
-			  "immediate messages on io connections\n");
-		goto err;
-	}
-
-	sess->usr_rx_ring = kcalloc(USR_CON_BUF_SIZE,
-				    sizeof(*sess->usr_rx_ring), GFP_KERNEL);
-	if (!sess->usr_rx_ring) {
-		ibtrs_err(sess, "Alloc usr_rx_ring for session failed\n");
-		goto err;
-	}
-
-	for (i = 0; i < USR_CON_BUF_SIZE; ++i) {
-		sess->usr_rx_ring[i] =
-			ibtrs_iu_alloc(i, MAX_REQ_SIZE, GFP_KERNEL,
-				       sess->s.ib_dev->dev, DMA_FROM_DEVICE);
-		if (!sess->usr_rx_ring[i]) {
-			ibtrs_err(sess, "Failed to allocate iu for usr_rx_ring\n");
-			goto err;
-		}
-	}
-
-	return 0;
-
-err:
-	free_sess_rx_bufs(sess);
-	return -ENOMEM;
-}
-
 static int alloc_sess_bufs(struct ibtrs_srv_sess *sess)
 {
 	int err;
 
-	err = alloc_sess_rx_bufs(sess);
+	err = ibtrs_iu_alloc_sess_rx_bufs(&sess->s, MAX_REQ_SIZE);
 	if (err)
 		return err;
 	else
@@ -1378,7 +1320,7 @@ static int post_io_con_recv(struct ibtrs_srv_con *con)
 	int i, ret;
 
 	for (i = 0; i < con->sess->queue_depth; i++) {
-		ret = ibtrs_post_recv(con, con->sess->dummy_rx_iu);
+		ret = ibtrs_post_recv(con, con->sess->s.dummy_rx_iu);
 		if (unlikely(ret))
 			return ret;
 	}
@@ -1391,7 +1333,7 @@ static int post_user_con_recv(struct ibtrs_srv_con *con)
 	int i, ret;
 
 	for (i = 0; i < USR_CON_BUF_SIZE; i++) {
-		struct ibtrs_iu *iu = con->sess->usr_rx_ring[i];
+		struct ibtrs_iu *iu = con->sess->s.usr_rx_ring[i];
 
 		ret = ibtrs_post_recv(con, iu);
 		if (unlikely(ret))
@@ -1413,7 +1355,7 @@ static int post_recv(struct ibtrs_srv_con *con)
 
 static void free_sess_bufs(struct ibtrs_srv_sess *sess)
 {
-	free_sess_rx_bufs(sess);
+	ibtrs_iu_free_sess_rx_bufs(&sess->s);
 	free_sess_tx_bufs(sess);
 }
 

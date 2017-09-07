@@ -70,6 +70,8 @@ struct ibtrs_addr {
 struct ibtrs_sess {
 	struct ibtrs_addr	addr;
 	struct ibtrs_ib_dev	*ib_dev;
+	struct ibtrs_iu         *dummy_rx_iu;
+	struct ibtrs_iu         **usr_rx_ring;
 	bool			usr_freed;
 	spinlock_t		usr_lock;
 	struct completion	usr_comp;
@@ -409,6 +411,9 @@ struct ibtrs_msg_error {
 
 //XXX OLD STUFF, DIE ASAP BEGIN
 
+/* ibtrs-proto.c */
+
+/* XXX DIE ASAP */
 int ibtrs_validate_message(const struct ibtrs_msg_hdr *hdr);
 
 /* ibtrs-heartbeat.c */
@@ -432,6 +437,8 @@ void ibtrs_usr_msg_put(struct ibtrs_sess *sess);
 struct ibtrs_iu *ibtrs_iu_alloc(u32 tag, size_t size, gfp_t t,
 				struct ib_device *dev,
 				enum dma_data_direction);
+int ibtrs_iu_alloc_sess_rx_bufs(struct ibtrs_sess *sess, size_t max_req_size);
+void ibtrs_iu_free_sess_rx_bufs(struct ibtrs_sess *sess);
 
 void ibtrs_iu_free(struct ibtrs_iu *iu, enum dma_data_direction dir,
 		   struct ib_device *dev);
