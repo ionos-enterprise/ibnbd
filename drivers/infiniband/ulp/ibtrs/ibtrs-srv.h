@@ -73,7 +73,7 @@ struct ibtrs_srv_sess {
 	enum ssm_state		state;
 	struct kref		kref;
 	struct workqueue_struct *sm_wq;	/* event processing */
-	struct ibtrs_srv_dev	*dev; /* ib dev with mempool */
+	struct ibtrs_ib_dev	*ib_dev;
 	struct mutex            lock; /* to protect con_list */
 	int			cur_cq_vector;
 	struct list_head        con_list;

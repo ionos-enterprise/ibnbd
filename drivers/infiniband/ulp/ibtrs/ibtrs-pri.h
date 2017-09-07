@@ -54,6 +54,9 @@ static inline const char *ib_wc_opcode_str(enum ib_wc_opcode opcode)
 }
 
 struct ibtrs_ib_dev {
+	struct list_head	entry;
+	struct completion	*ib_dev_destroy_completion; /* XXX DIE ASAP */
+	struct kref		ref;
 	struct ib_pd		*pd;
 	struct ib_mr		*mr;
 	struct ib_device	*dev;
@@ -401,9 +404,13 @@ struct ibtrs_msg_error {
 #pragma GCC diagnostic pop
 #endif
 
+/* ibtrs-proto.c */
+
 //XXX OLD STUFF, DIE ASAP BEGIN
 
 int ibtrs_validate_message(const struct ibtrs_msg_hdr *hdr);
+
+/* ibtrs-heartbeat.c */
 
 void ibtrs_heartbeat_init(struct ibtrs_heartbeat *h, u32 timeout_ms);
 void ibtrs_heartbeat_set_timeout_ms(struct ibtrs_heartbeat *h, u32 timeout_ms);
@@ -412,6 +419,8 @@ void ibtrs_heartbeat_set_recv_ts(struct ibtrs_heartbeat *h);
 s64 ibtrs_heartbeat_send_ts_diff_ms(const struct ibtrs_heartbeat *h);
 s64 ibtrs_heartbeat_recv_ts_diff_ms(const struct ibtrs_heartbeat *h);
 int ibtrs_heartbeat_timeout_validate(int timeout);
+
+/* ibtrs-iu.c */
 
 int ibtrs_usr_msg_alloc_list(struct ibtrs_sess *sess, struct ibtrs_ib_dev *dev,
 			     unsigned max_req_size);
@@ -426,6 +435,9 @@ struct ibtrs_iu *ibtrs_iu_alloc(u32 tag, size_t size, gfp_t t,
 void ibtrs_iu_free(struct ibtrs_iu *iu, enum dma_data_direction dir,
 		   struct ib_device *dev);
 
+/* ibtrs.c */
+
+/* XXX DIE ASAP */
 int ibtrs_post_beacon(struct ibtrs_con *con);
 
 int ibtrs_post_send(struct ib_qp *qp, struct ib_mr *mr,
@@ -439,8 +451,13 @@ int ibtrs_post_rdma_write_imm(struct ib_qp *qp, struct ib_cqe *cqe,
 int ibtrs_post_rdma_write_imm_empty(struct ib_qp *qp, struct ib_cqe *cqe,
 				    u32 imm_data, enum ib_send_flags flags);
 
+/* XXX DIE ASAP */
 int ibtrs_ib_dev_init(struct ibtrs_ib_dev *ibdev, struct ib_device *dev);
+/* XXX DIE ASAP */
 void ibtrs_ib_dev_destroy(struct ibtrs_ib_dev *ibdev);
+
+struct ibtrs_ib_dev *ibtrs_ib_dev_find_get(struct rdma_cm_id *cm_id);
+void ibtrs_ib_dev_put(struct ibtrs_ib_dev *dev);
 
 int ibtrs_cq_qp_create(struct ibtrs_sess *ibtrs_sess, struct ibtrs_con *con,
 		       struct rdma_cm_id *cm_id, u32 max_send_sge,
@@ -449,6 +466,7 @@ int ibtrs_cq_qp_create(struct ibtrs_sess *ibtrs_sess, struct ibtrs_con *con,
 		       enum ib_poll_context poll_ctx);
 void ibtrs_cq_qp_destroy(struct ibtrs_con *con);
 
+/* XXX DIE ASAP */
 int ibtrs_request_cq_notifications(struct ibtrs_con *con);
 
 static inline void sockaddr_to_str(const struct sockaddr_storage *addr,

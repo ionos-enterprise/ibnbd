@@ -241,9 +241,6 @@ static struct dentry *mempool_debugfs_dir;
 
 static struct workqueue_struct *ibtrs_wq;
 
-static LIST_HEAD(device_list);
-static DEFINE_MUTEX(device_list_mutex);
-
 static DEFINE_MUTEX(buf_pool_mutex);
 static LIST_HEAD(free_buf_pool_list);
 static int nr_free_buf_pool;
@@ -408,13 +405,6 @@ struct msg_work {
 	void                    *msg;
 };
 
-struct ibtrs_srv_dev {
-	struct list_head	entry;
-	struct ibtrs_ib_dev	ib_dev;
-	struct completion	*ib_dev_destroy_completion;
-	struct kref		ref;
-};
-
 struct ibtrs_srv_op {
 	struct ibtrs_srv_con		*con;
 	u32				msg_id;
@@ -482,7 +472,7 @@ const char *ibtrs_srv_get_sess_hca_name(struct ibtrs_srv_sess *sess)
 	struct ibtrs_srv_con *con = ibtrs_srv_get_user_con(sess);
 
 	if (con)
-		return sess->dev->ib_dev.dev->name;
+		return sess->ib_dev->dev->name;
 
 	return "n/a";
 }
@@ -641,10 +631,10 @@ static void free_sess_tx_bufs(struct ibtrs_srv_sess *sess)
 
 	if (sess->rdma_info_iu) {
 		ibtrs_iu_free(sess->rdma_info_iu, DMA_TO_DEVICE,
-			      sess->dev->ib_dev.dev);
+			      sess->ib_dev->dev);
 		sess->rdma_info_iu = NULL;
 	}
-	ibtrs_usr_msg_free_list(&sess->sess, &sess->dev->ib_dev);
+	ibtrs_usr_msg_free_list(&sess->sess, sess->ib_dev);
 
 	if (sess->ops_ids) {
 		for (i = 0; i < sess->queue_depth; i++)
@@ -682,7 +672,7 @@ static int rdma_write_sg(struct ibtrs_srv_op *id)
 			return -EINVAL;
 		}
 
-		list->lkey = sess->dev->ib_dev.pd->local_dma_lkey;
+		list->lkey = sess->ib_dev->pd->local_dma_lkey;
 		offset += list->length;
 
 		wr->wr.sg_list	= list;
@@ -899,7 +889,7 @@ int ibtrs_srv_send(struct ibtrs_srv_sess *sess, const struct kvec *vec,
 	copy_from_kvec(msg->payl, vec, len);
 
 	err = ibtrs_post_send(con->ibtrs_con.qp,
-			      con->sess->dev->ib_dev.pd->__internal_mr,
+			      con->sess->ib_dev->pd->__internal_mr,
 			      iu, msg->hdr.tsize);
 	if (unlikely(err)) {
 		ibtrs_err_rl(sess, "Sending message failed, posting message to QP"
@@ -935,7 +925,7 @@ static int ibtrs_post_recv(struct ibtrs_srv_con *con, struct ibtrs_iu *iu)
 
 	list.addr   = iu->dma_addr;
 	list.length = iu->size;
-	list.lkey   = con->sess->dev->ib_dev.pd->local_dma_lkey;
+	list.lkey   = con->sess->ib_dev->pd->local_dma_lkey;
 
 	if (unlikely(list.length == 0)) {
 		ibtrs_err_rl(con->sess, "Posting recv buffer failed, invalid sg list"
@@ -1194,7 +1184,7 @@ static void unreg_cont_bufs(struct ibtrs_srv_sess *sess)
 	for (i = 0; i < sess_queue_depth; i++) {
 		buf = &sess->rcv_buf_pool->rcv_bufs[i];
 
-		ib_dma_unmap_single(sess->dev->ib_dev.dev, buf->rdma_addr,
+		ib_dma_unmap_single(sess->ib_dev->dev, buf->rdma_addr,
 				    rcv_buf_size, DMA_BIDIRECTIONAL);
 	}
 }
@@ -1221,10 +1211,10 @@ static int setup_cont_bufs(struct ibtrs_srv_sess *sess)
 	for (i = 0; i < sess->queue_depth; i++) {
 		buf = &sess->rcv_buf_pool->rcv_bufs[i];
 
-		buf->rdma_addr = ib_dma_map_single(sess->dev->ib_dev.dev,
+		buf->rdma_addr = ib_dma_map_single(sess->ib_dev->dev,
 						   buf->buf, rcv_buf_size,
 						   DMA_BIDIRECTIONAL);
-		if (unlikely(ib_dma_mapping_error(sess->dev->ib_dev.dev,
+		if (unlikely(ib_dma_mapping_error(sess->ib_dev->dev,
 						  buf->rdma_addr))) {
 			pr_err("Registering RDMA buf failed,"
 			       " DMA mapping failed\n");
@@ -1247,8 +1237,8 @@ err_map:
 		buf = &sess->rcv_buf_pool->rcv_bufs[i];
 
 		if (buf->rdma_addr &&
-		    !ib_dma_mapping_error(sess->dev->ib_dev.dev, buf->rdma_addr))
-			ib_dma_unmap_single(sess->dev->ib_dev.dev, buf->rdma_addr,
+		    !ib_dma_mapping_error(sess->ib_dev->dev, buf->rdma_addr))
+			ib_dma_unmap_single(sess->ib_dev->dev, buf->rdma_addr,
 					    rcv_buf_size, DMA_BIDIRECTIONAL);
 	}
 	return err;
@@ -1265,7 +1255,7 @@ static void fill_ibtrs_msg_sess_open_resp(struct ibtrs_msg_sess_open_resp *msg,
 	msg->ver = IBTRS_VERSION;
 	strlcpy(msg->hostname, hostname, sizeof(msg->hostname));
 	msg->cnt = con->sess->queue_depth;
-	msg->rkey = con->sess->dev->ib_dev.pd->unsafe_global_rkey;
+	msg->rkey = con->sess->ib_dev->pd->unsafe_global_rkey;
 	msg->max_inflight_msg = con->sess->queue_depth;
 	msg->max_io_size = max_io_size;
 	msg->max_req_size = MAX_REQ_SIZE;
@@ -1279,7 +1269,7 @@ static void free_sess_rx_bufs(struct ibtrs_srv_sess *sess)
 
 	if (sess->dummy_rx_iu) {
 		ibtrs_iu_free(sess->dummy_rx_iu, DMA_FROM_DEVICE,
-			      sess->dev->ib_dev.dev);
+			      sess->ib_dev->dev);
 		sess->dummy_rx_iu = NULL;
 	}
 
@@ -1288,7 +1278,7 @@ static void free_sess_rx_bufs(struct ibtrs_srv_sess *sess)
 			if (sess->usr_rx_ring[i])
 				ibtrs_iu_free(sess->usr_rx_ring[i],
 					      DMA_FROM_DEVICE,
-					      sess->dev->ib_dev.dev);
+					      sess->ib_dev->dev);
 		kfree(sess->usr_rx_ring);
 		sess->usr_rx_ring = NULL;
 	}
@@ -1296,14 +1286,13 @@ static void free_sess_rx_bufs(struct ibtrs_srv_sess *sess)
 
 static int alloc_sess_tx_bufs(struct ibtrs_srv_sess *sess)
 {
-	struct ib_device *ib_dev = sess->dev->ib_dev.dev;
 	struct ibtrs_srv_op *id;
 	int i, err;
 
 	sess->rdma_info_iu =
 		ibtrs_iu_alloc(0, IBTRS_MSG_SESS_OPEN_RESP_LEN(
 				       sess->queue_depth), GFP_KERNEL,
-			       ib_dev, DMA_TO_DEVICE);
+			       sess->ib_dev->dev, DMA_TO_DEVICE);
 	if (unlikely(!sess->rdma_info_iu)) {
 		ibtrs_err(sess, "Allocation failed\n");
 		return -ENOMEM;
@@ -1322,7 +1311,7 @@ static int alloc_sess_tx_bufs(struct ibtrs_srv_sess *sess)
 		}
 		sess->ops_ids[i] = id;
 	}
-	err = ibtrs_usr_msg_alloc_list(&sess->sess, &sess->dev->ib_dev,
+	err = ibtrs_usr_msg_alloc_list(&sess->sess, sess->ib_dev,
 				       MAX_REQ_SIZE);
 	if (unlikely(err)) {
 		ibtrs_err(sess, "Allocation failed\n");
@@ -1342,7 +1331,7 @@ static int alloc_sess_rx_bufs(struct ibtrs_srv_sess *sess)
 
 	sess->dummy_rx_iu =
 		ibtrs_iu_alloc(0, IBTRS_HDR_LEN, GFP_KERNEL,
-			       sess->dev->ib_dev.dev, DMA_FROM_DEVICE);
+			       sess->ib_dev->dev, DMA_FROM_DEVICE);
 	if (!sess->dummy_rx_iu) {
 		ibtrs_err(sess, "Failed to allocate dummy IU to receive "
 			  "immediate messages on io connections\n");
@@ -1359,7 +1348,7 @@ static int alloc_sess_rx_bufs(struct ibtrs_srv_sess *sess)
 	for (i = 0; i < USR_CON_BUF_SIZE; ++i) {
 		sess->usr_rx_ring[i] =
 			ibtrs_iu_alloc(i, MAX_REQ_SIZE, GFP_KERNEL,
-				       sess->dev->ib_dev.dev, DMA_FROM_DEVICE);
+				       sess->ib_dev->dev, DMA_FROM_DEVICE);
 		if (!sess->usr_rx_ring[i]) {
 			ibtrs_err(sess, "Failed to allocate iu for usr_rx_ring\n");
 			goto err;
@@ -1882,64 +1871,11 @@ static void ibtrs_srv_schedule_sysfs_put(struct ibtrs_srv_sess *sess)
 	queue_work(ibtrs_wq, &w->work);
 }
 
-static struct ibtrs_srv_dev *
-ibtrs_dev_find_get(struct rdma_cm_id *cm_id)
-{
-	struct ibtrs_srv_dev *dev;
-	int err;
-
-	mutex_lock(&device_list_mutex);
-	list_for_each_entry(dev, &device_list, entry) {
-		if (dev->ib_dev.dev->node_guid == cm_id->device->node_guid &&
-		    kref_get_unless_zero(&dev->ref))
-			goto out_unlock;
-	}
-	dev = kzalloc(sizeof(*dev), GFP_KERNEL);
-	if (unlikely(!dev))
-		goto out_err;
-	kref_init(&dev->ref);
-	err = ibtrs_ib_dev_init(&dev->ib_dev, cm_id->device);
-	if (unlikely(err))
-		goto out_free;
-	list_add(&dev->entry, &device_list);
-out_unlock:
-	mutex_unlock(&device_list_mutex);
-
-	return dev;
-
-out_free:
-	kfree(dev);
-out_err:
-	mutex_unlock(&device_list_mutex);
-
-	return NULL;
-}
-
-static void ibtrs_dev_free(struct kref *ref)
-{
-	struct ibtrs_srv_dev *dev;
-
-	dev = container_of(ref, struct ibtrs_srv_dev, ref);
-
-	mutex_lock(&device_list_mutex);
-	list_del(&dev->entry);
-	mutex_unlock(&device_list_mutex);
-	ibtrs_ib_dev_destroy(&dev->ib_dev);
-	if (dev->ib_dev_destroy_completion)
-		complete_all(dev->ib_dev_destroy_completion);
-	kfree(dev);
-}
-
-static void ibtrs_dev_put(struct ibtrs_srv_dev *dev)
-{
-	kref_put(&dev->ref, ibtrs_dev_free);
-}
-
 static void ibtrs_srv_sess_destroy(struct ibtrs_srv_sess *sess)
 {
 	release_cont_bufs(sess);
 	free_sess_bufs(sess);
-	ibtrs_dev_put(sess->dev);
+	ibtrs_ib_dev_put(sess->ib_dev);
 }
 
 static void process_err_wc(struct ibtrs_srv_con *con, struct ib_wc *wc)
@@ -2141,10 +2077,10 @@ __create_sess(struct ibtrs_srv_ctx *ctx, struct rdma_cm_id *cm_id,
 			     MIN_HEARTBEAT_TIMEOUT_MS :
 			     default_heartbeat_timeout_ms);
 
-	sess->dev = ibtrs_dev_find_get(cm_id);
-	if (!sess->dev) {
+	sess->ib_dev = ibtrs_ib_dev_find_get(cm_id);
+	if (unlikely(!sess->ib_dev)) {
 		err = -ENOMEM;
-		ibtrs_wrn(sess, "Failed to alloc ibtrs_srv_dev\n");
+		ibtrs_wrn(sess, "Failed to alloc ibtrs_ib_dev\n");
 		goto err1;
 	}
 	err = setup_cont_bufs(sess);
@@ -2170,7 +2106,7 @@ __create_sess(struct ibtrs_srv_ctx *ctx, struct rdma_cm_id *cm_id,
 err3:
 	release_cont_bufs(sess);
 err2:
-	ibtrs_dev_put(sess->dev);
+	ibtrs_ib_dev_put(sess->ib_dev);
 err1:
 	kfree(sess);
 out:
@@ -2296,7 +2232,7 @@ static void ssm_create_con_worker(struct work_struct *work)
 	/* TODO: SOFTIRQ can be faster, but be careful with softirq context */
 	ret = ibtrs_cq_qp_create(&sess->sess, &con->ibtrs_con, con->cm_id,
 				 1, cq_vector, cq_size, wr_queue_size,
-				 &con->sess->dev->ib_dev, IB_POLL_WORKQUEUE);
+				 con->sess->ib_dev, IB_POLL_WORKQUEUE);
 	if (ret) {
 		ibtrs_err(sess, "Failed to initialize IB connection, err: %d\n",
 			  ret);
@@ -2497,7 +2433,7 @@ static int ibtrs_srv_rdma_cm_ev_handler(struct rdma_cm_id *cm_id,
 
 		con->device_being_removed = true;
 		init_completion(&dc);
-		con->sess->dev->ib_dev_destroy_completion = &dc;
+		con->sess->ib_dev->ib_dev_destroy_completion = &dc;
 
 		csm_schedule_event(con, CSM_EV_DEVICE_REMOVAL);
 		wait_for_completion(&dc);
@@ -2762,7 +2698,7 @@ static int send_msg_sess_open_resp(struct ibtrs_srv_con *con)
 
 	fill_ibtrs_msg_sess_open_resp(msg, con);
 
-	err = ibtrs_post_send(con->ibtrs_con.qp, con->sess->dev->ib_dev.mr,
+	err = ibtrs_post_send(con->ibtrs_con.qp, con->sess->ib_dev->mr,
 			      sess->rdma_info_iu, msg->hdr.tsize);
 	if (unlikely(err))
 		ibtrs_err(sess, "Sending sess open resp failed, "

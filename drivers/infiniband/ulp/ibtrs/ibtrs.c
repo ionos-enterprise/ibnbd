@@ -4,6 +4,9 @@
 #include "ibtrs-pri.h"
 #include "ibtrs-log.h"
 
+static LIST_HEAD(device_list);
+static DEFINE_MUTEX(device_list_mutex);
+
 int ibtrs_post_beacon(struct ibtrs_con *con)
 {
 	struct ib_send_wr *bad_wr;
@@ -166,7 +169,62 @@ void ibtrs_ib_dev_destroy(struct ibtrs_ib_dev *d)
 		d->dev = NULL;
 	}
 }
-EXPORT_SYMBOL_GPL(ibtrs_ib_dev_destroy);
+
+struct ibtrs_ib_dev *ibtrs_ib_dev_find_get(struct rdma_cm_id *cm_id)
+{
+	struct ibtrs_ib_dev *dev;
+	int err;
+
+	mutex_lock(&device_list_mutex);
+	list_for_each_entry(dev, &device_list, entry) {
+		if (dev->dev->node_guid == cm_id->device->node_guid &&
+		    kref_get_unless_zero(&dev->ref))
+			goto out_unlock;
+	}
+	dev = kzalloc(sizeof(*dev), GFP_KERNEL);
+	if (unlikely(!dev))
+		goto out_err;
+
+	kref_init(&dev->ref);
+	err = ibtrs_ib_dev_init(dev, cm_id->device);
+	if (unlikely(err))
+		goto out_free;
+	list_add(&dev->entry, &device_list);
+out_unlock:
+	mutex_unlock(&device_list_mutex);
+
+	return dev;
+
+out_free:
+	kfree(dev);
+out_err:
+	mutex_unlock(&device_list_mutex);
+
+	return NULL;
+}
+EXPORT_SYMBOL_GPL(ibtrs_ib_dev_find_get);
+
+static void ibtrs_ib_dev_free(struct kref *ref)
+{
+	struct ibtrs_ib_dev *dev;
+
+	dev = container_of(ref, struct ibtrs_ib_dev, ref);
+
+	mutex_lock(&device_list_mutex);
+	list_del(&dev->entry);
+	mutex_unlock(&device_list_mutex);
+	ibtrs_ib_dev_destroy(dev);
+	/* XXX DIE ASAP */
+	if (dev->ib_dev_destroy_completion)
+		complete_all(dev->ib_dev_destroy_completion);
+	kfree(dev);
+}
+
+void ibtrs_ib_dev_put(struct ibtrs_ib_dev *dev)
+{
+	kref_put(&dev->ref, ibtrs_ib_dev_free);
+}
+EXPORT_SYMBOL_GPL(ibtrs_ib_dev_put);
 
 int ibtrs_request_cq_notifications(struct ibtrs_con *con)
 {
