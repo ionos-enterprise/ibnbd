@@ -106,7 +106,6 @@ struct ibtrs_clt_sess {
 	enum ibtrs_clt_state	state;
 	struct ibtrs_clt_con	*con;
 	struct ibtrs_iu		**io_tx_ius;
-	uuid_le			uuid;
 
 	struct rdma_req		*reqs;
 	struct ib_fmr_pool	*fmr_pool;

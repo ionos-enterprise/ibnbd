@@ -2029,7 +2029,7 @@ __create_sess(struct ibtrs_srv_ctx *ctx, struct rdma_cm_id *cm_id,
 	if (err)
 		goto err2;
 
-	memcpy(sess->uuid.b, req->uuid, sizeof(sess->uuid));
+	memcpy(sess->s.uuid.b, req->uuid, sizeof(sess->s.uuid));
 	err = ssm_init(sess);
 	if (err) {
 		ibtrs_wrn(sess, "Failed to initialize the session state machine\n");
@@ -2080,7 +2080,7 @@ __find_sess(struct ibtrs_srv_ctx *ctx, const char *uuid)
 	struct ibtrs_srv_sess *sess;
 
 	list_for_each_entry(sess, &ctx->sess_list, ctx_list) {
-		if (!memcmp(sess->uuid.b, uuid, sizeof(sess->uuid.b)) &&
+		if (!memcmp(sess->s.uuid.b, uuid, sizeof(sess->s.uuid.b)) &&
 		    sess->state != SSM_STATE_CLOSING &&
 		    sess->state != SSM_STATE_CLOSED)
 			return sess;

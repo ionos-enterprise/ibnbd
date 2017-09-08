@@ -96,7 +96,6 @@ struct ibtrs_srv_sess {
 					   */
 	u16			queue_depth;
 	u16			wq_size;
-	uuid_le			uuid;
 	struct ibtrs_heartbeat	heartbeat;
 	struct delayed_work	check_heartbeat_dwork;
 	struct delayed_work	send_heartbeat_dwork;
