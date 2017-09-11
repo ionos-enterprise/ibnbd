@@ -1441,36 +1441,53 @@ err:
 	ibtrs_rdma_error_recovery(con);
 }
 
-static int post_recv_all(struct ibtrs_clt_sess *sess)
+static int post_recv_io(struct ibtrs_clt_con *con)
 {
-	void (*done)(struct ib_cq *cq, struct ib_wc *wc);
-	struct ibtrs_clt_con *con;
-	struct ibtrs_iu *iu;
-	int num, err;
-	int i, cid;
+	struct ibtrs_clt_sess *sess = con->sess;
+	struct ibtrs_iu *iu = sess->s.dummy_rx_iu;
+	int err, i;
 
-	/*
-	 * Post all buffers.  For user connection post from
-	 * user ring, for others post the whole queue depth.
-	 */
+	for (i = 0; i < sess->queue_depth; i++) {
+		err = ibtrs_post_recv_cb(con, iu, ibtrs_clt_rdma_done);
+		if (unlikely(err))
+			return err;
+	}
+
+	return 0;
+}
+
+static int post_recv_usr(struct ibtrs_clt_con *con)
+{
+	struct ibtrs_clt_sess *sess = con->sess;
+	struct ibtrs_iu *iu;
+	int err, i;
+
+	for (i = 0; i < USR_CON_BUF_SIZE; i++) {
+		iu = sess->s.usr_rx_ring[i];
+		err = ibtrs_post_recv_cb(con, iu, ibtrs_clt_usr_recv_done);
+		if (unlikely(err))
+			return err;
+	}
+
+	return 0;
+}
+
+static int post_recv(struct ibtrs_clt_con *con)
+{
+	if (con->cid == 0)
+		return post_recv_usr(con);
+	return post_recv_io(con);
+}
+
+static int post_recv_sess(struct ibtrs_clt_sess *sess)
+{
+	int err, cid;
 
 	for (cid = 0; cid < CONS_PER_SESSION; cid++) {
-		con = &sess->con[cid];
-		num = (cid == 0 ? USR_CON_BUF_SIZE : sess->queue_depth);
-		for (i = 0; i < num; i++) {
-			if (cid == 0) {
-				iu = sess->s.usr_rx_ring[i];
-				done = ibtrs_clt_usr_recv_done;
-			} else {
-				iu =sess->s.dummy_rx_iu;
-				done = ibtrs_clt_rdma_done;
-			}
-			err = ibtrs_post_recv_cb(con, iu, done);
-			if (unlikely(err)) {
-				ibtrs_err(sess, "ibtrs_post_recv(), err: %d\n",
-					  err);
-				return err;
-			}
+		err = post_recv(&sess->con[cid]);
+		if (unlikely(err)) {
+			ibtrs_err(sess, "post_recv(), err: %d\n", err);
+			return err;
 		}
 	}
 
@@ -2878,7 +2895,7 @@ static void ibtrs_clt_info_rsp_done(struct ib_cq *cq, struct ib_wc *wc)
 	if (unlikely(err))
 		goto out;
 
-	err = post_recv_all(sess);
+	err = post_recv_sess(sess);
 	if (unlikely(err))
 		goto out;
 
