@@ -2425,7 +2425,7 @@ static void destroy_cm(struct ibtrs_clt_con *con)
 	rdma_destroy_id(con->ibtrs_con.cm_id);
 }
 
-static int ibtrs_rdma_cm_handler(struct rdma_cm_id *cm_id,
+static int ibtrs_clt_rdma_cm_handler(struct rdma_cm_id *cm_id,
 				     struct rdma_cm_event *ev);
 
 static int create_cm(struct ibtrs_clt_sess *sess, unsigned cid)
@@ -2445,11 +2445,11 @@ static int create_cm(struct ibtrs_clt_sess *sess, unsigned cid)
 
 	if (sess->peer_addr.ss_family == AF_IB)
 		con->cm_id = rdma_create_id(&init_net,
-					    ibtrs_rdma_cm_handler,
+					    ibtrs_clt_rdma_cm_handler,
 					    con, RDMA_PS_IB, IB_QPT_RC);
 	else
 		con->cm_id = rdma_create_id(&init_net,
-					    ibtrs_rdma_cm_handler,
+					    ibtrs_clt_rdma_cm_handler,
 					    con, RDMA_PS_TCP, IB_QPT_RC);
 	if (unlikely(IS_ERR(con->cm_id))) {
 		err = PTR_ERR(con->cm_id);
@@ -2766,8 +2766,8 @@ static void ibtrs_rdma_error_recovery(struct ibtrs_clt_con *con)
 				IBTRS_CLT_CONNECTING, IBTRS_CLT_CONNECTING_ERR);
 }
 
-static int ibtrs_rdma_cm_handler(struct rdma_cm_id *cm_id,
-				 struct rdma_cm_event *ev)
+static int ibtrs_clt_rdma_cm_handler(struct rdma_cm_id *cm_id,
+				     struct rdma_cm_event *ev)
 {
 	struct ibtrs_clt_con *con = cm_id->context;
 	struct ibtrs_clt_sess *sess = con->sess;
