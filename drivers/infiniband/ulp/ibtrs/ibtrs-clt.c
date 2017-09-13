@@ -2324,18 +2324,16 @@ static struct ibtrs_clt_sess *alloc_sess(const struct ibtrs_clt_ops *ops,
 					 s16 max_reconnect_attempts)
 {
 	struct ibtrs_clt_sess *sess;
-	int err, i;
+	int i, err = -ENOMEM;
 
 	sess = kzalloc(sizeof(*sess), GFP_KERNEL);
-	if (unlikely(!sess)) {
-		err = -ENOMEM;
+	if (unlikely(!sess))
 		goto err;
-	}
+
 	sess->con = kcalloc(CONS_PER_SESSION, sizeof(*sess->con), GFP_KERNEL);
-	if (unlikely(!sess->con)) {
-		err = -ENOMEM;
+	if (unlikely(!sess->con))
 		goto err_free_sess;
-	}
+
 	for (i = 0; i < CONS_PER_SESSION; i++)
 		sess->con->sess = sess;
 

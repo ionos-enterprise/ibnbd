@@ -3,6 +3,29 @@
 
 #include "ibtrs-pri.h"
 
+/**
+ * enum ibtrs_srv_state - Server states.
+ */
+enum ibtrs_srv_state {
+	IBTRS_SRV_ALIVE,
+	IBTRS_SRV_CLOSING,
+	IBTRS_SRV_CLOSED,
+};
+
+static inline const char *ibtrs_srv_state_str(enum ibtrs_srv_state state)
+{
+	switch (state) {
+	case IBTRS_SRV_ALIVE:
+		return "IBTRS_SRV_ALIVE";
+	case IBTRS_SRV_CLOSING:
+		return "IBTRS_SRV_CLOSING";
+	case IBTRS_SRV_CLOSED:
+		return "IBTRS_SRV_CLOSED";
+	default:
+		return "UNKNOWN";
+	}
+}
+
 enum ssm_state {
 	SSM_STATE_IDLE,
 	SSM_STATE_CONNECTED,
@@ -70,21 +93,25 @@ struct ibtrs_srv_sess {
 	struct ibtrs_sess	s;
 	struct ibtrs_srv_ctx	*ctx;
 	struct list_head	ctx_list;
-	enum ssm_state		state;
-	struct kref		kref;
-	struct workqueue_struct *sm_wq;	/* event processing */
-	struct mutex            lock; /* to protect con_list */
+	struct work_struct	close_work;
+	enum ssm_state		state /* XXX DIE ASAP */;
+	enum ibtrs_srv_state	state_NEW;
+	spinlock_t		state_lock;
+	struct kref		kref; /* XXX DIE ASAP */
+	struct workqueue_struct *sm_wq;	 /* XXX DIE ASAP */
+	struct mutex            lock;	 /* XXX DIE ASAP */
 	int			cur_cq_vector;
-	struct list_head        con_list;
-	struct ibtrs_iu		*rdma_info_iu;
+	struct list_head        con_list;  /* XXX DIE ASAP */
+	struct ibtrs_srv_con    **con;
+	struct ibtrs_iu		*rdma_info_iu; /* XXX DIE ASAP */
 	struct ibtrs_srv_op	**ops_ids;
-	unsigned int		est_cnt; /* number of established connections */
-	unsigned int		active_cnt; /* number of active (not closed)
+	unsigned int		est_cnt;  /* XXX DIE ASAP */ /* number of established connections */
+	unsigned int		active_cnt; /* XXX DIE ASAP */  /* number of active (not closed)
 					     * connections
 					     */
-	u8			con_cnt;
-	bool			state_in_sysfs;
-	bool			session_announced_to_user;
+	unsigned int		con_cnt;
+	bool			state_in_sysfs;  /* XXX DIE ASAP */
+	bool			session_announced_to_user;  /* XXX DIE ASAP */
 	struct ibtrs_rcv_buf_pool *rcv_buf_pool;
 	wait_queue_head_t	bufs_wait;
 	u8			off_len; /* number of bits for offset in
@@ -123,16 +150,16 @@ int ibtrs_srv_stats_wc_completion_to_str(struct ibtrs_srv_sess *sess, char *buf,
 int ibtrs_srv_reset_all_stats(struct ibtrs_srv_sess *sess, bool enable);
 ssize_t ibtrs_srv_reset_all_help(struct ibtrs_srv_sess *sess,
 				 char *page, size_t len);
+/*XXX DIE ASAP */
 int ibtrs_srv_sess_get(struct ibtrs_srv_sess *sess);
-
+/*XXX DIE ASAP */
 void ibtrs_srv_sess_put(struct ibtrs_srv_sess *sess);
 
 /* ibtrs-srv-sysfs.c */
 
 int ibtrs_srv_create_sysfs_files(void);
-
 void ibtrs_srv_destroy_sysfs_files(void);
-
 int ibtrs_srv_create_sess_files(struct ibtrs_srv_sess *sess);
+void ibtrs_srv_destroy_sess_files(struct ibtrs_srv_sess *sess);
 
 #endif /* IBTRS_SRV_H */

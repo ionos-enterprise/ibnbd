@@ -207,15 +207,16 @@ static struct kobject *ibtrs_srv_sessions_kobj;
 
 int ibtrs_srv_create_sess_files(struct ibtrs_srv_sess *sess)
 {
-	char buf[MAXHOSTNAMELEN];
+	char str_addr[MAXHOSTNAMELEN];
 	int ret;
 
 	if (WARN_ON(!ibtrs_srv_sess_get(sess)))
 		return -EINVAL;
 
-	sockaddr_to_str(&sess->s.addr.sockaddr, buf, sizeof(buf));
+	sockaddr_to_str(&sess->s.addr.sockaddr, str_addr, sizeof(str_addr));
+
 	ret = kobject_init_and_add(&sess->kobj, &ibtrs_srv_sess_ktype,
-				   ibtrs_srv_sessions_kobj, "%s", buf);
+				   ibtrs_srv_sessions_kobj, "%s", str_addr);
 	if (ret) {
 		ibtrs_err(sess, "Failed to init and add sysfs directory for session,"
 			  " err: %d\n", ret);
@@ -239,9 +240,20 @@ int ibtrs_srv_create_sess_files(struct ibtrs_srv_sess *sess)
 err1:
 	sysfs_remove_group(&sess->kobj, &default_sess_attr_group);
 err:
+	kobject_del(&sess->kobj);
 	kobject_put(&sess->kobj);
 
 	return ret;
+}
+
+void ibtrs_srv_destroy_sess_files(struct ibtrs_srv_sess *sess)
+{
+	if (sess->kobj.state_in_sysfs) {
+		kobject_del(&sess->kobj_stats);
+		kobject_put(&sess->kobj_stats);
+		kobject_del(&sess->kobj);
+		kobject_put(&sess->kobj);
+	}
 }
 
 int ibtrs_srv_create_sysfs_files(void)
