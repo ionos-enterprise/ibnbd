@@ -14,16 +14,13 @@
 #include <linux/ktime.h>
 #include <linux/timekeeping.h>
 
-#define WC_ARRAY_SIZE 16
-#define IB_APM_TIMEOUT 16 /* 4.096 * 2 ^ 16 = 260 msec */
-
 #define USR_MSG_CNT 64
 #define USR_CON_BUF_SIZE (USR_MSG_CNT * 2) /* double bufs for ACK's */
 
-#define DEFAULT_HEARTBEAT_TIMEOUT_MS 20000
-#define MIN_HEARTBEAT_TIMEOUT_MS 5000
-#define HEARTBEAT_INTV_MS 500
-#define HEARTBEAT_INTV_JIFFIES msecs_to_jiffies(HEARTBEAT_INTV_MS)
+//XXX #define DEFAULT_HEARTBEAT_TIMEOUT_MS 20000
+//XXX #define MIN_HEARTBEAT_TIMEOUT_MS 5000
+//XXX #define HEARTBEAT_INTV_MS 500
+//XXX #define HEARTBEAT_INTV_JIFFIES msecs_to_jiffies(HEARTBEAT_INTV_MS)
 
 #define MIN_RTR_CNT 1
 #define MAX_RTR_CNT 7
@@ -55,7 +52,6 @@ static inline const char *ib_wc_opcode_str(enum ib_wc_opcode opcode)
 
 struct ibtrs_ib_dev {
 	struct list_head	entry;
-	struct completion	*ib_dev_destroy_completion; /* XXX DIE ASAP */
 	struct kref		ref;
 	struct ib_pd		*pd;
 	struct ib_mr		*mr;
@@ -84,8 +80,6 @@ struct ibtrs_con {
 	struct ibtrs_sess	*sess;
 	struct ib_qp		*qp;
 	struct ib_cq		*cq;
-	struct ib_send_wr	beacon;      /* XXX die ASAP */
-	struct ib_cqe		beacon_cqe;  /* XXX die ASAP */
 	struct rdma_cm_id	*cm_id;
 };
 
@@ -99,56 +93,34 @@ struct ibtrs_iu {
 	u32			tag;
 };
 
+/*XXX
 struct ibtrs_heartbeat {
 	atomic64_t	send_ts_ns;
 	atomic64_t	recv_ts_ns;
 	u32		timeout_ms;
 };
+*/
 
-#define IBTRS_VERSION 2
 #define IO_MSG_SIZE 24
 #define IB_IMM_SIZE_BITS 32
 
 #define IBTRS_HB_IMM  UINT_MAX
 #define IBTRS_ACK_IMM (UINT_MAX-1)
 
-//XXX OLD STUFF, DIE ASAP BEGIN
-
-#define GCC_DIAGNOSTIC_AWARE ((__GNUC__ > 6))
-#if GCC_DIAGNOSTIC_AWARE
-#pragma GCC diagnostic push
-#pragma GCC diagnostic warning "-Wpadded"
-#endif
-
-//XXX OLD STUFF, DIE ASAP END
-
-
 /**
  * enum ibtrs_msg_types - IBTRS message types.
  * @IBTRS_MSG_INFO_REQ:		Client additional info request to the server
  * @IBTRS_MSG_INFO_RSP:		Server additional info response to the client
- *
- * DIE ASAP @IBTRS_MSG_SESS_OPEN:	Client requests new session on Server
- * DIE ASAP @IBTRS_MSG_SESS_OPEN_RESP:	Server informs Client about session parameters
- * DIE ASAP @IBTRS_MSG_CON_OPEN:	Client requests new connection to server
  * @IBTRS_MSG_RDMA_WRITE:	Client writes data per RDMA to Server
  * @IBTRS_MSG_REQ_RDMA_WRITE:	Client requests data transfer per RDMA
  * @IBTRS_MSG_USER:		Data transfer per Infiniband message
- * DIE ASAP @IBTRS_MSG_ERR:		Fatal Error happened
- * DIE ASAP @IBTRS_MSG_SESS_INFO:	Client requests about session info
  */
 enum ibtrs_msg_types {
 	IBTRS_MSG_INFO_REQ,
 	IBTRS_MSG_INFO_RSP,
-
-	IBTRS_MSG_SESS_OPEN,        /* XXX DIE ASAP */
-	IBTRS_MSG_SESS_OPEN_RESP,   /* XXX DIE ASAP */
-	IBTRS_MSG_CON_OPEN,         /* XXX DIE ASAP */
 	IBTRS_MSG_RDMA_WRITE,
 	IBTRS_MSG_REQ_RDMA_WRITE,
 	IBTRS_MSG_USER,
-	IBTRS_MSG_ERROR,            /* XXX DIE ASAP */
-	IBTRS_MSG_SESS_INFO,        /* XXX DIE ASAP */
 };
 
 enum {
@@ -242,41 +214,6 @@ struct ibtrs_msg_hdr {
 
 #define IBTRS_HDR_LEN sizeof(struct ibtrs_msg_hdr)
 
-//XXX OLD STUFF, DIE ASAP BEGIN
-
-/**
- * struct ibtrs_msg_session_open - Opens a new session between client and server
- * @hdr:	message header
- * @uuid:	client host identifier, unique until module reload
- * @ver:	IBTRS protocol version
- * @con_cnt:    number of connections in this session
- * @reserved:   reserved fields for future usage, 28 bytes is maximum for
- *		all IPv6/IPv4 session
- *
- * DO NOT CHANGE members before ver.
- */
-struct ibtrs_msg_sess_open {
-	struct ibtrs_msg_hdr	hdr;
-	u8			uuid[16];
-	u8			ver;
-	u8			con_cnt;
-	u8			reserved[30];
-};
-
-/**
- * struct ibtrs_msg_sess_info
- * @hdr:		message header
- * @hostname:		client host name
- */
-struct ibtrs_msg_sess_info {
-	struct ibtrs_msg_hdr	hdr;
-	u8                      hostname[MAXHOSTNAMELEN];
-};
-
-//XXX OLD STUFF, DIE ASAP END
-
-#define MSG_SESS_INFO_SIZE sizeof(struct ibtrs_msg_sess_info)
-
 /*
  *  Data Layout in RDMA-Bufs:
  *
@@ -300,51 +237,6 @@ struct ibtrs_msg_sess_info {
  * | +---------------------+ |
  * +-------------------------+
  */
-
-#define IBTRS_MSG_RESV_LEN 128
-
-//XXX OLD STUFF, DIE ASAP BEGIN
-
-/**
- * struct ibtrs_msg_sess_open_resp - Servers response to %IBTRS_MSG_SESS_OPEN
- * @hdr:	message header
- * @ver:	IBTRS protocol version
- * @cnt:	Number of rdma addresses in this message
- * @rkey:	remote key to allow client to access buffers
- * @hostname:   hostname of local host
- * @reserved:    reserved fields for future usage
- * @max_inflight_msg:  max inflight messages (queue-depth) in this session
- * @max_io_size:   max io size server supports
- * @max_req_size:   max infiniband message size server supports
- * @addr:	rdma addresses of buffers
- */
-struct ibtrs_msg_sess_open_resp {
-	struct ibtrs_msg_hdr	hdr;
-	u32			ver;
-	u16			cnt;
-	u16			max_inflight_msg;
-	u32			rkey;
-	u32			max_io_size;
-	u32			max_req_size;
-	u32			padding;
-	u8                      hostname[MAXHOSTNAMELEN];
-	u8			reserved[IBTRS_MSG_RESV_LEN];
-	u64			addr[];
-};
-
-#define IBTRS_MSG_SESS_OPEN_RESP_LEN(cnt) \
-	(sizeof(struct ibtrs_msg_sess_open_resp) + sizeof(u64) * cnt)
-/**
- * struct ibtrs_msg_con_open - Opens a new connection between client and server
- * @hdr:		message header
- * @uuid:		client host identifier, unique until module reload
- */
-struct ibtrs_msg_con_open {
-	struct ibtrs_msg_hdr	hdr;
-	u8			uuid[16];
-};
-
-//XXX OLD STUFF, DIE ASAP END
 
 /**
  * struct ibtrs_msg_user - Data exchanged a Infiniband message
@@ -391,34 +283,14 @@ struct ibtrs_msg_rdma_write {
 	struct ibtrs_msg_hdr	hdr;
 };
 
-//XXX OLD STUFF, DIE ASAP BEGIN
-
-/**
- * struct ibtrs_msg_error - Error message
- * @hdr:		message header
- * @errno:		Errno number describing the error
- */
-struct ibtrs_msg_error {
-	struct ibtrs_msg_hdr	hdr;
-	s32			errno;
-	u32			__padding;
-};
-
-#if GCC_DIAGNOSTIC_AWARE
-#pragma GCC diagnostic pop
-#endif
-
 /* ibtrs-proto.c */
 
-//XXX OLD STUFF, DIE ASAP BEGIN
-
-/* ibtrs-proto.c */
-
-/* XXX DIE ASAP */
+/* XXX CHECK */
 int ibtrs_validate_message(const struct ibtrs_msg_hdr *hdr);
 
 /* ibtrs-heartbeat.c */
 
+/*XXX
 void ibtrs_heartbeat_init(struct ibtrs_heartbeat *h, u32 timeout_ms);
 void ibtrs_heartbeat_set_timeout_ms(struct ibtrs_heartbeat *h, u32 timeout_ms);
 void ibtrs_heartbeat_set_send_ts(struct ibtrs_heartbeat *h);
@@ -426,6 +298,7 @@ void ibtrs_heartbeat_set_recv_ts(struct ibtrs_heartbeat *h);
 s64 ibtrs_heartbeat_send_ts_diff_ms(const struct ibtrs_heartbeat *h);
 s64 ibtrs_heartbeat_recv_ts_diff_ms(const struct ibtrs_heartbeat *h);
 int ibtrs_heartbeat_timeout_validate(int timeout);
+*/
 
 /* ibtrs-iu.c */
 
@@ -438,16 +311,12 @@ void ibtrs_usr_msg_put(struct ibtrs_sess *sess);
 struct ibtrs_iu *ibtrs_iu_alloc(u32 tag, size_t size, gfp_t t,
 				struct ib_device *dev,
 				enum dma_data_direction);
+void ibtrs_iu_free(struct ibtrs_iu *iu, enum dma_data_direction dir,
+		   struct ib_device *dev);
 int ibtrs_iu_alloc_sess_rx_bufs(struct ibtrs_sess *sess, size_t max_req_size);
 void ibtrs_iu_free_sess_rx_bufs(struct ibtrs_sess *sess);
 
-void ibtrs_iu_free(struct ibtrs_iu *iu, enum dma_data_direction dir,
-		   struct ib_device *dev);
-
 /* ibtrs.c */
-
-/* XXX DIE ASAP */
-int ibtrs_post_beacon(struct ibtrs_con *con);
 
 int ibtrs_post_send(struct ib_qp *qp, struct ib_mr *mr,
 		    struct ibtrs_iu *iu, u32 size);
@@ -469,9 +338,6 @@ int ibtrs_cq_qp_create(struct ibtrs_sess *ibtrs_sess, struct ibtrs_con *con,
 		       struct ibtrs_ib_dev *ibdev,
 		       enum ib_poll_context poll_ctx);
 void ibtrs_cq_qp_destroy(struct ibtrs_con *con);
-
-/* XXX DIE ASAP */
-int ibtrs_request_cq_notifications(struct ibtrs_con *con);
 
 static inline void sockaddr_to_str(const struct sockaddr_storage *addr,
 				   char *buf, size_t len)

@@ -7,14 +7,6 @@
 static LIST_HEAD(device_list);
 static DEFINE_MUTEX(device_list_mutex);
 
-int ibtrs_post_beacon(struct ibtrs_con *con)
-{
-	struct ib_send_wr *bad_wr;
-
-	return ib_post_send(con->qp, &con->beacon, &bad_wr);
-}
-EXPORT_SYMBOL_GPL(ibtrs_post_beacon);
-
 int ibtrs_post_send(struct ib_qp *qp, struct ib_mr *mr, struct ibtrs_iu *iu,
 		    u32 size)
 {
@@ -213,9 +205,6 @@ static void ibtrs_ib_dev_free(struct kref *ref)
 	list_del(&dev->entry);
 	mutex_unlock(&device_list_mutex);
 	ibtrs_ib_dev_destroy(dev);
-	/* XXX DIE ASAP */
-	if (dev->ib_dev_destroy_completion)
-		complete_all(dev->ib_dev_destroy_completion);
 	kfree(dev);
 }
 
@@ -224,13 +213,6 @@ void ibtrs_ib_dev_put(struct ibtrs_ib_dev *dev)
 	kref_put(&dev->ref, ibtrs_ib_dev_free);
 }
 EXPORT_SYMBOL_GPL(ibtrs_ib_dev_put);
-
-int ibtrs_request_cq_notifications(struct ibtrs_con *con)
-{
-	return ib_req_notify_cq(con->cq, IB_CQ_NEXT_COMP |
-				IB_CQ_REPORT_MISSED_EVENTS);
-}
-EXPORT_SYMBOL_GPL(ibtrs_request_cq_notifications);
 
 static int create_cq(struct ibtrs_con *con, struct rdma_cm_id *cm_id,
 		     int cq_vector, u16 cq_size, enum ib_poll_context poll_ctx)
@@ -296,8 +278,6 @@ int ibtrs_cq_qp_create(struct ibtrs_sess *sess, struct ibtrs_con *con,
 			ibtrs_err(con, "Destroying CQ failed, err: %d\n", ret);
 		return err;
 	}
-	con->beacon.wr_cqe = &con->beacon_cqe;
-	con->beacon.opcode = IB_WR_SEND;
 	con->cm_id = cm_id;
 	con->sess = sess;
 

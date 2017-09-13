@@ -5,7 +5,6 @@ ibtrs-server-y := ibtrs-srv.o \
 		  ibtrs-srv-sysfs.o
 
 ibtrs-core-y := ibtrs.o \
-		ibtrs-heartbeat.o \
 		ibtrs-proto.o \
 		ibtrs-iu.o
 

@@ -26,13 +26,6 @@ static inline const char *ibtrs_srv_state_str(enum ibtrs_srv_state state)
 	}
 }
 
-enum ssm_state {
-	SSM_STATE_IDLE,
-	SSM_STATE_CONNECTED,
-	SSM_STATE_CLOSING,
-	SSM_STATE_CLOSED
-};
-
 /*
  * Describes the rdma buffer managed by client and used for his rdma writes
  * Rdma info has to be sent in OPEN_RESP message to the client.
@@ -94,24 +87,12 @@ struct ibtrs_srv_sess {
 	struct ibtrs_srv_ctx	*ctx;
 	struct list_head	ctx_list;
 	struct work_struct	close_work;
-	enum ssm_state		state /* XXX DIE ASAP */;
 	enum ibtrs_srv_state	state_NEW;
 	spinlock_t		state_lock;
-	struct kref		kref; /* XXX DIE ASAP */
-	struct workqueue_struct *sm_wq;	 /* XXX DIE ASAP */
-	struct mutex            lock;	 /* XXX DIE ASAP */
 	int			cur_cq_vector;
-	struct list_head        con_list;  /* XXX DIE ASAP */
 	struct ibtrs_srv_con    **con;
-	struct ibtrs_iu		*rdma_info_iu; /* XXX DIE ASAP */
 	struct ibtrs_srv_op	**ops_ids;
-	unsigned int		est_cnt;  /* XXX DIE ASAP */ /* number of established connections */
-	unsigned int		active_cnt; /* XXX DIE ASAP */  /* number of active (not closed)
-					     * connections
-					     */
 	unsigned int		con_cnt;
-	bool			state_in_sysfs;  /* XXX DIE ASAP */
-	bool			session_announced_to_user;  /* XXX DIE ASAP */
 	struct ibtrs_rcv_buf_pool *rcv_buf_pool;
 	wait_queue_head_t	bufs_wait;
 	u8			off_len; /* number of bits for offset in
@@ -123,9 +104,9 @@ struct ibtrs_srv_sess {
 					   */
 	u16			queue_depth;
 	u16			wq_size;
-	struct ibtrs_heartbeat	heartbeat;
-	struct delayed_work	check_heartbeat_dwork;
-	struct delayed_work	send_heartbeat_dwork;
+	//XXX struct ibtrs_heartbeat	heartbeat;
+	//XXX struct delayed_work	check_heartbeat_dwork;
+	//XXX struct delayed_work	send_heartbeat_dwork;
 	void			*priv;
 	struct kobject		kobj;
 	struct kobject		kobj_stats;
@@ -150,10 +131,6 @@ int ibtrs_srv_stats_wc_completion_to_str(struct ibtrs_srv_sess *sess, char *buf,
 int ibtrs_srv_reset_all_stats(struct ibtrs_srv_sess *sess, bool enable);
 ssize_t ibtrs_srv_reset_all_help(struct ibtrs_srv_sess *sess,
 				 char *page, size_t len);
-/*XXX DIE ASAP */
-int ibtrs_srv_sess_get(struct ibtrs_srv_sess *sess);
-/*XXX DIE ASAP */
-void ibtrs_srv_sess_put(struct ibtrs_srv_sess *sess);
 
 /* ibtrs-srv-sysfs.c */
 

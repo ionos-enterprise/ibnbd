@@ -4,41 +4,6 @@
 #include "ibtrs-log.h"
 
 static int
-ibtrs_validate_msg_sess_open_resp(const struct ibtrs_msg_sess_open_resp *msg)
-{
-	static const int min_bufs = 1;
-
-	if (unlikely(msg->hdr.tsize !=
-		     IBTRS_MSG_SESS_OPEN_RESP_LEN(msg->cnt))) {
-		pr_err("Session open resp msg received with unexpected length"
-		       " %dB instead of %luB\n", msg->hdr.tsize,
-		       IBTRS_MSG_SESS_OPEN_RESP_LEN(msg->cnt));
-
-		return -EINVAL;
-	}
-
-	if (msg->max_inflight_msg < min_bufs) {
-		pr_err("Sess Open msg received with invalid max_inflight_msg %d"
-		       " expected >= %d\n", msg->max_inflight_msg, min_bufs);
-		return -EINVAL;
-	}
-
-	if (unlikely(msg->cnt != msg->max_inflight_msg)) {
-		pr_err("Session open msg received with invalid cnt %d"
-		       " expected %d (queue_depth)\n", msg->cnt,
-		       msg->max_inflight_msg);
-		return -EINVAL;
-	}
-
-	if (msg->ver != IBTRS_VERSION) {
-		pr_warn("Sess open resp version mismatch: client version %d,"
-			" server version: %d\n", IBTRS_VERSION, msg->ver);
-	}
-
-	return 0;
-}
-
-static int
 ibtrs_validate_msg_user(const struct ibtrs_msg_user *msg)
 {
 	/* keep as place holder */
@@ -70,17 +35,6 @@ ibtrs_validate_msg_req_rdma_write(const struct ibtrs_msg_req_rdma_write *msg)
 	return 0;
 }
 
-static int ibtrs_validate_msg_sess_info(const struct ibtrs_msg_sess_info *msg)
-{
-	if (msg->hdr.tsize != sizeof(*msg)) {
-		pr_err("Error message received with invalid length: %d,"
-		       " expected %lu\n", msg->hdr.tsize, sizeof(*msg));
-		return -EPROTONOSUPPORT;
-	}
-
-	return 0;
-}
-
 int ibtrs_validate_message(const struct ibtrs_msg_hdr *hdr)
 {
 	switch (hdr->type) {
@@ -95,18 +49,6 @@ int ibtrs_validate_message(const struct ibtrs_msg_hdr *hdr)
 
 		req = container_of(hdr, typeof(*req), hdr);
 		return ibtrs_validate_msg_req_rdma_write(req);
-	}
-	case IBTRS_MSG_SESS_OPEN_RESP: {
-		const struct ibtrs_msg_sess_open_resp *msg;
-
-		msg = container_of(hdr, typeof(*msg), hdr);
-		return ibtrs_validate_msg_sess_open_resp(msg);
-	}
-	case IBTRS_MSG_SESS_INFO: {
-		const struct ibtrs_msg_sess_info *msg;
-
-		msg = container_of(hdr, typeof(*msg), hdr);
-		return ibtrs_validate_msg_sess_info(msg);
 	}
 	case IBTRS_MSG_USER: {
 		const struct ibtrs_msg_user *msg;

@@ -59,6 +59,7 @@ static struct kobj_attribute max_ibtrs_clt_reconnect_attempts_attr =
 	       ibtrs_clt_max_reconn_attempts_show,
 	       ibtrs_clt_max_reconn_attempts_store);
 
+/*XXX
 static ssize_t ibtrs_clt_hb_timeout_show(struct kobject *kobj,
 					 struct kobj_attribute *attr,
 					 char *page)
@@ -100,6 +101,7 @@ static ssize_t ibtrs_clt_hb_timeout_store(struct kobject *kobj,
 static struct kobj_attribute ibtrs_clt_heartbeat_timeout_ms_attr =
 	__ATTR(heartbeat_timeout_ms, 0644,
 	       ibtrs_clt_hb_timeout_show, ibtrs_clt_hb_timeout_store);
+*/
 
 static ssize_t ibtrs_clt_state_show(struct kobject *kobj,
 				    struct kobj_attribute *attr, char *page)
@@ -292,7 +294,7 @@ static struct kobj_attribute ibtrs_clt_queue_depth_attr =
 
 static struct attribute *ibtrs_clt_default_sess_attrs[] = {
 	&max_ibtrs_clt_reconnect_attempts_attr.attr,
-	&ibtrs_clt_heartbeat_timeout_ms_attr.attr,
+	//XXX &ibtrs_clt_heartbeat_timeout_ms_attr.attr,
 	&ibtrs_clt_state_attr.attr,
 	&ibtrs_clt_hostname_attr.attr,
 	&ibtrs_clt_reconnect_attr.attr,

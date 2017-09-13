@@ -4,6 +4,7 @@
 #include "ibtrs-srv.h"
 #include "ibtrs-log.h"
 
+/*XXX
 static ssize_t ibtrs_srv_hb_timeout_show(struct kobject *kobj,
 					 struct kobj_attribute *attr,
 					 char *page)
@@ -41,6 +42,7 @@ static ssize_t ibtrs_srv_hb_timeout_store(struct kobject *kobj,
 static struct kobj_attribute ibtrs_srv_heartbeat_timeout_ms_attr =
 	__ATTR(heartbeat_timeout_ms, 0644,
 	       ibtrs_srv_hb_timeout_show, ibtrs_srv_hb_timeout_store);
+*/
 
 static ssize_t ibtrs_srv_disconnect_show(struct kobject *kobj,
 					 struct kobj_attribute *attr,
@@ -120,7 +122,7 @@ static struct attribute *default_sess_attrs[] = {
 	&hostname_attr.attr,
 	&current_hca_port_attr.attr,
 	&disconnect_attr.attr,
-	&ibtrs_srv_heartbeat_timeout_ms_attr.attr,
+	//XXX &ibtrs_srv_heartbeat_timeout_ms_attr.attr,
 	NULL,
 };
 
@@ -128,17 +130,8 @@ static struct attribute_group default_sess_attr_group = {
 	.attrs = default_sess_attrs,
 };
 
-static void ibtrs_srv_sess_release(struct kobject *kobj)
-{
-	struct ibtrs_srv_sess *sess;
-
-	sess = container_of(kobj, struct ibtrs_srv_sess, kobj);
-	ibtrs_srv_sess_put(sess);
-}
-
 static struct kobj_type ibtrs_srv_sess_ktype = {
 	.sysfs_ops	= &kobj_sysfs_ops,
-	.release	= ibtrs_srv_sess_release,
 };
 
 STAT_ATTR(struct ibtrs_srv_sess, rdma,
@@ -210,9 +203,6 @@ int ibtrs_srv_create_sess_files(struct ibtrs_srv_sess *sess)
 	char str_addr[MAXHOSTNAMELEN];
 	int ret;
 
-	if (WARN_ON(!ibtrs_srv_sess_get(sess)))
-		return -EINVAL;
-
 	sockaddr_to_str(&sess->s.addr.sockaddr, str_addr, sizeof(str_addr));
 
 	ret = kobject_init_and_add(&sess->kobj, &ibtrs_srv_sess_ktype,
@@ -220,7 +210,6 @@ int ibtrs_srv_create_sess_files(struct ibtrs_srv_sess *sess)
 	if (ret) {
 		ibtrs_err(sess, "Failed to init and add sysfs directory for session,"
 			  " err: %d\n", ret);
-		ibtrs_srv_sess_put(sess);
 		return ret;
 	}
 
