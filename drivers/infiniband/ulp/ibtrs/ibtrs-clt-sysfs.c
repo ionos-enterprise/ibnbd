@@ -308,27 +308,30 @@ static struct kobj_type ibtrs_clt_sess_ktype = {
 	.sysfs_ops = &kobj_sysfs_ops,
 };
 
-int ibtrs_clt_create_sess_files(struct kobject *kobj,
-				struct kobject *kobj_stats, const char *ip)
+int ibtrs_clt_create_sess_files(struct ibtrs_clt_sess *sess)
 {
+	char str_addr[MAXHOSTNAMELEN];
 	int ret;
 
-	ret = kobject_init_and_add(kobj, &ibtrs_clt_sess_ktype, sessions_kobj,
-				   "%s", ip);
+	sockaddr_to_str(&sess->s.addr.sockaddr, str_addr, sizeof(str_addr));
+
+	ret = kobject_init_and_add(&sess->kobj, &ibtrs_clt_sess_ktype,
+				   sessions_kobj, "%s", str_addr);
 	if (ret) {
 		pr_err("Failed to create session kobject, err: %d\n",
 		       ret);
 		return ret;
 	}
 
-	ret = sysfs_create_group(kobj, &ibtrs_clt_default_sess_attr_group);
+	ret = sysfs_create_group(&sess->kobj,
+				 &ibtrs_clt_default_sess_attr_group);
 	if (ret) {
 		pr_err("Failed to create session sysfs group, err: %d\n",
 		       ret);
 		goto err;
 	}
 
-	ret = ibtrs_clt_create_stats_files(kobj, kobj_stats);
+	ret = ibtrs_clt_create_stats_files(&sess->kobj, &sess->kobj_stats);
 	if (ret) {
 		pr_err("Failed to create stats files, err: %d\n",
 		       ret);
@@ -338,22 +341,21 @@ int ibtrs_clt_create_sess_files(struct kobject *kobj,
 	return 0;
 
 err1:
-	sysfs_remove_group(kobj, &ibtrs_clt_default_sess_attr_group);
+	sysfs_remove_group(&sess->kobj, &ibtrs_clt_default_sess_attr_group);
 err:
-	kobject_del(kobj);
-	kobject_put(kobj);
+	kobject_del(&sess->kobj);
+	kobject_put(&sess->kobj);
 
 	return ret;
 }
 
-void ibtrs_clt_destroy_sess_files(struct kobject *kobj,
-				  struct kobject *kobj_stats)
+void ibtrs_clt_destroy_sess_files(struct ibtrs_clt_sess *sess)
 {
-	if (kobj->state_in_sysfs) {
-		kobject_del(kobj_stats);
-		kobject_put(kobj_stats);
-		kobject_del(kobj);
-		kobject_put(kobj);
+	if (sess->kobj.state_in_sysfs) {
+		kobject_del(&sess->kobj_stats);
+		kobject_put(&sess->kobj_stats);
+		kobject_del(&sess->kobj);
+		kobject_put(&sess->kobj);
 	}
 }
 

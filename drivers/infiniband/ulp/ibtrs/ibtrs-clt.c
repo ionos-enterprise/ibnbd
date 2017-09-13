@@ -3018,7 +3018,6 @@ struct ibtrs_clt_sess *ibtrs_clt_open(const struct ibtrs_clt_ops *ops,
 				      u16 max_segments,
 				      s16 max_reconnect_attempts)
 {
-	char str_addr[MAXHOSTNAMELEN];
 	struct ibtrs_clt_sess *sess;
 	int err;
 
@@ -3027,12 +3026,11 @@ struct ibtrs_clt_sess *ibtrs_clt_open(const struct ibtrs_clt_ops *ops,
 		err = -EINVAL;
 		goto out;
 	}
-	sockaddr_to_str(addr, str_addr, sizeof(str_addr));
 	sess = alloc_sess(ops, addr, pdu_sz, reconnect_delay_sec,
 			  max_segments, max_reconnect_attempts);
 	if (unlikely(IS_ERR(sess))) {
-		pr_err("Establishing session to %s failed, err: %ld\n",
-		       str_addr, PTR_ERR(sess));
+		pr_err("Establishing session to server failed, err: %ld\n",
+		       PTR_ERR(sess));
 		err = PTR_ERR(sess);
 		goto out;
 	}
@@ -3048,8 +3046,7 @@ struct ibtrs_clt_sess *ibtrs_clt_open(const struct ibtrs_clt_ops *ops,
 		ibtrs_err(sess, "Sending session info failed, err: %d\n", err);
 		goto close_sess;
 	}
-	err = ibtrs_clt_create_sess_files(&sess->kobj, &sess->kobj_stats,
-					  str_addr);
+	err = ibtrs_clt_create_sess_files(sess);
 	if (unlikely(err)) {
 		ibtrs_err(sess, "Establishing session to server failed,"
 			  " failed to create session sysfs files, err: %d\n",
@@ -3071,7 +3068,7 @@ EXPORT_SYMBOL(ibtrs_clt_open);
 
 void ibtrs_clt_close(struct ibtrs_clt_sess *sess)
 {
-	ibtrs_clt_destroy_sess_files(&sess->kobj, &sess->kobj_stats);
+	ibtrs_clt_destroy_sess_files(sess);
 	ibtrs_clt_close_conns(sess, true);
 	free_sess(sess);
 }

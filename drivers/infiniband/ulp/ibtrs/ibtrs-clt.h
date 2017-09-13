@@ -188,14 +188,8 @@ ssize_t ibtrs_clt_reset_all_help(struct ibtrs_clt_sess *sess,
 /* ibtrs-clt-sysfs.c */
 
 int ibtrs_clt_create_sysfs_files(void);
-
 void ibtrs_clt_destroy_sysfs_files(void);
-
-int ibtrs_clt_create_sess_files(struct kobject *kobj, struct kobject *kobj_sess,
-				const char *ip);
-
-void ibtrs_clt_destroy_sess_files(struct kobject *kobj,
-				  struct kobject *kobj_sess);
-
+int ibtrs_clt_create_sess_files(struct ibtrs_clt_sess *sess);
+void ibtrs_clt_destroy_sess_files(struct ibtrs_clt_sess *sess);
 
 #endif /* IBTRS_CLT_H */
