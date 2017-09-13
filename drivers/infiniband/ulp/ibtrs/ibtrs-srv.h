@@ -87,7 +87,7 @@ struct ibtrs_srv_sess {
 	struct ibtrs_srv_ctx	*ctx;
 	struct list_head	ctx_list;
 	struct work_struct	close_work;
-	enum ibtrs_srv_state	state_NEW;
+	enum ibtrs_srv_state	state;
 	spinlock_t		state_lock;
 	int			cur_cq_vector;
 	struct ibtrs_srv_con    **con;
