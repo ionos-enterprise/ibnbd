@@ -3010,13 +3010,13 @@ static void ssm_connected(struct ibtrs_srv_sess *sess, enum ssm_ev ev)
 		sess->est_cnt--;
 
 		ssm_set_state(sess, SSM_STATE_CLOSING);
-		ibtrs_srv_sess_ev(sess, IBTRS_SRV_SESS_EV_DISCONNECTING);
+		ibtrs_srv_sess_ev(sess, IBTRS_SRV_SESS_EV_DISCONNECTED);
 		break;
 	case SSM_EV_SESS_CLOSE:
 	case SSM_EV_SYSFS_DISCONNECT:
 		remove_sess_from_sysfs(sess);
 		ssm_set_state(sess, SSM_STATE_CLOSING);
-		ibtrs_srv_sess_ev(sess, IBTRS_SRV_SESS_EV_DISCONNECTING);
+		ibtrs_srv_sess_ev(sess, IBTRS_SRV_SESS_EV_DISCONNECTED);
 
 		sess_schedule_csm_event(sess, CSM_EV_SESS_CLOSING);
 		break;
@@ -3043,7 +3043,6 @@ static void ssm_closing(struct ibtrs_srv_sess *sess, enum ssm_ev ev)
 		if (sess->active_cnt == 0) {
 			ibtrs_srv_sess_destroy(sess);
 			ssm_set_state(sess, SSM_STATE_CLOSED);
-			ibtrs_srv_sess_ev(sess, IBTRS_SRV_SESS_EV_DISCONNECTED);
 			cancel_delayed_work(&sess->check_heartbeat_dwork);
 			schedule_sess_put(sess);
 		}

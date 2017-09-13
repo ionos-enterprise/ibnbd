@@ -323,17 +323,6 @@ static int ibnbd_srv_sess_ev(struct ibtrs_srv_sess *sess,
 	case IBTRS_SRV_SESS_EV_CONNECTED:
 		return create_sess(sess);
 
-	case IBTRS_SRV_SESS_EV_DISCONNECTING:
-		if (WARN_ON(!priv ||
-			    srv_sess->state != SRV_SESS_STATE_CONNECTED))
-			return -EINVAL;
-
-		pr_info("IBTRS Session to %s will be disconnected.\n",
-			srv_sess->str_addr);
-		srv_sess->state = SRV_SESS_STATE_DISCONNECTED;
-
-		return 0;
-
 	case IBTRS_SRV_SESS_EV_DISCONNECTED:
 		if (WARN_ON(!priv))
 			return -EINVAL;
