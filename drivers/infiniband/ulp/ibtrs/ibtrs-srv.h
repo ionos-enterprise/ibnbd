@@ -104,9 +104,6 @@ struct ibtrs_srv_sess {
 					   */
 	u16			queue_depth;
 	u16			wq_size;
-	//XXX struct ibtrs_heartbeat	heartbeat;
-	//XXX struct delayed_work	check_heartbeat_dwork;
-	//XXX struct delayed_work	send_heartbeat_dwork;
 	void			*priv;
 	struct kobject		kobj;
 	struct kobject		kobj_stats;

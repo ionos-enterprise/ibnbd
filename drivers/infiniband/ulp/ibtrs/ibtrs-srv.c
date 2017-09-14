@@ -26,7 +26,7 @@ static int rcv_buf_size = DEFAULT_MAX_IO_SIZE + MAX_REQ_SIZE;
 
 static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc);
 
-static struct ib_cqe hb_and_ack_cqe = {
+static struct ib_cqe ack_cqe = {
 	.done = ibtrs_srv_rdma_done
 };
 
@@ -118,40 +118,6 @@ MODULE_PARM_DESC(retry_count, "Number of times to send the message if the"
 		 " remote side didn't respond with Ack or Nack (default: 3,"
 		 " min: " __stringify(MIN_RTR_CNT) ", max: "
 		 __stringify(MAX_RTR_CNT) ")");
-
-/*XXX
-static int default_heartbeat_timeout_ms = DEFAULT_HEARTBEAT_TIMEOUT_MS;
-
-static int default_heartbeat_timeout_set(const char *val,
-					 const struct kernel_param *kp)
-{
-	int ret, ival;
-
-	ret = kstrtouint(val, 0, &ival);
-	if (ret)
-		return ret;
-
-	ret = ibtrs_heartbeat_timeout_validate(ival);
-	if (ret)
-		return ret;
-
-	default_heartbeat_timeout_ms = ival;
-	pr_info("Default heartbeat timeout changed to %d\n", ival);
-
-	return 0;
-}
-
-static const struct kernel_param_ops heartbeat_timeout_ops = {
-	.set		= default_heartbeat_timeout_set,
-	.get		= param_get_int,
-};
-
-module_param_cb(default_heartbeat_timeout_ms, &heartbeat_timeout_ops,
-		&default_heartbeat_timeout_ms, 0644);
-MODULE_PARM_DESC(default_heartbeat_timeout_ms, "default heartbeat timeout,"
-		 " min. " __stringify(MIN_HEARTBEAT_TIMEOUT_MS)
-		 " (default:" __stringify(DEFAULT_HEARTBEAT_TIMEOUT_MS) ")");
-*/
 
 static char cq_affinity_list[256] = "";
 static cpumask_t cq_affinity_mask = { CPU_BITS_ALL };
@@ -584,50 +550,13 @@ static int send_io_resp_imm(struct ibtrs_srv_con *con, int msg_id, s16 errno)
 			0 : IB_SEND_SIGNALED;
 	imm = (msg_id << 16) | (u16)errno;
 	err = ibtrs_post_rdma_write_imm_empty(con->ibtrs_con.qp,
-					      &hb_and_ack_cqe,
+					      &ack_cqe,
 					      imm, flags);
 	if (unlikely(err))
 		ibtrs_err_rl(sess, "ib_post_send(), err: %d\n", err);
 
 	return err;
 }
-
-/*XXX
-static int send_heartbeat_raw(struct ibtrs_srv_con *con)
-{
-	int err;
-
-	err = ibtrs_post_rdma_write_imm_empty(con->ibtrs_con.qp,
-					      &hb_and_ack_cqe,
-					      IBTRS_HB_IMM,
-					      IB_SEND_SIGNALED);
-	if (unlikely(err)) {
-		ibtrs_err(con->sess,
-			  "Sending heartbeat failed, posting msg to QP failed,"
-			  " err: %d\n", err);
-		return err;
-	}
-
-	ibtrs_heartbeat_set_send_ts(&con->sess->heartbeat);
-	return err;
-}
-
-static int send_heartbeat(struct ibtrs_srv_sess *sess)
-{
-	struct ibtrs_srv_con *con;
-
-	if (unlikely(list_empty(&sess->con_list)))
-		return -ENOENT;
-
-	con = list_first_entry(&sess->con_list, struct ibtrs_srv_con, list);
-	WARN_ON(con->cid != 0);
-
-	if (unlikely(sess->state != IBTRS_SRV_ALIVE))
-		return -ENOTCONN;
-
-	return send_heartbeat_raw(con);
-}
-*/
 
 static int ibtrs_srv_queue_resp_rdma(struct ibtrs_srv_op *id)
 {
@@ -671,9 +600,8 @@ static void ibtrs_srv_resp_rdma_worker(struct work_struct *work)
 				return;
 			close_sess(sess);
 		}
-
-		//XXX ibtrs_heartbeat_set_send_ts(&sess->heartbeat);
 		ibtrs_srv_stats_dec_inflight(sess);
+
 		return;
 	}
 
@@ -686,7 +614,6 @@ static void ibtrs_srv_resp_rdma_worker(struct work_struct *work)
 			return;
 		close_sess(sess);
 	}
-	//XXX ibtrs_heartbeat_set_send_ts(&sess->heartbeat);
 	ibtrs_srv_stats_dec_inflight(sess);
 }
 
@@ -760,8 +687,6 @@ int ibtrs_srv_send(struct ibtrs_srv_sess *sess, const struct kvec *vec,
 			     " failed, err: %d\n", err);
 		goto err_post_send;
 	}
-	//XXX ibtrs_heartbeat_set_send_ts(&sess->heartbeat);
-
 	atomic64_inc(&sess->stats.user_ib_msgs.sent_msg_cnt);
 	atomic64_add(len, &sess->stats.user_ib_msgs.sent_size);
 
@@ -1314,7 +1239,7 @@ static int ibtrs_send_usr_msg_ack(struct ibtrs_srv_con *con)
 	}
 	pr_debug("Sending user message ack\n");
 	err = ibtrs_post_rdma_write_imm_empty(con->ibtrs_con.qp,
-					      &hb_and_ack_cqe,
+					      &ack_cqe,
 					      IBTRS_ACK_IMM,
 					      IB_SEND_SIGNALED);
 	if (unlikely(err)) {
@@ -1322,7 +1247,6 @@ static int ibtrs_send_usr_msg_ack(struct ibtrs_srv_con *con)
 			     err);
 		return err;
 	}
-	//XXX ibtrs_heartbeat_set_send_ts(&sess->heartbeat);
 
 	return 0;
 }
@@ -1559,9 +1483,9 @@ static void process_err_wc(struct ibtrs_srv_con *con, struct ib_wc *wc)
 	struct ibtrs_srv_sess *sess = con->sess;
 	struct ibtrs_iu *iu;
 
-	if (wc->wr_cqe == &hb_and_ack_cqe) {
-		ibtrs_err_rl(sess, "ib_post_send() of hb or ack failed, "
-			     "status: %s\n", ib_wc_status_msg(wc->status));
+	if (wc->wr_cqe == &ack_cqe) {
+		ibtrs_err_rl(sess, "ib_post_send() ack failed, status: %s\n",
+			     ib_wc_status_msg(wc->status));
 		close_sess(sess);
 		return;
 	}
@@ -1621,7 +1545,6 @@ static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 		/*
 		 * post_recv() completions: sess info, user msgs
 		 */
-		//XXX ibtrs_heartbeat_set_recv_ts(&sess->heartbeat);
 		iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
 		ibtrs_handle_recv(con, iu);
 		break;
@@ -1636,19 +1559,9 @@ static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 		 * post_recv() RDMA write completions of IO reqs (read/write),
 		 *             user msgs acks, heartbeats
 		 */
-		//XXX ibtrs_heartbeat_set_recv_ts(&sess->heartbeat);
 		iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
 		imm = be32_to_cpu(wc->ex.imm_data);
-		if (imm == IBTRS_HB_IMM) {
-			ret = ibtrs_post_recv(con, iu);
-			if (unlikely(ret != 0)) {
-				ibtrs_err(sess, "post receive buffer failed,"
-					  " err: %d\n", ret);
-				close_sess(sess);
-				return;
-			}
-			break;
-		} else if (imm == IBTRS_ACK_IMM) {
+		if (imm == IBTRS_ACK_IMM) {
 			ret = ibtrs_post_recv(con, iu);
 			if (unlikely(ret))
 				ibtrs_err_rl(sess, "Posting receive buffer of"
@@ -1737,9 +1650,6 @@ static void ibtrs_srv_close_work(struct work_struct *work)
 	mutex_lock(&ctx->sess_mutex);
 	list_del(&sess->ctx_list);
 	mutex_unlock(&ctx->sess_mutex);
-
-	/* XXX cancel_delayed_work(&sess->send_heartbeat_dwork);
-	   cancel_delayed_work(&sess->check_heartbeat_dwork); */
 
 	for (i = 0; i < sess->con_cnt; i++) {
 		con = sess->con[i];
@@ -1911,16 +1821,6 @@ static struct ibtrs_srv_sess *__alloc_sess(struct ibtrs_srv_ctx *ctx,
 	init_waitqueue_head(&sess->bufs_wait);
 	spin_lock_init(&sess->state_lock);
 
-	/*XXX
-	ibtrs_heartbeat_init(&sess->heartbeat,
-			     default_heartbeat_timeout_ms <
-			     MIN_HEARTBEAT_TIMEOUT_MS ?
-			     MIN_HEARTBEAT_TIMEOUT_MS :
-			     default_heartbeat_timeout_ms);
-
-	INIT_DELAYED_WORK(&sess->check_heartbeat_dwork, check_heartbeat_work);
-	INIT_DELAYED_WORK(&sess->send_heartbeat_dwork, send_heartbeat_work);
-	*/
 	INIT_WORK(&sess->close_work, ibtrs_srv_close_work);
 
 	sess->s.ib_dev = ibtrs_ib_dev_find_get(cm_id);
@@ -2318,68 +2218,6 @@ static int check_module_params(void)
 	return 0;
 }
 
-/*XXX
-static void queue_heartbeat_dwork(struct ibtrs_srv_sess *sess)
-{
-	ibtrs_heartbeat_set_recv_ts(&sess->heartbeat);
-	WARN_ON(!queue_delayed_work(sess->sm_wq,
-				    &sess->send_heartbeat_dwork,
-				    HEARTBEAT_INTV_JIFFIES));
-	WARN_ON(!queue_delayed_work(sess->sm_wq,
-				    &sess->check_heartbeat_dwork,
-				    HEARTBEAT_INTV_JIFFIES));
-}
-
-static void check_heartbeat_work(struct work_struct *work)
-{
-	struct ibtrs_srv_sess *sess;
-	s64 diff;
-
-	sess = container_of(to_delayed_work(work), struct ibtrs_srv_sess,
-			    check_heartbeat_dwork);
-
-	if (!sess->heartbeat.timeout_ms)
-		return;
-	diff = ibtrs_heartbeat_recv_ts_diff_ms(&sess->heartbeat);
-	if (unlikely(diff >= sess->heartbeat.timeout_ms)) {
-		close_sess(sess);
-		return;
-	}
-	if (WARN_ON(!queue_delayed_work(sess->sm_wq,
-					&sess->check_heartbeat_dwork,
-					HEARTBEAT_INTV_JIFFIES)))
-		ibtrs_wrn_rl(sess, "Schedule check heartbeat work failed, "
-			     "check_heartbeat worker already queued?\n");
-}
-
-static void send_heartbeat_work(struct work_struct *work)
-{
-	struct ibtrs_srv_sess *sess;
-	int err;
-
-	sess = container_of(to_delayed_work(work), struct ibtrs_srv_sess,
-			    send_heartbeat_dwork);
-
-	if (ibtrs_heartbeat_send_ts_diff_ms(&sess->heartbeat) >=
-	    HEARTBEAT_INTV_MS) {
-		err = send_heartbeat(sess);
-		if (unlikely(err)) {
-			ibtrs_wrn_rl(sess,
-				     "Sending heartbeat failed, err: %d,"
-				     " no further heartbeat will be sent\n",
-				     err);
-			return;
-		}
-	}
-
-	if (WARN_ON(!queue_delayed_work(sess->sm_wq,
-					&sess->send_heartbeat_dwork,
-					HEARTBEAT_INTV_JIFFIES)))
-		ibtrs_wrn_rl(sess, "schedule send heartbeat work failed, "
-			     "send_heartbeat worker already queued?\n");
-}
-*/
-
 static int ibtrs_srv_create_debugfs_files(void)
 {
 	int ret = 0;
@@ -2487,12 +2325,11 @@ static int __init ibtrs_server_init(void)
 	scnprintf(hostname, sizeof(hostname), "%s", utsname()->nodename);
 	pr_info("Loading module ibtrs_server, version: %s ("
 		" retry_count: %d, "
-		//XXX " default_heartbeat_timeout_ms: %d,"
 		" cq_affinity_list: %s, max_io_size: %d,"
 		" sess_queue_depth: %d, init_pool_size: %d,"
 		" pool_size_hi_wm: %d, hostname: %s)\n",
 		__stringify(IBTRS_VER),
-		retry_count, //XXX default_heartbeat_timeout_ms,
+		retry_count,
 		cq_affinity_list, max_io_size, sess_queue_depth,
 		init_pool_size, pool_size_hi_wm, hostname);
 

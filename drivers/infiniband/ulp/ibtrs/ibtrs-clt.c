@@ -1221,7 +1221,6 @@ static int ibtrs_send_msg_user_ack(struct ibtrs_clt_con *con)
 			     err);
 		return err;
 	}
-	//XXX ibtrs_heartbeat_set_send_ts(&sess->heartbeat);
 
 	return 0;
 }
@@ -1335,7 +1334,6 @@ static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 		 * post_recv() RDMA write completions of IO reqs (read/write),
 		 *             user msgs acks, heartbeats
 		 */
-		//XXX ibtrs_heartbeat_set_recv_ts(&sess->heartbeat);
 		iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
 		err = ibtrs_post_recv_cb(con, iu, ibtrs_clt_rdma_done);
 		if (unlikely(err)) {
@@ -1344,9 +1342,7 @@ static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 		}
 
 		imm = be32_to_cpu(wc->ex.imm_data);
-		if (imm == IBTRS_HB_IMM)
-			break;
-		else if (imm == IBTRS_ACK_IMM) {
+		if (imm == IBTRS_ACK_IMM) {
 			process_msg_user_ack(con);
 			break;
 		}
@@ -2347,15 +2343,7 @@ static struct ibtrs_clt_sess *alloc_sess(const struct ibtrs_clt_ops *ops,
 	init_waitqueue_head(&sess->state_wq);
 	init_waitqueue_head(&sess->tags_wait);
 	sess->state = IBTRS_CLT_CONNECTING;
-	/*XXX
-	ibtrs_heartbeat_init(&sess->heartbeat,
-			     default_heartbeat_timeout_ms <
-			     MIN_HEARTBEAT_TIMEOUT_MS ?
-			     MIN_HEARTBEAT_TIMEOUT_MS :
-			     default_heartbeat_timeout_ms);
-	*/
 	INIT_WORK(&sess->close_work, ibtrs_clt_close_work);
-	//XXX INIT_DELAYED_WORK(&sess->heartbeat_dwork, heartbeat_work);
 	INIT_DELAYED_WORK(&sess->reconnect_dwork, ibtrs_clt_reconnect_work);
 
 	err = ibtrs_clt_init_stats(sess);
@@ -2542,8 +2530,6 @@ static void ibtrs_clt_stop_and_destroy_conns(struct ibtrs_clt_sess *sess)
 	int cid;
 
 	WARN_ON(sess->state == IBTRS_CLT_CONNECTED);
-
-	//XXX STOP HEARTBEAT HERE (IF HEARTBEAT IS GOOD THING TO DO!!!)
 
 	/*
 	 * All IO paths must observe !CONNECTED state before we free everything.
@@ -3290,7 +3276,6 @@ int ibtrs_clt_rdma_write(struct ibtrs_clt_sess *sess, struct ibtrs_tag *tag,
 		return err;
 	}
 
-	//XXX ibtrs_heartbeat_set_send_ts(&sess->heartbeat);
 	ibtrs_clt_record_sg_distr(sess->stats.sg_list_distr[tag->cpu_id],
 				  &sess->stats.sg_list_total[tag->cpu_id],
 				  sg_len);
@@ -3447,7 +3432,6 @@ int ibtrs_clt_request_rdma_write(struct ibtrs_clt_sess *sess,
 		return err;
 	}
 
-	//XXX ibtrs_heartbeat_set_send_ts(&sess->heartbeat);
 	ibtrs_clt_record_sg_distr(sess->stats.sg_list_distr[tag->cpu_id],
 				  &sess->stats.sg_list_total[tag->cpu_id],
 				  recv_sg_len);
@@ -3506,8 +3490,6 @@ int ibtrs_clt_send(struct ibtrs_clt_sess *sess, const struct kvec *vec,
 
 	sess->stats.user_ib_msgs.sent_msg_cnt++;
 	sess->stats.user_ib_msgs.sent_size += len;
-
-	//XXX ibtrs_heartbeat_set_send_ts(&sess->heartbeat);
 
 	return 0;
 
@@ -3629,10 +3611,8 @@ static int __init ibtrs_client_init(void)
 	pr_info("Loading module ibtrs_client, version: " __stringify(IBTRS_VER)
 		" (use_fr: %d, retry_count: %d,"
 		" fmr_sg_cnt: %d,"
-		//XXX " default_heartbeat_timeout_ms: %d,"
 		" hostname: %s)\n", use_fr,
 		retry_count, fmr_sg_cnt,
-		//XXX default_heartbeat_timeout_ms,
 		hostname);
 	err = check_module_params();
 	if (err) {

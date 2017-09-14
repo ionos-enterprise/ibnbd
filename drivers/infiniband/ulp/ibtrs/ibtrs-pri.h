@@ -17,11 +17,6 @@
 #define USR_MSG_CNT 64
 #define USR_CON_BUF_SIZE (USR_MSG_CNT * 2) /* double bufs for ACK's */
 
-//XXX #define DEFAULT_HEARTBEAT_TIMEOUT_MS 20000
-//XXX #define MIN_HEARTBEAT_TIMEOUT_MS 5000
-//XXX #define HEARTBEAT_INTV_MS 500
-//XXX #define HEARTBEAT_INTV_JIFFIES msecs_to_jiffies(HEARTBEAT_INTV_MS)
-
 #define MIN_RTR_CNT 1
 #define MAX_RTR_CNT 7
 
@@ -93,19 +88,10 @@ struct ibtrs_iu {
 	u32			tag;
 };
 
-/*XXX
-struct ibtrs_heartbeat {
-	atomic64_t	send_ts_ns;
-	atomic64_t	recv_ts_ns;
-	u32		timeout_ms;
-};
-*/
-
 #define IO_MSG_SIZE 24
 #define IB_IMM_SIZE_BITS 32
 
-#define IBTRS_HB_IMM  UINT_MAX
-#define IBTRS_ACK_IMM (UINT_MAX-1)
+#define IBTRS_ACK_IMM UINT_MAX
 
 /**
  * enum ibtrs_msg_types - IBTRS message types.
@@ -287,18 +273,6 @@ struct ibtrs_msg_rdma_write {
 
 /* XXX CHECK */
 int ibtrs_validate_message(const struct ibtrs_msg_hdr *hdr);
-
-/* ibtrs-heartbeat.c */
-
-/*XXX
-void ibtrs_heartbeat_init(struct ibtrs_heartbeat *h, u32 timeout_ms);
-void ibtrs_heartbeat_set_timeout_ms(struct ibtrs_heartbeat *h, u32 timeout_ms);
-void ibtrs_heartbeat_set_send_ts(struct ibtrs_heartbeat *h);
-void ibtrs_heartbeat_set_recv_ts(struct ibtrs_heartbeat *h);
-s64 ibtrs_heartbeat_send_ts_diff_ms(const struct ibtrs_heartbeat *h);
-s64 ibtrs_heartbeat_recv_ts_diff_ms(const struct ibtrs_heartbeat *h);
-int ibtrs_heartbeat_timeout_validate(int timeout);
-*/
 
 /* ibtrs-iu.c */
 

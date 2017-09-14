@@ -113,7 +113,6 @@ struct ibtrs_clt_sess {
 	struct ibtrs_clt_ops	ops;
 	struct delayed_work	reconnect_dwork;
 	struct work_struct	close_work;
-	//XXX struct ibtrs_heartbeat	heartbeat;
 	bool			enable_rdma_lat;
 	s16			max_reconnect_attempts;
 	u8			reconnect_delay_sec;

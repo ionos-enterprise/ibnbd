@@ -4,46 +4,6 @@
 #include "ibtrs-srv.h"
 #include "ibtrs-log.h"
 
-/*XXX
-static ssize_t ibtrs_srv_hb_timeout_show(struct kobject *kobj,
-					 struct kobj_attribute *attr,
-					 char *page)
-{
-	struct ibtrs_srv_sess *sess;
-
-	sess = container_of(kobj, struct ibtrs_srv_sess, kobj);
-
-	return scnprintf(page, PAGE_SIZE, "%u\n", sess->heartbeat.timeout_ms);
-}
-
-static ssize_t ibtrs_srv_hb_timeout_store(struct kobject *kobj,
-					  struct kobj_attribute *attr,
-					  const char *buf, size_t count)
-{
-	struct ibtrs_srv_sess *sess;
-	u32 timeout_ms;
-	int ret;
-
-	sess = container_of(kobj, struct ibtrs_srv_sess, kobj);
-	ret = kstrtouint(buf, 0, &timeout_ms);
-	if (ret)
-		return ret;
-
-	ret = ibtrs_heartbeat_timeout_validate(timeout_ms);
-	if (ret)
-		return ret;
-
-	ibtrs_info(sess, "%s: changing value from %u to %u\n", attr->attr.name,
-		   sess->heartbeat.timeout_ms, timeout_ms);
-	ibtrs_heartbeat_set_timeout_ms(&sess->heartbeat, timeout_ms);
-	return count;
-}
-
-static struct kobj_attribute ibtrs_srv_heartbeat_timeout_ms_attr =
-	__ATTR(heartbeat_timeout_ms, 0644,
-	       ibtrs_srv_hb_timeout_show, ibtrs_srv_hb_timeout_store);
-*/
-
 static ssize_t ibtrs_srv_disconnect_show(struct kobject *kobj,
 					 struct kobj_attribute *attr,
 					 char *page)
@@ -122,7 +82,6 @@ static struct attribute *default_sess_attrs[] = {
 	&hostname_attr.attr,
 	&current_hca_port_attr.attr,
 	&disconnect_attr.attr,
-	//XXX &ibtrs_srv_heartbeat_timeout_ms_attr.attr,
 	NULL,
 };
 
