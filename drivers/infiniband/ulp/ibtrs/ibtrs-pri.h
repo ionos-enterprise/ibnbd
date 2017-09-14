@@ -14,36 +14,30 @@
 #include <linux/ktime.h>
 #include <linux/timekeeping.h>
 
-#define USR_MSG_CNT 64
-#define USR_CON_BUF_SIZE (USR_MSG_CNT * 2) /* double bufs for ACK's */
+enum {
+	USR_MSG_CNT = 64,
+	USR_CON_BUF_SIZE = USR_MSG_CNT * 2, /* double bufs for ACK's */
 
-#define MIN_RTR_CNT 1
-#define MAX_RTR_CNT 7
+	MIN_RTR_CNT = 1,
+	MAX_RTR_CNT = 7,
 
-/*
- * With the current size of the tag allocated on the client, 4K is the maximum
- * number of tags we can allocate.  This number is also used on the client to
- * allocate the IU for the user connection to receive the RDMA addresses from
- * the server.
- */
-#define MAX_SESS_QUEUE_DEPTH 4096
+	/*
+	 * With the current size of the tag allocated on the client, 4K
+	 * is the maximum number of tags we can allocate.  This number is
+	 * also used on the client to allocate the IU for the user connection
+	 * to receive the RDMA addresses from the server.
+	 */
+	MAX_SESS_QUEUE_DEPTH = 4096,
 
-#define XX(a) case (a): return #a
+	IO_MSG_SIZE = 24,
+	IB_IMM_SIZE_BITS = 32,
 
-static inline const char *ib_wc_opcode_str(enum ib_wc_opcode opcode)
-{
-	switch (opcode) {
-	XX(IB_WC_SEND);
-	XX(IB_WC_RDMA_WRITE);
-	XX(IB_WC_RDMA_READ);
-	XX(IB_WC_COMP_SWAP);
-	XX(IB_WC_FETCH_ADD);
-	/* recv-side); inbound completion */
-	XX(IB_WC_RECV);
-	XX(IB_WC_RECV_RDMA_WITH_IMM);
-	default: return "IB_WC_OPCODE_UNKNOWN";
-	}
-}
+	IBTRS_ACK_IMM = UINT_MAX,
+
+	IBTRS_MAGIC   = 0x1BBD,
+	IBTRS_VER_1_0 = 0x0100,
+	IBTRS_CURRENT_VER = IBTRS_VER_1_0,
+};
 
 struct ibtrs_ib_dev {
 	struct list_head	entry;
@@ -88,11 +82,6 @@ struct ibtrs_iu {
 	u32			tag;
 };
 
-#define IO_MSG_SIZE 24
-#define IB_IMM_SIZE_BITS 32
-
-#define IBTRS_ACK_IMM UINT_MAX
-
 /**
  * enum ibtrs_msg_types - IBTRS message types.
  * @IBTRS_MSG_INFO_REQ:		Client additional info request to the server
@@ -108,13 +97,6 @@ enum ibtrs_msg_types {
 	IBTRS_MSG_REQ_RDMA_WRITE,
 	IBTRS_MSG_USER,
 };
-
-enum {
-	IBTRS_MAGIC   = 0x1BBD,
-	IBTRS_VER_1_0 = 0x0100,
-};
-
-#define IBTRS_CURRENT_VER IBTRS_VER_1_0
 
 /**
  * struct ibtrs_msg_conn_req - Client connection request to the server
@@ -308,6 +290,22 @@ int ibtrs_cq_qp_create(struct ibtrs_sess *ibtrs_sess, struct ibtrs_con *con,
 		       struct ibtrs_ib_dev *ibdev,
 		       enum ib_poll_context poll_ctx);
 void ibtrs_cq_qp_destroy(struct ibtrs_con *con);
+
+#define XX(a) case (a): return #a
+static inline const char *ib_wc_opcode_str(enum ib_wc_opcode opcode)
+{
+	switch (opcode) {
+	XX(IB_WC_SEND);
+	XX(IB_WC_RDMA_WRITE);
+	XX(IB_WC_RDMA_READ);
+	XX(IB_WC_COMP_SWAP);
+	XX(IB_WC_FETCH_ADD);
+	/* recv-side); inbound completion */
+	XX(IB_WC_RECV);
+	XX(IB_WC_RECV_RDMA_WITH_IMM);
+	default: return "IB_WC_OPCODE_UNKNOWN";
+	}
+}
 
 static inline void sockaddr_to_str(const struct sockaddr_storage *addr,
 				   char *buf, size_t len)
