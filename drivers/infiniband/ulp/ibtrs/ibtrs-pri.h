@@ -198,8 +198,6 @@ struct ibtrs_msg_hdr {
 	u32			tsize;
 };
 
-#define IBTRS_HDR_LEN sizeof(struct ibtrs_msg_hdr)
-
 /*
  *  Data Layout in RDMA-Bufs:
  *
@@ -245,8 +243,6 @@ struct ibtrs_sg_desc {
 	u32			key;
 	u32			len;
 };
-
-#define IBTRS_SG_DESC_LEN sizeof(struct ibtrs_sg_desc)
 
 /**
  * struct ibtrs_msg_req_rdma_write - RDMA data transfer request from client

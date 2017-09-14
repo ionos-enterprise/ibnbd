@@ -662,9 +662,10 @@ int ibtrs_srv_send(struct ibtrs_srv_sess *sess, const struct kvec *vec,
 
 	len = kvec_length(vec, nr);
 
-	if (unlikely(len + IBTRS_HDR_LEN > MAX_REQ_SIZE)) {
+	if (unlikely(len + sizeof(struct ibtrs_msg_hdr) > MAX_REQ_SIZE)) {
 		ibtrs_wrn_rl(sess, "Sending message failed, passed data too big,"
-			     " %zu > %lu\n", len, MAX_REQ_SIZE - IBTRS_HDR_LEN);
+			     " %zu > %lu\n", len,
+			     MAX_REQ_SIZE - sizeof(struct ibtrs_msg_hdr));
 		return -EMSGSIZE;
 	}
 	iu = ibtrs_usr_msg_get(&sess->s);
@@ -676,7 +677,7 @@ int ibtrs_srv_send(struct ibtrs_srv_sess *sess, const struct kvec *vec,
 
 	msg		= iu->buf;
 	msg->hdr.type	= IBTRS_MSG_USER;
-	msg->hdr.tsize	= len + IBTRS_HDR_LEN;
+	msg->hdr.tsize	= len + sizeof(struct ibtrs_msg_hdr);
 	copy_from_kvec(msg->payl, vec, len);
 
 	err = ibtrs_post_send(usr_con->ibtrs_con.qp,
@@ -1258,7 +1259,7 @@ static void process_msg_user(struct ibtrs_srv_con *con,
 	struct ibtrs_srv_ctx *ctx = sess->ctx;
 	int len;
 
-	len = msg->hdr.tsize - IBTRS_HDR_LEN;
+	len = msg->hdr.tsize - sizeof(struct ibtrs_msg_hdr);
 	if (unlikely(sess->state != IBTRS_SRV_ALIVE || !sess->priv)) {
 		ibtrs_err(sess, "Sending user msg failed, session isn't ready,"
 			  " session state is %s\n",
@@ -1299,7 +1300,7 @@ static void ibtrs_handle_write(struct ibtrs_srv_con *con, struct ibtrs_iu *iu,
 	pr_debug("recv completion, type 0x%02x, tag %u, id %u, off %u\n",
 		 hdr->type, iu->tag, id, off);
 	print_hex_dump_debug("", DUMP_PREFIX_OFFSET, 8, 1,
-			     hdr, IBTRS_HDR_LEN + 32, true);
+			     hdr, sizeof(struct ibtrs_msg_hdr) + 32, true);
 	ret = ibtrs_post_recv(con, iu);
 	if (unlikely(ret != 0)) {
 		ibtrs_err(sess, "Posting receive buffer to HCA failed, err: %d\n",
@@ -1431,7 +1432,7 @@ static void ibtrs_handle_recv(struct ibtrs_srv_con *con, struct ibtrs_iu *iu)
 	type = le16_to_cpu(*(__le16 *)iu->buf);
 	pr_debug("recv completion, type 0x%02x, tag %u\n", type, iu->tag);
 	print_hex_dump_debug("", DUMP_PREFIX_OFFSET, 8, 1,
-			     iu->buf, IBTRS_HDR_LEN, true);
+			     iu->buf, sizeof(struct ibtrs_msg_hdr), true);
 
 	switch (type) {
 	case IBTRS_MSG_USER:

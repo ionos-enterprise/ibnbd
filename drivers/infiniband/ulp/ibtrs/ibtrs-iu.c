@@ -168,8 +168,9 @@ int ibtrs_iu_alloc_sess_rx_bufs(struct ibtrs_sess *sess, size_t max_req_size)
 	struct ibtrs_iu *iu;
 	int i;
 
-	sess->dummy_rx_iu = ibtrs_iu_alloc(0, IBTRS_HDR_LEN, GFP_KERNEL,
-					   sess->ib_dev->dev, DMA_FROM_DEVICE);
+	sess->dummy_rx_iu = ibtrs_iu_alloc(0, sizeof(struct ibtrs_msg_hdr),
+					   GFP_KERNEL, sess->ib_dev->dev,
+					   DMA_FROM_DEVICE);
 	if (unlikely(!sess->dummy_rx_iu))
 		goto err;
 

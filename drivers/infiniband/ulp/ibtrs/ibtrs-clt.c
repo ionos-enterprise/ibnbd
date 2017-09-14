@@ -1231,7 +1231,7 @@ static void process_msg_user(struct ibtrs_clt_con *con,
 	struct ibtrs_clt_sess *sess = con->sess;
 	int len;
 
-	len = msg->hdr.tsize - IBTRS_HDR_LEN;
+	len = msg->hdr.tsize - sizeof(struct ibtrs_msg_hdr);
 
 	sess->stats.user_ib_msgs.recv_msg_cnt++;
 	sess->stats.user_ib_msgs.recv_size += len;
@@ -2712,9 +2712,10 @@ static int ibtrs_rdma_conn_established(struct ibtrs_clt_con *con,
 		sess->max_req_size = le16_to_cpu(msg->max_req_size);
 		sess->max_io_size = le16_to_cpu(msg->max_io_size);
 		sess->chunk_size = sess->max_io_size + sess->max_req_size;
-		sess->max_desc  = sess->max_req_size - IBTRS_HDR_LEN -
-				  sizeof(u32) - sizeof(u32) - IO_MSG_SIZE;
-		sess->max_desc /= IBTRS_SG_DESC_LEN;
+		sess->max_desc  = sess->max_req_size;
+		sess->max_desc -= sizeof(struct ibtrs_msg_hdr);
+		sess->max_desc -= sizeof(u32) + sizeof(u32) + IO_MSG_SIZE;
+		sess->max_desc /= sizeof(struct ibtrs_sg_desc);
 	}
 
 	return 0;
@@ -3353,8 +3354,8 @@ static int ibtrs_clt_request_rdma_write_sg(struct ibtrs_clt_con *con,
 	imm = req->tag->mem_id_mask + result_len + u_msg_len;
 	buf_id = req->tag->mem_id;
 
-	req->sg_size = sizeof(*msg) + msg->sg_cnt * IBTRS_SG_DESC_LEN +
-		u_msg_len;
+	req->sg_size  = sizeof(*msg);
+	req->sg_size += msg->sg_cnt * sizeof(struct ibtrs_sg_desc) + u_msg_len;
 	ret = ibtrs_post_send_rdma(con, req, con->sess->srv_rdma_addr[buf_id],
 				   result_len, imm);
 	if (unlikely(ret)) {
@@ -3387,7 +3388,8 @@ int ibtrs_clt_request_rdma_write(struct ibtrs_clt_sess *sess,
 	u_msg_len = kvec_length(vec, nr);
 	if (unlikely(u_msg_len > IO_MSG_SIZE ||
 		     sizeof(struct ibtrs_msg_req_rdma_write) +
-		     recv_sg_len * IBTRS_SG_DESC_LEN > sess->max_req_size)) {
+		     recv_sg_len * sizeof(struct ibtrs_sg_desc) >
+			     sess->max_req_size)) {
 		ibtrs_wrn_rl(sess, "Request-RDMA-Write failed, user message size"
 			     " is %zu B big, max size is %d B\n", u_msg_len,
 			     IO_MSG_SIZE);
@@ -3452,7 +3454,7 @@ int ibtrs_clt_send(struct ibtrs_clt_sess *sess, const struct kvec *vec,
 
 	con = &sess->con[0];
 	len = kvec_length(vec, nr);
-	if (len > sess->max_req_size - IBTRS_HDR_LEN) {
+	if (len > sess->max_req_size - sizeof(struct ibtrs_msg_hdr)) {
 		ibtrs_err_rl(sess, "Sending user message failed,"
 			     " user message length too large (len: %zu)\n", len);
 		return -EMSGSIZE;
@@ -3475,7 +3477,7 @@ int ibtrs_clt_send(struct ibtrs_clt_sess *sess, const struct kvec *vec,
 
 	msg		= iu->buf;
 	msg->hdr.type	= IBTRS_MSG_USER;
-	msg->hdr.tsize	= IBTRS_HDR_LEN + len;
+	msg->hdr.tsize	= sizeof(struct ibtrs_msg_hdr) + len;
 	copy_from_kvec(msg->payl, vec, len);
 
 	iu->cqe.done = ibtrs_clt_usr_send_done;
