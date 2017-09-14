@@ -477,19 +477,21 @@ static int rdma_write_sg(struct ibtrs_srv_op *id)
 	struct ib_rdma_wr *wr = NULL;
 	struct ib_send_wr *bad_wr;
 	enum ib_send_flags flags;
+	size_t sg_cnt;
 	int err, i, offset;
 
-	if (unlikely(id->req->sg_cnt == 0))
+	sg_cnt = le32_to_cpu(id->req->sg_cnt);
+	if (unlikely(!sg_cnt))
 		return -EINVAL;
 
 	offset = 0;
-	for (i = 0; i < id->req->sg_cnt; i++) {
+	for (i = 0; i < sg_cnt; i++) {
 		struct ib_sge *list;
 
 		wr		= &id->tx_wr[i];
 		list		= &id->tx_sg[i];
 		list->addr	= id->data_dma_addr + offset;
-		list->length	= id->req->desc[i].len;
+		list->length	= le32_to_cpu(id->req->desc[i].len);
 
 		/* WR will fail with length error
 		 * if this is 0
@@ -504,10 +506,10 @@ static int rdma_write_sg(struct ibtrs_srv_op *id)
 
 		wr->wr.sg_list	= list;
 		wr->wr.num_sge	= 1;
-		wr->remote_addr	= id->req->desc[i].addr;
-		wr->rkey	= id->req->desc[i].key;
+		wr->remote_addr	= le64_to_cpu(id->req->desc[i].addr);
+		wr->rkey	= le32_to_cpu(id->req->desc[i].key);
 
-		if (i < (id->req->sg_cnt - 1)) {
+		if (i < (sg_cnt - 1)) {
 			wr->wr.next	= &id->tx_wr[i + 1].wr;
 			wr->wr.opcode	= IB_WR_RDMA_WRITE;
 			wr->wr.ex.imm_data	= 0;
@@ -650,7 +652,7 @@ int ibtrs_srv_send(struct ibtrs_srv_sess *sess, const struct kvec *vec,
 	struct ibtrs_srv_con *usr_con;
 	struct ibtrs_msg_user *msg;
 	struct ibtrs_iu *iu = NULL;
-	size_t len;
+	size_t len, tsize;
 	int err;
 
 	usr_con = sess->con[0];
@@ -675,14 +677,15 @@ int ibtrs_srv_send(struct ibtrs_srv_sess *sess, const struct kvec *vec,
 		return -ECOMM;
 	}
 
+	tsize = len + sizeof(struct ibtrs_msg_hdr);
 	msg		= iu->buf;
-	msg->hdr.type	= IBTRS_MSG_USER;
-	msg->hdr.tsize	= len + sizeof(struct ibtrs_msg_hdr);
+	msg->hdr.type	= cpu_to_le16(IBTRS_MSG_USER);
+	msg->hdr.tsize	= cpu_to_le32(tsize);
 	copy_from_kvec(msg->payl, vec, len);
 
 	err = ibtrs_post_send(usr_con->ibtrs_con.qp,
 			      usr_con->sess->s.ib_dev->mr,
-			      iu, msg->hdr.tsize);
+			      iu, tsize);
 	if (unlikely(err)) {
 		ibtrs_err_rl(sess, "Sending message failed, posting message to QP"
 			     " failed, err: %d\n", err);
@@ -1133,6 +1136,7 @@ static void process_rdma_write_req(struct ibtrs_srv_con *con,
 	struct ibtrs_srv_sess *sess = con->sess;
 	struct ibtrs_srv_ctx *ctx = sess->ctx;
 	struct ibtrs_srv_op *id;
+	size_t sg_cnt;
 	int ret;
 
 	if (unlikely(sess->state != IBTRS_SRV_ALIVE)) {
@@ -1141,6 +1145,7 @@ static void process_rdma_write_req(struct ibtrs_srv_con *con,
 			     ibtrs_srv_state_str(sess->state));
 		return;
 	}
+	sg_cnt = le32_to_cpu(req->sg_cnt);
 	ibtrs_srv_update_rdma_stats(&sess->stats, off, true);
 	id = sess->ops_ids[buf_id];
 	kfree(id->tx_wr);
@@ -1149,8 +1154,8 @@ static void process_rdma_write_req(struct ibtrs_srv_con *con,
 	id->dir		= READ;
 	id->msg_id	= buf_id;
 	id->req		= req;
-	id->tx_wr	= kcalloc(req->sg_cnt, sizeof(*id->tx_wr), GFP_KERNEL);
-	id->tx_sg	= kcalloc(req->sg_cnt, sizeof(*id->tx_sg), GFP_KERNEL);
+	id->tx_wr	= kcalloc(sg_cnt, sizeof(*id->tx_wr), GFP_KERNEL);
+	id->tx_sg	= kcalloc(sg_cnt, sizeof(*id->tx_sg), GFP_KERNEL);
 	if (!id->tx_wr || !id->tx_sg) {
 		ibtrs_err_rl(sess, "Processing RDMA-Write-Req failed, work request "
 			     "or scatter gather allocation failed for msg_id %d\n",
@@ -1259,7 +1264,7 @@ static void process_msg_user(struct ibtrs_srv_con *con,
 	struct ibtrs_srv_ctx *ctx = sess->ctx;
 	int len;
 
-	len = msg->hdr.tsize - sizeof(struct ibtrs_msg_hdr);
+	len = le32_to_cpu(msg->hdr.tsize) - sizeof(struct ibtrs_msg_hdr);
 	if (unlikely(sess->state != IBTRS_SRV_ALIVE || !sess->priv)) {
 		ibtrs_err(sess, "Sending user msg failed, session isn't ready,"
 			  " session state is %s\n",
@@ -1284,6 +1289,7 @@ static void ibtrs_handle_write(struct ibtrs_srv_con *con, struct ibtrs_iu *iu,
 			       struct ibtrs_msg_hdr *hdr, u32 id, u32 off)
 {
 	struct ibtrs_srv_sess *sess = con->sess;
+	unsigned type;
 	int ret;
 
 	if (unlikely(ibtrs_validate_message(hdr))) {
@@ -1297,8 +1303,9 @@ static void ibtrs_handle_write(struct ibtrs_srv_con *con, struct ibtrs_iu *iu,
 		goto err;
 	}
 
+	type = le16_to_cpu(hdr->type);
 	pr_debug("recv completion, type 0x%02x, tag %u, id %u, off %u\n",
-		 hdr->type, iu->tag, id, off);
+		 type, iu->tag, id, off);
 	print_hex_dump_debug("", DUMP_PREFIX_OFFSET, 8, 1,
 			     hdr, sizeof(struct ibtrs_msg_hdr) + 32, true);
 	ret = ibtrs_post_recv(con, iu);
@@ -1308,7 +1315,7 @@ static void ibtrs_handle_write(struct ibtrs_srv_con *con, struct ibtrs_iu *iu,
 		goto err;
 	}
 
-	switch (hdr->type) {
+	switch (type) {
 	case IBTRS_MSG_RDMA_WRITE:
 		process_rdma_write(con, (struct ibtrs_msg_rdma_write *)hdr,
 				   id, off);
@@ -1320,7 +1327,7 @@ static void ibtrs_handle_write(struct ibtrs_srv_con *con, struct ibtrs_iu *iu,
 		break;
 	default:
 		ibtrs_err(sess, "Processing I/O request failed, "
-			  "unknown message type received: 0x%02x\n", hdr->type);
+			  "unknown message type received: 0x%02x\n", type);
 		goto err;
 	}
 
@@ -1348,18 +1355,20 @@ static int ibtrs_schedule_msg(struct ibtrs_srv_con *con,
 			      struct ibtrs_msg_user *msg)
 {
 	struct msg_work *w;
+	size_t tsize;
 
+	tsize = le32_to_cpu(msg->hdr.tsize);
 	w = kmalloc(sizeof(*w), GFP_KERNEL | __GFP_REPEAT);
 	if (!w)
 		return -ENOMEM;
 
 	w->con = con;
-	w->msg = kmalloc(msg->hdr.tsize, GFP_KERNEL | __GFP_REPEAT);
+	w->msg = kmalloc(tsize, GFP_KERNEL | __GFP_REPEAT);
 	if (!w->msg) {
 		kfree(w);
 		return -ENOMEM;
 	}
-	memcpy(w->msg, msg, msg->hdr.tsize);
+	memcpy(w->msg, msg, tsize);
 	INIT_WORK(&w->work, msg_worker);
 	queue_work(ibtrs_wq, &w->work);
 	return 0;

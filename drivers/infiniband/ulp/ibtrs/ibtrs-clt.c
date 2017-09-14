@@ -501,10 +501,11 @@ static void ibtrs_map_desc(struct ibtrs_map_state *state, dma_addr_t dma_addr,
 {
 	struct ibtrs_sg_desc *desc = state->desc;
 
-	pr_debug("dma_addr %llu, key %u, dma_len %u\n", dma_addr, rkey, dma_len);
-	desc->addr	= dma_addr;
-	desc->key	= rkey;
-	desc->len	= dma_len;
+	pr_debug("dma_addr %llu, key %u, dma_len %u\n",
+		 dma_addr, rkey, dma_len);
+	desc->addr = cpu_to_le64(dma_addr);
+	desc->key  = cpu_to_le32(rkey);
+	desc->len  = cpu_to_le32(dma_len);
 
 	state->total_len += dma_len;
 	if (state->ndesc < max_desc) {
@@ -885,11 +886,11 @@ static int ibtrs_post_send_rdma(struct ibtrs_clt_con *con, struct rdma_req *req,
 static void ibtrs_set_sge_with_desc(struct ib_sge *list,
 				    struct ibtrs_sg_desc *desc)
 {
-	list->addr   = desc->addr;
-	list->length = desc->len;
-	list->lkey   = desc->key;
+	list->addr   = le64_to_cpu(desc->addr);
+	list->length = le32_to_cpu(desc->len);
+	list->lkey   = le32_to_cpu(desc->key);
 	pr_debug("dma_addr %llu, key %u, dma_len %u\n",
-		 desc->addr, desc->key, desc->len);
+		 list->addr, list->lkey, list->length);
 }
 
 static void ibtrs_set_rdma_desc_last(struct ibtrs_clt_con *con,
@@ -958,7 +959,7 @@ static int ibtrs_post_send_rdma_desc_more(struct ibtrs_clt_con *con,
 		for (k = 0; k < max_sge; k++, desc++) {
 			m = k + j * max_sge;
 			ibtrs_set_sge_with_desc(&list[m], desc);
-			len +=  desc->len;
+			len += le32_to_cpu(desc->len);
 		}
 		req->iu->cqe.done = ibtrs_clt_rdma_done;
 
@@ -1231,7 +1232,7 @@ static void process_msg_user(struct ibtrs_clt_con *con,
 	struct ibtrs_clt_sess *sess = con->sess;
 	int len;
 
-	len = msg->hdr.tsize - sizeof(struct ibtrs_msg_hdr);
+	len = le32_to_cpu(msg->hdr.tsize) - sizeof(struct ibtrs_msg_hdr);
 
 	sess->stats.user_ib_msgs.recv_msg_cnt++;
 	sess->stats.user_ib_msgs.recv_size += len;
@@ -1275,12 +1276,12 @@ static int ibtrs_schedule_msg(struct ibtrs_clt_con *con,
 		return -ENOMEM;
 
 	w->con = con;
-	w->msg = kmalloc(msg->hdr.tsize, GFP_ATOMIC);
+	w->msg = kmalloc(le32_to_cpu(msg->hdr.tsize), GFP_ATOMIC);
 	if (!w->msg) {
 		kfree(w);
 		return -ENOMEM;
 	}
-	memcpy(w->msg, msg, msg->hdr.tsize);
+	memcpy(w->msg, msg, le32_to_cpu(msg->hdr.tsize));
 	INIT_WORK(&w->work, msg_worker);
 	queue_work(ibtrs_wq, &w->work);
 	return 0;
@@ -1384,6 +1385,7 @@ static void ibtrs_clt_usr_recv_done(struct ib_cq *cq, struct ib_wc *wc)
 	struct ibtrs_clt_sess *sess = con->sess;
 	struct ibtrs_msg_hdr *hdr;
 	struct ibtrs_iu *iu;
+	unsigned type;
 	int err;
 
 	if (unlikely(wc->status != IB_WC_SUCCESS)) {
@@ -1403,7 +1405,9 @@ static void ibtrs_clt_usr_recv_done(struct ib_cq *cq, struct ib_wc *wc)
 	if (unlikely(ibtrs_validate_message(hdr)))
 		goto err;
 
-	switch (hdr->type) {
+	type = le16_to_cpu(hdr->type);
+
+	switch (type) {
 	case IBTRS_MSG_USER:
 		err = ibtrs_schedule_msg(con, iu->buf);
 		if (unlikely(err)) {
@@ -1427,7 +1431,7 @@ static void ibtrs_clt_usr_recv_done(struct ib_cq *cq, struct ib_wc *wc)
 		break;
 	default:
 		ibtrs_err(sess, "Received message of unknown type: 0x%02x\n",
-			  hdr->type);
+			  type);
 		goto err;
 	}
 
@@ -3167,8 +3171,8 @@ static int ibtrs_clt_rdma_write_sg(struct ibtrs_clt_con *con,
 
 	/* put ibtrs msg after sg and user message */
 	msg		= req->iu->buf + u_msg_len;
-	msg->hdr.type	= IBTRS_MSG_RDMA_WRITE;
-	msg->hdr.tsize	= tsize;
+	msg->hdr.type	= cpu_to_le16(IBTRS_MSG_RDMA_WRITE);
+	msg->hdr.tsize	= cpu_to_le32(tsize);
 
 	/* ibtrs message on server side will be after user data and message */
 	imm = req->tag->mem_id_mask + data_len + u_msg_len;
@@ -3320,31 +3324,31 @@ static int ibtrs_clt_request_rdma_write_sg(struct ibtrs_clt_con *con,
 
 	/* put our message into req->buf after user message*/
 	msg		= req->iu->buf + u_msg_len;
-	msg->hdr.type	= IBTRS_MSG_REQ_RDMA_WRITE;
-	msg->hdr.tsize	= tsize;
-	msg->sg_cnt	= count;
+	msg->hdr.type	= cpu_to_le16(IBTRS_MSG_REQ_RDMA_WRITE);
+	msg->hdr.tsize	= cpu_to_le32(tsize);
+	msg->sg_cnt	= cpu_to_le32(count);
 
-	if (WARN_ON(msg->hdr.tsize > con->sess->chunk_size))
+	if (WARN_ON(le32_to_cpu(msg->hdr.tsize) > con->sess->chunk_size))
 		return -EINVAL;
 	if (count > fmr_sg_cnt) {
 		ret = ibtrs_fast_reg_map_data(con, msg->desc, req);
 		if (ret < 0) {
 			ibtrs_err_rl(con->sess,
-				     "Request-RDMA-Write failed, failed to map fast"
-				     " reg. data, err: %d\n", ret);
+				     "Request-RDMA-Write failed, failed to map "
+				     " fast reg. data, err: %d\n", ret);
 			ib_dma_unmap_sg(con->sess->s.ib_dev->dev, req->sglist,
 					req->sg_cnt, req->dir);
 			return ret;
 		}
-		msg->sg_cnt = ret;
+		msg->sg_cnt = cpu_to_le32(ret);
 	} else {
 		for_each_sg(req->sglist, sg, req->sg_cnt, i) {
-			msg->desc[i].addr = ib_sg_dma_address(ibdev, sg);
-			msg->desc[i].key = con->sess->s.ib_dev->mr->rkey;
-			msg->desc[i].len = ib_sg_dma_len(ibdev, sg);
-			pr_debug("desc addr %llu, len %u, i %d tsize %u\n",
-				 msg->desc[i].addr, msg->desc[i].len, i,
-				 msg->hdr.tsize);
+			msg->desc[i].addr =
+				cpu_to_le64(ib_sg_dma_address(ibdev, sg));
+			msg->desc[i].key =
+				cpu_to_le32(con->sess->s.ib_dev->mr->rkey);
+			msg->desc[i].len =
+				cpu_to_le32(ib_sg_dma_len(ibdev, sg));
 		}
 		req->nmdesc = 0;
 	}
@@ -3355,7 +3359,8 @@ static int ibtrs_clt_request_rdma_write_sg(struct ibtrs_clt_con *con,
 	buf_id = req->tag->mem_id;
 
 	req->sg_size  = sizeof(*msg);
-	req->sg_size += msg->sg_cnt * sizeof(struct ibtrs_sg_desc) + u_msg_len;
+	req->sg_size += le32_to_cpu(msg->sg_cnt) * sizeof(struct ibtrs_sg_desc);
+	req->sg_size += u_msg_len;
 	ret = ibtrs_post_send_rdma(con, req, con->sess->srv_rdma_addr[buf_id],
 				   result_len, imm);
 	if (unlikely(ret)) {
@@ -3449,7 +3454,7 @@ int ibtrs_clt_send(struct ibtrs_clt_sess *sess, const struct kvec *vec,
 	struct ibtrs_iu *iu = NULL;
 	struct ibtrs_clt_con *con;
 	struct ibtrs_msg_user *msg;
-	size_t len;
+	size_t len, tsize;
 	int err;
 
 	con = &sess->con[0];
@@ -3475,14 +3480,15 @@ int ibtrs_clt_send(struct ibtrs_clt_sess *sess, const struct kvec *vec,
 		goto err_post_send;
 	}
 
+	tsize = sizeof(struct ibtrs_msg_hdr) + len;
 	msg		= iu->buf;
-	msg->hdr.type	= IBTRS_MSG_USER;
-	msg->hdr.tsize	= sizeof(struct ibtrs_msg_hdr) + len;
+	msg->hdr.type	= cpu_to_le16(IBTRS_MSG_USER);
+	msg->hdr.tsize	= cpu_to_le32(tsize);
 	copy_from_kvec(msg->payl, vec, len);
 
 	iu->cqe.done = ibtrs_clt_usr_send_done;
-	err = ibtrs_post_send(con->ibtrs_con.qp, sess->s.ib_dev->mr, iu,
-			      msg->hdr.tsize);
+	err = ibtrs_post_send(con->ibtrs_con.qp, sess->s.ib_dev->mr,
+			      iu, tsize);
 	ibtrs_clt_state_unlock();
 	if (unlikely(err)) {
 		ibtrs_err_rl(sess, "Sending user message failed, posting work"

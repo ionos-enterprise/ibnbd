@@ -174,10 +174,9 @@ struct ibtrs_msg_info_rsp {
  * @tsize:	Total size of transferred data
  */
 struct ibtrs_msg_hdr {
-	u8			__padding1;
-	u8			type;
-	u16			__padding2;
-	u32			tsize;
+	__le16			type;
+	__le16			__padding2;
+	__le32			tsize;
 };
 
 /*
@@ -221,9 +220,9 @@ struct ibtrs_msg_user {
  * @len:	Size of the buffer
  */
 struct ibtrs_sg_desc {
-	u64			addr;
-	u32			key;
-	u32			len;
+	__le64			addr;
+	__le32			key;
+	__le32			len;
 };
 
 /**
@@ -234,8 +233,8 @@ struct ibtrs_sg_desc {
  */
 struct ibtrs_msg_req_rdma_write {
 	struct ibtrs_msg_hdr	hdr;
-	u32			__padding;
-	u32			sg_cnt;
+	__le32			__padding;
+	__le32			sg_cnt;
 	struct ibtrs_sg_desc    desc[];
 };
 

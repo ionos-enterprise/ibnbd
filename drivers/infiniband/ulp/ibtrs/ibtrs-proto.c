@@ -13,9 +13,10 @@ ibtrs_validate_msg_user(const struct ibtrs_msg_user *msg)
 static int
 ibtrs_validate_msg_rdma_write(const struct ibtrs_msg_rdma_write *msg)
 {
-	if (unlikely(msg->hdr.tsize <= sizeof(*msg))) {
+	if (unlikely(le32_to_cpu(msg->hdr.tsize) <= sizeof(*msg))) {
 		pr_err("RDMA-Write msg received with invalid length %d"
-		       " expected > %lu\n", msg->hdr.tsize, sizeof(*msg));
+		       " expected > %lu\n",
+		       le32_to_cpu(msg->hdr.tsize), sizeof(*msg));
 		return -EINVAL;
 	}
 
@@ -25,10 +26,10 @@ ibtrs_validate_msg_rdma_write(const struct ibtrs_msg_rdma_write *msg)
 static int
 ibtrs_validate_msg_req_rdma_write(const struct ibtrs_msg_req_rdma_write *msg)
 {
-	if (unlikely(msg->hdr.tsize <= sizeof(*msg))) {
+	if (unlikely(le32_to_cpu(msg->hdr.tsize) <= sizeof(*msg))) {
 		pr_err("Request-RDMA-Write msg request received with invalid"
-		       " length %d expected > %lu\n", msg->hdr.tsize,
-		       sizeof(*msg));
+		       " length %d expected > %lu\n",
+		       le32_to_cpu(msg->hdr.tsize), sizeof(*msg));
 		return -EINVAL;
 	}
 
@@ -37,7 +38,7 @@ ibtrs_validate_msg_req_rdma_write(const struct ibtrs_msg_req_rdma_write *msg)
 
 int ibtrs_validate_message(const struct ibtrs_msg_hdr *hdr)
 {
-	switch (hdr->type) {
+	switch (le16_to_cpu(hdr->type)) {
 	case IBTRS_MSG_RDMA_WRITE: {
 		const struct ibtrs_msg_rdma_write *msg;
 
