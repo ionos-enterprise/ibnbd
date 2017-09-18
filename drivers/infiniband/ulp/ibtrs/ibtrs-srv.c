@@ -226,7 +226,7 @@ struct ibtrs_srv_ctx {
 };
 
 struct ibtrs_srv_con {
-	struct ibtrs_con	ibtrs_con;
+	struct ibtrs_con	c;
 	unsigned		cid;
 	atomic_t		wr_cnt;
 	struct rdma_cm_id	*cm_id;  /* XXX should die, copy in ibtrs_con */
@@ -528,7 +528,7 @@ static int rdma_write_sg(struct ibtrs_srv_op *id)
 	wr->wr.send_flags = flags;
 	wr->wr.ex.imm_data = cpu_to_be32(id->msg_id << 16);
 
-	err = ib_post_send(id->con->ibtrs_con.qp, &id->tx_wr[0].wr, &bad_wr);
+	err = ib_post_send(id->con->c.qp, &id->tx_wr[0].wr, &bad_wr);
 	if (unlikely(err))
 		ibtrs_err(sess,
 			  "Posting RDMA-Write-Request to QP failed, err: %d\n",
@@ -551,7 +551,7 @@ static int send_io_resp_imm(struct ibtrs_srv_con *con, int msg_id, s16 errno)
 	flags = atomic_inc_return(&con->wr_cnt) % sess->queue_depth ?
 			0 : IB_SEND_SIGNALED;
 	imm = (msg_id << 16) | (u16)errno;
-	err = ibtrs_post_rdma_write_imm_empty(con->ibtrs_con.qp,
+	err = ibtrs_post_rdma_write_imm_empty(con->c.qp,
 					      &ack_cqe,
 					      imm, flags);
 	if (unlikely(err))
@@ -675,7 +675,7 @@ int ibtrs_srv_send(struct ibtrs_srv_sess *sess, const struct kvec *vec,
 	msg->hdr.tsize	= cpu_to_le32(tsize);
 	copy_from_kvec(msg->payl, vec, len);
 
-	err = ibtrs_post_send(usr_con->ibtrs_con.qp,
+	err = ibtrs_post_send(usr_con->c.qp,
 			      usr_con->sess->s.ib_dev->mr,
 			      iu, tsize);
 	if (unlikely(err)) {
@@ -725,7 +725,7 @@ static int ibtrs_post_recv(struct ibtrs_srv_con *con, struct ibtrs_iu *iu)
 	wr.sg_list  = &list;
 	wr.num_sge  = 1;
 
-	err = ib_post_recv(con->ibtrs_con.qp, &wr, &bad_wr);
+	err = ib_post_recv(con->c.qp, &wr, &bad_wr);
 	if (unlikely(err))
 		ibtrs_err_rl(con->sess, "Posting recv buffer failed, err: %d\n",
 			     err);
@@ -1236,7 +1236,7 @@ static int ibtrs_send_usr_msg_ack(struct ibtrs_srv_con *con)
 		return -ECOMM;
 	}
 	pr_debug("Sending user message ack\n");
-	err = ibtrs_post_rdma_write_imm_empty(con->ibtrs_con.qp,
+	err = ibtrs_post_rdma_write_imm_empty(con->c.qp,
 					      &ack_cqe,
 					      IBTRS_ACK_IMM,
 					      IB_SEND_SIGNALED);
@@ -1408,7 +1408,7 @@ static int ibtrs_handle_info_req(struct ibtrs_srv_con *con,
 	}
 	/* Send info response */
 	tx_iu->cqe.done = ibtrs_srv_info_req_done;
-	err = ibtrs_post_send(con->ibtrs_con.qp, sess->s.ib_dev->mr,
+	err = ibtrs_post_send(con->c.qp, sess->s.ib_dev->mr,
 			      tx_iu, tx_sz);
 	if (unlikely(err)) {
 		ibtrs_err(sess, "ibtrs_post_send(), err: %d\n", err);
@@ -1658,11 +1658,11 @@ static void ibtrs_srv_close_work(struct work_struct *work)
 		if (!con)
 			continue;
 
-		rdma_disconnect(con->ibtrs_con.cm_id);
-		ib_drain_qp(con->ibtrs_con.qp);
+		rdma_disconnect(con->c.cm_id);
+		ib_drain_qp(con->c.qp);
 		destroy_workqueue(con->rdma_resp_wq);
-		ibtrs_cq_qp_destroy(&con->ibtrs_con);
-		rdma_destroy_id(con->ibtrs_con.cm_id);
+		ibtrs_cq_qp_destroy(&con->c);
+		rdma_destroy_id(con->c.cm_id);
 		kfree(con);
 	}
 	release_cont_bufs(sess);
@@ -1763,7 +1763,7 @@ static int create_con(struct ibtrs_srv_sess *sess,
 	cq_vector = ibtrs_srv_get_next_cq_vector(sess);
 
 	/* TODO: SOFTIRQ can be faster, but be careful with softirq context */
-	err = ibtrs_cq_qp_create(&sess->s, &con->ibtrs_con, con->cm_id,
+	err = ibtrs_cq_qp_create(&sess->s, &con->c, con->cm_id,
 				 1, cq_vector, cq_size, wr_queue_size,
 				 con->sess->s.ib_dev, IB_POLL_WORKQUEUE);
 	if (unlikely(err)) {
@@ -1788,7 +1788,7 @@ static int create_con(struct ibtrs_srv_sess *sess,
 free_wq:
 	destroy_workqueue(con->rdma_resp_wq);
 free_cqqp:
-	ibtrs_cq_qp_destroy(&con->ibtrs_con);
+	ibtrs_cq_qp_destroy(&con->c);
 free_con:
 	kfree(con);
 
@@ -1975,7 +1975,7 @@ static int ibtrs_srv_rdma_cm_handler(struct rdma_cm_id *cm_id,
 	if (cm_id->qp) {
 		struct ibtrs_con *ibtrs_con = cm_id->qp->qp_context;
 
-		con = container_of(ibtrs_con, struct ibtrs_srv_con, ibtrs_con);
+		con = container_of(ibtrs_con, struct ibtrs_srv_con, c);
 	}
 
 	switch (event->event) {

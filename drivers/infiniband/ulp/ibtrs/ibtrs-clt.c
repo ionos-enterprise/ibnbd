@@ -129,7 +129,7 @@ struct rdma_req {
 };
 
 struct ibtrs_clt_con {
-	struct ibtrs_con	ibtrs_con;
+	struct ibtrs_con	c;
 	unsigned		cid;
 	unsigned		cpu;
 	atomic_t		io_cnt;
@@ -619,7 +619,7 @@ static int ibtrs_map_finish_fr(struct ibtrs_map_state *state,
 	ibtrs_map_desc(state, state->base_dma_addr, state->dma_len,
 		       desc->mr->rkey, con->sess->max_desc);
 
-	return ib_post_send(con->ibtrs_con.qp, &wr.wr, &bad_wr);
+	return ib_post_send(con->c.qp, &wr.wr, &bad_wr);
 }
 
 static int ibtrs_finish_fmr_mapping(struct ibtrs_map_state *state,
@@ -788,7 +788,7 @@ static int ibtrs_inv_rkey(struct ibtrs_clt_con *con, u32 rkey)
 		.ex.invalidate_rkey = rkey,
 	};
 
-	return ib_post_send(con->ibtrs_con.qp, &wr, &bad_wr);
+	return ib_post_send(con->c.qp, &wr, &bad_wr);
 }
 
 static void ibtrs_unmap_fast_reg_data(struct ibtrs_clt_con *con,
@@ -878,7 +878,7 @@ static int ibtrs_post_send_rdma(struct ibtrs_clt_con *con, struct rdma_req *req,
 	flags = atomic_inc_return(&con->io_cnt) % sess->queue_depth ?
 			0 : IB_SEND_SIGNALED;
 
-	return ibtrs_post_rdma_write_imm(con->ibtrs_con.qp, &req->iu->cqe,
+	return ibtrs_post_rdma_write_imm(con->c.qp, &req->iu->cqe,
 					 list, 1, con->sess->srv_rdma_buf_rkey,
 					 addr + off, imm, flags);
 }
@@ -980,7 +980,7 @@ last_one:
 	ibtrs_set_rdma_desc_last(con, list, req, wr, offset, desc, m, n, addr,
 				 size, imm);
 
-	ret = ib_post_send(con->ibtrs_con.qp, &wrs[0].wr, &bad_wr);
+	ret = ib_post_send(con->c.qp, &wrs[0].wr, &bad_wr);
 	if (unlikely(ret))
 		ibtrs_err(sess, "Posting RDMA-Write-Request to QP failed,"
 			  " err: %d\n", ret);
@@ -1018,7 +1018,7 @@ static int ibtrs_post_send_rdma_desc(struct ibtrs_clt_con *con,
 		flags = atomic_inc_return(&con->io_cnt) % sess->queue_depth ?
 				0 : IB_SEND_SIGNALED;
 
-		ret = ibtrs_post_rdma_write_imm(con->ibtrs_con.qp,
+		ret = ibtrs_post_rdma_write_imm(con->c.qp,
 						&req->iu->cqe,
 						list, num_sge,
 						sess->srv_rdma_buf_rkey,
@@ -1064,7 +1064,7 @@ static int ibtrs_post_send_rdma_more(struct ibtrs_clt_con *con,
 	flags = atomic_inc_return(&con->io_cnt) % sess->queue_depth ?
 			0 : IB_SEND_SIGNALED;
 
-	ret = ibtrs_post_rdma_write_imm(con->ibtrs_con.qp, &req->iu->cqe,
+	ret = ibtrs_post_rdma_write_imm(con->c.qp, &req->iu->cqe,
 					list, num_sge,
 					sess->srv_rdma_buf_rkey,
 					addr, imm, flags);
@@ -1098,7 +1098,7 @@ static int ibtrs_post_recv_cb(struct ibtrs_clt_con *con, struct ibtrs_iu *iu,
 	wr.sg_list = &list;
 	wr.num_sge = 1;
 
-	err = ib_post_recv(con->ibtrs_con.qp, &wr, &bad_wr);
+	err = ib_post_recv(con->c.qp, &wr, &bad_wr);
 	if (unlikely(err))
 		ibtrs_err(sess, "Posting receive work request failed, err:"
 			  " %d\n", err);
@@ -1212,7 +1212,7 @@ static int ibtrs_send_msg_user_ack(struct ibtrs_clt_con *con)
 		return -ECOMM;
 	}
 
-	err = ibtrs_post_rdma_write_imm_empty(con->ibtrs_con.qp,
+	err = ibtrs_post_rdma_write_imm_empty(con->c.qp,
 					      &ack_cqe,
 					      IBTRS_ACK_IMM,
 					      IB_SEND_SIGNALED);
@@ -2397,8 +2397,7 @@ static int create_con_cq_qp(struct ibtrs_clt_con *con)
 			return err;
 	}
 	cq_vector = con->cpu % sess->s.ib_dev->dev->num_comp_vectors;
-	err = ibtrs_cq_qp_create(&sess->s, &con->ibtrs_con,
-				 con->cm_id, sess->max_sge,
+	err = ibtrs_cq_qp_create(&sess->s, &con->c, con->cm_id, sess->max_sge,
 				 cq_vector, cq_size, wr_queue_size,
 				 sess->s.ib_dev, IB_POLL_SOFTIRQ);
 	if (unlikely(err))
@@ -2415,7 +2414,7 @@ free_pool:
 
 static void destroy_con_cq_qp(struct ibtrs_clt_con *con)
 {
-	ibtrs_cq_qp_destroy(&con->ibtrs_con);
+	ibtrs_cq_qp_destroy(&con->c);
 	if (con->cid != 0)
 		free_con_fast_pool(con);
 }
@@ -2423,13 +2422,13 @@ static void destroy_con_cq_qp(struct ibtrs_clt_con *con)
 
 static void stop_cm(struct ibtrs_clt_con *con)
 {
-	rdma_disconnect(con->ibtrs_con.cm_id);
-	ib_drain_qp(con->ibtrs_con.qp);
+	rdma_disconnect(con->c.cm_id);
+	ib_drain_qp(con->c.qp);
 }
 
 static void destroy_cm(struct ibtrs_clt_con *con)
 {
-	rdma_destroy_id(con->ibtrs_con.cm_id);
+	rdma_destroy_id(con->c.cm_id);
 }
 
 static int ibtrs_clt_rdma_cm_handler(struct rdma_cm_id *cm_id,
@@ -2930,7 +2929,7 @@ static int ibtrs_send_sess_info(struct ibtrs_clt_sess *sess,
 
 	/* Send info request */
 	tx_iu->cqe.done = ibtrs_clt_info_req_done;
-	err = ibtrs_post_send(usr_con->ibtrs_con.qp, sess->s.ib_dev->mr,
+	err = ibtrs_post_send(usr_con->c.qp, sess->s.ib_dev->mr,
 			      tx_iu, sizeof(*msg));
 	if (unlikely(err)) {
 		ibtrs_err(sess, "ibtrs_post_send(), err: %d\n", err);
@@ -3486,7 +3485,7 @@ int ibtrs_clt_send(struct ibtrs_clt_sess *sess, const struct kvec *vec,
 	copy_from_kvec(msg->payl, vec, len);
 
 	iu->cqe.done = ibtrs_clt_usr_send_done;
-	err = ibtrs_post_send(usr_con->ibtrs_con.qp, sess->s.ib_dev->mr,
+	err = ibtrs_post_send(usr_con->c.qp, sess->s.ib_dev->mr,
 			      iu, tsize);
 	ibtrs_clt_state_unlock();
 	if (unlikely(err)) {
