@@ -7,6 +7,40 @@
 static LIST_HEAD(device_list);
 static DEFINE_MUTEX(device_list_mutex);
 
+int ibtrs_post_recv_cb(struct ibtrs_con *con, struct ibtrs_iu *iu,
+		       void (*done)(struct ib_cq *cq, struct ib_wc *wc))
+{
+	struct ibtrs_sess *sess = con->sess;
+	struct ib_recv_wr wr, *bad_wr;
+	struct ib_sge list;
+	int err;
+
+	list.addr   = iu->dma_addr;
+	list.length = iu->size;
+	list.lkey   = sess->ib_dev->pd->local_dma_lkey;
+
+	if (WARN_ON(list.length == 0)) {
+		ibtrs_wrn(con, "Posting receive work request failed,"
+			  " sg list is empty\n");
+		return -EINVAL;
+	}
+
+	iu->cqe.done = done;
+
+	wr.next    = NULL;
+	wr.wr_cqe  = &iu->cqe;
+	wr.sg_list = &list;
+	wr.num_sge = 1;
+
+	err = ib_post_recv(con->qp, &wr, &bad_wr);
+	if (unlikely(err))
+		ibtrs_err(con, "Posting receive work request failed, err:"
+			  " %d\n", err);
+
+	return err;
+}
+EXPORT_SYMBOL_GPL(ibtrs_post_recv_cb);
+
 int ibtrs_post_send(struct ib_qp *qp, struct ib_mr *mr, struct ibtrs_iu *iu,
 		    u32 size)
 {

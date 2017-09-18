@@ -1073,39 +1073,6 @@ static int ibtrs_post_send_rdma_more(struct ibtrs_clt_con *con,
 	return ret;
 }
 
-static int ibtrs_post_recv_cb(struct ibtrs_clt_con *con, struct ibtrs_iu *iu,
-			      void (*done)(struct ib_cq *cq, struct ib_wc *wc))
-{
-	struct ibtrs_clt_sess *sess = con->sess;
-	struct ib_recv_wr wr, *bad_wr;
-	struct ib_sge list;
-	int err;
-
-	list.addr   = iu->dma_addr;
-	list.length = iu->size;
-	list.lkey   = sess->s.ib_dev->pd->local_dma_lkey;
-
-	if (WARN_ON(list.length == 0)) {
-		ibtrs_wrn(sess, "Posting receive work request failed,"
-			  " sg list is empty\n");
-		return -EINVAL;
-	}
-
-	iu->cqe.done = done;
-
-	wr.next    = NULL;
-	wr.wr_cqe  = &iu->cqe;
-	wr.sg_list = &list;
-	wr.num_sge = 1;
-
-	err = ib_post_recv(con->c.qp, &wr, &bad_wr);
-	if (unlikely(err))
-		ibtrs_err(sess, "Posting receive work request failed, err:"
-			  " %d\n", err);
-
-	return err;
-}
-
 static inline int ibtrs_clt_ms_to_id(unsigned long ms)
 {
 	int id = ms ? ilog2(ms) - MIN_LOG_LATENCY + 1 : 0;
@@ -1336,7 +1303,7 @@ static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 		 *             user msgs acks, heartbeats
 		 */
 		iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
-		err = ibtrs_post_recv_cb(con, iu, ibtrs_clt_rdma_done);
+		err = ibtrs_post_recv_cb(&con->c, iu, ibtrs_clt_rdma_done);
 		if (unlikely(err)) {
 			ibtrs_err(sess, "Failed to post receive buffer\n");
 			ibtrs_rdma_error_recovery(con);
@@ -1416,7 +1383,7 @@ static void ibtrs_clt_usr_recv_done(struct ib_cq *cq, struct ib_wc *wc)
 				     err);
 			goto err;
 		}
-		err = ibtrs_post_recv_cb(con, iu, ibtrs_clt_usr_recv_done);
+		err = ibtrs_post_recv_cb(&con->c, iu, ibtrs_clt_usr_recv_done);
 		if (unlikely(err)) {
 			ibtrs_err_rl(sess, "Posting receive buffer of user message "
 				     "to HCA failed, err: %d\n", err);
@@ -1448,7 +1415,7 @@ static int post_recv_io(struct ibtrs_clt_con *con)
 	int err, i;
 
 	for (i = 0; i < sess->queue_depth; i++) {
-		err = ibtrs_post_recv_cb(con, iu, ibtrs_clt_rdma_done);
+		err = ibtrs_post_recv_cb(&con->c, iu, ibtrs_clt_rdma_done);
 		if (unlikely(err))
 			return err;
 	}
@@ -1464,7 +1431,7 @@ static int post_recv_usr(struct ibtrs_clt_con *con)
 
 	for (i = 0; i < USR_CON_BUF_SIZE; i++) {
 		iu = sess->s.usr_rx_ring[i];
-		err = ibtrs_post_recv_cb(con, iu, ibtrs_clt_usr_recv_done);
+		err = ibtrs_post_recv_cb(&con->c, iu, ibtrs_clt_usr_recv_done);
 		if (unlikely(err))
 			return err;
 	}
@@ -2916,7 +2883,7 @@ static int ibtrs_send_sess_info(struct ibtrs_clt_sess *sess,
 		goto out;
 	}
 	/* Prepare for getting info response */
-	err = ibtrs_post_recv_cb(usr_con, rx_iu, ibtrs_clt_info_rsp_done);
+	err = ibtrs_post_recv_cb(&usr_con->c, rx_iu, ibtrs_clt_info_rsp_done);
 	if (unlikely(err)) {
 		ibtrs_err(sess, "ibtrs_post_recv(), err: %d\n", err);
 		goto out;

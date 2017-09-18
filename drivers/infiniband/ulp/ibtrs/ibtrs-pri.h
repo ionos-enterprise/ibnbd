@@ -269,6 +269,8 @@ void ibtrs_iu_free_sess_rx_bufs(struct ibtrs_sess *sess);
 
 /* ibtrs.c */
 
+int ibtrs_post_recv_cb(struct ibtrs_con *con, struct ibtrs_iu *iu,
+		       void (*done)(struct ib_cq *cq, struct ib_wc *wc));
 int ibtrs_post_send(struct ib_qp *qp, struct ib_mr *mr,
 		    struct ibtrs_iu *iu, u32 size);
 
