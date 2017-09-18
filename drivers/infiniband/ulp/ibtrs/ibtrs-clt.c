@@ -2895,11 +2895,10 @@ static int ibtrs_send_sess_info(struct ibtrs_clt_sess *sess,
 	memcpy(msg->hostname, hostname, sizeof(msg->hostname));
 
 	/* Send info request */
-	tx_iu->cqe.done = ibtrs_clt_info_req_done;
-	err = ibtrs_post_send(usr_con->c.qp, sess->s.ib_dev->mr,
-			      tx_iu, sizeof(*msg));
+	err = ibtrs_post_send_cb(&usr_con->c, sess->s.ib_dev->mr,
+				 tx_iu, sizeof(*msg), ibtrs_clt_info_req_done);
 	if (unlikely(err)) {
-		ibtrs_err(sess, "ibtrs_post_send(), err: %d\n", err);
+		ibtrs_err(sess, "ibtrs_post_send_cb(), err: %d\n", err);
 		goto out;
 	}
 	tx_iu = NULL;
@@ -3451,9 +3450,8 @@ int ibtrs_clt_send(struct ibtrs_clt_sess *sess, const struct kvec *vec,
 	msg->hdr.tsize	= cpu_to_le32(tsize);
 	copy_from_kvec(msg->payl, vec, len);
 
-	iu->cqe.done = ibtrs_clt_usr_send_done;
-	err = ibtrs_post_send(usr_con->c.qp, sess->s.ib_dev->mr,
-			      iu, tsize);
+	err = ibtrs_post_send_cb(&usr_con->c, sess->s.ib_dev->mr,
+				 iu, tsize, ibtrs_clt_usr_send_done);
 	ibtrs_clt_state_unlock();
 	if (unlikely(err)) {
 		ibtrs_err_rl(sess, "Sending user message failed, posting work"

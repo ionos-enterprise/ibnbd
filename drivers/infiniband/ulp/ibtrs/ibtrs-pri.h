@@ -271,8 +271,9 @@ void ibtrs_iu_free_sess_rx_bufs(struct ibtrs_sess *sess);
 
 int ibtrs_post_recv_cb(struct ibtrs_con *con, struct ibtrs_iu *iu,
 		       void (*done)(struct ib_cq *cq, struct ib_wc *wc));
-int ibtrs_post_send(struct ib_qp *qp, struct ib_mr *mr,
-		    struct ibtrs_iu *iu, u32 size);
+int ibtrs_post_send_cb(struct ibtrs_con *con, struct ib_mr *mr,
+		       struct ibtrs_iu *iu, size_t size,
+		       void (*done)(struct ib_cq *cq, struct ib_wc *wc));
 
 int ibtrs_post_rdma_write_imm(struct ib_qp *qp, struct ib_cqe *cqe,
 			      struct ib_sge *sge, unsigned int num_sge,

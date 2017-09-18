@@ -675,9 +675,9 @@ int ibtrs_srv_send(struct ibtrs_srv_sess *sess, const struct kvec *vec,
 	msg->hdr.tsize	= cpu_to_le32(tsize);
 	copy_from_kvec(msg->payl, vec, len);
 
-	err = ibtrs_post_send(usr_con->c.qp,
-			      usr_con->sess->s.ib_dev->mr,
-			      iu, tsize);
+	//XXX CHECK
+	err = ibtrs_post_send_cb(&usr_con->c, usr_con->sess->s.ib_dev->mr,
+				 iu, tsize, ibtrs_srv_rdma_done);
 	if (unlikely(err)) {
 		ibtrs_err_rl(sess, "Sending message failed, posting message to QP"
 			     " failed, err: %d\n", err);
@@ -1376,11 +1376,10 @@ static int ibtrs_handle_info_req(struct ibtrs_srv_con *con,
 		rsp->addr[i] = cpu_to_le64(addr);
 	}
 	/* Send info response */
-	tx_iu->cqe.done = ibtrs_srv_info_req_done;
-	err = ibtrs_post_send(con->c.qp, sess->s.ib_dev->mr,
-			      tx_iu, tx_sz);
+	err = ibtrs_post_send_cb(&con->c, sess->s.ib_dev->mr,
+				 tx_iu, tx_sz, ibtrs_srv_info_req_done);
 	if (unlikely(err)) {
-		ibtrs_err(sess, "ibtrs_post_send(), err: %d\n", err);
+		ibtrs_err(sess, "ibtrs_post_send_cb(), err: %d\n", err);
 		ibtrs_iu_free(tx_iu, DMA_TO_DEVICE, sess->s.ib_dev->dev);
 	}
 	/*

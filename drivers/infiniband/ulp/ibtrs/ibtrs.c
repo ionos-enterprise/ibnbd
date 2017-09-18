@@ -41,11 +41,12 @@ int ibtrs_post_recv_cb(struct ibtrs_con *con, struct ibtrs_iu *iu,
 }
 EXPORT_SYMBOL_GPL(ibtrs_post_recv_cb);
 
-int ibtrs_post_send(struct ib_qp *qp, struct ib_mr *mr, struct ibtrs_iu *iu,
-		    u32 size)
+int ibtrs_post_send_cb(struct ibtrs_con *con, struct ib_mr *mr,
+		       struct ibtrs_iu *iu, size_t size,
+		       void (*done)(struct ib_cq *cq, struct ib_wc *wc))
 {
-	struct ib_sge list;
 	struct ib_send_wr wr, *bad_wr;
+	struct ib_sge list;
 
 	if ((WARN_ON(size == 0)))
 		return -EINVAL;
@@ -53,6 +54,8 @@ int ibtrs_post_send(struct ib_qp *qp, struct ib_mr *mr, struct ibtrs_iu *iu,
 	list.addr   = iu->dma_addr;
 	list.length = size;
 	list.lkey   = mr->lkey;
+
+	iu->cqe.done = done;
 
 	memset(&wr, 0, sizeof(wr));
 	wr.next       = NULL;
@@ -62,9 +65,9 @@ int ibtrs_post_send(struct ib_qp *qp, struct ib_mr *mr, struct ibtrs_iu *iu,
 	wr.opcode     = IB_WR_SEND;
 	wr.send_flags = IB_SEND_SIGNALED;
 
-	return ib_post_send(qp, &wr, &bad_wr);
+	return ib_post_send(con->qp, &wr, &bad_wr);
 }
-EXPORT_SYMBOL_GPL(ibtrs_post_send);
+EXPORT_SYMBOL_GPL(ibtrs_post_send_cb);
 
 int ibtrs_post_rdma_write_imm(struct ib_qp *qp, struct ib_cqe *cqe,
 			      struct ib_sge *sge, unsigned int num_sge,
