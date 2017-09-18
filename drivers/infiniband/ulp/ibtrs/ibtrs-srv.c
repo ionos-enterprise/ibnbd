@@ -702,37 +702,6 @@ inline void ibtrs_srv_set_sess_priv(struct ibtrs_srv_sess *sess, void *priv)
 }
 EXPORT_SYMBOL(ibtrs_srv_set_sess_priv);
 
-static int ibtrs_post_recv(struct ibtrs_srv_con *con, struct ibtrs_iu *iu)
-{
-	struct ib_recv_wr wr, *bad_wr;
-	struct ib_sge list;
-	int err;
-
-	list.addr   = iu->dma_addr;
-	list.length = iu->size;
-	list.lkey   = con->sess->s.ib_dev->pd->local_dma_lkey;
-
-	if (unlikely(list.length == 0)) {
-		ibtrs_err_rl(con->sess, "Posting recv buffer failed, invalid sg list"
-			     " length 0\n");
-		return -EINVAL;
-	}
-
-	iu->cqe.done = ibtrs_srv_rdma_done;
-
-	wr.next     = NULL;
-	wr.wr_cqe   = &iu->cqe;
-	wr.sg_list  = &list;
-	wr.num_sge  = 1;
-
-	err = ib_post_recv(con->c.qp, &wr, &bad_wr);
-	if (unlikely(err))
-		ibtrs_err_rl(con->sess, "Posting recv buffer failed, err: %d\n",
-			     err);
-
-	return err;
-}
-
 static struct ibtrs_rcv_buf_pool *alloc_rcv_buf_pool(void)
 {
 	struct ibtrs_rcv_buf_pool *pool;
@@ -1084,7 +1053,7 @@ static int post_recv_io(struct ibtrs_srv_con *con)
 	int i, err;
 
 	for (i = 0; i < sess->queue_depth; i++) {
-		err = ibtrs_post_recv(con, iu);
+		err = ibtrs_post_recv_cb(&con->c, iu, ibtrs_srv_rdma_done);
 		if (unlikely(err))
 			return err;
 	}
@@ -1100,7 +1069,7 @@ static int post_recv_usr(struct ibtrs_srv_con *con)
 
 	for (i = 0; i < USR_CON_BUF_SIZE; i++) {
 		iu = sess->s.usr_rx_ring[i];
-		err = ibtrs_post_recv(con, iu);
+		err = ibtrs_post_recv_cb(&con->c, iu, ibtrs_srv_rdma_done);
 		if (unlikely(err))
 			return err;
 	}
@@ -1287,7 +1256,7 @@ static void ibtrs_handle_write(struct ibtrs_srv_con *con, struct ibtrs_iu *iu,
 	if (unlikely(ibtrs_validate_message(hdr))) {
 		ibtrs_err(sess,
 			  "Processing I/O failed, message validation failed\n");
-		ret = ibtrs_post_recv(con, iu);
+		ret = ibtrs_post_recv_cb(&con->c, iu, ibtrs_srv_rdma_done);
 		if (unlikely(ret != 0))
 			ibtrs_err(sess,
 				  "Failed to post receive buffer to HCA, err: %d\n",
@@ -1300,7 +1269,7 @@ static void ibtrs_handle_write(struct ibtrs_srv_con *con, struct ibtrs_iu *iu,
 		 type, iu->tag, id, off);
 	print_hex_dump_debug("", DUMP_PREFIX_OFFSET, 8, 1,
 			     hdr, sizeof(struct ibtrs_msg_hdr) + 32, true);
-	ret = ibtrs_post_recv(con, iu);
+	ret = ibtrs_post_recv_cb(&con->c, iu, ibtrs_srv_rdma_done);
 	if (unlikely(ret != 0)) {
 		ibtrs_err(sess, "Posting receive buffer to HCA failed, err: %d\n",
 			  ret);
@@ -1443,9 +1412,9 @@ static void ibtrs_handle_recv(struct ibtrs_srv_con *con, struct ibtrs_iu *iu)
 				  err);
 			goto err;
 		}
-		err = ibtrs_post_recv(con, iu);
+		err = ibtrs_post_recv_cb(&con->c, iu, ibtrs_srv_rdma_done);
 		if (unlikely(err)) {
-			ibtrs_err(sess, "ibtrs_post_recv(), err: %d\n", err);
+			ibtrs_err(sess, "ibtrs_post_recv_cb(), err: %d\n", err);
 			goto err;
 		}
 		err = ibtrs_send_usr_msg_ack(con);
@@ -1462,9 +1431,9 @@ static void ibtrs_handle_recv(struct ibtrs_srv_con *con, struct ibtrs_iu *iu)
 				  err);
 			goto err;
 		}
-		err = ibtrs_post_recv(con, iu);
+		err = ibtrs_post_recv_cb(&con->c, iu, ibtrs_srv_rdma_done);
 		if (unlikely(err)) {
-			ibtrs_err(sess, "ibtrs_post_recv(), err: %d\n", err);
+			ibtrs_err(sess, "ibtrs_post_recv_cb(), err: %d\n", err);
 			goto err;
 		}
 		break;
@@ -1564,7 +1533,8 @@ static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 		iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
 		imm = be32_to_cpu(wc->ex.imm_data);
 		if (imm == IBTRS_ACK_IMM) {
-			ret = ibtrs_post_recv(con, iu);
+			ret = ibtrs_post_recv_cb(&con->c, iu,
+						 ibtrs_srv_rdma_done);
 			if (unlikely(ret))
 				ibtrs_err_rl(sess, "Posting receive buffer of"
 					     " user Ack msg to HCA failed,"
@@ -1578,7 +1548,8 @@ static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 		if (msg_id > sess->queue_depth || off > rcv_buf_size) {
 			ibtrs_err(sess, "Processing I/O failed, contiguous "
 				  "buf addr is out of reserved area\n");
-			ret = ibtrs_post_recv(con, iu);
+			ret = ibtrs_post_recv_cb(&con->c, iu,
+						 ibtrs_srv_rdma_done);
 			if (unlikely(ret != 0))
 				ibtrs_err(sess, "Processing I/O failed, "
 					  "post receive buffer failed, "
