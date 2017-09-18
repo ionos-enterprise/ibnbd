@@ -649,21 +649,13 @@ EXPORT_SYMBOL(ibtrs_srv_resp_rdma);
 int ibtrs_srv_send(struct ibtrs_srv_sess *sess, const struct kvec *vec,
 		   size_t nr)
 {
-	struct ibtrs_srv_con *usr_con;
+	struct ibtrs_srv_con *usr_con = sess->con[0];
 	struct ibtrs_msg_user *msg;
-	struct ibtrs_iu *iu = NULL;
+	struct ibtrs_iu *iu;
 	size_t len, tsize;
 	int err;
 
-	usr_con = sess->con[0];
-	if (unlikely(!usr_con)) {
-		ibtrs_wrn(sess,
-			  "Sending message failed, no user connection exists\n");
-		return -ECOMM;
-	}
-
 	len = kvec_length(vec, nr);
-
 	if (unlikely(len + sizeof(struct ibtrs_msg_hdr) > MAX_REQ_SIZE)) {
 		ibtrs_wrn_rl(sess, "Sending message failed, passed data too big,"
 			     " %zu > %lu\n", len,

@@ -3451,15 +3451,14 @@ EXPORT_SYMBOL(ibtrs_clt_request_rdma_write);
 int ibtrs_clt_send(struct ibtrs_clt_sess *sess, const struct kvec *vec,
 		   size_t nr)
 {
-	struct ibtrs_iu *iu = NULL;
-	struct ibtrs_clt_con *con;
+	struct ibtrs_clt_con *usr_con = &sess->con[0];
 	struct ibtrs_msg_user *msg;
+	struct ibtrs_iu *iu;
 	size_t len, tsize;
 	int err;
 
-	con = &sess->con[0];
 	len = kvec_length(vec, nr);
-	if (len > sess->max_req_size - sizeof(struct ibtrs_msg_hdr)) {
+	if (unlikely(len > sess->max_req_size - sizeof(struct ibtrs_msg_hdr))) {
 		ibtrs_err_rl(sess, "Sending user message failed,"
 			     " user message length too large (len: %zu)\n", len);
 		return -EMSGSIZE;
@@ -3487,7 +3486,7 @@ int ibtrs_clt_send(struct ibtrs_clt_sess *sess, const struct kvec *vec,
 	copy_from_kvec(msg->payl, vec, len);
 
 	iu->cqe.done = ibtrs_clt_usr_send_done;
-	err = ibtrs_post_send(con->ibtrs_con.qp, sess->s.ib_dev->mr,
+	err = ibtrs_post_send(usr_con->ibtrs_con.qp, sess->s.ib_dev->mr,
 			      iu, tsize);
 	ibtrs_clt_state_unlock();
 	if (unlikely(err)) {
