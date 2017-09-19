@@ -2850,6 +2850,7 @@ static void ibtrs_clt_info_rsp_done(struct ib_cq *cq, struct ib_wc *wc)
 	state = IBTRS_CLT_CONNECTED;
 
 out:
+	ibtrs_clt_update_wc_stats(con);
 	ibtrs_iu_free(iu, DMA_FROM_DEVICE, sess->s.ib_dev->dev);
 	ibtrs_clt_change_state(sess, state);
 }
