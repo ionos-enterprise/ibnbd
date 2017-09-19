@@ -1079,8 +1079,10 @@ static void ibtrs_srv_info_rsp_done(struct ib_cq *cq, struct ib_wc *wc)
 	ctx->ops.sess_ev(sess, IBTRS_SRV_SESS_EV_CONNECTED, sess->priv);
 }
 
-static int ibtrs_handle_info_req(struct ibtrs_srv_con *con,
-				 struct ibtrs_msg_info_req *msg)
+static int post_recv(struct ibtrs_srv_con *con);
+
+static int process_info_req(struct ibtrs_srv_con *con,
+			    struct ibtrs_msg_info_req *msg)
 {
 	struct ibtrs_srv_sess *sess = con->sess;
 	struct ibtrs_msg_info_rsp *rsp;
@@ -1089,6 +1091,11 @@ static int ibtrs_handle_info_req(struct ibtrs_srv_con *con,
 	int i, err;
 	u64 addr;
 
+	err = post_recv(con);
+	if (unlikely(err)) {
+		ibtrs_err(sess, "post_recv(), err: %d\n", err);
+		return err;
+	}
 	memcpy(sess->s.addr.hostname, msg->hostname, sizeof(msg->hostname));
 
 	tx_sz  = sizeof(struct ibtrs_msg_info_rsp);
@@ -1117,6 +1124,67 @@ static int ibtrs_handle_info_req(struct ibtrs_srv_con *con,
 	}
 
 	return err;
+}
+
+static void ibtrs_srv_info_req_done(struct ib_cq *cq, struct ib_wc *wc)
+{
+	struct ibtrs_srv_con *con = cq->cq_context;
+	struct ibtrs_srv_sess *sess = con->sess;
+	struct ibtrs_msg_info_req *msg;
+	struct ibtrs_iu *iu;
+	int err;
+
+	iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
+	if (unlikely(wc->status != IB_WC_SUCCESS)) {
+		ibtrs_err(sess, "Sess info request receive failed: %s\n",
+			  ib_wc_status_msg(wc->status));
+		goto close;
+	}
+	if (unlikely(wc->byte_len < sizeof(*msg))) {
+		ibtrs_err(sess, "Sess info request is malformed: size %d\n",
+			  wc->byte_len);
+		goto close;
+	}
+	msg = iu->buf;
+	if (unlikely(le32_to_cpu(msg->type) != IBTRS_MSG_INFO_REQ)) {
+		ibtrs_err(sess, "Sess info request is malformed: type %d\n",
+			  le32_to_cpu(msg->type));
+		goto close;
+	}
+	err = process_info_req(con, msg);
+	if (unlikely(err))
+		goto close;
+
+out:
+	ibtrs_iu_free(iu, DMA_FROM_DEVICE, sess->s.ib_dev->dev);
+	return;
+close:
+	close_sess(sess);
+	goto out;
+}
+
+static int post_recv_info_req(struct ibtrs_srv_con *con)
+{
+	struct ibtrs_srv_sess *sess = con->sess;
+	struct ibtrs_iu *rx_iu;
+	int err;
+
+	rx_iu = ibtrs_iu_alloc(0, sizeof(struct ibtrs_msg_info_req),
+			       GFP_KERNEL, sess->s.ib_dev->dev,
+			       DMA_FROM_DEVICE);
+	if (unlikely(!rx_iu)) {
+		ibtrs_err(sess, "ibtrs_iu_alloc(): no memory\n");
+		return -ENOMEM;
+	}
+	/* Prepare for getting info response */
+	err = ibtrs_post_recv_cb(&con->c, rx_iu, ibtrs_srv_info_req_done);
+	if (unlikely(err)) {
+		ibtrs_err(sess, "ibtrs_post_recv(), err: %d\n", err);
+		ibtrs_iu_free(rx_iu, DMA_FROM_DEVICE, sess->s.ib_dev->dev);
+		return err;;
+	}
+
+	return 0;
 }
 
 static int post_recv_io(struct ibtrs_srv_con *con)
@@ -1410,7 +1478,6 @@ static int ibtrs_schedule_msg(struct ibtrs_srv_con *con,
 	return 0;
 }
 
-
 static void ibtrs_handle_recv(struct ibtrs_srv_con *con, struct ibtrs_iu *iu)
 {
 	struct ibtrs_srv_sess *sess = con->sess;
@@ -1438,19 +1505,6 @@ static void ibtrs_handle_recv(struct ibtrs_srv_con *con, struct ibtrs_iu *iu)
 		if (unlikely(err)) {
 			ibtrs_err(sess, "ibtrs_send_usr_msg_ack(), err: %d\n",
 				  err);
-			goto err;
-		}
-		break;
-	case IBTRS_MSG_INFO_REQ:
-		err = ibtrs_handle_info_req(con, iu->buf);
-		if (unlikely(err)) {
-			ibtrs_err(sess, "ibtrs_handle_info_req(), err: %d\n",
-				  err);
-			goto err;
-		}
-		err = ibtrs_post_recv_cb(&con->c, iu, ibtrs_srv_rdma_done);
-		if (unlikely(err)) {
-			ibtrs_err(sess, "ibtrs_post_recv_cb(), err: %d\n", err);
 			goto err;
 		}
 		break;
@@ -1754,10 +1808,10 @@ static int create_con(struct ibtrs_srv_sess *sess,
 		ibtrs_err(sess, "alloc_workqueue() failed\n");
 		goto free_cqqp;
 	}
-	err = post_recv(con);
-	if (unlikely(err)) {
-		ibtrs_err(sess, "post_recv(), err: %d\n", err);
-		goto free_wq;
+	if (con->cid == 0) {
+		err = post_recv_info_req(con);
+		if (unlikely(err))
+			goto free_wq;
 	}
 	WARN_ON(sess->con[cid]);
 	sess->con[cid] = con;
@@ -1905,9 +1959,11 @@ static int ibtrs_rdma_connect(struct rdma_cm_id *cm_id,
 	err = create_con(sess, cm_id, cid);
 	if (unlikely(err))
 		goto close_and_reject_w_err;
+
 	err = ibtrs_rdma_do_accept(sess, cm_id);
 	if (unlikely(err))
 		goto close_and_reject_w_err;
+
 	mutex_unlock(&ctx->sess_mutex);
 
 	return 0;
