@@ -1334,21 +1334,46 @@ static int ibtrs_schedule_msg(struct ibtrs_srv_con *con,
 	return 0;
 }
 
-static void ibtrs_srv_info_req_done(struct ib_cq *cq, struct ib_wc *wc)
+static void ibtrs_srv_update_wc_stats(struct ibtrs_srv_con *con)
+{
+	atomic64_inc(&con->sess->stats.wc_comp.calls);
+	atomic64_inc(&con->sess->stats.wc_comp.total_wc_cnt);
+}
+
+static void ibtrs_srv_info_rsp_done(struct ib_cq *cq, struct ib_wc *wc)
 {
 	struct ibtrs_srv_con *con = cq->cq_context;
 	struct ibtrs_srv_sess *sess = con->sess;
+	struct ibtrs_srv_ctx *ctx = sess->ctx;
 	struct ibtrs_iu *iu;
 
 	iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
 	ibtrs_iu_free(iu, DMA_TO_DEVICE, sess->s.ib_dev->dev);
+
+	if (unlikely(wc->status != IB_WC_SUCCESS)) {
+		ibtrs_err(sess, "Sess info response send failed: %s\n",
+			  ib_wc_status_msg(wc->status));
+		close_sess(sess);
+		return;
+	}
+	if (WARN_ON(wc->opcode != IB_WC_SEND))
+		return;
+
+	ibtrs_srv_update_wc_stats(con);
+
+	/*
+	 * We do not account number of established connections at the current
+	 * moment, we rely on the client, which should send info request when
+	 * all connections are successfully established.  Thus, simply notify
+	 * listener with proper event when info response is successfully sent.
+	 */
+	ctx->ops.sess_ev(sess, IBTRS_SRV_SESS_EV_CONNECTED, sess->priv);
 }
 
 static int ibtrs_handle_info_req(struct ibtrs_srv_con *con,
-				     struct ibtrs_msg_info_req *msg)
+				 struct ibtrs_msg_info_req *msg)
 {
 	struct ibtrs_srv_sess *sess = con->sess;
-	struct ibtrs_srv_ctx *ctx = sess->ctx;
 	struct ibtrs_msg_info_rsp *rsp;
 	struct ibtrs_iu *tx_iu;
 	size_t tx_sz;
@@ -1376,18 +1401,11 @@ static int ibtrs_handle_info_req(struct ibtrs_srv_con *con,
 	}
 	/* Send info response */
 	err = ibtrs_post_send_cb(&con->c, sess->s.ib_dev->mr,
-				 tx_iu, tx_sz, ibtrs_srv_info_req_done);
+				 tx_iu, tx_sz, ibtrs_srv_info_rsp_done);
 	if (unlikely(err)) {
 		ibtrs_err(sess, "ibtrs_post_send_cb(), err: %d\n", err);
 		ibtrs_iu_free(tx_iu, DMA_TO_DEVICE, sess->s.ib_dev->dev);
 	}
-	/*
-	 * We do not account number of established connections at the current
-	 * moment, we rely on the client, which should send info request when
-	 * all connections are successfully established.  Thus, simply notify
-	 * listener with proper event when info request is received.
-	 */
-	ctx->ops.sess_ev(sess, IBTRS_SRV_SESS_EV_CONNECTED, sess->priv);
 
 	return err;
 }
@@ -1474,12 +1492,6 @@ static void process_err_wc(struct ibtrs_srv_con *con, struct ib_wc *wc)
 		     ib_wc_opcode_str(wc->opcode),
 		     wc->vendor_err, wc->byte_len);
 	close_sess(sess);
-}
-
-static void ibtrs_srv_update_wc_stats(struct ibtrs_srv_con *con)
-{
-	atomic64_inc(&con->sess->stats.wc_comp.calls);
-	atomic64_inc(&con->sess->stats.wc_comp.total_wc_cnt);
 }
 
 static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
