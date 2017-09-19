@@ -287,9 +287,8 @@ struct ibtrs_ib_dev *ibtrs_ib_dev_find_get(struct rdma_cm_id *cm_id);
 void ibtrs_ib_dev_put(struct ibtrs_ib_dev *dev);
 
 int ibtrs_cq_qp_create(struct ibtrs_sess *ibtrs_sess, struct ibtrs_con *con,
-		       struct rdma_cm_id *cm_id, u32 max_send_sge,
-		       int cq_vector, u16 cq_size, u16 wr_queue_size,
-		       struct ibtrs_ib_dev *ibdev,
+		       u32 max_send_sge, int cq_vector, u16 cq_size,
+		       u16 wr_queue_size, struct ibtrs_ib_dev *ibdev,
 		       enum ib_poll_context poll_ctx);
 void ibtrs_cq_qp_destroy(struct ibtrs_con *con);
 

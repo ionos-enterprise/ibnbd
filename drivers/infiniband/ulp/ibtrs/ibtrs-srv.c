@@ -229,7 +229,6 @@ struct ibtrs_srv_con {
 	struct ibtrs_con	c;
 	unsigned		cid;
 	atomic_t		wr_cnt;
-	struct rdma_cm_id	*cm_id;  /* XXX should die, copy in ibtrs_con */
 	struct ibtrs_srv_sess	*sess;
 	struct workqueue_struct *rdma_resp_wq;
 };
@@ -308,7 +307,7 @@ int ibtrs_srv_current_hca_port_to_str(struct ibtrs_srv_sess *sess,
 
 	if (usr_con)
 		len = scnprintf(str, sizeof(str), "%u\n",
-				usr_con->cm_id->port_num);
+				usr_con->c.cm_id->port_num);
 	strncpy(buf, str, len);
 
 	return sz;
@@ -1717,7 +1716,7 @@ static int create_con(struct ibtrs_srv_sess *sess,
 		goto err;
 	}
 
-	con->cm_id = cm_id;
+	con->c.cm_id = cm_id;
 	con->sess = sess;
 	con->cid = cid;
 	atomic_set(&con->wr_cnt, 0);
@@ -1733,9 +1732,9 @@ static int create_con(struct ibtrs_srv_sess *sess,
 	cq_vector = ibtrs_srv_get_next_cq_vector(sess);
 
 	/* TODO: SOFTIRQ can be faster, but be careful with softirq context */
-	err = ibtrs_cq_qp_create(&sess->s, &con->c, con->cm_id,
-				 1, cq_vector, cq_size, wr_queue_size,
-				 con->sess->s.ib_dev, IB_POLL_WORKQUEUE);
+	err = ibtrs_cq_qp_create(&sess->s, &con->c, 1, cq_vector, cq_size,
+				 wr_queue_size, con->sess->s.ib_dev,
+				 IB_POLL_WORKQUEUE);
 	if (unlikely(err)) {
 		ibtrs_err(sess, "ibtrs_cq_qp_create(), err: %d\n", err);
 		goto free_con;

@@ -135,7 +135,6 @@ struct ibtrs_clt_con {
 	atomic_t		io_cnt;
 	struct ibtrs_clt_sess	*sess;
 	struct ibtrs_fr_pool	*fr_pool;
-	struct rdma_cm_id	*cm_id; /* XXX should die, copy in ibtrs_con */
 	int			cm_err;
 	struct completion	cm_done;
 };
@@ -2364,7 +2363,7 @@ static int create_con_cq_qp(struct ibtrs_clt_con *con)
 			return err;
 	}
 	cq_vector = con->cpu % sess->s.ib_dev->dev->num_comp_vectors;
-	err = ibtrs_cq_qp_create(&sess->s, &con->c, con->cm_id, sess->max_sge,
+	err = ibtrs_cq_qp_create(&sess->s, &con->c, sess->max_sge,
 				 cq_vector, cq_size, wr_queue_size,
 				 sess->s.ib_dev, IB_POLL_SOFTIRQ);
 	if (unlikely(err))
@@ -2404,6 +2403,7 @@ static int ibtrs_clt_rdma_cm_handler(struct rdma_cm_id *cm_id,
 static int create_cm(struct ibtrs_clt_sess *sess, unsigned cid)
 {
 	struct ibtrs_clt_con *con;
+	struct rdma_cm_id *cm_id;
 	int err;
 
 	con = &sess->con[cid];
@@ -2417,25 +2417,26 @@ static int create_cm(struct ibtrs_clt_sess *sess, unsigned cid)
 	init_completion(&con->cm_done);
 
 	if (sess->peer_addr.ss_family == AF_IB)
-		con->cm_id = rdma_create_id(&init_net,
-					    ibtrs_clt_rdma_cm_handler,
-					    con, RDMA_PS_IB, IB_QPT_RC);
+		cm_id = rdma_create_id(&init_net,
+				       ibtrs_clt_rdma_cm_handler,
+				       con, RDMA_PS_IB, IB_QPT_RC);
 	else
-		con->cm_id = rdma_create_id(&init_net,
-					    ibtrs_clt_rdma_cm_handler,
-					    con, RDMA_PS_TCP, IB_QPT_RC);
-	if (unlikely(IS_ERR(con->cm_id))) {
-		err = PTR_ERR(con->cm_id);
+		cm_id = rdma_create_id(&init_net,
+				       ibtrs_clt_rdma_cm_handler,
+				       con, RDMA_PS_TCP, IB_QPT_RC);
+	if (unlikely(IS_ERR(cm_id))) {
+		err = PTR_ERR(cm_id);
 		ibtrs_wrn(sess, "Failed to create CM ID, err: %d\n", err);
 
 		return err;
 	}
-	err = rdma_resolve_addr(con->cm_id, NULL,
+	con->c.cm_id = cm_id;
+	err = rdma_resolve_addr(cm_id, NULL,
 				(struct sockaddr *)&sess->peer_addr,
 				IBTRS_CONNECT_TIMEOUT_MS);
 	if (unlikely(err)) {
 		ibtrs_err(sess, "Failed to resolve address, err: %d\n", err);
-		rdma_destroy_id(con->cm_id);
+		rdma_destroy_id(cm_id);
 
 		return err;
 	}
@@ -2456,7 +2457,7 @@ static int alloc_sess_all_bufs(struct ibtrs_clt_sess *sess)
 	struct ibtrs_clt_con *usr_con = &sess->con[0];
 	int err;
 
-	sess->s.ib_dev = ibtrs_ib_dev_find_get(usr_con->cm_id);
+	sess->s.ib_dev = ibtrs_ib_dev_find_get(usr_con->c.cm_id);
 	if (unlikely(!sess->s.ib_dev)) {
 		ibtrs_wrn(sess, "ibtrs_ib_dev_find_get() failed, no memory\n");
 		return -ENOMEM;
@@ -2576,7 +2577,7 @@ static int ibtrs_rdma_addr_resolved(struct ibtrs_clt_con *con)
 		ibtrs_err(sess, "create_con_cq_qp(), err: %d\n", err);
 		return err;
 	}
-	err = rdma_resolve_route(con->cm_id, IBTRS_CONNECT_TIMEOUT_MS);
+	err = rdma_resolve_route(con->c.cm_id, IBTRS_CONNECT_TIMEOUT_MS);
 	if (unlikely(err)) {
 		ibtrs_err(sess, "Resolving route failed, err: %d\n", err);
 		destroy_con_cq_qp(con);
@@ -2599,9 +2600,9 @@ static int ibtrs_rdma_route_resolved(struct ibtrs_clt_con *con)
 		struct sockaddr_storage *self_addr = &sess->self_addr;
 
 		/* initiator is src, target is dst */
-		memcpy(peer_addr, &con->cm_id->route.addr.dst_addr,
+		memcpy(peer_addr, &con->c.cm_id->route.addr.dst_addr,
 		       sizeof(*peer_addr));
-		memcpy(self_addr, &con->cm_id->route.addr.src_addr,
+		memcpy(self_addr, &con->c.cm_id->route.addr.src_addr,
 		       sizeof(*self_addr));
 	}
 
@@ -2617,7 +2618,7 @@ static int ibtrs_rdma_route_resolved(struct ibtrs_clt_con *con)
 	msg.cid_num = cpu_to_le16(CONS_PER_SESSION);
 	memcpy(msg.uuid, sess->s.uuid.b, sizeof(msg.uuid));
 
-	err = rdma_connect(con->cm_id, &param);
+	err = rdma_connect(con->c.cm_id, &param);
 	if (err)
 		ibtrs_err(sess, "rdma_connect(): %d\n", err);
 
@@ -2700,8 +2701,8 @@ static int ibtrs_rdma_conn_rejected(struct ibtrs_clt_con *con,
 	int status;
 
 	status = ev->status;
-	rej_msg = rdma_reject_msg(con->cm_id, status);
-	msg = rdma_consumer_reject_data(con->cm_id, ev, &data_len);
+	rej_msg = rdma_reject_msg(con->c.cm_id, status);
+	msg = rdma_consumer_reject_data(con->c.cm_id, ev, &data_len);
 
 	if (msg && data_len >= sizeof(*msg))
 		ibtrs_err(con->sess,

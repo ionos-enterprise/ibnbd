@@ -251,9 +251,10 @@ void ibtrs_ib_dev_put(struct ibtrs_ib_dev *dev)
 }
 EXPORT_SYMBOL_GPL(ibtrs_ib_dev_put);
 
-static int create_cq(struct ibtrs_con *con, struct rdma_cm_id *cm_id,
-		     int cq_vector, u16 cq_size, enum ib_poll_context poll_ctx)
+static int create_cq(struct ibtrs_con *con, int cq_vector, u16 cq_size,
+		     enum ib_poll_context poll_ctx)
 {
+	struct rdma_cm_id *cm_id = con->cm_id;
 	struct ib_cq *cq;
 
 	cq = ib_alloc_cq(cm_id->device, con, cq_size * 2 + 1,
@@ -268,10 +269,11 @@ static int create_cq(struct ibtrs_con *con, struct rdma_cm_id *cm_id,
 	return 0;
 }
 
-static int create_qp(struct ibtrs_con *con, struct rdma_cm_id *cm_id,
-		     struct ib_pd *pd, u16 wr_queue_size, u32 max_send_sge)
+static int create_qp(struct ibtrs_con *con, struct ib_pd *pd,
+		     u16 wr_queue_size, u32 max_send_sge)
 {
 	struct ib_qp_init_attr init_attr = {NULL};
+	struct rdma_cm_id *cm_id = con->cm_id;
 	int ret;
 
 	init_attr.cap.max_send_wr = wr_queue_size + 1;/*1 more for beacon*/
@@ -297,25 +299,23 @@ static int create_qp(struct ibtrs_con *con, struct rdma_cm_id *cm_id,
 }
 
 int ibtrs_cq_qp_create(struct ibtrs_sess *sess, struct ibtrs_con *con,
-		       struct rdma_cm_id *cm_id, u32 max_send_sge,
-		       int cq_vector, u16 cq_size, u16 wr_queue_size,
-		       struct ibtrs_ib_dev *ibdev,
+		       u32 max_send_sge, int cq_vector, u16 cq_size,
+		       u16 wr_queue_size, struct ibtrs_ib_dev *ibdev,
 		       enum ib_poll_context poll_ctx)
 {
 	int err, ret;
 
-	err = create_cq(con, cm_id, cq_vector, cq_size, poll_ctx);
+	err = create_cq(con, cq_vector, cq_size, poll_ctx);
 	if (unlikely(err))
 		return err;
 
-	err = create_qp(con, cm_id, ibdev->pd, wr_queue_size, max_send_sge);
+	err = create_qp(con, ibdev->pd, wr_queue_size, max_send_sge);
 	if (unlikely(err)) {
 		ret = ib_destroy_cq(con->cq);
 		if (ret)
 			ibtrs_err(con, "Destroying CQ failed, err: %d\n", ret);
 		return err;
 	}
-	con->cm_id = cm_id;
 	con->sess = sess;
 
 	return 0;
