@@ -1198,7 +1198,7 @@ static void process_msg_user(struct ibtrs_clt_con *con,
 	struct ibtrs_clt_sess *sess = con->sess;
 	int len;
 
-	len = le32_to_cpu(msg->hdr.tsize) - sizeof(struct ibtrs_msg_hdr);
+	len = le16_to_cpu(msg->psize);
 
 	sess->stats.user_ib_msgs.recv_msg_cnt++;
 	sess->stats.user_ib_msgs.recv_size += len;
@@ -1231,6 +1231,9 @@ static int ibtrs_schedule_msg(struct ibtrs_clt_con *con,
 			      struct ibtrs_msg_user *msg)
 {
 	struct msg_work *w;
+	size_t len;
+
+	len = le16_to_cpu(msg->psize) + sizeof(*msg);
 
 	/*
 	 * FIXME: that is ugly, and better way is to notify API client
@@ -1238,18 +1241,19 @@ static int ibtrs_schedule_msg(struct ibtrs_clt_con *con,
 	 */
 
 	w = kmalloc(sizeof(*w), GFP_ATOMIC);
-	if (!w)
+	if (unlikely(!w))
 		return -ENOMEM;
 
 	w->con = con;
-	w->msg = kmalloc(le32_to_cpu(msg->hdr.tsize), GFP_ATOMIC);
-	if (!w->msg) {
+	w->msg = kmalloc(len, GFP_ATOMIC);
+	if (unlikely(!w->msg)) {
 		kfree(w);
 		return -ENOMEM;
 	}
-	memcpy(w->msg, msg, le32_to_cpu(msg->hdr.tsize));
+	memcpy(w->msg, msg, len);
 	INIT_WORK(&w->work, msg_worker);
 	queue_work(ibtrs_wq, &w->work);
+
 	return 0;
 }
 
@@ -1347,7 +1351,7 @@ static void ibtrs_clt_usr_recv_done(struct ib_cq *cq, struct ib_wc *wc)
 {
 	struct ibtrs_clt_con *con = cq->cq_context;
 	struct ibtrs_clt_sess *sess = con->sess;
-	struct ibtrs_msg_hdr *hdr;
+	struct ibtrs_msg_user *msg;
 	struct ibtrs_iu *iu;
 	unsigned type;
 	int err;
@@ -1361,19 +1365,21 @@ static void ibtrs_clt_usr_recv_done(struct ib_cq *cq, struct ib_wc *wc)
 		return;
 	if (WARN_ON(con->cid))
 		return;
+	if (unlikely(wc->byte_len < sizeof(*msg))) {
+		ibtrs_err(sess, "Malformed user message: size %d\n",
+			  wc->byte_len);
+		goto err;
+	}
 
 	ibtrs_clt_update_wc_stats(con);
 
 	iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
-	hdr = (struct ibtrs_msg_hdr *)iu->buf;
-	if (unlikely(ibtrs_validate_message(hdr)))
-		goto err;
-
-	type = le16_to_cpu(hdr->type);
+	msg = (struct ibtrs_msg_user *)iu->buf;
+	type = le16_to_cpu(msg->type);
 
 	switch (type) {
 	case IBTRS_MSG_USER:
-		err = ibtrs_schedule_msg(con, iu->buf);
+		err = ibtrs_schedule_msg(con, msg);
 		if (unlikely(err)) {
 			ibtrs_err_rl(sess, "Scheduling worker of user message "
 				     "to user module failed, err: %d\n",
@@ -3406,13 +3412,12 @@ int ibtrs_clt_send(struct ibtrs_clt_sess *sess, const struct kvec *vec,
 	struct ibtrs_clt_con *usr_con = &sess->con[0];
 	struct ibtrs_msg_user *msg;
 	struct ibtrs_iu *iu;
-	size_t len, tsize;
+	size_t len;
 	int err;
 
 	len = kvec_length(vec, nr);
-	if (unlikely(len > sess->max_req_size - sizeof(struct ibtrs_msg_hdr))) {
-		ibtrs_err_rl(sess, "Sending user message failed,"
-			     " user message length too large (len: %zu)\n", len);
+	if (unlikely(len > sess->max_req_size - sizeof(*msg))) {
+		ibtrs_err(sess, "Message size is too long: %zu\n", len);
 		return -EMSGSIZE;
 	}
 	iu = ibtrs_usr_msg_get(&sess->s);
@@ -3431,14 +3436,15 @@ int ibtrs_clt_send(struct ibtrs_clt_sess *sess, const struct kvec *vec,
 		goto err_post_send;
 	}
 
-	tsize = sizeof(struct ibtrs_msg_hdr) + len;
-	msg		= iu->buf;
-	msg->hdr.type	= cpu_to_le16(IBTRS_MSG_USER);
-	msg->hdr.tsize	= cpu_to_le32(tsize);
+	msg = iu->buf;
+	msg->type = cpu_to_le16(IBTRS_MSG_USER);
+	msg->psize = cpu_to_le16(len);
 	copy_from_kvec(msg->payl, vec, len);
 
+	len += sizeof(*msg);
+
 	err = ibtrs_post_send_cb(&usr_con->c, sess->s.ib_dev->mr,
-				 iu, tsize, ibtrs_clt_usr_send_done);
+				 iu, len, ibtrs_clt_usr_send_done);
 	ibtrs_clt_state_unlock();
 	if (unlikely(err)) {
 		ibtrs_err_rl(sess, "Sending user message failed, posting work"

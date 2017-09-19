@@ -172,17 +172,6 @@ struct ibtrs_msg_info_rsp {
 	__le64		addr[];
 };
 
-/**
- * struct ibtrs_msg_hdr - Common header of all IBTRS messages
- * @type:	Message type, valid values see: enum ibtrs_msg_types
- * @tsize:	Total size of transferred data
- */
-struct ibtrs_msg_hdr {
-	__le16			type;
-	__le16			__padding2;
-	__le32			tsize;
-};
-
 /*
  *  Data Layout in RDMA-Bufs:
  *
@@ -209,11 +198,13 @@ struct ibtrs_msg_hdr {
 
 /**
  * struct ibtrs_msg_user - Data exchanged a Infiniband message
- * @hdr:		message header
- * @payl:		Payload from user user module
+ * @type:		@IBTRS_MSG_USER
+ * @psize:		Payload size
+ * @payl:		Payload data
  */
 struct ibtrs_msg_user {
-	struct ibtrs_msg_hdr	hdr;
+	__le16			type;
+	__le16			psize;
 	u8			payl[];
 };
 
@@ -227,6 +218,17 @@ struct ibtrs_sg_desc {
 	__le64			addr;
 	__le32			key;
 	__le32			len;
+};
+
+/**
+ * struct ibtrs_msg_hdr - Common header of all IBTRS messages
+ * @type:	Message type, valid values see: enum ibtrs_msg_types
+ * @tsize:	Total size of transferred data
+ */
+struct ibtrs_msg_hdr {
+	__le16			type;
+	__le16			__padding2;
+	__le32			tsize;
 };
 
 /**

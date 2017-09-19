@@ -650,14 +650,12 @@ int ibtrs_srv_send(struct ibtrs_srv_sess *sess, const struct kvec *vec,
 	struct ibtrs_srv_con *usr_con = sess->con[0];
 	struct ibtrs_msg_user *msg;
 	struct ibtrs_iu *iu;
-	size_t len, tsize;
+	size_t len;
 	int err;
 
 	len = kvec_length(vec, nr);
-	if (unlikely(len + sizeof(struct ibtrs_msg_hdr) > MAX_REQ_SIZE)) {
-		ibtrs_wrn_rl(sess, "Sending message failed, passed data too big,"
-			     " %zu > %lu\n", len,
-			     MAX_REQ_SIZE - sizeof(struct ibtrs_msg_hdr));
+	if (unlikely(len > MAX_REQ_SIZE - sizeof(*msg))) {
+		ibtrs_err(sess, "Message size is too long: %zu\n", len);
 		return -EMSGSIZE;
 	}
 	iu = ibtrs_usr_msg_get(&sess->s);
@@ -667,15 +665,16 @@ int ibtrs_srv_send(struct ibtrs_srv_sess *sess, const struct kvec *vec,
 		return -ECOMM;
 	}
 
-	tsize = len + sizeof(struct ibtrs_msg_hdr);
-	msg		= iu->buf;
-	msg->hdr.type	= cpu_to_le16(IBTRS_MSG_USER);
-	msg->hdr.tsize	= cpu_to_le32(tsize);
+	msg = iu->buf;
+	msg->type = cpu_to_le16(IBTRS_MSG_USER);
+	msg->psize = cpu_to_le16(len);
 	copy_from_kvec(msg->payl, vec, len);
+
+	len += sizeof(*msg);
 
 	//XXX CHECK
 	err = ibtrs_post_send_cb(&usr_con->c, usr_con->sess->s.ib_dev->mr,
-				 iu, tsize, ibtrs_srv_rdma_done);
+				 iu, len, ibtrs_srv_rdma_done);
 	if (unlikely(err)) {
 		ibtrs_err_rl(sess, "Sending message failed, posting message to QP"
 			     " failed, err: %d\n", err);
@@ -1223,7 +1222,6 @@ static void process_msg_user(struct ibtrs_srv_con *con,
 	struct ibtrs_srv_ctx *ctx = sess->ctx;
 	int len;
 
-	len = le32_to_cpu(msg->hdr.tsize) - sizeof(struct ibtrs_msg_hdr);
 	if (unlikely(sess->state != IBTRS_SRV_ALIVE || !sess->priv)) {
 		ibtrs_err(sess, "Sending user msg failed, session isn't ready,"
 			  " session state is %s\n",
@@ -1231,6 +1229,7 @@ static void process_msg_user(struct ibtrs_srv_con *con,
 		return;
 	}
 
+	len = le16_to_cpu(msg->psize);
 	ctx->ops.recv(sess, sess->priv, msg->payl, len);
 
 	atomic64_inc(&sess->stats.user_ib_msgs.recv_msg_cnt);
@@ -1314,22 +1313,24 @@ static int ibtrs_schedule_msg(struct ibtrs_srv_con *con,
 			      struct ibtrs_msg_user *msg)
 {
 	struct msg_work *w;
-	size_t tsize;
+	size_t len;
 
-	tsize = le32_to_cpu(msg->hdr.tsize);
+	len = le16_to_cpu(msg->psize) + sizeof(*msg);
+
 	w = kmalloc(sizeof(*w), GFP_KERNEL | __GFP_REPEAT);
-	if (!w)
+	if (unlikely(!w))
 		return -ENOMEM;
 
 	w->con = con;
-	w->msg = kmalloc(tsize, GFP_KERNEL | __GFP_REPEAT);
-	if (!w->msg) {
+	w->msg = kmalloc(len, GFP_KERNEL | __GFP_REPEAT);
+	if (unlikely(!w->msg)) {
 		kfree(w);
 		return -ENOMEM;
 	}
-	memcpy(w->msg, msg, tsize);
+	memcpy(w->msg, msg, len);
 	INIT_WORK(&w->work, msg_worker);
 	queue_work(ibtrs_wq, &w->work);
+
 	return 0;
 }
 
