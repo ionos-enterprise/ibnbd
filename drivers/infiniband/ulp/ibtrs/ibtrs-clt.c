@@ -1267,8 +1267,6 @@ static void ibtrs_clt_update_wc_stats(struct ibtrs_clt_con *con)
 		atomic_inc(&sess->stats.cpu_migr.from[con->cpu]);
 		sess->stats.cpu_migr.to[cpu]++;
 	}
-	//XXX remove ASAP
-	sess->stats.wc_comp[cpu].max_wc_cnt = 1;
 	sess->stats.wc_comp[cpu].cnt++;
 	sess->stats.wc_comp[cpu].total_cnt++;
 }
@@ -1798,17 +1796,6 @@ int ibtrs_clt_stats_user_ib_msgs_to_str(struct ibtrs_clt_sess *sess, char *buf,
 			 sess->stats.user_ib_msgs.sent_size);
 }
 
-static u32 ibtrs_clt_stats_get_max_wc_cnt(struct ibtrs_clt_sess *sess)
-{
-	int i;
-	u32 max = 0;
-
-	for (i = 0; i < num_online_cpus(); i++)
-		if (max < sess->stats.wc_comp[i].max_wc_cnt)
-			max = sess->stats.wc_comp[i].max_wc_cnt;
-	return max;
-}
-
 static u32 ibtrs_clt_stats_get_avg_wc_cnt(struct ibtrs_clt_sess *sess)
 {
 	int i;
@@ -1826,8 +1813,7 @@ static u32 ibtrs_clt_stats_get_avg_wc_cnt(struct ibtrs_clt_sess *sess)
 int ibtrs_clt_stats_wc_completion_to_str(struct ibtrs_clt_sess *sess, char *buf,
 					 size_t len)
 {
-	return scnprintf(buf, len, "%u %u\n",
-			 ibtrs_clt_stats_get_max_wc_cnt(sess),
+	return scnprintf(buf, len, "%u\n",
 			 ibtrs_clt_stats_get_avg_wc_cnt(sess));
 }
 

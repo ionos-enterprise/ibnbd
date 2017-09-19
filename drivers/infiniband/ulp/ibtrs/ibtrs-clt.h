@@ -49,7 +49,6 @@ struct ibtrs_stats_reconnects {
 };
 
 struct ibtrs_stats_wc_comp {
-	u32 max_wc_cnt;
 	u32 cnt;
 	u64 total_cnt;
 };

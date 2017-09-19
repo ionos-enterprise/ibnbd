@@ -53,7 +53,6 @@ struct ibtrs_rcv_buf_pool {
 };
 
 struct ibtrs_stats_wc_comp {
-	atomic_t	max_wc_cnt;
 	atomic64_t	calls;
 	atomic64_t	total_wc_cnt;
 };

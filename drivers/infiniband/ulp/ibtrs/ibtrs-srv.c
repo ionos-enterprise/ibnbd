@@ -418,8 +418,7 @@ int ibtrs_srv_reset_wc_completion_stats(struct ibtrs_srv_sess *sess, bool enable
 int ibtrs_srv_stats_wc_completion_to_str(struct ibtrs_srv_sess *sess, char *buf,
 					 size_t len)
 {
-	return snprintf(buf, len, "%d %ld %ld\n",
-			atomic_read(&sess->stats.wc_comp.max_wc_cnt),
+	return snprintf(buf, len, "%ld %ld\n",
 			atomic64_read(&sess->stats.wc_comp.total_wc_cnt),
 			atomic64_read(&sess->stats.wc_comp.calls));
 }
@@ -1478,9 +1477,6 @@ static void process_err_wc(struct ibtrs_srv_con *con, struct ib_wc *wc)
 
 static void ibtrs_srv_update_wc_stats(struct ibtrs_srv_con *con)
 {
-	//XXX remove ASAP
-	//XXX int old_max = atomic_read(&con->sess->stats.wc_comp.max_wc_cnt);
-
 	atomic64_inc(&con->sess->stats.wc_comp.calls);
 	atomic64_inc(&con->sess->stats.wc_comp.total_wc_cnt);
 }
