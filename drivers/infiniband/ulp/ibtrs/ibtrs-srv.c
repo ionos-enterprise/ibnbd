@@ -1043,6 +1043,82 @@ static int alloc_sess_bufs(struct ibtrs_srv_sess *sess)
 	return err;
 }
 
+static void ibtrs_srv_update_wc_stats(struct ibtrs_srv_con *con)
+{
+	atomic64_inc(&con->sess->stats.wc_comp.calls);
+	atomic64_inc(&con->sess->stats.wc_comp.total_wc_cnt);
+}
+
+static void ibtrs_srv_info_rsp_done(struct ib_cq *cq, struct ib_wc *wc)
+{
+	struct ibtrs_srv_con *con = cq->cq_context;
+	struct ibtrs_srv_sess *sess = con->sess;
+	struct ibtrs_srv_ctx *ctx = sess->ctx;
+	struct ibtrs_iu *iu;
+
+	iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
+	ibtrs_iu_free(iu, DMA_TO_DEVICE, sess->s.ib_dev->dev);
+
+	if (unlikely(wc->status != IB_WC_SUCCESS)) {
+		ibtrs_err(sess, "Sess info response send failed: %s\n",
+			  ib_wc_status_msg(wc->status));
+		close_sess(sess);
+		return;
+	}
+	if (WARN_ON(wc->opcode != IB_WC_SEND))
+		return;
+
+	ibtrs_srv_update_wc_stats(con);
+
+	/*
+	 * We do not account number of established connections at the current
+	 * moment, we rely on the client, which should send info request when
+	 * all connections are successfully established.  Thus, simply notify
+	 * listener with proper event when info response is successfully sent.
+	 */
+	ctx->ops.sess_ev(sess, IBTRS_SRV_SESS_EV_CONNECTED, sess->priv);
+}
+
+static int ibtrs_handle_info_req(struct ibtrs_srv_con *con,
+				 struct ibtrs_msg_info_req *msg)
+{
+	struct ibtrs_srv_sess *sess = con->sess;
+	struct ibtrs_msg_info_rsp *rsp;
+	struct ibtrs_iu *tx_iu;
+	size_t tx_sz;
+	int i, err;
+	u64 addr;
+
+	memcpy(sess->s.addr.hostname, msg->hostname, sizeof(msg->hostname));
+
+	tx_sz  = sizeof(struct ibtrs_msg_info_rsp);
+	tx_sz += sizeof(u64) * sess->queue_depth;
+	tx_iu = ibtrs_iu_alloc(0, tx_sz, GFP_KERNEL, sess->s.ib_dev->dev,
+			       DMA_TO_DEVICE);
+	if (unlikely(!tx_iu)) {
+		ibtrs_err(sess, "ibtrs_iu_alloc(), err: %d\n", -ENOMEM);
+		return -ENOMEM;
+	}
+
+	rsp = tx_iu->buf;
+	rsp->type = cpu_to_le16(IBTRS_MSG_INFO_RSP);
+	rsp->addr_num = cpu_to_le16(sess->queue_depth);
+	strlcpy(rsp->hostname, hostname, sizeof(rsp->hostname));
+	for (i = 0; i < sess->queue_depth; i++) {
+		addr = sess->rcv_buf_pool->rcv_bufs[i].rdma_addr;
+		rsp->addr[i] = cpu_to_le64(addr);
+	}
+	/* Send info response */
+	err = ibtrs_post_send_cb(&con->c, sess->s.ib_dev->mr,
+				 tx_iu, tx_sz, ibtrs_srv_info_rsp_done);
+	if (unlikely(err)) {
+		ibtrs_err(sess, "ibtrs_post_send_cb(), err: %d\n", err);
+		ibtrs_iu_free(tx_iu, DMA_TO_DEVICE, sess->s.ib_dev->dev);
+	}
+
+	return err;
+}
+
 static int post_recv_io(struct ibtrs_srv_con *con)
 {
 	struct ibtrs_srv_sess *sess = con->sess;
@@ -1334,81 +1410,6 @@ static int ibtrs_schedule_msg(struct ibtrs_srv_con *con,
 	return 0;
 }
 
-static void ibtrs_srv_update_wc_stats(struct ibtrs_srv_con *con)
-{
-	atomic64_inc(&con->sess->stats.wc_comp.calls);
-	atomic64_inc(&con->sess->stats.wc_comp.total_wc_cnt);
-}
-
-static void ibtrs_srv_info_rsp_done(struct ib_cq *cq, struct ib_wc *wc)
-{
-	struct ibtrs_srv_con *con = cq->cq_context;
-	struct ibtrs_srv_sess *sess = con->sess;
-	struct ibtrs_srv_ctx *ctx = sess->ctx;
-	struct ibtrs_iu *iu;
-
-	iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
-	ibtrs_iu_free(iu, DMA_TO_DEVICE, sess->s.ib_dev->dev);
-
-	if (unlikely(wc->status != IB_WC_SUCCESS)) {
-		ibtrs_err(sess, "Sess info response send failed: %s\n",
-			  ib_wc_status_msg(wc->status));
-		close_sess(sess);
-		return;
-	}
-	if (WARN_ON(wc->opcode != IB_WC_SEND))
-		return;
-
-	ibtrs_srv_update_wc_stats(con);
-
-	/*
-	 * We do not account number of established connections at the current
-	 * moment, we rely on the client, which should send info request when
-	 * all connections are successfully established.  Thus, simply notify
-	 * listener with proper event when info response is successfully sent.
-	 */
-	ctx->ops.sess_ev(sess, IBTRS_SRV_SESS_EV_CONNECTED, sess->priv);
-}
-
-static int ibtrs_handle_info_req(struct ibtrs_srv_con *con,
-				 struct ibtrs_msg_info_req *msg)
-{
-	struct ibtrs_srv_sess *sess = con->sess;
-	struct ibtrs_msg_info_rsp *rsp;
-	struct ibtrs_iu *tx_iu;
-	size_t tx_sz;
-	int i, err;
-	u64 addr;
-
-	memcpy(sess->s.addr.hostname, msg->hostname, sizeof(msg->hostname));
-
-	tx_sz  = sizeof(struct ibtrs_msg_info_rsp);
-	tx_sz += sizeof(u64) * sess->queue_depth;
-	tx_iu = ibtrs_iu_alloc(0, tx_sz, GFP_KERNEL, sess->s.ib_dev->dev,
-			       DMA_TO_DEVICE);
-	if (unlikely(!tx_iu)) {
-		ibtrs_err(sess, "ibtrs_iu_alloc(), err: %d\n", -ENOMEM);
-		return -ENOMEM;
-	}
-
-	rsp = tx_iu->buf;
-	rsp->type = cpu_to_le16(IBTRS_MSG_INFO_RSP);
-	rsp->addr_num = cpu_to_le16(sess->queue_depth);
-	strlcpy(rsp->hostname, hostname, sizeof(rsp->hostname));
-	for (i = 0; i < sess->queue_depth; i++) {
-		addr = sess->rcv_buf_pool->rcv_bufs[i].rdma_addr;
-		rsp->addr[i] = cpu_to_le64(addr);
-	}
-	/* Send info response */
-	err = ibtrs_post_send_cb(&con->c, sess->s.ib_dev->mr,
-				 tx_iu, tx_sz, ibtrs_srv_info_rsp_done);
-	if (unlikely(err)) {
-		ibtrs_err(sess, "ibtrs_post_send_cb(), err: %d\n", err);
-		ibtrs_iu_free(tx_iu, DMA_TO_DEVICE, sess->s.ib_dev->dev);
-	}
-
-	return err;
-}
 
 static void ibtrs_handle_recv(struct ibtrs_srv_con *con, struct ibtrs_iu *iu)
 {
