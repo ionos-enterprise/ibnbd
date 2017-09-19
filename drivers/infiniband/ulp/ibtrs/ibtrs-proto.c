@@ -4,13 +4,6 @@
 #include "ibtrs-log.h"
 
 static int
-ibtrs_validate_msg_user(const struct ibtrs_msg_user *msg)
-{
-	/* keep as place holder */
-	return 0;
-}
-
-static int
 ibtrs_validate_msg_rdma_write(const struct ibtrs_msg_rdma_write *msg)
 {
 	if (unlikely(le32_to_cpu(msg->hdr.tsize) <= sizeof(*msg))) {
@@ -50,12 +43,6 @@ int ibtrs_validate_message(const struct ibtrs_msg_hdr *hdr)
 
 		req = container_of(hdr, typeof(*req), hdr);
 		return ibtrs_validate_msg_req_rdma_write(req);
-	}
-	case IBTRS_MSG_USER: {
-		const struct ibtrs_msg_user *msg;
-
-		msg = container_of(hdr, typeof(*msg), hdr);
-		return ibtrs_validate_msg_user(msg);
 	}
 	default:
 		pr_err("Received IBTRS message with unknown type\n");
