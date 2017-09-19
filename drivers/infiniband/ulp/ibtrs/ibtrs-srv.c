@@ -14,8 +14,8 @@
 #include "ibtrs-log.h"
 
 MODULE_AUTHOR("ibnbd@profitbricks.com");
-MODULE_DESCRIPTION("InfiniBand Transport Server");
-MODULE_VERSION(__stringify(IBTRS_VER));
+MODULE_DESCRIPTION("IBTRS Server");
+MODULE_VERSION(IBTRS_VER_STRING);
 MODULE_LICENSE("GPL");
 
 #define DEFAULT_MAX_IO_SIZE_KB 128
@@ -1656,7 +1656,7 @@ static int ibtrs_rdma_do_accept(struct ibtrs_srv_sess *sess,
 
 	memset(&msg, 0, sizeof(msg));
 	msg.magic = cpu_to_le16(IBTRS_MAGIC);
-	msg.version = cpu_to_le16(IBTRS_CURRENT_VER);
+	msg.version = cpu_to_le16(IBTRS_VERSION);
 	msg.errno = 0;
 	msg.queue_depth = cpu_to_le16(sess->queue_depth);
 	msg.rkey = cpu_to_le32(sess->s.ib_dev->pd->unsafe_global_rkey);
@@ -1678,7 +1678,7 @@ static int ibtrs_rdma_do_reject(struct rdma_cm_id *cm_id, int errno)
 
 	memset(&msg, 0, sizeof(msg));
 	msg.magic = cpu_to_le16(IBTRS_MAGIC);
-	msg.version = cpu_to_le16(IBTRS_CURRENT_VER);
+	msg.version = cpu_to_le16(IBTRS_VERSION);
 	msg.errno = cpu_to_le16(errno);
 
 	err = rdma_reject(cm_id, &msg, sizeof(msg));
@@ -1843,7 +1843,7 @@ static int ibtrs_rdma_connect(struct rdma_cm_id *cm_id,
 		goto reject_w_econnreset;
 	}
 	version = le16_to_cpu(msg->version);
-	if (unlikely(version >> 8 != IBTRS_CURRENT_VER >> 8)) {
+	if (unlikely(version >> 8 != IBTRS_VER_MAJOR)) {
 		pr_err("Unsupported major IBTRS version: %d", version);
 		goto reject_w_econnreset;
 	}
@@ -2294,13 +2294,12 @@ static int __init ibtrs_server_init(void)
 		init_cq_affinity();
 
 	scnprintf(hostname, sizeof(hostname), "%s", utsname()->nodename);
-	pr_info("Loading module ibtrs_server, version: %s ("
-		" retry_count: %d, "
-		" cq_affinity_list: %s, max_io_size: %d,"
-		" sess_queue_depth: %d, init_pool_size: %d,"
-		" pool_size_hi_wm: %d, hostname: %s)\n",
-		__stringify(IBTRS_VER),
-		retry_count,
+	pr_info("Loading module %s, version: %s "
+		"(retry_count: %d, cq_affinity_list: %s, "
+		"max_io_size: %d, sess_queue_depth: %d, "
+		"init_pool_size: %d, pool_size_hi_wm: %d, "
+		"hostname: %s)\n",
+		KBUILD_MODNAME, IBTRS_VER_STRING, retry_count,
 		cq_affinity_list, max_io_size, sess_queue_depth,
 		init_pool_size, pool_size_hi_wm, hostname);
 

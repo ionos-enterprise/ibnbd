@@ -22,8 +22,8 @@
 #define IBTRS_CONNECT_TIMEOUT_MS 5000
 
 MODULE_AUTHOR("ibnbd@profitbricks.com");
-MODULE_DESCRIPTION("InfiniBand Transport Client");
-MODULE_VERSION(__stringify(IBTRS_VER));
+MODULE_DESCRIPTION("IBTRS Client");
+MODULE_VERSION(IBTRS_VER_STRING);
 MODULE_LICENSE("GPL");
 
 static bool use_fr;
@@ -2613,7 +2613,7 @@ static int ibtrs_rdma_route_resolved(struct ibtrs_clt_con *con)
 	param.private_data_len = sizeof(msg);
 
 	msg.magic = cpu_to_le16(IBTRS_MAGIC);
-	msg.version = cpu_to_le16(IBTRS_CURRENT_VER);
+	msg.version = cpu_to_le16(IBTRS_VERSION);
 	msg.cid = cpu_to_le16(con->cid);
 	msg.cid_num = cpu_to_le16(CONS_PER_SESSION);
 	memcpy(msg.uuid, sess->s.uuid.b, sizeof(msg.uuid));
@@ -2646,7 +2646,7 @@ static int ibtrs_rdma_conn_established(struct ibtrs_clt_con *con,
 		return -ECONNRESET;
 	}
 	version = le16_to_cpu(msg->version);
-	if (unlikely(version >> 8 != IBTRS_CURRENT_VER >> 8)) {
+	if (unlikely(version >> 8 != IBTRS_VER_MAJOR)) {
 		ibtrs_err(sess, "Unsupported major IBTRS version: %d",
 			  version);
 		return -ECONNRESET;
@@ -3580,11 +3580,11 @@ static int __init ibtrs_client_init(void)
 	int err;
 
 	scnprintf(hostname, sizeof(hostname), "%s", utsname()->nodename);
-	pr_info("Loading module ibtrs_client, version: " __stringify(IBTRS_VER)
-		" (use_fr: %d, retry_count: %d,"
-		" fmr_sg_cnt: %d,"
-		" hostname: %s)\n", use_fr,
-		retry_count, fmr_sg_cnt,
+	pr_info("Loading module %s, version: %s "
+		"(use_fr: %d, retry_count: %d, "
+		"fmr_sg_cnt: %d, hostname: %s)\n",
+		KBUILD_MODNAME, IBTRS_VER_STRING,
+		use_fr,	retry_count, fmr_sg_cnt,
 		hostname);
 	err = check_module_params();
 	if (err) {

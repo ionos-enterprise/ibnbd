@@ -14,6 +14,11 @@
 #include <linux/ktime.h>
 #include <linux/timekeeping.h>
 
+#define IBTRS_VER_MAJOR 1
+#define IBTRS_VER_MINOR 0
+#define IBTRS_VER_STRING __stringify(IBTRS_VER_MAJOR) "." \
+			 __stringify(IBTRS_VER_MINOR)
+
 enum {
 	USR_MSG_CNT = 64,
 	USR_CON_BUF_SIZE = USR_MSG_CNT * 2, /* double bufs for ACK's */
@@ -34,9 +39,8 @@ enum {
 
 	IBTRS_ACK_IMM = UINT_MAX,
 
-	IBTRS_MAGIC   = 0x1BBD,
-	IBTRS_VER_1_0 = 0x0100,
-	IBTRS_CURRENT_VER = IBTRS_VER_1_0,
+	IBTRS_MAGIC = 0x1BBD,
+	IBTRS_VERSION = (IBTRS_VER_MAJOR << 8) | IBTRS_VER_MINOR,
 };
 
 struct ibtrs_ib_dev {

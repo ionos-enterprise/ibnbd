@@ -1,8 +1,14 @@
 #define pr_fmt(fmt) KBUILD_MODNAME " L" __stringify(__LINE__) ": " fmt
 
+#include <linux/module.h>
 #include <rdma/ibtrs.h>
 #include "ibtrs-pri.h"
 #include "ibtrs-log.h"
+
+MODULE_AUTHOR("ibnbd@profitbricks.com");
+MODULE_DESCRIPTION("IBTRS Core");
+MODULE_VERSION(IBTRS_VER_STRING);
+MODULE_LICENSE("GPL");
 
 static LIST_HEAD(device_list);
 static DEFINE_MUTEX(device_list_mutex);
