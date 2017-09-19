@@ -2870,8 +2870,8 @@ static int ibtrs_send_sess_info(struct ibtrs_clt_sess *sess,
 			       GFP_KERNEL, sess->s.ib_dev->dev, DMA_TO_DEVICE);
 	rx_iu = ibtrs_iu_alloc(0, rx_sz, GFP_KERNEL,
 			       sess->s.ib_dev->dev, DMA_FROM_DEVICE);
-	if (unlikely(!tx_iu || !rx_sz)) {
-		ibtrs_err(sess, "ibtrs_iu_alloc(), err: %d\n", -ENOMEM);
+	if (unlikely(!tx_iu || !rx_iu)) {
+		ibtrs_err(sess, "ibtrs_iu_alloc(): no memory\n");
 		err = -ENOMEM;
 		goto out;
 	}
