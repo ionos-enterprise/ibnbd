@@ -1404,8 +1404,8 @@ static void process_msg_user_ack(struct ibtrs_srv_con *con)
 	ibtrs_usr_msg_put(&sess->s);
 }
 
-static void ibtrs_handle_write(struct ibtrs_srv_con *con, struct ibtrs_iu *iu,
-			       struct ibtrs_msg_hdr *hdr, u32 id, u32 off)
+static void process_io_req(struct ibtrs_srv_con *con, struct ibtrs_iu *iu,
+			   struct ibtrs_msg_hdr *hdr, u32 id, u32 off)
 {
 	struct ibtrs_srv_sess *sess = con->sess;
 	unsigned type;
@@ -1495,26 +1495,6 @@ static int ibtrs_schedule_msg(struct ibtrs_srv_con *con,
 	return 0;
 }
 
-static void process_err_wc(struct ibtrs_srv_con *con, struct ib_wc *wc)
-{
-	struct ibtrs_srv_sess *sess = con->sess;
-	struct ibtrs_iu *iu;
-
-	/*
-	 * Only wc->wr_cqe is ensured to be correct in erroneous WCs,
-	 * we can't rely on wc->opcode, use iu->direction to determine
-	 * if it's an tx or rx IU.
-	 */
-	iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
-
-	ibtrs_err_rl(sess, "%s (wr_cqe: %p,"
-		     " type: %s, vendor_err: 0x%x, len: %u)\n",
-		     ib_wc_status_msg(wc->status), wc->wr_cqe,
-		     ib_wc_opcode_str(wc->opcode),
-		     wc->vendor_err, wc->byte_len);
-	close_sess(sess);
-}
-
 static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 {
 	struct ibtrs_srv_con *con = cq->cq_context;
@@ -1524,11 +1504,19 @@ static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 	u32 imm, msg_id, off;
 	int ret;
 
-	ibtrs_srv_update_wc_stats(con);
+	WARN_ON(!con->cid);
+
 	if (unlikely(wc->status != IB_WC_SUCCESS)) {
-		process_err_wc(con, wc);
+		ibtrs_err(sess, "%s (wr_cqe: %p,"
+			  " type: %s, vendor_err: 0x%x, len: %u)\n",
+			  ib_wc_status_msg(wc->status), wc->wr_cqe,
+			  ib_wc_opcode_str(wc->opcode),
+			  wc->vendor_err, wc->byte_len);
+		close_sess(sess);
 		return;
 	}
+
+	ibtrs_srv_update_wc_stats(con);
 
 	switch (wc->opcode) {
 	case IB_WC_RDMA_WRITE:
@@ -1572,7 +1560,7 @@ static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 		hdr = (struct ibtrs_msg_hdr *)
 			(sess->rcv_buf_pool->rcv_bufs[msg_id].buf + off);
 
-		ibtrs_handle_write(con, iu, hdr, msg_id, off);
+		process_io_req(con, iu, hdr, msg_id, off);
 		break;
 	default:
 		ibtrs_wrn(sess, "Unexpected WC type: %s\n",
