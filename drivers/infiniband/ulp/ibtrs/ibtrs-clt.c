@@ -1341,8 +1341,7 @@ static void ibtrs_clt_usr_send_done(struct ib_cq *cq, struct ib_wc *wc)
 		ibtrs_rdma_error_recovery(con);
 		return;
 	}
-	if (WARN_ON(wc->opcode != IB_WC_SEND))
-		return;
+	WARN_ON(wc->opcode != IB_WC_SEND);
 
 	ibtrs_clt_update_wc_stats(con);
 }
@@ -1356,15 +1355,15 @@ static void ibtrs_clt_usr_recv_done(struct ib_cq *cq, struct ib_wc *wc)
 	unsigned type;
 	int err;
 
+	WARN_ON(con->cid);
+
 	if (unlikely(wc->status != IB_WC_SUCCESS)) {
 		ibtrs_err(sess, "User message recv failed: %s\n",
 			  ib_wc_status_msg(wc->status));
 		goto err;
 	}
-	if (WARN_ON(wc->opcode != IB_WC_RECV))
-		return;
-	if (WARN_ON(con->cid))
-		return;
+	WARN_ON(wc->opcode != IB_WC_RECV);
+
 	if (unlikely(wc->byte_len < sizeof(*msg))) {
 		ibtrs_err(sess, "Malformed user message: size %d\n",
 			  wc->byte_len);
@@ -2831,15 +2830,42 @@ static void ibtrs_clt_info_rsp_done(struct ib_cq *cq, struct ib_wc *wc)
 {
 	struct ibtrs_clt_con *con = cq->cq_context;
 	struct ibtrs_clt_sess *sess = con->sess;
-	bool state = IBTRS_CLT_CONNECTING_ERR;
+	struct ibtrs_msg_info_rsp *msg;
+	enum ibtrs_clt_state state;
 	struct ibtrs_iu *iu;
+	size_t rx_sz;
 	int err;
 
-	iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
-	if (unlikely(wc->status != IB_WC_SUCCESS))
-		goto out;
+	state = IBTRS_CLT_CONNECTING_ERR;
 
-	err = process_info_rsp(sess, iu->buf);
+	WARN_ON(con->cid);
+	iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
+	if (unlikely(wc->status != IB_WC_SUCCESS)) {
+		ibtrs_err(sess, "Sess info response recv failed: %s\n",
+			  ib_wc_status_msg(wc->status));
+		goto out;
+	}
+	WARN_ON(wc->opcode != IB_WC_RECV);
+
+	if (unlikely(wc->byte_len < sizeof(*msg))) {
+		ibtrs_err(sess, "Sess info response is malformed: size %d\n",
+			  wc->byte_len);
+		goto out;
+	}
+	msg = iu->buf;
+	if (unlikely(le16_to_cpu(msg->type) != IBTRS_MSG_INFO_RSP)) {
+		ibtrs_err(sess, "Sess info response is malformed: type %d\n",
+			  le32_to_cpu(msg->type));
+		goto out;
+	}
+	rx_sz  = sizeof(*msg);
+	rx_sz += sizeof(msg->addr[0]) * le16_to_cpu(msg->addr_num);
+	if (unlikely(wc->byte_len < rx_sz)) {
+		ibtrs_err(sess, "Sess info response is malformed: size %d\n",
+			  wc->byte_len);
+		goto out;
+	}
+	err = process_info_rsp(sess, msg);
 	if (unlikely(err))
 		goto out;
 

@@ -1065,8 +1065,7 @@ static void ibtrs_srv_info_rsp_done(struct ib_cq *cq, struct ib_wc *wc)
 		close_sess(sess);
 		return;
 	}
-	if (WARN_ON(wc->opcode != IB_WC_SEND))
-		return;
+	WARN_ON(wc->opcode != IB_WC_SEND);
 
 	ibtrs_srv_update_wc_stats(con);
 
@@ -1134,12 +1133,16 @@ static void ibtrs_srv_info_req_done(struct ib_cq *cq, struct ib_wc *wc)
 	struct ibtrs_iu *iu;
 	int err;
 
+	WARN_ON(con->cid);
+
 	iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
 	if (unlikely(wc->status != IB_WC_SUCCESS)) {
 		ibtrs_err(sess, "Sess info request receive failed: %s\n",
 			  ib_wc_status_msg(wc->status));
 		goto close;
 	}
+	WARN_ON(wc->opcode != IB_WC_RECV);
+
 	if (unlikely(wc->byte_len < sizeof(*msg))) {
 		ibtrs_err(sess, "Sess info request is malformed: size %d\n",
 			  wc->byte_len);
