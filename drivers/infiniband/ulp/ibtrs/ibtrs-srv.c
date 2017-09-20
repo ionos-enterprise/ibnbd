@@ -644,6 +644,8 @@ int ibtrs_srv_resp_rdma(struct ibtrs_srv_op *id, int status)
 }
 EXPORT_SYMBOL(ibtrs_srv_resp_rdma);
 
+static void ibtrs_srv_usr_send_done(struct ib_cq *cq, struct ib_wc *wc);
+
 int ibtrs_srv_send(struct ibtrs_srv_sess *sess, const struct kvec *vec,
 		   size_t nr)
 {
@@ -672,9 +674,8 @@ int ibtrs_srv_send(struct ibtrs_srv_sess *sess, const struct kvec *vec,
 
 	len += sizeof(*msg);
 
-	//XXX CHECK
 	err = ibtrs_post_send_cb(&usr_con->c, usr_con->sess->s.ib_dev->mr,
-				 iu, len, ibtrs_srv_rdma_done);
+				 iu, len, ibtrs_srv_usr_send_done);
 	if (unlikely(err)) {
 		ibtrs_err_rl(sess, "Sending message failed, posting message to QP"
 			     " failed, err: %d\n", err);
@@ -1205,6 +1206,8 @@ static int post_recv_io(struct ibtrs_srv_con *con)
 	return 0;
 }
 
+static void ibtrs_srv_usr_recv_done(struct ib_cq *cq, struct ib_wc *wc);
+
 static int post_recv_usr(struct ibtrs_srv_con *con)
 {
 	struct ibtrs_srv_sess *sess = con->sess;
@@ -1213,7 +1216,7 @@ static int post_recv_usr(struct ibtrs_srv_con *con)
 
 	for (i = 0; i < USR_CON_BUF_SIZE; i++) {
 		iu = sess->s.usr_rx_ring[i];
-		err = ibtrs_post_recv_cb(&con->c, iu, ibtrs_srv_rdma_done);
+		err = ibtrs_post_recv_cb(&con->c, iu, ibtrs_srv_usr_recv_done);
 		if (unlikely(err))
 			return err;
 	}
@@ -1481,68 +1484,17 @@ static int ibtrs_schedule_msg(struct ibtrs_srv_con *con,
 	return 0;
 }
 
-static void ibtrs_handle_recv(struct ibtrs_srv_con *con, struct ibtrs_iu *iu)
-{
-	struct ibtrs_srv_sess *sess = con->sess;
-	int err, type;
-
-	type = le16_to_cpu(*(__le16 *)iu->buf);
-	pr_debug("recv completion, type 0x%02x, tag %u\n", type, iu->tag);
-	print_hex_dump_debug("", DUMP_PREFIX_OFFSET, 8, 1,
-			     iu->buf, sizeof(struct ibtrs_msg_hdr), true);
-
-	switch (type) {
-	case IBTRS_MSG_USER:
-		err = ibtrs_schedule_msg(con, iu->buf);
-		if (unlikely(err)) {
-			ibtrs_err(sess, "ibtrs_schedule_msg(), err: %d\n",
-				  err);
-			goto err;
-		}
-		err = ibtrs_post_recv_cb(&con->c, iu, ibtrs_srv_rdma_done);
-		if (unlikely(err)) {
-			ibtrs_err(sess, "ibtrs_post_recv_cb(), err: %d\n", err);
-			goto err;
-		}
-		err = ibtrs_send_usr_msg_ack(con);
-		if (unlikely(err)) {
-			ibtrs_err(sess, "ibtrs_send_usr_msg_ack(), err: %d\n",
-				  err);
-			goto err;
-		}
-		break;
-	default:
-		ibtrs_err(sess, "Processing received message failed, "
-			  "unknown type: 0x%02x\n", type);
-		goto err;
-	}
-
-	return;
-
-err:
-	close_sess(sess);
-}
-
 static void process_err_wc(struct ibtrs_srv_con *con, struct ib_wc *wc)
 {
 	struct ibtrs_srv_sess *sess = con->sess;
 	struct ibtrs_iu *iu;
 
-	if (wc->wr_cqe == &ack_cqe) {
-		ibtrs_err_rl(sess, "ib_post_send() ack failed, status: %s\n",
-			     ib_wc_status_msg(wc->status));
-		close_sess(sess);
-		return;
-	}
 	/*
 	 * Only wc->wr_cqe is ensured to be correct in erroneous WCs,
 	 * we can't rely on wc->opcode, use iu->direction to determine
 	 * if it's an tx or rx IU.
 	 */
 	iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
-	//XXX CHECK
-	if (iu && iu->direction == DMA_TO_DEVICE)
-		ibtrs_usr_msg_return_iu(&sess->s, iu);
 
 	ibtrs_err_rl(sess, "%s (wr_cqe: %p,"
 		     " type: %s, vendor_err: 0x%x, len: %u)\n",
@@ -1568,22 +1520,6 @@ static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 	}
 
 	switch (wc->opcode) {
-	case IB_WC_SEND:
-		/*
-		 * post_send() completions: sess info resp, user msgs
-		 */
-		iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
-		if (con->cid == 0)
-			//XXX WTF? should be WARN_ON if con->cid != 0
-			ibtrs_usr_msg_return_iu(&sess->s, iu);
-		break;
-	case IB_WC_RECV:
-		/*
-		 * post_recv() completions: sess info, user msgs
-		 */
-		iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
-		ibtrs_handle_recv(con, iu);
-		break;
 	case IB_WC_RDMA_WRITE:
 		/*
 		 * post_send() RDMA write completions of IO reqs (read/write),
@@ -1633,6 +1569,79 @@ static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 			  ib_wc_opcode_str(wc->opcode));
 		return;
 	}
+}
+
+static void ibtrs_srv_usr_send_done(struct ib_cq *cq, struct ib_wc *wc)
+{
+	struct ibtrs_srv_con *con = cq->cq_context;
+	struct ibtrs_srv_sess *sess = con->sess;
+	struct ibtrs_iu *iu;
+
+	WARN_ON(con->cid);
+
+	iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
+	ibtrs_usr_msg_return_iu(&sess->s, iu);
+	iu = NULL;
+
+	ibtrs_srv_update_wc_stats(con);
+
+	if (unlikely(wc->status != IB_WC_SUCCESS)) {
+		ibtrs_err(sess, "User message send failed: %s\n",
+			  ib_wc_status_msg(wc->status));
+		close_sess(sess);
+	}
+	WARN_ON(wc->opcode != IB_WC_RECV);
+}
+
+static void ibtrs_srv_usr_recv_done(struct ib_cq *cq, struct ib_wc *wc)
+{
+	struct ibtrs_srv_con *con = cq->cq_context;
+	struct ibtrs_srv_sess *sess = con->sess;
+	struct ibtrs_iu *iu;
+	unsigned type;
+	int err;
+
+	WARN_ON(con->cid);
+	if (unlikely(wc->status != IB_WC_SUCCESS)) {
+		ibtrs_err(sess, "User message recv failed: %s\n",
+			  ib_wc_status_msg(wc->status));
+		goto err;
+	}
+	WARN_ON(wc->opcode != IB_WC_RECV);
+
+	ibtrs_srv_update_wc_stats(con);
+	type = le16_to_cpu(*(__le16 *)iu->buf);
+
+	switch (type) {
+	case IBTRS_MSG_USER:
+		err = ibtrs_schedule_msg(con, iu->buf);
+		if (unlikely(err)) {
+			ibtrs_err(sess, "ibtrs_schedule_msg(), err: %d\n",
+				  err);
+			goto err;
+		}
+		err = ibtrs_post_recv_cb(&con->c, iu, ibtrs_srv_usr_recv_done);
+		if (unlikely(err)) {
+			ibtrs_err(sess, "ibtrs_post_recv_cb(), err: %d\n", err);
+			goto err;
+		}
+		err = ibtrs_send_usr_msg_ack(con);
+		if (unlikely(err)) {
+			ibtrs_err(sess, "ibtrs_send_usr_msg_ack(), err: %d\n",
+				  err);
+			goto err;
+		}
+		break;
+	default:
+		ibtrs_err(sess, "Processing received message failed, "
+			  "unknown type: 0x%02x\n", type);
+		goto err;
+	}
+
+	return;
+
+err:
+	close_sess(sess);
 }
 
 const char *ibtrs_srv_get_sess_hostname(struct ibtrs_srv_sess *sess)
