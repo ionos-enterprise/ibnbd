@@ -24,12 +24,6 @@ static int max_io_size = DEFAULT_MAX_IO_SIZE;
 #define MAX_REQ_SIZE PAGE_SIZE
 static int rcv_buf_size = DEFAULT_MAX_IO_SIZE + MAX_REQ_SIZE;
 
-static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc);
-
-static struct ib_cqe ack_cqe = {
-	.done = ibtrs_srv_rdma_done
-};
-
 static int max_io_size_set(const char *val, const struct kernel_param *kp)
 {
 	int err, ival;
@@ -534,6 +528,22 @@ static int rdma_write_sg(struct ibtrs_srv_op *id)
 
 	return err;
 }
+
+static void ibtrs_srv_ack_done(struct ib_cq *cq, struct ib_wc *wc)
+{
+	struct ibtrs_srv_con *con = cq->cq_context;
+	struct ibtrs_srv_sess *sess = con->sess;
+
+	if (unlikely(wc->status != IB_WC_SUCCESS)) {
+		ibtrs_err(sess, "Failed ACK: %s\n",
+			  ib_wc_status_msg(wc->status));
+		close_sess(sess);
+	}
+}
+
+static struct ib_cqe ack_cqe = {
+	.done = ibtrs_srv_ack_done
+};
 
 static int send_io_resp_imm(struct ibtrs_srv_con *con, int msg_id, s16 errno)
 {
@@ -1191,6 +1201,8 @@ static int post_recv_info_req(struct ibtrs_srv_con *con)
 	return 0;
 }
 
+static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc);
+
 static int post_recv_io(struct ibtrs_srv_con *con)
 {
 	struct ibtrs_srv_sess *sess = con->sess;
@@ -1351,7 +1363,6 @@ static int ibtrs_send_usr_msg_ack(struct ibtrs_srv_con *con)
 			     ibtrs_srv_state_str(sess->state));
 		return -ECOMM;
 	}
-	pr_debug("Sending user message ack\n");
 	err = ibtrs_post_rdma_write_imm_empty(con->c.qp,
 					      &ack_cqe,
 					      IBTRS_ACK_IMM,
@@ -1522,8 +1533,7 @@ static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 	switch (wc->opcode) {
 	case IB_WC_RDMA_WRITE:
 		/*
-		 * post_send() RDMA write completions of IO reqs (read/write),
-		 *             user msgs acks, heartbeats
+		 * post_send() RDMA write completions of IO reqs (read/write)
 		 */
 		break;
 	case IB_WC_RECV_RDMA_WITH_IMM:
