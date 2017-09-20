@@ -1283,6 +1283,8 @@ static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 	u32 imm, msg_id;
 	int err;
 
+	WARN_ON(!con->cid);
+
 	if (unlikely(wc->status != IB_WC_SUCCESS)) {
 		ibtrs_err(sess, "RDMA failed: %s\n",
 			  ib_wc_status_msg(wc->status));
@@ -1333,7 +1335,6 @@ static void ibtrs_clt_usr_send_done(struct ib_cq *cq, struct ib_wc *wc)
 
 	iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
 	ibtrs_usr_msg_return_iu(&sess->s, iu);
-	iu = NULL;
 
 	if (unlikely(wc->status != IB_WC_SUCCESS)) {
 		ibtrs_err(sess, "User message send failed: %s\n",
@@ -2792,8 +2793,14 @@ static void ibtrs_clt_info_req_done(struct ib_cq *cq, struct ib_wc *wc)
 	iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
 	ibtrs_iu_free(iu, DMA_TO_DEVICE, sess->s.ib_dev->dev);
 
-	if (unlikely(wc->status != IB_WC_SUCCESS))
+	if (unlikely(wc->status != IB_WC_SUCCESS)) {
+		ibtrs_err(sess, "Sess info request send failed: %s\n",
+			  ib_wc_status_msg(wc->status));
 		ibtrs_clt_change_state(sess, IBTRS_CLT_CONNECTING_ERR);
+		return;
+	}
+
+	ibtrs_clt_update_wc_stats(con);
 }
 
 static int process_info_rsp(struct ibtrs_clt_sess *sess,

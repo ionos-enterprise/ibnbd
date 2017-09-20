@@ -1579,27 +1579,29 @@ static void ibtrs_srv_usr_send_done(struct ib_cq *cq, struct ib_wc *wc)
 
 	iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
 	ibtrs_usr_msg_return_iu(&sess->s, iu);
-	iu = NULL;
-
-	ibtrs_srv_update_wc_stats(con);
 
 	if (unlikely(wc->status != IB_WC_SUCCESS)) {
 		ibtrs_err(sess, "User message send failed: %s\n",
 			  ib_wc_status_msg(wc->status));
 		close_sess(sess);
+		return;
 	}
-	WARN_ON(wc->opcode != IB_WC_RECV);
+	WARN_ON(wc->opcode != IB_WC_SEND);
+
+	ibtrs_srv_update_wc_stats(con);
 }
 
 static void ibtrs_srv_usr_recv_done(struct ib_cq *cq, struct ib_wc *wc)
 {
 	struct ibtrs_srv_con *con = cq->cq_context;
 	struct ibtrs_srv_sess *sess = con->sess;
+	struct ibtrs_msg_user *msg;
 	struct ibtrs_iu *iu;
 	unsigned type;
 	int err;
 
 	WARN_ON(con->cid);
+
 	if (unlikely(wc->status != IB_WC_SUCCESS)) {
 		ibtrs_err(sess, "User message recv failed: %s\n",
 			  ib_wc_status_msg(wc->status));
@@ -1607,12 +1609,21 @@ static void ibtrs_srv_usr_recv_done(struct ib_cq *cq, struct ib_wc *wc)
 	}
 	WARN_ON(wc->opcode != IB_WC_RECV);
 
+	if (unlikely(wc->byte_len < sizeof(*msg))) {
+		ibtrs_err(sess, "Malformed user message: size %d\n",
+			  wc->byte_len);
+		goto err;
+	}
+
 	ibtrs_srv_update_wc_stats(con);
-	type = le16_to_cpu(*(__le16 *)iu->buf);
+
+	iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
+	msg = (struct ibtrs_msg_user *)iu->buf;
+	type = le16_to_cpu(msg->type);
 
 	switch (type) {
 	case IBTRS_MSG_USER:
-		err = ibtrs_schedule_msg(con, iu->buf);
+		err = ibtrs_schedule_msg(con, msg);
 		if (unlikely(err)) {
 			ibtrs_err(sess, "ibtrs_schedule_msg(), err: %d\n",
 				  err);
