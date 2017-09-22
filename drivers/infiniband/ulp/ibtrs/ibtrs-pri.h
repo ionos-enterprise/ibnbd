@@ -102,6 +102,10 @@ enum ibtrs_msg_types {
 	IBTRS_MSG_USER,
 };
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic warning "-Wpadded"
+
+
 /**
  * struct ibtrs_msg_conn_req - Client connection request to the server
  * @magic:	   IBTRS magic
@@ -221,41 +225,26 @@ struct ibtrs_sg_desc {
 };
 
 /**
- * struct ibtrs_msg_hdr - Common header of all IBTRS messages
- * @type:	Message type, valid values see: enum ibtrs_msg_types
- * @tsize:	Total size of transferred data
- */
-struct ibtrs_msg_hdr {
-	__le16			type;
-	__le16			__padding2;
-	__le32			tsize;
-};
-
-/**
  * struct ibtrs_msg_req_rdma_write - RDMA data transfer request from client
  * @hdr:		message header
  * @sg_cnt:		number of @desc entries
  * @desc:		RDMA bufferst where the server can write the result to
  */
 struct ibtrs_msg_req_rdma_write {
-	struct ibtrs_msg_hdr	hdr;
-	__le32			__padding;
+	__le16			type;
+	__le16			__padding;
 	__le32			sg_cnt;
 	struct ibtrs_sg_desc    desc[];
 };
 
 /**
  * struct_msg_rdma_write - Message transferred to server with RDMA-Write
- * @hdr:		message header
  */
 struct ibtrs_msg_rdma_write {
-	struct ibtrs_msg_hdr	hdr;
+	__le16			type;
 };
 
-/* ibtrs-proto.c */
-
-/* XXX CHECK */
-int ibtrs_validate_message(const struct ibtrs_msg_hdr *hdr);
+#pragma GCC diagnostic pop
 
 /* ibtrs-iu.c */
 

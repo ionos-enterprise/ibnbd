@@ -1377,28 +1377,14 @@ static int ibtrs_send_usr_msg_ack(struct ibtrs_srv_con *con)
 }
 
 static void process_io_req(struct ibtrs_srv_con *con, struct ibtrs_iu *iu,
-			   struct ibtrs_msg_hdr *hdr, u32 id, u32 off)
+			   void *msg, u32 id, u32 off)
 {
 	struct ibtrs_srv_sess *sess = con->sess;
 	unsigned type;
 	int ret;
 
-	if (unlikely(ibtrs_validate_message(hdr))) {
-		ibtrs_err(sess,
-			  "Processing I/O failed, message validation failed\n");
-		ret = ibtrs_post_recv_cb(&con->c, iu, ibtrs_srv_rdma_done);
-		if (unlikely(ret != 0))
-			ibtrs_err(sess,
-				  "Failed to post receive buffer to HCA, err: %d\n",
-				  ret);
-		goto err;
-	}
-
-	type = le16_to_cpu(hdr->type);
-	pr_debug("recv completion, type 0x%02x, tag %u, id %u, off %u\n",
-		 type, iu->tag, id, off);
-	print_hex_dump_debug("", DUMP_PREFIX_OFFSET, 8, 1,
-			     hdr, sizeof(struct ibtrs_msg_hdr) + 32, true);
+	//XXX REMOVE ASAP
+	type = le16_to_cpu(le16_to_cpu(*(__le16 *)msg));
 	ret = ibtrs_post_recv_cb(&con->c, iu, ibtrs_srv_rdma_done);
 	if (unlikely(ret != 0)) {
 		ibtrs_err(sess, "Posting receive buffer to HCA failed, err: %d\n",
@@ -1408,13 +1394,10 @@ static void process_io_req(struct ibtrs_srv_con *con, struct ibtrs_iu *iu,
 
 	switch (type) {
 	case IBTRS_MSG_RDMA_WRITE:
-		process_rdma_write(con, (struct ibtrs_msg_rdma_write *)hdr,
-				   id, off);
+		process_rdma_write(con, msg, id, off);
 		break;
 	case IBTRS_MSG_REQ_RDMA_WRITE:
-		process_rdma_write_req(con,
-				       (struct ibtrs_msg_req_rdma_write *)hdr,
-				       id, off);
+		process_rdma_write_req(con, msg, id, off);
 		break;
 	default:
 		ibtrs_err(sess, "Processing I/O request failed, "
@@ -1482,9 +1465,9 @@ static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 {
 	struct ibtrs_srv_con *con = cq->cq_context;
 	struct ibtrs_srv_sess *sess = con->sess;
-	struct ibtrs_msg_hdr *hdr;
 	struct ibtrs_iu *iu;
 	u32 imm, msg_id, off;
+	void *buf;
 	int ret;
 
 	WARN_ON(!con->cid);
@@ -1528,11 +1511,8 @@ static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 			close_sess(sess);
 			return;
 		}
-
-		hdr = (struct ibtrs_msg_hdr *)
-			(sess->rcv_buf_pool->rcv_bufs[msg_id].buf + off);
-
-		process_io_req(con, iu, hdr, msg_id, off);
+		buf = sess->rcv_buf_pool->rcv_bufs[msg_id].buf + off;
+		process_io_req(con, iu, buf, msg_id, off);
 		break;
 	default:
 		ibtrs_wrn(sess, "Unexpected WC type: %s\n",

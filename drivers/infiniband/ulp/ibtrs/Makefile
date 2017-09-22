@@ -5,7 +5,6 @@ ibtrs-server-y := ibtrs-srv.o \
 		  ibtrs-srv-sysfs.o
 
 ibtrs-core-y := ibtrs.o \
-		ibtrs-proto.o \
 		ibtrs-iu.o
 
 obj-$(CONFIG_INFINIBAND_IBTRS)        += ibtrs-core.o
