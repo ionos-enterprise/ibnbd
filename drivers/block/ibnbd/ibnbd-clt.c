@@ -1130,17 +1130,6 @@ static const struct block_device_operations ibnbd_client_ops = {
 	.getgeo		= ibnbd_client_getgeo
 };
 
-static size_t ibnbd_clt_get_sg_size(struct scatterlist *sglist, u32 len)
-{
-	struct scatterlist *sg;
-	size_t tsize = 0;
-	int i;
-
-	for_each_sg(sglist, sg, len, i)
-		tsize += sg->length;
-	return tsize;
-}
-
 static inline int ibnbd_clt_setup_discard(struct request *rq)
 {
 	struct page *page;
@@ -1186,12 +1175,12 @@ static int ibnbd_client_xfer_request(struct ibnbd_clt_dev *dev,
 	iu->msg.bi_size = blk_rq_bytes(rq);
 	iu->msg.rw	= rq_cmd_to_ibnbd_io_flags(rq);
 
-	sg_cnt = blk_rq_map_sg(dev->queue, rq, sg);
+	sg_cnt = blk_rq_map_sg(dev->queue, rq, iu->sglist);
+	size = blk_rq_bytes(rq);
 
 	iu->msg.hdr.type	= IBNBD_MSG_IO;
 	iu->msg.device_id	= dev->device_id;
 
-	size = ibnbd_clt_get_sg_size(sg, sg_cnt);
 	vec = (struct kvec) {
 		.iov_base = &iu->msg,
 		.iov_len  = sizeof(iu->msg)
@@ -1199,10 +1188,10 @@ static int ibnbd_client_xfer_request(struct ibnbd_clt_dev *dev,
 
 	if (req_op(rq) == READ)
 		err = ibtrs_clt_request_rdma_write(sess, tag, iu, &vec, 1, size,
-						   sg, sg_cnt);
+						   iu->sglist, sg_cnt);
 	else
-		err = ibtrs_clt_rdma_write(sess, tag, iu, &vec, 1, size, sg,
-					   sg_cnt);
+		err = ibtrs_clt_rdma_write(sess, tag, iu, &vec, 1, size,
+					   iu->sglist, sg_cnt);
 	if (unlikely(err)) {
 		ibnbd_err_rl(dev, "IBTRS failed to transfer IO, err: %d\n",
 			     err);
