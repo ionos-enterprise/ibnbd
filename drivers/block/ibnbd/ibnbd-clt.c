@@ -101,8 +101,7 @@ static void ibnbd_clt_set_dev_attr(struct ibnbd_clt_dev *dev,
 			rsp->max_hw_sectors ?
 			dev->sess->max_io_size /
 			rsp->logical_block_size : rsp->max_hw_sectors;
-		dev->max_segments = rsp->max_segments > BMAX_SEGMENTS ?
-				    BMAX_SEGMENTS : rsp->max_segments;
+		dev->max_segments = min_t(u16, rsp->max_segments, BMAX_SEGMENTS);
 	}
 }
 
@@ -1148,35 +1147,29 @@ static int ibnbd_client_xfer_request(struct ibnbd_clt_dev *dev,
 				     struct request *rq,
 				     struct ibnbd_iu *iu)
 {
-	int err;
-
-	unsigned int sg_cnt;
-	size_t size;
-	struct kvec vec;
 	struct ibtrs_clt_sess *sess = dev->sess->sess;
 	struct ibtrs_tag *tag = iu->tag;
-	struct scatterlist *sg = iu->sglist;
+	unsigned int sg_cnt;
+	struct kvec vec;
+	size_t size;
+	int err;
 
 	if (req_op(rq) == REQ_OP_DISCARD) {
 		err = ibnbd_clt_setup_discard(rq);
 		if (err)
 			return err;
 	}
-	sg_cnt = blk_rq_nr_phys_segments(rq);
-
-	if (sg_cnt == 0)
-		sg_mark_end(&sg[0]);
-	else
-		sg_mark_end(&sg[sg_cnt - 1]);
-
 	iu->rq		= rq;
 	iu->dev		= dev;
 	iu->msg.sector	= blk_rq_pos(rq);
 	iu->msg.bi_size = blk_rq_bytes(rq);
 	iu->msg.rw	= rq_cmd_to_ibnbd_io_flags(rq);
 
-	sg_cnt = blk_rq_map_sg(dev->queue, rq, iu->sglist);
 	size = blk_rq_bytes(rq);
+	sg_cnt = blk_rq_map_sg(dev->queue, rq, iu->sglist);
+	if (sg_cnt == 0)
+		/* Do not forget to mark the end */
+		sg_mark_end(&iu->sglist[0]);
 
 	iu->msg.hdr.type	= IBNBD_MSG_IO;
 	iu->msg.device_id	= dev->device_id;
