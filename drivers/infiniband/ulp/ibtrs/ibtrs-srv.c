@@ -1376,21 +1376,13 @@ static int ibtrs_send_usr_msg_ack(struct ibtrs_srv_con *con)
 	return 0;
 }
 
-static void process_io_req(struct ibtrs_srv_con *con, struct ibtrs_iu *iu,
-			   void *msg, u32 id, u32 off)
+static void process_io_req(struct ibtrs_srv_con *con, void *msg,
+			   u32 id, u32 off)
 {
 	struct ibtrs_srv_sess *sess = con->sess;
 	unsigned type;
-	int ret;
 
-	//XXX REMOVE ASAP
 	type = le16_to_cpu(le16_to_cpu(*(__le16 *)msg));
-	ret = ibtrs_post_recv_cb(&con->c, iu, ibtrs_srv_rdma_done);
-	if (unlikely(ret != 0)) {
-		ibtrs_err(sess, "Posting receive buffer to HCA failed, err: %d\n",
-			  ret);
-		goto err;
-	}
 
 	switch (type) {
 	case IBTRS_MSG_RDMA_WRITE:
@@ -1468,7 +1460,7 @@ static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 	struct ibtrs_iu *iu;
 	u32 imm, msg_id, off;
 	void *buf;
-	int ret;
+	int err;
 
 	WARN_ON(!con->cid);
 
@@ -1495,24 +1487,26 @@ static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 		 * post_recv() RDMA write completions of IO reqs (read/write)
 		 */
 		iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
+		/* We can post iu immediately, since we have imm */
+		err = ibtrs_post_recv_cb(&con->c, iu, ibtrs_srv_rdma_done);
+		if (unlikely(err)) {
+			ibtrs_err(sess, "ibtrs_post_recv_cb(), err: %d\n", err);
+			close_sess(sess);
+			break;
+		}
 		imm = be32_to_cpu(wc->ex.imm_data);
 		msg_id = imm >> sess->off_len;
 		off = imm & sess->off_mask;
 
-		if (msg_id > sess->queue_depth || off > rcv_buf_size) {
+		if (unlikely(msg_id > sess->queue_depth ||
+			     off > rcv_buf_size)) {
 			ibtrs_err(sess, "Processing I/O failed, contiguous "
 				  "buf addr is out of reserved area\n");
-			ret = ibtrs_post_recv_cb(&con->c, iu,
-						 ibtrs_srv_rdma_done);
-			if (unlikely(ret != 0))
-				ibtrs_err(sess, "Processing I/O failed, "
-					  "post receive buffer failed, "
-					  "err: %d\n", ret);
 			close_sess(sess);
 			return;
 		}
 		buf = sess->rcv_buf_pool->rcv_bufs[msg_id].buf + off;
-		process_io_req(con, iu, buf, msg_id, off);
+		process_io_req(con, buf, msg_id, off);
 		break;
 	default:
 		ibtrs_wrn(sess, "Unexpected WC type: %s\n",

@@ -1292,10 +1292,12 @@ static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 		 * post_recv() RDMA write completions of IO reqs (read/write)
 		 */
 		iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
+		/* We can post iu immediately, since we have imm */
 		err = ibtrs_post_recv_cb(&con->c, iu, ibtrs_clt_rdma_done);
 		if (unlikely(err)) {
-			ibtrs_err(sess, "Failed to post receive buffer\n");
+			ibtrs_err(sess, "ibtrs_post_recv_cb(), err: %d\n", err);
 			ibtrs_rdma_error_recovery(con);
+			break;
 		}
 		imm = be32_to_cpu(wc->ex.imm_data);
 		msg_id = imm >> 16;
