@@ -3189,7 +3189,7 @@ static int ibtrs_clt_rdma_write_sg(struct ibtrs_clt_con *con,
 	/* ibtrs message on server side will be after user data and message */
 	imm = req->tag->mem_id_mask + data_len + u_msg_len;
 	buf_id = req->tag->mem_id;
-	req->sg_size = data_len + u_msg_len + sizeof(*msg);
+	req->sg_size = tsize;
 
 	buf = sess->srv_rdma_addr[buf_id];
 	if (count > fmr_sg_cnt)
@@ -3306,7 +3306,7 @@ static int ibtrs_clt_request_rdma_write_sg(struct ibtrs_clt_con *con,
 					   struct rdma_req *req,
 					   const struct kvec *vec,
 					   size_t u_msg_len,
-					   size_t result_len)
+					   size_t data_len)
 {
 	struct ibtrs_clt_sess *sess = con->sess;
 	struct ibtrs_msg_req_rdma_write *msg;
@@ -3315,7 +3315,7 @@ static int ibtrs_clt_request_rdma_write_sg(struct ibtrs_clt_con *con,
 	int count, i, ret;
 	u32 imm, buf_id;
 
-	const size_t tsize = sizeof(*msg) + result_len + u_msg_len;
+	const size_t tsize = sizeof(*msg) + data_len + u_msg_len;
 
 	ibdev = sess->s.ib_dev;
 
@@ -3331,7 +3331,7 @@ static int ibtrs_clt_request_rdma_write_sg(struct ibtrs_clt_con *con,
 		return -EINVAL;
 	}
 
-	req->data_len = result_len;
+	req->data_len = data_len;
 	copy_from_kvec(req->iu->buf, vec, u_msg_len);
 
 	/* put our message into req->buf after user message*/
@@ -3364,14 +3364,14 @@ static int ibtrs_clt_request_rdma_write_sg(struct ibtrs_clt_con *con,
 	/* ibtrs message will be after the space reserved for disk data and
 	 * user message
 	 */
-	imm = req->tag->mem_id_mask + result_len + u_msg_len;
+	imm = req->tag->mem_id_mask + data_len + u_msg_len;
 	buf_id = req->tag->mem_id;
 
 	req->sg_size  = sizeof(*msg);
 	req->sg_size += le32_to_cpu(msg->sg_cnt) * sizeof(struct ibtrs_sg_desc);
 	req->sg_size += u_msg_len;
 	ret = ibtrs_post_send_rdma(con, req, sess->srv_rdma_addr[buf_id],
-				   result_len, imm);
+				   data_len, imm);
 	if (unlikely(ret)) {
 		ibtrs_err(sess, "Request-RDMA-Write failed,"
 			  " posting work request failed, err: %d\n", ret);
@@ -3388,7 +3388,7 @@ static int ibtrs_clt_request_rdma_write_sg(struct ibtrs_clt_con *con,
 int ibtrs_clt_request_rdma_write(struct ibtrs_clt_sess *sess,
 				 struct ibtrs_tag *tag, void *priv,
 				 const struct kvec *vec, size_t nr,
-				 size_t result_len,
+				 size_t data_len,
 				 struct scatterlist *recv_sg,
 				 unsigned int recv_sg_len)
 {
@@ -3439,7 +3439,7 @@ int ibtrs_clt_request_rdma_write(struct ibtrs_clt_sess *sess,
 	req->dir        = DMA_FROM_DEVICE;
 
 	err = ibtrs_clt_request_rdma_write_sg(con, req, vec,
-					      u_msg_len, result_len);
+					      u_msg_len, data_len);
 	ibtrs_clt_state_unlock();
 	if (unlikely(err)) {
 		req->in_use = false;
@@ -3451,7 +3451,7 @@ int ibtrs_clt_request_rdma_write(struct ibtrs_clt_sess *sess,
 	ibtrs_clt_record_sg_distr(sess->stats.sg_list_distr[tag->cpu_id],
 				  &sess->stats.sg_list_total[tag->cpu_id],
 				  recv_sg_len);
-	ibtrs_clt_update_rdma_stats(&sess->stats, u_msg_len + result_len, true);
+	ibtrs_clt_update_rdma_stats(&sess->stats, u_msg_len + data_len, true);
 
 	return err;
 }
