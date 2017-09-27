@@ -136,7 +136,6 @@ struct ibnbd_msg_close_rsp {
  * @max_hw_sectors:	max hardware sectors in the usual 512b unit
  * @max_write_same_sectors: max sectors for WRITE SAME in the 512b unit
  * @max_discard_sectors: max. sectors that can be discarded at once
- * @discard_zeroes_data: discarded areas are overwritten with 0?
  * @discard_granularity: size of the internal discard allocation unit
  * @discard_alignment: offset from internal allocation assignment
  * @physical_block_size: physical block size device supports
@@ -155,7 +154,7 @@ struct ibnbd_msg_open_rsp {
 	u32			max_hw_sectors;
 	u32			max_write_same_sectors;
 	u32			max_discard_sectors;
-	u32			discard_zeroes_data;
+	u32			__reserved;
 	u32			discard_granularity;
 	u32			discard_alignment;
 	u16			physical_block_size;

@@ -747,7 +747,7 @@ static struct ibtrs_rcv_buf_pool *alloc_rcv_buf_pool(void)
 			 * failed we fall back to alloc'ing exact number of
 			 * pages
 			 */
-			gfp_t gfp_mask = (GFP_KERNEL | __GFP_REPEAT |
+			gfp_t gfp_mask = (GFP_KERNEL | __GFP_RETRY_MAYFAIL |
 					  __GFP_ZERO);
 			void *addr = alloc_pages_exact(rcv_buf_size, gfp_mask);
 

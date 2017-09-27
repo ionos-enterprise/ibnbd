@@ -125,10 +125,7 @@ static void ibnbd_dev_bi_end_io(struct bio *bio)
 {
 	struct ibnbd_dev_blk_io *io = bio->bi_private;
 
-	int error = bio->bi_error;
-
-	io->dev->io_cb(io->priv, error);
-
+	io->dev->io_cb(io->priv, blk_status_to_errno(bio->bi_status));
 	bio_put(bio);
 	kfree(io);
 }

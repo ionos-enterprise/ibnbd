@@ -6,7 +6,7 @@
 #include <linux/module.h>
 #include <linux/in6.h>
 #include <linux/fs.h>
-#include <asm/uaccess.h>
+#include <linux/uaccess.h>
 #include <rdma/ib.h>
 #include <rdma/rdma_cm.h>
 
@@ -321,7 +321,7 @@ void ibnbd_clt_schedule_dev_destroy(struct ibnbd_clt_dev *dev)
 	 */
 	while (!destroy_work) {
 		destroy_work = kmalloc(sizeof(*destroy_work),
-				       (GFP_KERNEL | __GFP_REPEAT));
+				       (GFP_KERNEL | __GFP_RETRY_MAYFAIL));
 		if (!destroy_work)
 			cond_resched();
 	}

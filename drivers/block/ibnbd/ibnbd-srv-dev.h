@@ -95,13 +95,6 @@ static inline int ibnbd_dev_get_max_discard_sects(const struct ibnbd_dev *dev)
 	return 0;
 }
 
-static inline int ibnbd_dev_get_discard_zeroes_data(const struct ibnbd_dev *dev)
-{
-	if (dev->mode == IBNBD_BLOCKIO)
-		return bdev_get_queue(dev->bdev)->limits.discard_zeroes_data;
-	return 0;
-}
-
 static inline int ibnbd_dev_get_discard_granularity(const struct ibnbd_dev *dev)
 {
 	if (dev->mode == IBNBD_BLOCKIO)

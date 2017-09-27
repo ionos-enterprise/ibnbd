@@ -287,7 +287,8 @@ static int create_sess(struct ibtrs_srv_sess *sess)
 		return -ENOMEM;
 	}
 	srv_sess->queue_depth = ibtrs_srv_get_sess_qdepth(sess);
-	srv_sess->sess_bio_set =  bioset_create(srv_sess->queue_depth, 0);
+	srv_sess->sess_bio_set = bioset_create(srv_sess->queue_depth, 0,
+					       BIOSET_NEED_BVECS);
 	if (!srv_sess->sess_bio_set) {
 		pr_err("Allocating srv_session for client %s failed\n",
 		       str_addr);
@@ -552,8 +553,6 @@ static void ibnbd_srv_fill_msg_open_rsp(struct ibnbd_msg_open_rsp *rsp,
 
 	rsp->max_discard_sectors	=
 		ibnbd_dev_get_max_discard_sects(ibnbd_dev);
-	rsp->discard_zeroes_data	=
-		ibnbd_dev_get_discard_zeroes_data(ibnbd_dev);
 	rsp->discard_granularity	=
 		ibnbd_dev_get_discard_granularity(ibnbd_dev);
 

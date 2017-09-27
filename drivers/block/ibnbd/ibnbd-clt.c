@@ -84,7 +84,6 @@ static void ibnbd_clt_set_dev_attr(struct ibnbd_clt_dev *dev,
 	dev->physical_block_size	= rsp->physical_block_size;
 	dev->max_write_same_sectors	= rsp->max_write_same_sectors;
 	dev->max_discard_sectors	= rsp->max_discard_sectors;
-	dev->discard_zeroes_data	= rsp->discard_zeroes_data;
 	dev->discard_granularity	= rsp->discard_granularity;
 	dev->discard_alignment		= rsp->discard_alignment;
 	dev->secure_discard		= rsp->secure_discard;
@@ -571,13 +570,13 @@ static void ibnbd_softirq_done_fn(struct request *rq)
 	case BLK_MQ:
 		iu = blk_mq_rq_to_pdu(rq);
 		ibnbd_put_tag(sess, iu->tag);
-		blk_mq_end_request(rq, iu->errno);
+		blk_mq_end_request(rq, iu->status);
 		if (rq->rq_flags & RQF_SPECIAL_PAYLOAD)
 			__free_page(rq->special_vec.bv_page);
 		break;
 	case BLK_RQ:
 		iu = rq->special;
-		blk_end_request_all(rq, iu->errno);
+		blk_end_request_all(rq, iu->status);
 		if (rq->rq_flags & RQF_SPECIAL_PAYLOAD)
 			__free_page(rq->special_vec.bv_page);
 		break;
@@ -591,22 +590,21 @@ static void ibnbd_softirq_done_fn(struct request *rq)
 
 static void ibnbd_clt_rdma_ev(void *priv, enum ibtrs_clt_rdma_ev ev, int errno)
 {
-	struct ibnbd_iu *iu		= (struct ibnbd_iu *)priv;
-	struct ibnbd_clt_dev *dev	= iu->dev;
-	struct request *rq;
+	struct ibnbd_iu *iu = (struct ibnbd_iu *)priv;
+	struct ibnbd_clt_dev *dev = iu->dev;
 	const int flags = iu->msg.rw;
-	bool is_read;
+	struct request *rq;
+
+	iu->status = errno ? BLK_STS_IOERR : BLK_STS_OK;
+	rq = iu->rq;
 
 	switch (dev->queue_mode) {
 	case BLK_MQ:
-		rq = iu->rq;
-		is_read = req_op(rq) == READ;
-		iu->errno = errno;
 		if (softirq_enable) {
-			blk_mq_complete_request(rq, errno);
+			blk_mq_complete_request(rq);
 		} else {
 			ibnbd_put_tag(dev->sess, iu->tag);
-			blk_mq_end_request(rq, errno);
+			blk_mq_end_request(rq, iu->status);
 
 			if (rq->rq_flags & RQF_SPECIAL_PAYLOAD)
 				__free_page(rq->special_vec.bv_page);
@@ -614,13 +612,10 @@ static void ibnbd_clt_rdma_ev(void *priv, enum ibtrs_clt_rdma_ev ev, int errno)
 		}
 		break;
 	case BLK_RQ:
-		rq = iu->rq;
-		is_read = req_op(rq) == READ;
-		iu->errno = errno;
 		if (softirq_enable) {
 			blk_complete_request(rq);
 		} else {
-			blk_end_request_all(rq, errno);
+			blk_end_request_all(rq, iu->status);
 			if (rq->rq_flags & RQF_SPECIAL_PAYLOAD)
 				__free_page(rq->special_vec.bv_page);
 		}
@@ -634,7 +629,8 @@ static void ibnbd_clt_rdma_ev(void *priv, enum ibtrs_clt_rdma_ev ev, int errno)
 
 	if (errno)
 		ibnbd_info_rl(dev, "%s I/O failed with err: %d, flags: 0x%x\n",
-			      is_read ? "read" : "write", errno, flags);
+			      req_op(rq) == READ ? "read" : "write",
+			      errno, flags);
 }
 
 static int send_msg_open(struct ibnbd_clt_dev *dev)
@@ -1267,8 +1263,8 @@ static void ibnbd_clt_dev_kick_queue(struct ibnbd_clt_dev *dev, int delay)
 		ibnbd_blk_delay_queue(dev, IBNBD_DELAY_10ms);
 }
 
-static int ibnbd_queue_rq(struct blk_mq_hw_ctx *hctx,
-			  const struct blk_mq_queue_data *bd)
+static blk_status_t ibnbd_queue_rq(struct blk_mq_hw_ctx *hctx,
+				   const struct blk_mq_queue_data *bd)
 {
 	struct request *rq = bd->rq;
 	struct ibnbd_clt_dev *dev = rq->rq_disk->private_data;
@@ -1276,32 +1272,31 @@ static int ibnbd_queue_rq(struct blk_mq_hw_ctx *hctx,
 	int err;
 
 	if (unlikely(!ibnbd_clt_dev_is_open(dev)))
-		return BLK_MQ_RQ_QUEUE_ERROR;
+		return BLK_STS_IOERR;
 
 	iu->tag = ibnbd_get_tag(dev->sess, hctx->next_cpu, blk_rq_bytes(rq),
 				IBTRS_TAG_NOWAIT);
 	if (unlikely(!iu->tag)) {
 		ibnbd_clt_dev_kick_mq_queue(dev, hctx, IBNBD_DELAY_IFBUSY);
-		return BLK_MQ_RQ_QUEUE_BUSY;
+		return BLK_STS_RESOURCE;
 	}
 
 	blk_mq_start_request(rq);
 	err = ibnbd_client_xfer_request(dev, rq, iu);
 	if (likely(err == 0))
-		return BLK_MQ_RQ_QUEUE_OK;
+		return BLK_STS_OK;
 	if (unlikely(err == -EAGAIN || err == -ENOMEM)) {
 		ibnbd_clt_dev_kick_mq_queue(dev, hctx, IBNBD_DELAY_10ms);
 		ibnbd_put_tag(dev->sess, iu->tag);
-		return BLK_MQ_RQ_QUEUE_BUSY;
+		return BLK_STS_RESOURCE;
 	}
 
 	ibnbd_put_tag(dev->sess, iu->tag);
-	return BLK_MQ_RQ_QUEUE_ERROR;
+	return BLK_STS_IOERR;
 }
 
-static int ibnbd_init_request(void *data, struct request *rq,
-			      unsigned int hctx_idx, unsigned int request_idx,
-			      unsigned int numa_node)
+static int ibnbd_init_request(struct blk_mq_tag_set *set, struct request *rq,
+			      unsigned int hctx_idx, unsigned int numa_node)
 {
 	struct ibnbd_iu *iu = blk_mq_rq_to_pdu(rq);
 
@@ -1456,7 +1451,6 @@ static void setup_request_queue(struct ibnbd_clt_dev *dev)
 					 dev->max_write_same_sectors);
 
 	blk_queue_max_discard_sectors(dev->queue, dev->max_discard_sectors);
-	dev->queue->limits.discard_zeroes_data	= dev->discard_zeroes_data;
 	dev->queue->limits.discard_granularity	= dev->discard_granularity;
 	dev->queue->limits.discard_alignment	= dev->discard_alignment;
 	if (dev->max_discard_sectors)
@@ -1751,12 +1745,12 @@ ibnbd_client_add_device(struct ibnbd_clt_session *sess,
 	ibnbd_info(dev, "map_device: Device mapped as %s (nsectors: %zu,"
 		   " logical_block_size: %d, physical_block_size: %d,"
 		   " max_write_same_sectors: %d, max_discard_sectors: %d,"
-		   " discard_zeroes_data: %d, discard_granularity: %d,"
-		   " discard_alignment: %d, secure_discard: %d, max_segments: %d,"
-		   " max_hw_sectors: %d, rotational: %d)\n", dev->gd->disk_name,
-		   dev->nsectors, dev->logical_block_size, dev->physical_block_size,
-		   dev->max_write_same_sectors, dev->max_discard_sectors,
-		   dev->discard_zeroes_data, dev->discard_granularity,
+		   " discard_granularity: %d, discard_alignment: %d, "
+		   "secure_discard: %d, max_segments: %d, max_hw_sectors: %d, "
+		   "rotational: %d)\n",
+		   dev->gd->disk_name, dev->nsectors, dev->logical_block_size,
+		   dev->physical_block_size, dev->max_write_same_sectors,
+		   dev->max_discard_sectors, dev->discard_granularity,
 		   dev->discard_alignment, dev->secure_discard,
 		   dev->max_segments, dev->max_hw_sectors, dev->rotational);
 

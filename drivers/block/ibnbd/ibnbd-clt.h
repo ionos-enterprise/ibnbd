@@ -39,7 +39,7 @@ struct ibnbd_iu {
 	struct ibtrs_tag	*tag;
 	struct ibnbd_clt_dev	*dev;
 	struct ibnbd_msg_io	msg;
-	int			errno;
+	blk_status_t		status;
 	struct scatterlist	sglist[BMAX_SEGMENTS];
 };
 
@@ -115,7 +115,6 @@ struct ibnbd_clt_dev {
 	u32			max_hw_sectors;
 	u32			max_write_same_sectors;
 	u32			max_discard_sectors;
-	u32			discard_zeroes_data;
 	u32			discard_granularity;
 	u32			discard_alignment;
 	u16			secure_discard;
