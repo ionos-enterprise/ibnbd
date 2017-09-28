@@ -2569,7 +2569,7 @@ static int init_conns(struct ibtrs_clt_sess *sess)
 
 destroy:
 	while (cid) {
-		struct ibtrs_clt_con *con = &sess->con[cid];
+		struct ibtrs_clt_con *con = &sess->con[--cid];
 
 		stop_cm(con);
 		destroy_con_cq_qp(con);
