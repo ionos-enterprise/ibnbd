@@ -102,10 +102,6 @@ enum ibtrs_msg_types {
 	IBTRS_MSG_USER,
 };
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic warning "-Wpadded"
-
-
 /**
  * struct ibtrs_msg_conn_req - Client connection request to the server
  * @magic:	   IBTRS magic
@@ -243,8 +239,6 @@ struct ibtrs_msg_req_rdma_write {
 struct ibtrs_msg_rdma_write {
 	__le16			type;
 };
-
-#pragma GCC diagnostic pop
 
 /* ibtrs-iu.c */
 
