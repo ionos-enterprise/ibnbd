@@ -309,7 +309,7 @@ int ibtrs_cq_qp_create(struct ibtrs_sess *sess, struct ibtrs_con *con,
 		       u16 wr_queue_size, struct ibtrs_ib_dev *ibdev,
 		       enum ib_poll_context poll_ctx)
 {
-	int err, ret;
+	int err;
 
 	err = create_cq(con, cq_vector, cq_size, poll_ctx);
 	if (unlikely(err))
@@ -317,9 +317,9 @@ int ibtrs_cq_qp_create(struct ibtrs_sess *sess, struct ibtrs_con *con,
 
 	err = create_qp(con, ibdev->pd, wr_queue_size, max_send_sge);
 	if (unlikely(err)) {
-		ret = ib_destroy_cq(con->cq);
-		if (ret)
-			ibtrs_err(con, "Destroying CQ failed, err: %d\n", ret);
+		err = ib_destroy_cq(con->cq);
+		if (err)
+			ibtrs_err(con, "Destroying CQ failed, err: %d\n", err);
 		return err;
 	}
 	con->sess = sess;
