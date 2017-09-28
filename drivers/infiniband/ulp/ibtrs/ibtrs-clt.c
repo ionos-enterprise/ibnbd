@@ -1906,37 +1906,33 @@ static int ibtrs_clt_init_cpu_migr_stats(struct ibtrs_clt_sess *sess)
 
 static int ibtrs_clt_init_sg_list_distr_stats(struct ibtrs_clt_sess *sess)
 {
+	u64 **list_d, *list_t;
 	int i;
 
-	sess->stats.sg_list_distr = kmalloc_array(num_online_cpus(),
-						  sizeof(*sess->stats.sg_list_distr),
-						  GFP_KERNEL);
-
-	if (unlikely(!sess->stats.sg_list_distr))
+	list_d = kmalloc_array(num_online_cpus(), sizeof(*list_d), GFP_KERNEL);
+	if (unlikely(!list_d))
 		return -ENOMEM;
 
 	for (i = 0; i < num_online_cpus(); i++) {
-		sess->stats.sg_list_distr[i] =
-			kzalloc_node(sizeof(*sess->stats.sg_list_distr[0]) *
-				     (SG_DISTR_LEN + 1),
-				     GFP_KERNEL, cpu_to_node(i));
-		if (unlikely(!sess->stats.sg_list_distr[i]))
+		list_d[i] = kzalloc_node(sizeof(*list_d[0]) * (SG_DISTR_LEN + 1),
+					 GFP_KERNEL, cpu_to_node(i));
+		if (unlikely(!list_d[i]))
 			goto err;
 	}
-	sess->stats.sg_list_total = kcalloc(num_online_cpus(),
-					    sizeof(*sess->stats.sg_list_total),
-					    GFP_KERNEL);
-	if (unlikely(!sess->stats.sg_list_total))
+	list_t = kcalloc(num_online_cpus(), sizeof(*list_t), GFP_KERNEL);
+	if (unlikely(!list_t))
 		goto err;
+
+	sess->stats.sg_list_distr = list_d;
+	sess->stats.sg_list_total = list_t;
 
 	return 0;
 
 err:
 	while (i--)
-		kfree(sess->stats.sg_list_distr[i]);
+		kfree(list_d[i]);
 
-	kfree(sess->stats.sg_list_distr);
-	sess->stats.sg_list_distr = NULL;
+	kfree(list_d);
 
 	return -ENOMEM;
 }
