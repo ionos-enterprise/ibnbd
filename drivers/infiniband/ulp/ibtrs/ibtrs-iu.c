@@ -2,19 +2,19 @@
 #include "ibtrs-pri.h"
 
 static void free_usr_msg_list(struct list_head *iu_list,
-			      struct ibtrs_ib_dev *dev)
+			      struct ibtrs_ib_dev *ibdev)
 {
 	struct ibtrs_iu *iu;
 
 	while (!list_empty(iu_list)) {
 		iu = list_first_entry(iu_list, typeof(*iu), list);
 		list_del(&iu->list);
-		ibtrs_iu_free(iu, DMA_TO_DEVICE, dev->dev);
+		ibtrs_iu_free(iu, DMA_TO_DEVICE, ibdev->dev);
 	}
 }
 
 int ibtrs_usr_msg_alloc_list(struct ibtrs_sess *sess,
-			     struct ibtrs_ib_dev *dev,
+			     struct ibtrs_ib_dev *ibdev,
 			     unsigned max_req_size)
 {
 	const unsigned msg_cnt = USR_MSG_CNT;
@@ -31,7 +31,7 @@ int ibtrs_usr_msg_alloc_list(struct ibtrs_sess *sess,
 
 	for (i = 0; i < msg_cnt; ++i) {
 		iu = ibtrs_iu_alloc(i, max_req_size, GFP_KERNEL,
-				    dev->dev, DMA_TO_DEVICE);
+				    ibdev->dev, DMA_TO_DEVICE);
 		if (unlikely(!iu))
 			goto err;
 
@@ -43,13 +43,14 @@ int ibtrs_usr_msg_alloc_list(struct ibtrs_sess *sess,
 	return 0;
 
 err:
-	free_usr_msg_list(&sess->usr_iu_list, dev);
+	free_usr_msg_list(&sess->usr_iu_list, ibdev);
 
 	return -ENOMEM;
 }
 EXPORT_SYMBOL_GPL(ibtrs_usr_msg_alloc_list);
 
-void ibtrs_usr_msg_free_list(struct ibtrs_sess *sess, struct ibtrs_ib_dev *dev)
+void ibtrs_usr_msg_free_list(struct ibtrs_sess *sess,
+			     struct ibtrs_ib_dev *ibdev)
 {
 	struct list_head iu_list;
 
@@ -73,7 +74,7 @@ void ibtrs_usr_msg_free_list(struct ibtrs_sess *sess, struct ibtrs_ib_dev *dev)
 	complete_all(&sess->usr_comp);
 	spin_unlock_irq(&sess->usr_lock);
 
-	free_usr_msg_list(&iu_list, dev);
+	free_usr_msg_list(&iu_list, ibdev);
 }
 EXPORT_SYMBOL_GPL(ibtrs_usr_msg_free_list);
 
@@ -152,12 +153,12 @@ err1:
 EXPORT_SYMBOL_GPL(ibtrs_iu_alloc);
 
 void ibtrs_iu_free(struct ibtrs_iu *iu, enum dma_data_direction dir,
-		   struct ib_device *ib_dev)
+		   struct ib_device *ibdev)
 {
 	if (!iu)
 		return;
 
-	ib_dma_unmap_single(ib_dev, iu->dma_addr, iu->size, dir);
+	ib_dma_unmap_single(ibdev, iu->dma_addr, iu->size, dir);
 	kfree(iu->buf);
 	kfree(iu);
 }
