@@ -16,7 +16,7 @@
 
 MODULE_AUTHOR("ibnbd@profitbricks.com");
 MODULE_DESCRIPTION("InfiniBand Network Block Device Client");
-MODULE_VERSION(__stringify(IBNBD_VER));
+MODULE_VERSION(IBNBD_VER_STRING);
 MODULE_LICENSE("GPL");
 
 static int ibnbd_client_major;
@@ -126,10 +126,10 @@ static void ibnbd_clt_revalidate_disk(struct ibnbd_clt_dev *dev,
 static void process_msg_sess_info_rsp(struct ibnbd_clt_session *sess,
 				      struct ibnbd_msg_sess_info_rsp *msg)
 {
-	sess->ver = min_t(u8, msg->ver, IBNBD_VERSION);
+	sess->ver = min_t(u8, msg->ver, IBNBD_VER_MAJOR);
 	pr_debug("Session to %s (%s) using protocol version %d (client version: %d,"
 		 " server version: %d)\n", sess->str_addr, sess->hostname, sess->ver,
-		 IBNBD_VERSION, msg->ver);
+		 IBNBD_VER_MAJOR, msg->ver);
 }
 
 static int process_msg_open_rsp(struct ibnbd_clt_session *sess,
@@ -665,8 +665,8 @@ static int send_msg_sess_info(struct ibnbd_clt_session *sess)
 		.iov_len  = sizeof(msg)
 	};
 
-	msg.hdr.type	= IBNBD_MSG_SESS_INFO;
-	msg.ver		= IBNBD_VERSION;
+	msg.hdr.type = IBNBD_MSG_SESS_INFO;
+	msg.ver      = IBNBD_VER_MAJOR;
 
 	return ibtrs_clt_send(sess->sess, &vec, 1);
 }
@@ -1899,9 +1899,8 @@ static int __init ibnbd_client_init(void)
 {
 	int err;
 
-	pr_info("Loading module ibnbd_client, version: "
-		__stringify(IBNBD_VER) " (softirq_enable: %d)\n",
-		softirq_enable);
+	pr_info("Loading module %s, version %s: (softirq_enable: %d)\n",
+		KBUILD_MODNAME, IBNBD_VER_STRING, softirq_enable);
 
 	ibnbd_client_major = register_blkdev(ibnbd_client_major, "ibnbd");
 	if (ibnbd_client_major <= 0) {

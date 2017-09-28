@@ -4,8 +4,6 @@
 #include <linux/limits.h>
 #include "ibnbd.h"
 
-#define IBNBD_VERSION 1
-
 #define GCC_DIAGNOSTIC_AWARE ((__GNUC__ > 6))
 #if GCC_DIAGNOSTIC_AWARE
 #pragma GCC diagnostic push

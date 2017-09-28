@@ -11,9 +11,8 @@
 #include "ibnbd.h"
 #include "ibnbd-proto.h"
 
-
 MODULE_AUTHOR("ibnbd@profitbricks.com");
-MODULE_VERSION(__stringify(IBNBD_VER));
+MODULE_VERSION(IBNBD_VER_STRING);
 MODULE_DESCRIPTION("InfiniBand Network Block Device Server");
 MODULE_LICENSE("GPL");
 
@@ -646,10 +645,10 @@ static void process_msg_sess_info(struct ibtrs_srv_sess *s,
 		strlcpy(srv_sess->hostname, ibtrs_srv_get_sess_hostname(s),
 			sizeof(srv_sess->hostname));
 
-	srv_sess->ver = min_t(u8, sess_info_msg->ver, IBNBD_VERSION);
+	srv_sess->ver = min_t(u8, sess_info_msg->ver, IBNBD_VER_MAJOR);
 	pr_debug("Session to %s (%s) using protocol version %d (client version: %d,"
 		 " server version: %d)\n", srv_sess->str_addr, srv_sess->hostname,
-		 srv_sess->ver, sess_info_msg->ver, IBNBD_VERSION);
+		 srv_sess->ver, sess_info_msg->ver, IBNBD_VER_MAJOR);
 
 	rsp.hdr.type = IBNBD_MSG_SESS_INFO_RSP;
 	rsp.ver = srv_sess->ver;
@@ -978,6 +977,9 @@ static int __init ibnbd_srv_init_module(void)
 	ibtrs_ops.recv    = ibnbd_srv_recv;
 	ibtrs_ops.rdma_ev = ibnbd_srv_rdma_ev;
 	ibtrs_ops.sess_ev = ibnbd_srv_sess_ev;
+
+	pr_info("Loading module %s, version %s\n",
+		KBUILD_MODNAME, IBNBD_VER_STRING);
 
 	ibtrs_ctx = ibtrs_srv_open(&ibtrs_ops, IBTRS_PORT);
 	if (unlikely(IS_ERR(ibtrs_ctx))) {
