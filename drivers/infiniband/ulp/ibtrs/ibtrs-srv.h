@@ -102,7 +102,6 @@ struct ibtrs_srv_sess {
 					   * out of the imm field
 					   */
 	u16			queue_depth;
-	u16			wq_size;
 	void			*priv;
 	struct kobject		kobj;
 	struct kobject		kobj_stats;

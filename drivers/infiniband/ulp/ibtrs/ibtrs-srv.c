@@ -1780,7 +1780,7 @@ static int create_con(struct ibtrs_srv_sess *sess,
 {
 	u16 cq_size, wr_queue_size;
 	struct ibtrs_srv_con *con;
-	int cq_vector, err;
+	int err, cq_vector;
 
 	con = kzalloc(sizeof(*con), GFP_KERNEL);
 	if (unlikely(!con)) {
@@ -1798,8 +1798,8 @@ static int create_con(struct ibtrs_srv_sess *sess,
 		cq_size       = USR_CON_BUF_SIZE + 1;
 		wr_queue_size = USR_CON_BUF_SIZE + 1;
 	} else {
-		cq_size       = con->sess->queue_depth;
-		wr_queue_size = sess->wq_size;
+		cq_size       = sess->queue_depth;
+		wr_queue_size = cm_id->device->attrs.max_qp_wr - 1;
 	}
 
 	cq_vector = ibtrs_srv_get_next_cq_vector(sess);
@@ -1858,7 +1858,6 @@ static struct ibtrs_srv_sess *__alloc_sess(struct ibtrs_srv_ctx *ctx,
 	sess->con_cnt = con_cnt;
 	sess->cur_cq_vector = -1;
 	sess->queue_depth = sess_queue_depth;
-	sess->wq_size = cm_id->device->attrs.max_qp_wr - 1;
 	sess->s.addr.sockaddr = cm_id->route.addr.dst_addr;
 
 	memcpy(&sess->s.uuid, uuid, sizeof(sess->s.uuid));
