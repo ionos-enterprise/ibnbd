@@ -2400,7 +2400,8 @@ static void destroy_con_cq_qp(struct ibtrs_clt_con *con)
 static void stop_cm(struct ibtrs_clt_con *con)
 {
 	rdma_disconnect(con->c.cm_id);
-	ib_drain_qp(con->c.qp);
+	if (con->c.qp)
+		ib_drain_qp(con->c.qp);
 }
 
 static void destroy_cm(struct ibtrs_clt_con *con)

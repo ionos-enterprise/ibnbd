@@ -1703,13 +1703,20 @@ static void ibtrs_srv_close_work(struct work_struct *work)
 		rdma_disconnect(con->c.cm_id);
 		ib_drain_qp(con->c.qp);
 		destroy_workqueue(con->rdma_resp_wq);
-		ibtrs_cq_qp_destroy(&con->c);
-		rdma_destroy_id(con->c.cm_id);
-		kfree(con);
 	}
 	release_cont_bufs(sess);
 	free_sess_bufs(sess);
 	ibtrs_ib_dev_put(sess->s.ib_dev);
+
+	for (i = 0; i < sess->con_cnt; i++) {
+		con = sess->con[i];
+		if (!con)
+			continue;
+
+		ibtrs_cq_qp_destroy(&con->c);
+		rdma_destroy_id(con->c.cm_id);
+		kfree(con);
+	}
 	kfree(sess->con);
 	kfree(sess);
 }

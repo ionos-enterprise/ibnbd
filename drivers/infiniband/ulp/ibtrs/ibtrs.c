@@ -332,7 +332,7 @@ void ibtrs_cq_qp_destroy(struct ibtrs_con *con)
 {
 	int err;
 
-	if (con->cm_id)
+	if (con->cm_id->qp)
 		rdma_destroy_qp(con->cm_id);
 	if (con->cq) {
 		err = ib_destroy_cq(con->cq);
