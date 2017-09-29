@@ -1813,8 +1813,7 @@ static int create_con(struct ibtrs_srv_sess *sess,
 
 	/* TODO: SOFTIRQ can be faster, but be careful with softirq context */
 	err = ibtrs_cq_qp_create(&sess->s, &con->c, 1, cq_vector, cq_size,
-				 wr_queue_size, con->sess->s.ib_dev,
-				 IB_POLL_WORKQUEUE);
+				 wr_queue_size, IB_POLL_WORKQUEUE);
 	if (unlikely(err)) {
 		ibtrs_err(sess, "ibtrs_cq_qp_create(), err: %d\n", err);
 		goto free_con;

@@ -306,8 +306,7 @@ static int create_qp(struct ibtrs_con *con, struct ib_pd *pd,
 
 int ibtrs_cq_qp_create(struct ibtrs_sess *sess, struct ibtrs_con *con,
 		       u32 max_send_sge, int cq_vector, u16 cq_size,
-		       u16 wr_queue_size, struct ibtrs_ib_dev *ibdev,
-		       enum ib_poll_context poll_ctx)
+		       u16 wr_queue_size, enum ib_poll_context poll_ctx)
 {
 	int err;
 
@@ -315,7 +314,7 @@ int ibtrs_cq_qp_create(struct ibtrs_sess *sess, struct ibtrs_con *con,
 	if (unlikely(err))
 		return err;
 
-	err = create_qp(con, ibdev->pd, wr_queue_size, max_send_sge);
+	err = create_qp(con, sess->ib_dev->pd, wr_queue_size, max_send_sge);
 	if (unlikely(err)) {
 		err = ib_destroy_cq(con->cq);
 		if (err)

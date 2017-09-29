@@ -2376,7 +2376,7 @@ static int create_con_cq_qp(struct ibtrs_clt_con *con)
 	cq_vector = con->cpu % sess->s.ib_dev->dev->num_comp_vectors;
 	err = ibtrs_cq_qp_create(&sess->s, &con->c, sess->max_sge,
 				 cq_vector, cq_size, wr_queue_size,
-				 sess->s.ib_dev, IB_POLL_SOFTIRQ);
+				 IB_POLL_SOFTIRQ);
 	if (unlikely(err))
 		goto free_pool;
 
