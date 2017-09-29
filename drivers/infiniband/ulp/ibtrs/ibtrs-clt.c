@@ -2355,47 +2355,74 @@ static int create_con_cq_qp(struct ibtrs_clt_con *con)
 {
 	struct ibtrs_clt_sess *sess = con->sess;
 	u16 cq_size, wr_queue_size;
-	int err, cq_vector, num_wr;
+	int err, cq_vector;
 
 	if (con->cid == 0) {
 		cq_size	      = USR_CON_BUF_SIZE + 1;
 		wr_queue_size = USR_CON_BUF_SIZE + 1;
+
+		/* We must be the first here */
+		if (WARN_ON(sess->s.ib_dev))
+			return -EINVAL;
+
+		/*
+		 * The whole session uses device from user connection.
+		 * Be careful not to close user connection before ib dev
+		 * is gracefully put.
+		 */
+		sess->s.ib_dev = ibtrs_ib_dev_find_get(con->c.cm_id);
+		if (unlikely(!sess->s.ib_dev)) {
+			ibtrs_wrn(sess, "ibtrs_ib_dev_find_get(): no memory\n");
+			return -ENOMEM;
+		}
 	} else {
-		num_wr = DIV_ROUND_UP(sess->max_pages_per_mr,
-				      sess->max_sge);
-		cq_size	      = sess->queue_depth;
+		int num_wr;
+
+		/*
+		 * Here we assume that session members are correctly set.
+		 * This is always true if user connection (cid == 0) is
+		 * established first.
+		 */
+		if (WARN_ON(!sess->s.ib_dev))
+			return -EINVAL;
+		if (WARN_ON(!sess->queue_depth))
+			return -EINVAL;
+
+		cq_size = sess->queue_depth;
+		num_wr = DIV_ROUND_UP(sess->max_pages_per_mr, sess->max_sge);
 		wr_queue_size = sess->s.ib_dev->dev->attrs.max_qp_wr - 1;
 		wr_queue_size = min_t(int, wr_queue_size,
 				      sess->queue_depth * num_wr *
 				      (use_fr ? 3 : 2));
-
-		err = alloc_con_fast_pool(con);
-		if (unlikely(err))
-			return err;
 	}
 	cq_vector = con->cpu % sess->s.ib_dev->dev->num_comp_vectors;
 	err = ibtrs_cq_qp_create(&sess->s, &con->c, sess->max_sge,
 				 cq_vector, cq_size, wr_queue_size,
 				 IB_POLL_SOFTIRQ);
 	if (unlikely(err))
-		goto free_pool;
+		return err;
 
-	return 0;
-
-free_pool:
-	if (con->cid != 0)
-		free_con_fast_pool(con);
+	if (con->cid) {
+		err = alloc_con_fast_pool(con);
+		if (unlikely(err))
+			ibtrs_cq_qp_destroy(&con->c);
+	}
 
 	return err;
 }
 
 static void destroy_con_cq_qp(struct ibtrs_clt_con *con)
 {
+	struct ibtrs_clt_sess *sess = con->sess;
+
 	ibtrs_cq_qp_destroy(&con->c);
 	if (con->cid != 0)
 		free_con_fast_pool(con);
+	if (sess->s.ib_dev) {
+		ibtrs_ib_dev_put(sess->s.ib_dev);
+		sess->s.ib_dev = NULL;
+	}
 }
-
 
 static void stop_cm(struct ibtrs_clt_con *con)
 {
@@ -2466,19 +2493,13 @@ static int create_cm(struct ibtrs_clt_sess *sess, unsigned cid)
 
 static int alloc_sess_all_bufs(struct ibtrs_clt_sess *sess)
 {
-	struct ibtrs_clt_con *usr_con = &sess->con[0];
 	int err;
 
-	sess->s.ib_dev = ibtrs_ib_dev_find_get(usr_con->c.cm_id);
-	if (unlikely(!sess->s.ib_dev)) {
-		ibtrs_wrn(sess, "ibtrs_ib_dev_find_get() failed, no memory\n");
-		return -ENOMEM;
-	}
 	query_fast_reg_mode(sess);
 
 	err = alloc_sess_io_bufs(sess);
 	if (unlikely(err))
-		goto free_ibdev;
+		return err;
 
 	err = ibtrs_iu_alloc_sess_rx_bufs(&sess->s, sess->max_req_size);
 	if (unlikely(err))
@@ -2494,8 +2515,6 @@ free_rx_bufs:
 	ibtrs_iu_free_sess_rx_bufs(&sess->s);
 free_io_bufs:
 	free_sess_io_bufs(sess);
-free_ibdev:
-	ibtrs_ib_dev_put(sess->s.ib_dev);
 
 	return err;
 }
