@@ -33,20 +33,20 @@ struct fake_sess {
 	str;							\
 })
 
-#define ibtrs_log(lvl, fn, dev, fmt, ...)			\
-	fn(lvl "<%s>: " fmt, ibtrs_prefix(dev), ##__VA_ARGS__)
+#define ibtrs_log(fn, dev, fmt, ...)				\
+	fn("<%s>: " fmt, ibtrs_prefix(dev), ##__VA_ARGS__)
 
 #define ibtrs_err(dev, fmt, ...)	\
-	ibtrs_log(KERN_ERR, printk, dev, fmt, ##__VA_ARGS__)
+	ibtrs_log(pr_err, dev, fmt, ##__VA_ARGS__)
 #define ibtrs_err_rl(dev, fmt, ...)	\
-	ibtrs_log(KERN_ERR, printk_ratelimited, dev, fmt, ##__VA_ARGS__)
+	ibtrs_log(pr_err_ratelimited, dev, fmt, ##__VA_ARGS__)
 #define ibtrs_wrn(dev, fmt, ...)	\
-	ibtrs_log(KERN_WARNING, printk, dev, fmt, ##__VA_ARGS__)
+	ibtrs_log(pr_warn, dev, fmt, ##__VA_ARGS__)
 #define ibtrs_wrn_rl(dev, fmt, ...) \
-	ibtrs_log(KERN_WARNING, printk_ratelimited, dev, fmt, ##__VA_ARGS__)
+	ibtrs_log(pr_warn_ratelimited, dev, fmt, ##__VA_ARGS__)
 #define ibtrs_info(dev, fmt, ...) \
-	ibtrs_log(KERN_INFO, printk, dev, fmt, ##__VA_ARGS__)
+	ibtrs_log(pr_info, dev, fmt, ##__VA_ARGS__)
 #define ibtrs_info_rl(dev, fmt, ...) \
-	ibtrs_log(KERN_INFO, printk_ratelimited, dev, fmt, ##__VA_ARGS__)
+	ibtrs_log(pr_info_ratelimited, dev, fmt, ##__VA_ARGS__)
 
 #endif /* IBTRS_LOG_H */

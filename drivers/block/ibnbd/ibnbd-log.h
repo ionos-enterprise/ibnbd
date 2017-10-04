@@ -14,32 +14,32 @@
 
 void unknown_type(void);
 
-#define ibnbd_log(lvl, fn, dev, fmt, ...) ({				\
+#define ibnbd_log(fn, dev, fmt, ...) ({					\
 	__builtin_choose_expr(						\
 		__builtin_types_compatible_p(				\
 			typeof(dev), struct ibnbd_clt_dev *),		\
-		fn(lvl "<%s@%s> %s: " fmt, (dev)->pathname,		\
+		fn("<%s@%s> %s: " fmt, (dev)->pathname,		\
 		   ibnbd_prefix(dev), ibnbd_diskname(dev),		\
 		   ##__VA_ARGS__),					\
 		__builtin_choose_expr(					\
 			__builtin_types_compatible_p(typeof(dev),	\
 					struct ibnbd_srv_sess_dev *),	\
-			fn(lvl "<%s@%s>: " fmt, (dev)->pathname,	\
+			fn("<%s@%s>: " fmt, (dev)->pathname,	\
 			   ibnbd_prefix(dev), ##__VA_ARGS__),		\
 			unknown_type()));				\
 })
 
 #define ibnbd_err(dev, fmt, ...)	\
-	ibnbd_log(KERN_ERR, printk, dev, fmt, ##__VA_ARGS__)
+	ibnbd_log(pr_err, dev, fmt, ##__VA_ARGS__)
 #define ibnbd_err_rl(dev, fmt, ...)	\
-	ibnbd_log(KERN_ERR, printk_ratelimited, dev, fmt, ##__VA_ARGS__)
+	ibnbd_log(pr_err_ratelimited, dev, fmt, ##__VA_ARGS__)
 #define ibnbd_wrn(dev, fmt, ...)	\
-	ibnbd_log(KERN_WARNING, printk, dev, fmt, ##__VA_ARGS__)
+	ibnbd_log(pr_warn, dev, fmt, ##__VA_ARGS__)
 #define ibnbd_wrn_rl(dev, fmt, ...) \
-	ibnbd_log(KERN_WARNING, printk_ratelimited, dev, fmt, ##__VA_ARGS__)
+	ibnbd_log(pr_warn_ratelimited, dev, fmt, ##__VA_ARGS__)
 #define ibnbd_info(dev, fmt, ...) \
-	ibnbd_log(KERN_INFO, printk, dev, fmt, ##__VA_ARGS__)
+	ibnbd_log(pr_info, dev, fmt, ##__VA_ARGS__)
 #define ibnbd_info_rl(dev, fmt, ...) \
-	ibnbd_log(KERN_INFO, printk_ratelimited, dev, fmt, ##__VA_ARGS__)
+	ibnbd_log(pr_info_ratelimited, dev, fmt, ##__VA_ARGS__)
 
 #endif /*__IBNBD_LOG_H__*/
