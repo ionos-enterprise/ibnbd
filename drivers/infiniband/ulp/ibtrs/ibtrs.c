@@ -72,11 +72,14 @@ EXPORT_SYMBOL_GPL(ibtrs_post_send_cb);
 int ibtrs_post_rdma_write_imm(struct ibtrs_con *con, struct ibtrs_iu *iu,
 			      struct ib_sge *sge, unsigned int num_sge,
 			      u32 rkey, u64 rdma_addr, u32 imm_data,
-			      enum ib_send_flags flags)
+			      enum ib_send_flags flags,
+			      void (*done)(struct ib_cq *cq, struct ib_wc *wc))
 {
 	struct ib_send_wr *bad_wr;
 	struct ib_rdma_wr wr;
 	int i;
+
+	iu->cqe.done = done;
 
 	wr.wr.next	  = NULL;
 	wr.wr.wr_cqe	  = &iu->cqe;

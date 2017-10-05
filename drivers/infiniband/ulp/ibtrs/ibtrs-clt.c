@@ -878,7 +878,8 @@ static int ibtrs_post_send_rdma(struct ibtrs_clt_con *con, struct rdma_req *req,
 			0 : IB_SEND_SIGNALED;
 	return ibtrs_post_rdma_write_imm(&con->c, req->iu, list, 1,
 					 sess->srv_rdma_buf_rkey,
-					 addr + off, imm, flags);
+					 addr + off, imm, flags,
+					 ibtrs_clt_rdma_done);
 }
 
 static void ibtrs_set_sge_with_desc(struct ib_sge *list,
@@ -1017,7 +1018,8 @@ static int ibtrs_post_send_rdma_desc(struct ibtrs_clt_con *con,
 				0 : IB_SEND_SIGNALED;
 		ret = ibtrs_post_rdma_write_imm(&con->c, req->iu, list, num_sge,
 						sess->srv_rdma_buf_rkey,
-						addr, imm, flags);
+						addr, imm, flags,
+						ibtrs_clt_rdma_done);
 	} else
 		ret = ibtrs_post_send_rdma_desc_more(con, list, req, desc, n,
 						     addr, size, imm);
@@ -1060,7 +1062,8 @@ static int ibtrs_post_send_rdma_more(struct ibtrs_clt_con *con,
 			0 : IB_SEND_SIGNALED;
 	ret = ibtrs_post_rdma_write_imm(&con->c, req->iu, list, num_sge,
 					sess->srv_rdma_buf_rkey,
-					addr, imm, flags);
+					addr, imm, flags,
+					ibtrs_clt_rdma_done);
 	kfree(list);
 
 	return ret;
