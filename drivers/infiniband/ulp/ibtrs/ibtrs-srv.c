@@ -1462,15 +1462,16 @@ static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 	WARN_ON(!con->cid);
 
 	if (unlikely(wc->status != IB_WC_SUCCESS)) {
-		ibtrs_err(sess, "%s (wr_cqe: %p,"
-			  " type: %s, vendor_err: 0x%x, len: %u)\n",
-			  ib_wc_status_msg(wc->status), wc->wr_cqe,
-			  ib_wc_opcode_str(wc->opcode),
-			  wc->vendor_err, wc->byte_len);
-		close_sess(sess);
+		if (wc->status != IB_WC_WR_FLUSH_ERR) {
+			ibtrs_err(sess, "%s (wr_cqe: %p,"
+				  " type: %s, vendor_err: 0x%x, len: %u)\n",
+				  ib_wc_status_msg(wc->status), wc->wr_cqe,
+				  ib_wc_opcode_str(wc->opcode),
+				  wc->vendor_err, wc->byte_len);
+			close_sess(sess);
+		}
 		return;
 	}
-
 	ibtrs_srv_update_wc_stats(con);
 
 	switch (wc->opcode) {
@@ -1612,9 +1613,13 @@ static void ibtrs_srv_usr_recv_done(struct ib_cq *cq, struct ib_wc *wc)
 	WARN_ON(con->cid);
 
 	if (unlikely(wc->status != IB_WC_SUCCESS)) {
-		ibtrs_err(sess, "User message or user ACK recv failed: %s\n",
-			  ib_wc_status_msg(wc->status));
-		goto err;
+		if (wc->status != IB_WC_WR_FLUSH_ERR) {
+			ibtrs_err(sess,
+				  "User message or user ACK recv failed: %s\n",
+				  ib_wc_status_msg(wc->status));
+			goto err;
+		}
+		return;
 	}
 	ibtrs_srv_update_wc_stats(con);
 

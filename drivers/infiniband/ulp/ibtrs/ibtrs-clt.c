@@ -1273,9 +1273,11 @@ static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 	WARN_ON(!con->cid);
 
 	if (unlikely(wc->status != IB_WC_SUCCESS)) {
-		ibtrs_err(sess, "RDMA failed: %s\n",
-			  ib_wc_status_msg(wc->status));
-		ibtrs_rdma_error_recovery(con);
+		if (wc->status != IB_WC_WR_FLUSH_ERR) {
+			ibtrs_err(sess, "RDMA failed: %s\n",
+				  ib_wc_status_msg(wc->status));
+			ibtrs_rdma_error_recovery(con);
+		}
 		return;
 	}
 	ibtrs_clt_update_wc_stats(con);
@@ -1407,9 +1409,13 @@ static void ibtrs_clt_usr_recv_done(struct ib_cq *cq, struct ib_wc *wc)
 	WARN_ON(con->cid);
 
 	if (unlikely(wc->status != IB_WC_SUCCESS)) {
-		ibtrs_err(sess, "User message or user ACK recv failed: %s\n",
-			  ib_wc_status_msg(wc->status));
-		goto err;
+		if (wc->status != IB_WC_WR_FLUSH_ERR) {
+			ibtrs_err(sess,
+				  "User message or user ACK recv failed: %s\n",
+				  ib_wc_status_msg(wc->status));
+			goto err;
+		}
+		return;
 	}
 	ibtrs_clt_update_wc_stats(con);
 
