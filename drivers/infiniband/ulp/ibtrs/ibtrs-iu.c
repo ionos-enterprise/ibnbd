@@ -166,22 +166,17 @@ EXPORT_SYMBOL_GPL(ibtrs_iu_free);
 
 int ibtrs_iu_alloc_sess_rx_bufs(struct ibtrs_sess *sess, size_t max_req_size)
 {
-	struct ibtrs_iu *iu;
 	int i;
-
-	sess->dummy_rx_iu = ibtrs_iu_alloc(0, 8 /* XXX can we reduce to 0? */,
-					   GFP_KERNEL, sess->ib_dev->dev,
-					   DMA_FROM_DEVICE);
-	if (unlikely(!sess->dummy_rx_iu))
-		goto err;
 
 	sess->usr_rx_ring = kcalloc(USR_CON_BUF_SIZE,
 				    sizeof(*sess->usr_rx_ring),
 				    GFP_KERNEL);
 	if (unlikely(!sess->usr_rx_ring))
-		goto err;
+		return -ENOMEM;
 
 	for (i = 0; i < USR_CON_BUF_SIZE; ++i) {
+		struct ibtrs_iu *iu;
+
 		iu = ibtrs_iu_alloc(i, max_req_size, GFP_KERNEL,
 				    sess->ib_dev->dev, DMA_FROM_DEVICE);
 		if (unlikely(!iu))
@@ -202,11 +197,6 @@ void ibtrs_iu_free_sess_rx_bufs(struct ibtrs_sess *sess)
 {
 	int i;
 
-	if (sess->dummy_rx_iu) {
-		ibtrs_iu_free(sess->dummy_rx_iu, DMA_FROM_DEVICE,
-			      sess->ib_dev->dev);
-		sess->dummy_rx_iu = NULL;
-	}
 	if (sess->usr_rx_ring) {
 		for (i = 0; i < USR_CON_BUF_SIZE; ++i) {
 			if (sess->usr_rx_ring[i])

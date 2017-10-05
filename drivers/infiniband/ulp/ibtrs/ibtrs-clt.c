@@ -1259,11 +1259,14 @@ static void ibtrs_clt_update_wc_stats(struct ibtrs_clt_con *con)
 	sess->stats.wc_comp[cpu].total_cnt++;
 }
 
+static struct ib_cqe io_comp_cqe = {
+	.done = ibtrs_clt_rdma_done
+};
+
 static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 {
 	struct ibtrs_clt_con *con = cq->cq_context;
 	struct ibtrs_clt_sess *sess = con->sess;
-	struct ibtrs_iu *iu;
 	u32 imm, msg_id;
 	int err;
 
@@ -1287,11 +1290,11 @@ static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 		/*
 		 * post_recv() RDMA write completions of IO reqs (read/write)
 		 */
-		iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
-		/* We can post iu immediately, since we have imm */
-		err = ibtrs_post_recv(&con->c, iu, ibtrs_clt_rdma_done);
+		if (WARN_ON(wc->wr_cqe != &io_comp_cqe))
+			return;
+		err = ibtrs_post_recv_empty(&con->c, &io_comp_cqe);
 		if (unlikely(err)) {
-			ibtrs_err(sess, "ibtrs_post_recv(), err: %d\n", err);
+			ibtrs_err(sess, "ibtrs_post_recv_empty(), err: %d\n", err);
 			ibtrs_rdma_error_recovery(con);
 			break;
 		}
@@ -1433,11 +1436,10 @@ err:
 static int post_recv_io(struct ibtrs_clt_con *con)
 {
 	struct ibtrs_clt_sess *sess = con->sess;
-	struct ibtrs_iu *iu = sess->s.dummy_rx_iu;
 	int err, i;
 
 	for (i = 0; i < sess->queue_depth; i++) {
-		err = ibtrs_post_recv(&con->c, iu, ibtrs_clt_rdma_done);
+		err = ibtrs_post_recv_empty(&con->c, &io_comp_cqe);
 		if (unlikely(err))
 			return err;
 	}

@@ -1199,14 +1199,17 @@ static int post_recv_info_req(struct ibtrs_srv_con *con)
 
 static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc);
 
+static struct ib_cqe io_comp_cqe = {
+	.done = ibtrs_srv_rdma_done
+};
+
 static int post_recv_io(struct ibtrs_srv_con *con)
 {
 	struct ibtrs_srv_sess *sess = con->sess;
-	struct ibtrs_iu *iu = sess->s.dummy_rx_iu;
 	int i, err;
 
 	for (i = 0; i < sess->queue_depth; i++) {
-		err = ibtrs_post_recv(&con->c, iu, ibtrs_srv_rdma_done);
+		err = ibtrs_post_recv_empty(&con->c, &io_comp_cqe);
 		if (unlikely(err))
 			return err;
 	}
@@ -1452,7 +1455,6 @@ static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 {
 	struct ibtrs_srv_con *con = cq->cq_context;
 	struct ibtrs_srv_sess *sess = con->sess;
-	struct ibtrs_iu *iu;
 	u32 imm, msg_id, off;
 	void *buf;
 	int err;
@@ -1481,9 +1483,9 @@ static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 		/*
 		 * post_recv() RDMA write completions of IO reqs (read/write)
 		 */
-		iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
-		/* We can post iu immediately, since we have imm */
-		err = ibtrs_post_recv(&con->c, iu, ibtrs_srv_rdma_done);
+		if (WARN_ON(wc->wr_cqe != &io_comp_cqe))
+			return;
+		err = ibtrs_post_recv_empty(&con->c, &io_comp_cqe);
 		if (unlikely(err)) {
 			ibtrs_err(sess, "ibtrs_post_recv(), err: %d\n", err);
 			close_sess(sess);
