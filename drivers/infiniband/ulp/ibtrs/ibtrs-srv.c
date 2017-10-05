@@ -587,7 +587,7 @@ static int ibtrs_srv_queue_resp_rdma(struct ibtrs_srv_op *id)
 	return 0;
 }
 
-static void ibtrs_srv_resp_rdma_worker(struct work_struct *work)
+static void ibtrs_srv_resp_rdma_work(struct work_struct *work)
 {
 	struct ibtrs_srv_sess *sess;
 	struct ibtrs_srv_op *id;
@@ -643,7 +643,7 @@ int ibtrs_srv_resp_rdma(struct ibtrs_srv_op *id, int status)
 
 	id->status = status;
 	/* XXX DO WE REALLY NEED THAT worqueue? */
-	INIT_WORK(&id->work, ibtrs_srv_resp_rdma_worker);
+	INIT_WORK(&id->work, ibtrs_srv_resp_rdma_work);
 
 	err = ibtrs_srv_queue_resp_rdma(id);
 	if (err)
@@ -1086,7 +1086,7 @@ static void ibtrs_srv_info_rsp_done(struct ib_cq *cq, struct ib_wc *wc)
 	ctx->ops.sess_ev(sess, IBTRS_SRV_SESS_EV_CONNECTED, sess->priv);
 }
 
-static int post_recv(struct ibtrs_srv_con *con);
+static int post_recv_sess(struct ibtrs_srv_sess *sess);
 
 static int process_info_req(struct ibtrs_srv_con *con,
 			    struct ibtrs_msg_info_req *msg)
@@ -1098,9 +1098,9 @@ static int process_info_req(struct ibtrs_srv_con *con,
 	int i, err;
 	u64 addr;
 
-	err = post_recv(con);
+	err = post_recv_sess(sess);
 	if (unlikely(err)) {
-		ibtrs_err(sess, "post_recv(), err: %d\n", err);
+		ibtrs_err(sess, "post_recv_sess(), err: %d\n", err);
 		return err;
 	}
 	memcpy(sess->s.addr.hostname, msg->hostname, sizeof(msg->hostname));
@@ -1240,6 +1240,21 @@ static int post_recv(struct ibtrs_srv_con *con)
 	if (con->cid == 0)
 		return post_recv_usr(con);
 	return post_recv_io(con);
+}
+
+static int post_recv_sess(struct ibtrs_srv_sess *sess)
+{
+	int err, cid;
+
+	for (cid = 0; cid < sess->con_cnt; cid++) {
+		err = post_recv(sess->con[cid]);
+		if (unlikely(err)) {
+			ibtrs_err(sess, "post_recv(), err: %d\n", err);
+			return err;
+		}
+	}
+
+	return 0;
 }
 
 static void free_sess_bufs(struct ibtrs_srv_sess *sess)
@@ -1689,8 +1704,6 @@ static void ibtrs_srv_close_work(struct work_struct *work)
 	ctx = sess->ctx;
 
 	ctx->ops.sess_ev(sess, IBTRS_SRV_SESS_EV_DISCONNECTED, sess->priv);
-
-	ibtrs_srv_change_state(sess, IBTRS_SRV_CLOSED);
 	ibtrs_srv_destroy_sess_files(sess);
 
 	mutex_lock(&ctx->sess_mutex);
@@ -1708,7 +1721,6 @@ static void ibtrs_srv_close_work(struct work_struct *work)
 	}
 	release_cont_bufs(sess);
 	free_sess_bufs(sess);
-	ibtrs_ib_dev_put(sess->s.ib_dev);
 
 	for (i = 0; i < sess->con_cnt; i++) {
 		con = sess->con[i];
@@ -1719,6 +1731,8 @@ static void ibtrs_srv_close_work(struct work_struct *work)
 		rdma_destroy_id(con->c.cm_id);
 		kfree(con);
 	}
+	ibtrs_ib_dev_put(sess->s.ib_dev);
+	ibtrs_srv_change_state(sess, IBTRS_SRV_CLOSED);
 	kfree(sess->con);
 	kfree(sess);
 }
@@ -1933,7 +1947,7 @@ static int ibtrs_rdma_connect(struct rdma_cm_id *cm_id,
 		pr_err("Too many connections requested: %d\n", con_cnt);
 		goto reject_w_econnreset;
 	}
-	cid = le16_to_cpu(msg->cid_num);
+	cid = le16_to_cpu(msg->cid);
 	if (unlikely(cid >= con_cnt)) {
 		/* Sanity check */
 		pr_err("Incorrect cid: %d >= %d\n", cid, con_cnt);

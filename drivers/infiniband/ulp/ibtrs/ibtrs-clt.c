@@ -2210,6 +2210,15 @@ static bool __ibtrs_clt_change_state(struct ibtrs_clt_sess *sess,
 
 	old_state = sess->state;
 	switch (new_state) {
+	case IBTRS_CLT_CONNECTING:
+		switch (old_state) {
+		case IBTRS_CLT_RECONNECTING:
+			changed = true;
+			/* FALLTHRU */
+		default:
+			break;
+		}
+		break;
 	case IBTRS_CLT_RECONNECTING:
 		switch (old_state) {
 		case IBTRS_CLT_CONNECTED:
@@ -2249,6 +2258,7 @@ static bool __ibtrs_clt_change_state(struct ibtrs_clt_sess *sess,
 		default:
 			break;
 		}
+		break;
 	case IBTRS_CLT_CLOSED:
 		switch (old_state) {
 		case IBTRS_CLT_CLOSING:
@@ -2361,6 +2371,15 @@ static int create_con_cq_qp(struct ibtrs_clt_con *con)
 	u16 cq_size, wr_queue_size;
 	int err, cq_vector;
 
+	/*
+	 * This function can fail, but still destroy_con_cq_qp() should
+	 * be called, this is because create_con_cq_qp() is called on cm
+	 * event path, thus caller/waiter never knows: have we failed before
+	 * create_con_cq_qp() or after.  To solve this dilemma without
+	 * creating any additional flags just allow destroy_con_cq_qp() be
+	 * called many times.
+	 */
+
 	if (con->cid == 0) {
 		cq_size	      = USR_CON_BUF_SIZE + 1;
 		wr_queue_size = USR_CON_BUF_SIZE + 1;
@@ -2379,6 +2398,8 @@ static int create_con_cq_qp(struct ibtrs_clt_con *con)
 			ibtrs_wrn(sess, "ibtrs_ib_dev_find_get(): no memory\n");
 			return -ENOMEM;
 		}
+		sess->s.ib_dev_ref = 1;
+		query_fast_reg_mode(sess);
 	} else {
 		int num_wr;
 
@@ -2392,6 +2413,9 @@ static int create_con_cq_qp(struct ibtrs_clt_con *con)
 		if (WARN_ON(!sess->queue_depth))
 			return -EINVAL;
 
+		/* Shared between connections */
+		sess->s.ib_dev_ref++;
+
 		cq_size = sess->queue_depth;
 		num_wr = DIV_ROUND_UP(sess->max_pages_per_mr, sess->max_sge);
 		wr_queue_size = sess->s.ib_dev->dev->attrs.max_qp_wr - 1;
@@ -2403,6 +2427,11 @@ static int create_con_cq_qp(struct ibtrs_clt_con *con)
 	err = ibtrs_cq_qp_create(&sess->s, &con->c, sess->max_sge,
 				 cq_vector, cq_size, wr_queue_size,
 				 IB_POLL_SOFTIRQ);
+	/*
+	 * In case of error we do not bother to clean previous allocations,
+	 * since destroy_con_cq_qp() must be called.
+	 */
+
 	if (unlikely(err))
 		return err;
 
@@ -2419,10 +2448,15 @@ static void destroy_con_cq_qp(struct ibtrs_clt_con *con)
 {
 	struct ibtrs_clt_sess *sess = con->sess;
 
+	/*
+	 * Be careful here: destroy_con_cq_qp() can be called even
+	 * create_con_cq_qp() failed, see comments there.
+	 */
+
 	ibtrs_cq_qp_destroy(&con->c);
 	if (con->cid != 0)
 		free_con_fast_pool(con);
-	if (sess->s.ib_dev) {
+	if (sess->s.ib_dev_ref && !--sess->s.ib_dev_ref) {
 		ibtrs_ib_dev_put(sess->s.ib_dev);
 		sess->s.ib_dev = NULL;
 	}
@@ -2499,8 +2533,6 @@ static int alloc_sess_all_bufs(struct ibtrs_clt_sess *sess)
 {
 	int err;
 
-	query_fast_reg_mode(sess);
-
 	err = alloc_sess_io_bufs(sess);
 	if (unlikely(err))
 		return err;
@@ -2528,7 +2560,6 @@ static void free_sess_all_bufs(struct ibtrs_clt_sess *sess)
 	free_sess_tx_bufs(sess);
 	ibtrs_iu_free_sess_rx_bufs(&sess->s);
 	free_sess_io_bufs(sess);
-	ibtrs_ib_dev_put(sess->s.ib_dev);
 }
 
 static void ibtrs_clt_stop_and_destroy_conns(struct ibtrs_clt_sess *sess)
@@ -2598,6 +2629,12 @@ destroy:
 		destroy_con_cq_qp(con);
 		destroy_cm(con);
 	}
+	/*
+	 * If we've never taken async path and got an error, say,
+	 * doing rdma_resolve_addr(), switch to CONNECTION_ERR state
+	 * manually to keep reconnecting.
+	 */
+	ibtrs_clt_change_state(sess, IBTRS_CLT_CONNECTING_ERR);
 
 	return err;
 }
@@ -2703,7 +2740,7 @@ static int ibtrs_rdma_conn_established(struct ibtrs_clt_con *con,
 		if (!sess->srv_rdma_addr || sess->queue_depth < queue_depth) {
 			kfree(sess->srv_rdma_addr);
 			sess->srv_rdma_addr = kcalloc(
-						sess->queue_depth,
+						queue_depth,
 						sizeof(*sess->srv_rdma_addr),
 						GFP_KERNEL);
 			if (unlikely(!sess->srv_rdma_addr)) {
@@ -2715,8 +2752,8 @@ static int ibtrs_rdma_conn_established(struct ibtrs_clt_con *con,
 		sess->user_queue_depth = queue_depth;
 		sess->queue_depth = queue_depth;
 		sess->srv_rdma_buf_rkey = le32_to_cpu(msg->rkey);
-		sess->max_req_size = le16_to_cpu(msg->max_req_size);
-		sess->max_io_size = le16_to_cpu(msg->max_io_size);
+		sess->max_req_size = le32_to_cpu(msg->max_req_size);
+		sess->max_io_size = le32_to_cpu(msg->max_io_size);
 		sess->chunk_size = sess->max_io_size + sess->max_req_size;
 		sess->max_desc  = sess->max_req_size;
 		sess->max_desc -= sizeof(u32) + sizeof(u32) + IO_MSG_SIZE;
@@ -2805,7 +2842,6 @@ static int ibtrs_clt_rdma_cm_handler(struct rdma_cm_id *cm_id,
 	case RDMA_CM_EVENT_DISCONNECTED:
 	case RDMA_CM_EVENT_ADDR_CHANGE:
 	case RDMA_CM_EVENT_TIMEWAIT_EXIT:
-		ibtrs_info(sess, "disconnect received - connection closed\n");
 		ibtrs_rdma_error_recovery(con);
 		break;
 	case RDMA_CM_EVENT_DEVICE_REMOVAL:

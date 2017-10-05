@@ -327,9 +327,8 @@ int ibtrs_cq_qp_create(struct ibtrs_sess *sess, struct ibtrs_con *con,
 
 	err = create_qp(con, sess->ib_dev->pd, wr_queue_size, max_send_sge);
 	if (unlikely(err)) {
-		err = ib_destroy_cq(con->cq);
-		if (err)
-			ibtrs_err(con, "Destroying CQ failed, err: %d\n", err);
+		ib_free_cq(con->cq);
+		con->cq = NULL;
 		return err;
 	}
 	con->sess = sess;
@@ -340,14 +339,9 @@ EXPORT_SYMBOL_GPL(ibtrs_cq_qp_create);
 
 void ibtrs_cq_qp_destroy(struct ibtrs_con *con)
 {
-	int err;
-
 	if (con->cm_id->qp)
 		rdma_destroy_qp(con->cm_id);
-	if (con->cq) {
-		err = ib_destroy_cq(con->cq);
-		if (err)
-			ibtrs_err(con, "Destroying CQ failed, err: %d\n", err);
-	}
+	if (con->cq)
+		ib_free_cq(con->cq);
 }
 EXPORT_SYMBOL_GPL(ibtrs_cq_qp_destroy);

@@ -60,6 +60,7 @@ struct ibtrs_sess {
 	struct ibtrs_addr	addr;
 	uuid_le			uuid;
 	struct ibtrs_ib_dev	*ib_dev;
+	int			ib_dev_ref;
 	struct ibtrs_iu         **usr_rx_ring;
 	bool			usr_freed;
 	spinlock_t		usr_lock;
