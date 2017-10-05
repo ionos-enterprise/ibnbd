@@ -559,9 +559,7 @@ static int send_io_resp_imm(struct ibtrs_srv_con *con, int msg_id, s16 errno)
 	flags = atomic_inc_return(&con->wr_cnt) % sess->queue_depth ?
 			0 : IB_SEND_SIGNALED;
 	imm = (msg_id << 16) | (u16)errno;
-	err = ibtrs_post_rdma_write_imm_empty(con->c.qp,
-					      &ack_cqe,
-					      imm, flags);
+	err = ibtrs_post_rdma_write_imm_empty(&con->c, &ack_cqe, imm, flags);
 	if (unlikely(err))
 		ibtrs_err_rl(sess, "ib_post_send(), err: %d\n", err);
 
@@ -684,8 +682,8 @@ int ibtrs_srv_send(struct ibtrs_srv_sess *sess, const struct kvec *vec,
 
 	len += sizeof(*msg);
 
-	err = ibtrs_post_send_cb(&usr_con->c, usr_con->sess->s.ib_dev->mr,
-				 iu, len, ibtrs_srv_usr_send_done);
+	err = ibtrs_post_send_cb(&usr_con->c, iu, len,
+				 ibtrs_srv_usr_send_done);
 	if (unlikely(err)) {
 		ibtrs_err_rl(sess, "Sending message failed, posting message to QP"
 			     " failed, err: %d\n", err);
@@ -1126,8 +1124,8 @@ static int process_info_req(struct ibtrs_srv_con *con,
 		rsp->addr[i] = cpu_to_le64(addr);
 	}
 	/* Send info response */
-	err = ibtrs_post_send_cb(&con->c, sess->s.ib_dev->mr,
-				 tx_iu, tx_sz, ibtrs_srv_info_rsp_done);
+	err = ibtrs_post_send_cb(&con->c, tx_iu, tx_sz,
+				 ibtrs_srv_info_rsp_done);
 	if (unlikely(err)) {
 		ibtrs_err(sess, "ibtrs_post_send_cb(), err: %d\n", err);
 		ibtrs_iu_free(tx_iu, DMA_TO_DEVICE, sess->s.ib_dev->dev);
@@ -1363,8 +1361,7 @@ static int ibtrs_send_usr_msg_ack(struct ibtrs_srv_con *con)
 			     ibtrs_srv_state_str(sess->state));
 		return -ECOMM;
 	}
-	err = ibtrs_post_rdma_write_imm_empty(con->c.qp,
-					      &ack_cqe,
+	err = ibtrs_post_rdma_write_imm_empty(&con->c, &ack_cqe,
 					      IBTRS_ACK_IMM,
 					      IB_SEND_SIGNALED);
 	if (unlikely(err)) {

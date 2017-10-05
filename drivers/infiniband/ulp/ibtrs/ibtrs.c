@@ -19,7 +19,6 @@ int ibtrs_post_recv_cb(struct ibtrs_con *con, struct ibtrs_iu *iu,
 	struct ibtrs_sess *sess = con->sess;
 	struct ib_recv_wr wr, *bad_wr;
 	struct ib_sge list;
-	int err;
 
 	list.addr   = iu->dma_addr;
 	list.length = iu->size;
@@ -38,19 +37,14 @@ int ibtrs_post_recv_cb(struct ibtrs_con *con, struct ibtrs_iu *iu,
 	wr.sg_list = &list;
 	wr.num_sge = 1;
 
-	err = ib_post_recv(con->qp, &wr, &bad_wr);
-	if (unlikely(err))
-		ibtrs_err(con, "Posting receive work request failed, err:"
-			  " %d\n", err);
-
-	return err;
+	return ib_post_recv(con->qp, &wr, &bad_wr);
 }
 EXPORT_SYMBOL_GPL(ibtrs_post_recv_cb);
 
-int ibtrs_post_send_cb(struct ibtrs_con *con, struct ib_mr *mr,
-		       struct ibtrs_iu *iu, size_t size,
+int ibtrs_post_send_cb(struct ibtrs_con *con, struct ibtrs_iu *iu, size_t size,
 		       void (*done)(struct ib_cq *cq, struct ib_wc *wc))
 {
+	struct ibtrs_sess *sess = con->sess;
 	struct ib_send_wr wr, *bad_wr;
 	struct ib_sge list;
 
@@ -59,7 +53,7 @@ int ibtrs_post_send_cb(struct ibtrs_con *con, struct ib_mr *mr,
 
 	list.addr   = iu->dma_addr;
 	list.length = size;
-	list.lkey   = mr->lkey;
+	list.lkey   = sess->ib_dev->mr->lkey;
 
 	iu->cqe.done = done;
 
@@ -75,7 +69,7 @@ int ibtrs_post_send_cb(struct ibtrs_con *con, struct ib_mr *mr,
 }
 EXPORT_SYMBOL_GPL(ibtrs_post_send_cb);
 
-int ibtrs_post_rdma_write_imm(struct ib_qp *qp, struct ib_cqe *cqe,
+int ibtrs_post_rdma_write_imm(struct ibtrs_con *con, struct ibtrs_iu *iu,
 			      struct ib_sge *sge, unsigned int num_sge,
 			      u32 rkey, u64 rdma_addr, u32 imm_data,
 			      enum ib_send_flags flags)
@@ -85,7 +79,7 @@ int ibtrs_post_rdma_write_imm(struct ib_qp *qp, struct ib_cqe *cqe,
 	int i;
 
 	wr.wr.next	  = NULL;
-	wr.wr.wr_cqe	  = cqe;
+	wr.wr.wr_cqe	  = &iu->cqe;
 	wr.wr.sg_list	  = sge;
 	wr.wr.num_sge	  = num_sge;
 	wr.rkey		  = rkey;
@@ -94,18 +88,19 @@ int ibtrs_post_rdma_write_imm(struct ib_qp *qp, struct ib_cqe *cqe,
 	wr.wr.ex.imm_data = cpu_to_be32(imm_data);
 	wr.wr.send_flags  = flags;
 
-	/* if one of the sges has 0 size,, the operation will fail with an
+	/*
+	 * If one of the sges has 0 size, the operation will fail with an
 	 * length error
 	 */
 	for (i = 0; i < num_sge; i++)
 		if (WARN_ON(sge[i].length == 0))
 			return -EINVAL;
 
-	return ib_post_send(qp, &wr.wr, &bad_wr);
+	return ib_post_send(con->qp, &wr.wr, &bad_wr);
 }
 EXPORT_SYMBOL_GPL(ibtrs_post_rdma_write_imm);
 
-int ibtrs_post_rdma_write_imm_empty(struct ib_qp *qp, struct ib_cqe *cqe,
+int ibtrs_post_rdma_write_imm_empty(struct ibtrs_con *con, struct ib_cqe *cqe,
 				    u32 imm_data, enum ib_send_flags flags)
 {
 	struct ib_send_wr wr, *bad_wr;
@@ -116,7 +111,7 @@ int ibtrs_post_rdma_write_imm_empty(struct ib_qp *qp, struct ib_cqe *cqe,
 	wr.opcode	= IB_WR_RDMA_WRITE_WITH_IMM;
 	wr.ex.imm_data	= cpu_to_be32(imm_data);
 
-	return ib_post_send(qp, &wr, &bad_wr);
+	return ib_post_send(con->qp, &wr, &bad_wr);
 }
 EXPORT_SYMBOL_GPL(ibtrs_post_rdma_write_imm_empty);
 

@@ -876,9 +876,8 @@ static int ibtrs_post_send_rdma(struct ibtrs_clt_con *con, struct rdma_req *req,
 	 */
 	flags = atomic_inc_return(&con->io_cnt) % sess->queue_depth ?
 			0 : IB_SEND_SIGNALED;
-
-	return ibtrs_post_rdma_write_imm(con->c.qp, &req->iu->cqe,
-					 list, 1, con->sess->srv_rdma_buf_rkey,
+	return ibtrs_post_rdma_write_imm(&con->c, req->iu, list, 1,
+					 sess->srv_rdma_buf_rkey,
 					 addr + off, imm, flags);
 }
 
@@ -1016,10 +1015,7 @@ static int ibtrs_post_send_rdma_desc(struct ibtrs_clt_con *con,
 		 */
 		flags = atomic_inc_return(&con->io_cnt) % sess->queue_depth ?
 				0 : IB_SEND_SIGNALED;
-
-		ret = ibtrs_post_rdma_write_imm(con->c.qp,
-						&req->iu->cqe,
-						list, num_sge,
+		ret = ibtrs_post_rdma_write_imm(&con->c, req->iu, list, num_sge,
 						sess->srv_rdma_buf_rkey,
 						addr, imm, flags);
 	} else
@@ -1062,9 +1058,7 @@ static int ibtrs_post_send_rdma_more(struct ibtrs_clt_con *con,
 	 */
 	flags = atomic_inc_return(&con->io_cnt) % sess->queue_depth ?
 			0 : IB_SEND_SIGNALED;
-
-	ret = ibtrs_post_rdma_write_imm(con->c.qp, &req->iu->cqe,
-					list, num_sge,
+	ret = ibtrs_post_rdma_write_imm(&con->c, req->iu, list, num_sge,
 					sess->srv_rdma_buf_rkey,
 					addr, imm, flags);
 	kfree(list);
@@ -1178,8 +1172,7 @@ static int ibtrs_send_msg_user_ack(struct ibtrs_clt_con *con)
 		return -ECOMM;
 	}
 
-	err = ibtrs_post_rdma_write_imm_empty(con->c.qp,
-					      &ack_cqe,
+	err = ibtrs_post_rdma_write_imm_empty(&con->c, &ack_cqe,
 					      IBTRS_ACK_IMM,
 					      IB_SEND_SIGNALED);
 	ibtrs_clt_state_unlock();
@@ -2960,8 +2953,8 @@ static int ibtrs_send_sess_info(struct ibtrs_clt_sess *sess,
 	memcpy(msg->hostname, hostname, sizeof(msg->hostname));
 
 	/* Send info request */
-	err = ibtrs_post_send_cb(&usr_con->c, sess->s.ib_dev->mr,
-				 tx_iu, sizeof(*msg), ibtrs_clt_info_req_done);
+	err = ibtrs_post_send_cb(&usr_con->c, tx_iu, sizeof(*msg),
+				 ibtrs_clt_info_req_done);
 	if (unlikely(err)) {
 		ibtrs_err(sess, "ibtrs_post_send_cb(), err: %d\n", err);
 		goto out;
@@ -3510,8 +3503,8 @@ int ibtrs_clt_send(struct ibtrs_clt_sess *sess, const struct kvec *vec,
 
 	len += sizeof(*msg);
 
-	err = ibtrs_post_send_cb(&usr_con->c, sess->s.ib_dev->mr,
-				 iu, len, ibtrs_clt_usr_send_done);
+	err = ibtrs_post_send_cb(&usr_con->c, iu, len,
+				 ibtrs_clt_usr_send_done);
 	ibtrs_clt_state_unlock();
 	if (unlikely(err)) {
 		ibtrs_err_rl(sess, "Sending user message failed, posting work"
