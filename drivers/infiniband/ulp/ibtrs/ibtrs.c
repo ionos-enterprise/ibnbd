@@ -41,6 +41,19 @@ int ibtrs_post_recv(struct ibtrs_con *con, struct ibtrs_iu *iu,
 }
 EXPORT_SYMBOL_GPL(ibtrs_post_recv);
 
+int ibtrs_post_recv_empty(struct ibtrs_con *con, struct ib_cqe *cqe)
+{
+	struct ib_recv_wr wr, *bad_wr;
+
+	wr.next    = NULL;
+	wr.wr_cqe  = cqe;
+	wr.sg_list = NULL;
+	wr.num_sge = 0;
+
+	return ib_post_recv(con->qp, &wr, &bad_wr);
+}
+EXPORT_SYMBOL_GPL(ibtrs_post_recv_empty);
+
 int ibtrs_post_send(struct ibtrs_con *con, struct ibtrs_iu *iu, size_t size,
 		    void (*done)(struct ib_cq *cq, struct ib_wc *wc))
 {

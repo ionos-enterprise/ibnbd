@@ -260,6 +260,7 @@ void ibtrs_iu_free_sess_rx_bufs(struct ibtrs_sess *sess);
 
 int ibtrs_post_recv(struct ibtrs_con *con, struct ibtrs_iu *iu,
 		    void (*done)(struct ib_cq *cq, struct ib_wc *wc));
+int ibtrs_post_recv_empty(struct ibtrs_con *con, struct ib_cqe *cqe);
 int ibtrs_post_send(struct ibtrs_con *con, struct ibtrs_iu *iu, size_t size,
 		    void (*done)(struct ib_cq *cq, struct ib_wc *wc));
 int ibtrs_post_rdma_write_imm(struct ibtrs_con *con, struct ibtrs_iu *iu,
