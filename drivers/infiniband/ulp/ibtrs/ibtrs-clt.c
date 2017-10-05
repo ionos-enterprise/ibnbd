@@ -1289,9 +1289,9 @@ static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 		 */
 		iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
 		/* We can post iu immediately, since we have imm */
-		err = ibtrs_post_recv_cb(&con->c, iu, ibtrs_clt_rdma_done);
+		err = ibtrs_post_recv(&con->c, iu, ibtrs_clt_rdma_done);
 		if (unlikely(err)) {
-			ibtrs_err(sess, "ibtrs_post_recv_cb(), err: %d\n", err);
+			ibtrs_err(sess, "ibtrs_post_recv(), err: %d\n", err);
 			ibtrs_rdma_error_recovery(con);
 			break;
 		}
@@ -1352,9 +1352,9 @@ static int process_usr_msg(struct ibtrs_clt_con *con, struct ib_wc *wc)
 			ibtrs_err(sess, "ibtrs_schedule_msg(), err: %d\n", err);
 			goto out;
 		}
-		err = ibtrs_post_recv_cb(&con->c, iu, ibtrs_clt_usr_recv_done);
+		err = ibtrs_post_recv(&con->c, iu, ibtrs_clt_usr_recv_done);
 		if (unlikely(err)) {
-			ibtrs_err(sess, "ibtrs_post_recv_cb(), err: %d\n", err);
+			ibtrs_err(sess, "ibtrs_post_recv(), err: %d\n", err);
 			goto out;
 		}
 		err = ibtrs_send_msg_user_ack(con);
@@ -1388,9 +1388,9 @@ static int process_usr_msg_ack(struct ibtrs_clt_con *con, struct ib_wc *wc)
 
 	ibtrs_usr_msg_put(&sess->s);
 
-	err = ibtrs_post_recv_cb(&con->c, iu, ibtrs_clt_usr_recv_done);
+	err = ibtrs_post_recv(&con->c, iu, ibtrs_clt_usr_recv_done);
 	if (unlikely(err))
-		ibtrs_err(sess, "ibtrs_post_recv_cb(), err: %d\n", err);
+		ibtrs_err(sess, "ibtrs_post_recv(), err: %d\n", err);
 
 	return err;
 }
@@ -1437,7 +1437,7 @@ static int post_recv_io(struct ibtrs_clt_con *con)
 	int err, i;
 
 	for (i = 0; i < sess->queue_depth; i++) {
-		err = ibtrs_post_recv_cb(&con->c, iu, ibtrs_clt_rdma_done);
+		err = ibtrs_post_recv(&con->c, iu, ibtrs_clt_rdma_done);
 		if (unlikely(err))
 			return err;
 	}
@@ -1453,7 +1453,7 @@ static int post_recv_usr(struct ibtrs_clt_con *con)
 
 	for (i = 0; i < USR_CON_BUF_SIZE; i++) {
 		iu = sess->s.usr_rx_ring[i];
-		err = ibtrs_post_recv_cb(&con->c, iu, ibtrs_clt_usr_recv_done);
+		err = ibtrs_post_recv(&con->c, iu, ibtrs_clt_usr_recv_done);
 		if (unlikely(err))
 			return err;
 	}
@@ -2944,7 +2944,7 @@ static int ibtrs_send_sess_info(struct ibtrs_clt_sess *sess,
 		goto out;
 	}
 	/* Prepare for getting info response */
-	err = ibtrs_post_recv_cb(&usr_con->c, rx_iu, ibtrs_clt_info_rsp_done);
+	err = ibtrs_post_recv(&usr_con->c, rx_iu, ibtrs_clt_info_rsp_done);
 	if (unlikely(err)) {
 		ibtrs_err(sess, "ibtrs_post_recv(), err: %d\n", err);
 		goto out;
@@ -2956,10 +2956,10 @@ static int ibtrs_send_sess_info(struct ibtrs_clt_sess *sess,
 	memcpy(msg->hostname, hostname, sizeof(msg->hostname));
 
 	/* Send info request */
-	err = ibtrs_post_send_cb(&usr_con->c, tx_iu, sizeof(*msg),
-				 ibtrs_clt_info_req_done);
+	err = ibtrs_post_send(&usr_con->c, tx_iu, sizeof(*msg),
+			      ibtrs_clt_info_req_done);
 	if (unlikely(err)) {
-		ibtrs_err(sess, "ibtrs_post_send_cb(), err: %d\n", err);
+		ibtrs_err(sess, "ibtrs_post_send(), err: %d\n", err);
 		goto out;
 	}
 	tx_iu = NULL;
@@ -3506,8 +3506,7 @@ int ibtrs_clt_send(struct ibtrs_clt_sess *sess, const struct kvec *vec,
 
 	len += sizeof(*msg);
 
-	err = ibtrs_post_send_cb(&usr_con->c, iu, len,
-				 ibtrs_clt_usr_send_done);
+	err = ibtrs_post_send(&usr_con->c, iu, len, ibtrs_clt_usr_send_done);
 	ibtrs_clt_state_unlock();
 	if (unlikely(err)) {
 		ibtrs_err_rl(sess, "Sending user message failed, posting work"

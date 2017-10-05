@@ -13,8 +13,8 @@ MODULE_LICENSE("GPL");
 static LIST_HEAD(device_list);
 static DEFINE_MUTEX(device_list_mutex);
 
-int ibtrs_post_recv_cb(struct ibtrs_con *con, struct ibtrs_iu *iu,
-		       void (*done)(struct ib_cq *cq, struct ib_wc *wc))
+int ibtrs_post_recv(struct ibtrs_con *con, struct ibtrs_iu *iu,
+		    void (*done)(struct ib_cq *cq, struct ib_wc *wc))
 {
 	struct ibtrs_sess *sess = con->sess;
 	struct ib_recv_wr wr, *bad_wr;
@@ -39,10 +39,10 @@ int ibtrs_post_recv_cb(struct ibtrs_con *con, struct ibtrs_iu *iu,
 
 	return ib_post_recv(con->qp, &wr, &bad_wr);
 }
-EXPORT_SYMBOL_GPL(ibtrs_post_recv_cb);
+EXPORT_SYMBOL_GPL(ibtrs_post_recv);
 
-int ibtrs_post_send_cb(struct ibtrs_con *con, struct ibtrs_iu *iu, size_t size,
-		       void (*done)(struct ib_cq *cq, struct ib_wc *wc))
+int ibtrs_post_send(struct ibtrs_con *con, struct ibtrs_iu *iu, size_t size,
+		    void (*done)(struct ib_cq *cq, struct ib_wc *wc))
 {
 	struct ibtrs_sess *sess = con->sess;
 	struct ib_send_wr wr, *bad_wr;
@@ -67,7 +67,7 @@ int ibtrs_post_send_cb(struct ibtrs_con *con, struct ibtrs_iu *iu, size_t size,
 
 	return ib_post_send(con->qp, &wr, &bad_wr);
 }
-EXPORT_SYMBOL_GPL(ibtrs_post_send_cb);
+EXPORT_SYMBOL_GPL(ibtrs_post_send);
 
 int ibtrs_post_rdma_write_imm(struct ibtrs_con *con, struct ibtrs_iu *iu,
 			      struct ib_sge *sge, unsigned int num_sge,

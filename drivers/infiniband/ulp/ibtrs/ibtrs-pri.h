@@ -258,10 +258,10 @@ void ibtrs_iu_free_sess_rx_bufs(struct ibtrs_sess *sess);
 
 /* ibtrs.c */
 
-int ibtrs_post_recv_cb(struct ibtrs_con *con, struct ibtrs_iu *iu,
-		       void (*done)(struct ib_cq *cq, struct ib_wc *wc));
-int ibtrs_post_send_cb(struct ibtrs_con *con, struct ibtrs_iu *iu, size_t size,
-		       void (*done)(struct ib_cq *cq, struct ib_wc *wc));
+int ibtrs_post_recv(struct ibtrs_con *con, struct ibtrs_iu *iu,
+		    void (*done)(struct ib_cq *cq, struct ib_wc *wc));
+int ibtrs_post_send(struct ibtrs_con *con, struct ibtrs_iu *iu, size_t size,
+		    void (*done)(struct ib_cq *cq, struct ib_wc *wc));
 int ibtrs_post_rdma_write_imm(struct ibtrs_con *con, struct ibtrs_iu *iu,
 			      struct ib_sge *sge, unsigned int num_sge,
 			      u32 rkey, u64 rdma_addr, u32 imm_data,
