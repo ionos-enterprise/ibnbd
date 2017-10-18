@@ -214,11 +214,11 @@ static int ibnbd_dev_blk_submit_io(struct ibnbd_dev *dev, sector_t sector,
 	io->priv	= priv;
 
 	bio->bi_end_io		= ibnbd_dev_bi_end_io;
-	bio->bi_bdev		= dev->bdev;
 	bio->bi_private		= io;
 	bio->bi_opf		= ibnbd_io_flags_to_bi_rw(flags);
 	bio->bi_iter.bi_sector	= sector;
 	bio->bi_iter.bi_size	= bi_size;
+	bio_set_dev(bio, dev->bdev);
 
 	submit_bio(bio);
 
@@ -279,10 +279,9 @@ static int ibnbd_dev_file_handle_write_same(struct ibnbd_dev_file_io_work *w)
 static void ibnbd_dev_file_submit_io_worker(struct work_struct *w)
 {
 	struct ibnbd_dev_file_io_work *dev_work;
-	loff_t off;
-	int ret;
-	int len;
 	struct file *f;
+	int ret, len;
+	loff_t off;
 
 	dev_work = container_of(w, struct ibnbd_dev_file_io_work, work);
 	off = dev_work->sector * ibnbd_dev_get_logical_bsize(dev_work->dev);
@@ -303,12 +302,15 @@ static void ibnbd_dev_file_submit_io_worker(struct work_struct *w)
 
 	/* TODO Implement support for DIRECT */
 	if (dev_work->bi_size) {
-		if (dev_work->flags & IBNBD_RW_REQ_WRITE)
+		loff_t off_tmp = off;
+
+		if (dev_work->flags & IBNBD_RW_REQ_WRITE) {
 			ret = kernel_write(f, dev_work->data, dev_work->bi_size,
-					   off);
+					   &off_tmp);
+		}
 		else
-			ret = kernel_read(f, off, dev_work->data,
-					  dev_work->bi_size);
+			ret = kernel_read(f, dev_work->data, dev_work->bi_size,
+					  &off_tmp);
 
 		if (unlikely(ret < 0)) {
 			goto out;
