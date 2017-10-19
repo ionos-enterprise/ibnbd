@@ -2293,16 +2293,26 @@ static bool ibtrs_clt_change_state_from_to(struct ibtrs_clt_sess *sess,
 	return changed;
 }
 
-static bool ibtrs_clt_change_state(struct ibtrs_clt_sess *sess,
-				   enum ibtrs_clt_state new_state)
+static bool ibtrs_clt_change_state_get_old(struct ibtrs_clt_sess *sess,
+					   enum ibtrs_clt_state new_state,
+					   enum ibtrs_clt_state *old_state)
 {
 	bool changed;
 
 	spin_lock_irq(&sess->state_wq.lock);
+	*old_state = sess->state;
 	changed = __ibtrs_clt_change_state(sess, new_state);
 	spin_unlock_irq(&sess->state_wq.lock);
 
 	return changed;
+}
+
+static bool ibtrs_clt_change_state(struct ibtrs_clt_sess *sess,
+				   enum ibtrs_clt_state new_state)
+{
+	enum ibtrs_clt_state old_state;
+
+	return ibtrs_clt_change_state_get_old(sess, new_state, &old_state);
 }
 
 static enum ibtrs_clt_state ibtrs_clt_state(struct ibtrs_clt_sess *sess)
