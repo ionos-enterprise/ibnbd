@@ -2568,6 +2568,8 @@ static void ibtrs_clt_stop_and_destroy_conns(struct ibtrs_clt_sess *sess)
 
 	WARN_ON(sess->state == IBTRS_CLT_CONNECTED);
 
+	sess->ops.sess_ev(sess->ops.priv, IBTRS_CLT_SESS_EV_DISCONNECTED, 0);
+
 	/*
 	 * All IO paths must observe !CONNECTED state before we free everything.
 	 */
@@ -3060,6 +3062,7 @@ static void ibtrs_clt_reconnect_work(struct work_struct *work)
 		ibtrs_err(sess, "Sending session info failed, err: %d\n", err);
 		goto reconnect_again;
 	}
+	sess->ops.sess_ev(sess->ops.priv, IBTRS_CLT_SESS_EV_RECONNECTED, 0);
 
 	return;
 
