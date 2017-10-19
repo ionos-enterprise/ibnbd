@@ -336,8 +336,7 @@ static void ibtrs_srv_update_rdma_stats(struct ibtrs_srv_stats *s,
 
 static void ibtrs_srv_stats_dec_inflight(struct ibtrs_srv_sess *sess)
 {
-	if (!atomic_dec_return(&sess->stats.rdma_stats.inflight))
-		wake_up(&sess->bufs_wait);
+	atomic_dec_return(&sess->stats.rdma_stats.inflight);
 }
 
 int ibtrs_srv_reset_rdma_stats(struct ibtrs_srv_sess *sess, bool enable)
@@ -1883,7 +1882,6 @@ static struct ibtrs_srv_sess *__alloc_sess(struct ibtrs_srv_ctx *ctx,
 	sess->s.addr.sockaddr = cm_id->route.addr.dst_addr;
 
 	memcpy(&sess->s.uuid, uuid, sizeof(sess->s.uuid));
-	init_waitqueue_head(&sess->bufs_wait);
 	spin_lock_init(&sess->state_lock);
 
 	INIT_WORK(&sess->close_work, ibtrs_srv_close_work);

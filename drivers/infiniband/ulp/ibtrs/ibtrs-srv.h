@@ -93,7 +93,6 @@ struct ibtrs_srv_sess {
 	struct ibtrs_srv_op	**ops_ids;
 	unsigned int		con_cnt;
 	struct ibtrs_rcv_buf_pool *rcv_buf_pool;
-	wait_queue_head_t	bufs_wait;
 	u8			off_len; /* number of bits for offset in
 					  * one client buffer.
 					  * 32 - ilog2(sess->queue_depth)
