@@ -277,16 +277,26 @@ static bool __ibtrs_srv_change_state(struct ibtrs_srv_sess *sess,
 	return changed;
 }
 
-static bool ibtrs_srv_change_state(struct ibtrs_srv_sess *sess,
-				   enum ibtrs_srv_state new_state)
+static bool ibtrs_srv_change_state_get_old(struct ibtrs_srv_sess *sess,
+					   enum ibtrs_srv_state new_state,
+					   enum ibtrs_srv_state *old_state)
 {
 	bool changed;
 
 	spin_lock_irq(&sess->state_lock);
+	*old_state = sess->state;
 	changed = __ibtrs_srv_change_state(sess, new_state);
 	spin_unlock_irq(&sess->state_lock);
 
 	return changed;
+}
+
+static bool ibtrs_srv_change_state(struct ibtrs_srv_sess *sess,
+				   enum ibtrs_srv_state new_state)
+{
+	enum ibtrs_srv_state old_state;
+
+	return ibtrs_srv_change_state_get_old(sess, new_state, &old_state);
 }
 
 int ibtrs_srv_current_hca_port_to_str(struct ibtrs_srv_sess *sess,
