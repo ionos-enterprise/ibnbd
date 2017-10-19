@@ -224,7 +224,6 @@ struct ibtrs_srv_con {
 	unsigned		cid;
 	atomic_t		wr_cnt;
 	struct ibtrs_srv_sess	*sess;
-	struct workqueue_struct *rdma_resp_wq;
 };
 
 struct msg_work {
@@ -241,8 +240,6 @@ struct ibtrs_srv_op {
 	struct ibtrs_msg_req_rdma_write *req;
 	struct ib_rdma_wr		*tx_wr;
 	struct ib_sge			*tx_sg;
-	int				status;
-	struct work_struct		work;
 };
 
 static bool __ibtrs_srv_change_state(struct ibtrs_srv_sess *sess,
@@ -565,88 +562,45 @@ static int send_io_resp_imm(struct ibtrs_srv_con *con, int msg_id, s16 errno)
 	return err;
 }
 
-static int ibtrs_srv_queue_resp_rdma(struct ibtrs_srv_op *id)
+/*
+ * ibtrs_srv_resp_rdma() - sends response to the client.
+ *
+ * Context: any
+ */
+int ibtrs_srv_resp_rdma(struct ibtrs_srv_op *id, int status)
 {
 	struct ibtrs_srv_con *con = id->con;
 	struct ibtrs_srv_sess *sess = con->sess;
+	int err;
+
+	if (unlikely(!id))
+		return -EINVAL;
 
 	if (unlikely(sess->state != IBTRS_SRV_ALIVE)) {
-		ibtrs_err_rl(con->sess, "Sending I/O response failed, "
+		ibtrs_err_rl(sess, "Sending I/O response failed, "
 			     " session is disconnected, sess state %s\n",
 			     ibtrs_srv_state_str(sess->state));
 		return -ECOMM;
 	}
-
-	if (WARN_ON(!queue_work(con->rdma_resp_wq, &id->work))) {
-		ibtrs_err_rl(sess, "Sending I/O response failed,"
-			     " couldn't queue work\n");
-		return -EPERM;
-	}
-
-	return 0;
-}
-
-static void ibtrs_srv_resp_rdma_work(struct work_struct *work)
-{
-	struct ibtrs_srv_sess *sess;
-	struct ibtrs_srv_op *id;
-	int err;
-
-	id = container_of(work, struct ibtrs_srv_op, work);
-	sess = id->con->sess;
-
-	if (id->status || id->dir == WRITE) {
-		pr_debug("err or write msg_id=%d, status=%d, sending response\n",
-			 id->msg_id, id->status);
-
-		err = send_io_resp_imm(id->con, id->msg_id, id->status);
+	if (status || id->dir == WRITE) {
+		err = send_io_resp_imm(con, id->msg_id, status);
 		if (unlikely(err)) {
-			ibtrs_err_rl(sess, "Sending imm msg failed, err: %d\n",
+			ibtrs_err_rl(sess,
+				     "Sending imm msg failed, err: %d\n",
 				     err);
-			if (err == -ENOMEM && !ibtrs_srv_queue_resp_rdma(id))
-				return;
 			close_sess(sess);
 		}
-		ibtrs_srv_stats_dec_inflight(sess);
-
-		return;
-	}
-
-	pr_debug("read req msg_id=%d completed, sending data\n", id->msg_id);
-	err = rdma_write_sg(id);
-	if (unlikely(err)) {
-		ibtrs_err_rl(sess, "Sending I/O read response failed, err: %d\n",
-			     err);
-		if (err == -ENOMEM && !ibtrs_srv_queue_resp_rdma(id))
-			return;
-		close_sess(sess);
+	} else {
+		err = rdma_write_sg(id);
+		if (unlikely(err)) {
+			ibtrs_err_rl(sess,
+				     "Sending I/O read response failed, err: %d\n",
+				     err);
+			close_sess(sess);
+		}
 	}
 	ibtrs_srv_stats_dec_inflight(sess);
-}
 
-/*
- * XXX DO WE REALLY NEED THAT worqueue?
- *
- * This function may be called from an interrupt context, e.g. on bio_endio
- * callback on the user module. Queue the real work on a workqueue so we don't
- * need to hold an irq spinlock.
- */
-int ibtrs_srv_resp_rdma(struct ibtrs_srv_op *id, int status)
-{
-	int err = 0;
-
-	if (unlikely(!id)) {
-		pr_err("Sending I/O response failed, I/O ops id NULL\n");
-		return -EINVAL;
-	}
-
-	id->status = status;
-	/* XXX DO WE REALLY NEED THAT worqueue? */
-	INIT_WORK(&id->work, ibtrs_srv_resp_rdma_work);
-
-	err = ibtrs_srv_queue_resp_rdma(id);
-	if (err)
-		ibtrs_srv_stats_dec_inflight(id->con->sess);
 	return err;
 }
 EXPORT_SYMBOL(ibtrs_srv_resp_rdma);
@@ -1716,7 +1670,6 @@ static void ibtrs_srv_close_work(struct work_struct *work)
 
 		rdma_disconnect(con->c.cm_id);
 		ib_drain_qp(con->c.qp);
-		destroy_workqueue(con->rdma_resp_wq);
 	}
 	release_cont_bufs(sess);
 	free_sess_bufs(sess);
@@ -1833,23 +1786,16 @@ static int create_con(struct ibtrs_srv_sess *sess,
 		ibtrs_err(sess, "ibtrs_cq_qp_create(), err: %d\n", err);
 		goto free_con;
 	}
-	con->rdma_resp_wq = alloc_workqueue("ibtrs_rdma_resp", 0, WQ_HIGHPRI);
-	if (unlikely(!con->rdma_resp_wq)) {
-		ibtrs_err(sess, "alloc_workqueue() failed\n");
-		goto free_cqqp;
-	}
 	if (con->cid == 0) {
 		err = post_recv_info_req(con);
 		if (unlikely(err))
-			goto free_wq;
+			goto free_cqqp;
 	}
 	WARN_ON(sess->con[cid]);
 	sess->con[cid] = con;
 
 	return 0;
 
-free_wq:
-	destroy_workqueue(con->rdma_resp_wq);
 free_cqqp:
 	ibtrs_cq_qp_destroy(&con->c);
 free_con:
