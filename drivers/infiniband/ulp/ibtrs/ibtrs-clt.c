@@ -2590,15 +2590,15 @@ static void ibtrs_clt_close_work(struct work_struct *work)
 	struct ibtrs_clt_sess *sess;
 
 	sess = container_of(work, struct ibtrs_clt_sess, close_work);
+
+	cancel_delayed_work_sync(&sess->reconnect_dwork);
 	ibtrs_clt_stop_and_destroy_conns(sess);
 }
 
 static void ibtrs_clt_close_conns(struct ibtrs_clt_sess *sess, bool wait)
 {
-	if (ibtrs_clt_change_state(sess, IBTRS_CLT_CLOSING)) {
-		cancel_delayed_work_sync(&sess->reconnect_dwork);
+	if (ibtrs_clt_change_state(sess, IBTRS_CLT_CLOSING))
 		queue_work(ibtrs_wq, &sess->close_work);
-	}
 	if (wait)
 		flush_work(&sess->close_work);
 }
