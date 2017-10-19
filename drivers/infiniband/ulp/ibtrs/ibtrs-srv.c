@@ -250,9 +250,19 @@ static bool __ibtrs_srv_change_state(struct ibtrs_srv_sess *sess,
 
 	old_state = sess->state;
 	switch (new_state) {
+	case IBTRS_SRV_CONNECTED:
+		switch (old_state) {
+		case IBTRS_SRV_CONNECTING:
+			changed = true;
+			/* FALLTHRU */
+		default:
+			break;
+		}
+		break;
 	case IBTRS_SRV_CLOSING:
 		switch (old_state) {
-		case IBTRS_SRV_ALIVE:
+		case IBTRS_SRV_CONNECTING:
+		case IBTRS_SRV_CONNECTED:
 			changed = true;
 			/* FALLTHRU */
 		default:
@@ -586,7 +596,7 @@ int ibtrs_srv_resp_rdma(struct ibtrs_srv_op *id, int status)
 	if (unlikely(!id))
 		return -EINVAL;
 
-	if (unlikely(sess->state != IBTRS_SRV_ALIVE)) {
+	if (unlikely(sess->state != IBTRS_SRV_CONNECTED)) {
 		ibtrs_err_rl(sess, "Sending I/O response failed, "
 			     " session is disconnected, sess state %s\n",
 			     ibtrs_srv_state_str(sess->state));
@@ -1038,6 +1048,7 @@ static void ibtrs_srv_info_rsp_done(struct ib_cq *cq, struct ib_wc *wc)
 	}
 	WARN_ON(wc->opcode != IB_WC_SEND);
 
+	ibtrs_srv_change_state(sess, IBTRS_SRV_CONNECTED);
 	ibtrs_srv_update_wc_stats(con);
 
 	/*
@@ -1236,7 +1247,7 @@ static void process_rdma_write_req(struct ibtrs_srv_con *con,
 	size_t sg_cnt;
 	int ret;
 
-	if (unlikely(sess->state != IBTRS_SRV_ALIVE)) {
+	if (unlikely(sess->state != IBTRS_SRV_CONNECTED)) {
 		ibtrs_err_rl(sess, "Processing RDMA-Write-Req request failed, "
 			     " session is disconnected, sess state %s\n",
 			     ibtrs_srv_state_str(sess->state));
@@ -1294,7 +1305,7 @@ static void process_rdma_write(struct ibtrs_srv_con *con,
 	struct ibtrs_srv_op *id;
 	int ret;
 
-	if (unlikely(sess->state != IBTRS_SRV_ALIVE)) {
+	if (unlikely(sess->state != IBTRS_SRV_CONNECTED)) {
 		ibtrs_err_rl(sess, "Processing RDMA-Write request failed, "
 			     " session is disconnected, sess state %s\n",
 			     ibtrs_srv_state_str(sess->state));
@@ -1334,7 +1345,7 @@ static int ibtrs_send_usr_msg_ack(struct ibtrs_srv_con *con)
 
 	sess = con->sess;
 
-	if (unlikely(sess->state != IBTRS_SRV_ALIVE)) {
+	if (unlikely(sess->state != IBTRS_SRV_CONNECTED)) {
 		ibtrs_err_rl(sess, "Sending user msg ack failed, disconnected,"
 			     " session state is %s\n",
 			     ibtrs_srv_state_str(sess->state));
@@ -1666,7 +1677,9 @@ static void ibtrs_srv_close_work(struct work_struct *work)
 	sess = container_of(work, typeof(*sess), close_work);
 	ctx = sess->ctx;
 
-	ctx->ops.sess_ev(sess, IBTRS_SRV_SESS_EV_DISCONNECTED, sess->priv);
+	if (sess->was_connected)
+		ctx->ops.sess_ev(sess, IBTRS_SRV_SESS_EV_DISCONNECTED,
+				 sess->priv);
 	ibtrs_srv_destroy_sess_files(sess);
 
 	mutex_lock(&ctx->sess_mutex);
@@ -1830,7 +1843,7 @@ static struct ibtrs_srv_sess *__alloc_sess(struct ibtrs_srv_ctx *ctx,
 	if (unlikely(!sess->con))
 		goto err_free_sess;
 
-	sess->state = IBTRS_SRV_ALIVE;
+	sess->state = IBTRS_SRV_CONNECTING;
 	sess->ctx = ctx;
 	sess->con_cnt = con_cnt;
 	sess->cur_cq_vector = -1;
@@ -1910,7 +1923,7 @@ static int ibtrs_rdma_connect(struct rdma_cm_id *cm_id,
 	mutex_lock(&ctx->sess_mutex);
 	sess = __find_sess(ctx, msg->uuid);
 	if (sess) {
-		if (unlikely(sess->state != IBTRS_SRV_ALIVE)) {
+		if (unlikely(sess->state != IBTRS_SRV_CONNECTING)) {
 			ibtrs_err(sess, "Session in wrong state: %s\n",
 				  ibtrs_srv_state_str(sess->state));
 			mutex_unlock(&ctx->sess_mutex);
@@ -2180,8 +2193,13 @@ void ibtrs_srv_queue_close(struct ibtrs_srv_sess *sess)
 
 static void close_sess(struct ibtrs_srv_sess *sess)
 {
-	if (ibtrs_srv_change_state(sess, IBTRS_SRV_CLOSING))
+	enum ibtrs_srv_state old_state;
+
+	if (ibtrs_srv_change_state_get_old(sess, IBTRS_SRV_CLOSING,
+					   &old_state)) {
+		sess->was_connected = (old_state == IBTRS_SRV_CONNECTED);
 		queue_work(ibtrs_wq, &sess->close_work);
+	}
 	WARN_ON(sess->state != IBTRS_SRV_CLOSING);
 }
 

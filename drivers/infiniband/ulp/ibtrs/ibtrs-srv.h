@@ -7,7 +7,8 @@
  * enum ibtrs_srv_state - Server states.
  */
 enum ibtrs_srv_state {
-	IBTRS_SRV_ALIVE,
+	IBTRS_SRV_CONNECTING,
+	IBTRS_SRV_CONNECTED,
 	IBTRS_SRV_CLOSING,
 	IBTRS_SRV_CLOSED,
 };
@@ -15,8 +16,10 @@ enum ibtrs_srv_state {
 static inline const char *ibtrs_srv_state_str(enum ibtrs_srv_state state)
 {
 	switch (state) {
-	case IBTRS_SRV_ALIVE:
-		return "IBTRS_SRV_ALIVE";
+	case IBTRS_SRV_CONNECTING:
+		return "IBTRS_SRV_CONNECTING";
+	case IBTRS_SRV_CONNECTED:
+		return "IBTRS_SRV_CONNECTED";
 	case IBTRS_SRV_CLOSING:
 		return "IBTRS_SRV_CLOSING";
 	case IBTRS_SRV_CLOSED:
@@ -93,6 +96,7 @@ struct ibtrs_srv_sess {
 	struct ibtrs_srv_op	**ops_ids;
 	unsigned int		con_cnt;
 	struct ibtrs_rcv_buf_pool *rcv_buf_pool;
+	bool			was_connected;
 	u8			off_len; /* number of bits for offset in
 					  * one client buffer.
 					  * 32 - ilog2(sess->queue_depth)
