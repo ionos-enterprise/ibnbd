@@ -136,7 +136,6 @@ struct ibtrs_clt_con {
 	struct ibtrs_clt_sess	*sess;
 	struct ibtrs_fr_pool	*fr_pool;
 	int			cm_err;
-	struct completion	cm_done;
 };
 
 struct msg_work {
@@ -2346,6 +2345,7 @@ static struct ibtrs_clt_sess *alloc_sess(const struct ibtrs_clt_ops *ops,
 	if (unlikely(!sess->con))
 		goto err_free_sess;
 
+	mutex_init(&sess->init_mutex);
 	for (i = 0; i < CONS_PER_SESSION; i++)
 		sess->con->sess = sess;
 
@@ -2507,12 +2507,10 @@ static int create_cm(struct ibtrs_clt_sess *sess, unsigned cid)
 	con = &sess->con[cid];
 	con->sess = sess;
 	con->cid  = cid;
+	con->cm_err = 0;
 	/* Map first two connections to the first CPU */
 	con->cpu  = (cid ? cid - 1 : 0) % num_online_cpus();
 	atomic_set(&con->io_cnt, 0);
-
-	con->cm_err = -ETIMEDOUT;
-	init_completion(&con->cm_done);
 
 	if (sess->peer_addr.ss_family == AF_IB)
 		cm_id = rdma_create_id(&init_net,
@@ -2538,16 +2536,39 @@ static int create_cm(struct ibtrs_clt_sess *sess, unsigned cid)
 
 		return err;
 	}
-	wait_for_completion_interruptible_timeout(&con->cm_done,
-			  msecs_to_jiffies(IBTRS_CONNECT_TIMEOUT_MS));
-	if (unlikely(con->cm_err)) {
-		stop_cm(con);
-		/* Is safe to call destroy if cq_qp is not inited */
-		destroy_con_cq_qp(con);
-		destroy_cm(con);
+	/*
+	 * Combine connection status and session events. This is needed
+	 * for waiting two possible cases: cm_err has something meaningful
+	 * or session state was really changed to error by device removal.
+	 */
+	err = wait_event_interruptible_timeout(sess->state_wq,
+			con->cm_err || sess->state != IBTRS_CLT_CONNECTING,
+			msecs_to_jiffies(IBTRS_CONNECT_TIMEOUT_MS));
+	if (unlikely(err == 0 || err == -ERESTARTSYS)) {
+		if (err == 0)
+			err = -ETIMEDOUT;
+		/* Timedout or interrupted */
+		goto errr;
+	}
+	if (unlikely(con->cm_err < 0)) {
+		err = con->cm_err;
+		goto errr;
+	}
+	if (unlikely(sess->state != IBTRS_CLT_CONNECTING)) {
+		/* Device removal */
+		err = -ECONNABORTED;
+		goto errr;
 	}
 
-	return con->cm_err;
+	return 0;
+
+errr:
+	stop_cm(con);
+	/* Is safe to call destroy if cq_qp is not inited */
+	destroy_con_cq_qp(con);
+	destroy_cm(con);
+
+	return err;
 }
 
 static int alloc_sess_all_bufs(struct ibtrs_clt_sess *sess)
@@ -2589,10 +2610,18 @@ static void ibtrs_clt_stop_and_destroy_conns(struct ibtrs_clt_sess *sess)
 
 	WARN_ON(sess->state == IBTRS_CLT_CONNECTED);
 
+	/*
+	 * Possible race with ibtrs_clt_open(), when DEVICE_REMOVAL comes
+	 * exactly in between.  Start destroying after it finishes.
+	 */
+	mutex_lock(&sess->init_mutex);
+	mutex_unlock(&sess->init_mutex);
+
 	sess->ops.sess_ev(sess->ops.priv, IBTRS_CLT_SESS_EV_DISCONNECTED, 0);
 
 	/*
-	 * All IO paths must observe !CONNECTED state before we free everything.
+	 * All IO paths must observe !CONNECTED state before we
+	 * free everything.
 	 */
 	synchronize_rcu();
 
@@ -2862,9 +2891,16 @@ static int ibtrs_clt_rdma_cm_handler(struct rdma_cm_id *cm_id,
 		break;
 	case RDMA_CM_EVENT_ESTABLISHED:
 		con->cm_err = ibtrs_rdma_conn_established(con, ev);
-		/* complete cm_done regardless of success/failure */
-		complete(&con->cm_done);
-		return 0;
+		if (likely(!con->cm_err)) {
+			/*
+			 * Report success and wake up. Here we abuse state_wq,
+			 * i.e. wake up without state change, but we set cm_err.
+			 */
+			con->cm_err = 1;
+			wake_up(&sess->state_wq);
+			return 0;
+		}
+		break;
 	case RDMA_CM_EVENT_REJECTED:
 		cm_err = ibtrs_rdma_conn_rejected(con, ev);
 		break;
@@ -2878,21 +2914,27 @@ static int ibtrs_clt_rdma_cm_handler(struct rdma_cm_id *cm_id,
 	case RDMA_CM_EVENT_DISCONNECTED:
 	case RDMA_CM_EVENT_ADDR_CHANGE:
 	case RDMA_CM_EVENT_TIMEWAIT_EXIT:
-		ibtrs_rdma_error_recovery(con);
+		cm_err = -ECONNRESET;
 		break;
 	case RDMA_CM_EVENT_DEVICE_REMOVAL:
-		/* Schedule closing session, but do not wait */
+		/*
+		 * Device removal is a special case.  Queue close and return 0.
+		 */
 		ibtrs_clt_close_conns(sess, false);
-		break;
+		return 0;
 	default:
 		ibtrs_err(sess, "Unexpected RDMA CM event (%d)\n", ev->event);
-		ibtrs_rdma_error_recovery(con);
+		cm_err = -ECONNRESET;
 		break;
 	}
 
 	if (cm_err) {
+		/*
+		 * cm error makes sense only on connection establishing,
+		 * in other cases we rely on normal procedure of reconnecting.
+		 */
 		con->cm_err = cm_err;
-		complete(&con->cm_done);
+		ibtrs_rdma_error_recovery(con);
 	}
 
 	return 0;
@@ -3131,12 +3173,13 @@ struct ibtrs_clt_sess *ibtrs_clt_open(const struct ibtrs_clt_ops *ops,
 		err = PTR_ERR(sess);
 		goto out;
 	}
+	mutex_lock(&sess->init_mutex);
 	err = init_conns(sess);
 	if (unlikely(err)) {
 		ibtrs_err(sess, "Establishing session to server failed,"
 			  " failed to init connections, err: %d\n", err);
 		err = -EHOSTUNREACH;
-		goto free_sess;
+		goto close_sess;
 	}
 	err = ibtrs_send_sess_info(sess, true);
 	if (unlikely(err)) {
@@ -3150,12 +3193,13 @@ struct ibtrs_clt_sess *ibtrs_clt_open(const struct ibtrs_clt_ops *ops,
 			  err);
 		goto close_sess;
 	}
+	mutex_unlock(&sess->init_mutex);
 
 	return sess;
 
 close_sess:
+	mutex_unlock(&sess->init_mutex);
 	ibtrs_clt_close_conns(sess, true);
-free_sess:
 	free_sess(sess);
 
 out:

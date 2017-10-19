@@ -103,6 +103,7 @@ struct ibtrs_clt_sess {
 	struct ibtrs_sess	s;
 	wait_queue_head_t	state_wq;
 	enum ibtrs_clt_state	state;
+	struct mutex		init_mutex;
 	struct ibtrs_clt_con	*con;
 	struct ibtrs_iu		**io_tx_ius;
 
