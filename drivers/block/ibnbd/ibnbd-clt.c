@@ -822,7 +822,7 @@ static void ibnbd_clt_sess_ev(void *priv, enum ibtrs_clt_sess_ev ev, int errno)
 		__set_dev_states_closed(sess);
 		mutex_unlock(&sess->lock);
 		break;
-	case IBTRS_CLT_SESS_EV_RECONNECT:
+	case IBTRS_CLT_SESS_EV_RECONNECTED:
 		mutex_lock(&sess->lock);
 		if (sess->state == CLT_SESS_STATE_DESTROYED) {
 			/* This may happen if the session started to be closed
@@ -840,10 +840,6 @@ static void ibnbd_clt_sess_ev(void *priv, enum ibtrs_clt_sess_ev ev, int errno)
 		strlcpy(sess->hostname, attrs.hostname, sizeof(sess->hostname));
 		sess->max_io_size = attrs.max_io_size;
 		ibnbd_schedule_reopen(sess);
-		break;
-	case IBTRS_CLT_SESS_EV_MAX_RECONN_EXCEEDED:
-		pr_info("Reconnect attempts exceeded for session %s\n",
-			sess->str_addr);
 		break;
 	default:
 		pr_err("Unknown session event received (%d), session: (%s)\n",
