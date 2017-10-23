@@ -1036,6 +1036,7 @@ static void ibtrs_srv_info_rsp_done(struct ib_cq *cq, struct ib_wc *wc)
 	struct ibtrs_srv_sess *sess = con->sess;
 	struct ibtrs_srv_ctx *ctx = sess->ctx;
 	struct ibtrs_iu *iu;
+	int err;
 
 	iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
 	ibtrs_iu_free(iu, DMA_TO_DEVICE, sess->s.ib_dev->dev);
@@ -1047,6 +1048,12 @@ static void ibtrs_srv_info_rsp_done(struct ib_cq *cq, struct ib_wc *wc)
 		return;
 	}
 	WARN_ON(wc->opcode != IB_WC_SEND);
+
+	err = ibtrs_srv_create_sess_files(sess);
+	if (unlikely(err))
+		/* Consider as not a fatal error */
+		ibtrs_err(sess,
+			  "ibtrs_srv_create_sess_files(): err %d\n", err);
 
 	ibtrs_srv_change_state(sess, IBTRS_SRV_CONNECTED);
 	ibtrs_srv_update_wc_stats(con);
