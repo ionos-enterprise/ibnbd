@@ -113,12 +113,15 @@ enum ibtrs_msg_types {
  * NOTE: max size 56 bytes, see man rdma_connect().
  */
 struct ibtrs_msg_conn_req {
+	u8		__cma_version; /* Is set to 0 by cma.c in case of
+					* AF_IB, do not touch that. */
+	u8		__padding;
 	__le16		magic;
 	__le16		version;
 	__le16		cid;
 	__le16		cid_num;
 	u8		uuid[16];
-	u8		reserved[32];
+	u8		reserved[30];
 };
 
 /**
