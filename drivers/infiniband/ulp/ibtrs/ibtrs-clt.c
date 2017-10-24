@@ -867,7 +867,7 @@ static int ibtrs_post_send_rdma(struct ibtrs_clt_con *con, struct rdma_req *req,
 	/* user data and user message in the first list element */
 	list[0].addr   = req->iu->dma_addr;
 	list[0].length = req->sg_size;
-	list[0].lkey   = con->sess->s.ib_dev->pd->local_dma_lkey;
+	list[0].lkey   = sess->s.ib_dev->pd->local_dma_lkey;
 
 	/*
 	 * From time to time we have to post signalled sends,
@@ -1031,8 +1031,8 @@ static int ibtrs_post_send_rdma_more(struct ibtrs_clt_con *con,
 				     struct rdma_req *req,
 				     u64 addr, u32 size, u32 imm)
 {
-	struct ib_device *ibdev = con->sess->s.ib_dev->dev;
 	struct ibtrs_clt_sess *sess = con->sess;
+	struct ib_device *ibdev = sess->s.ib_dev->dev;
 	enum ib_send_flags flags;
 	struct scatterlist *sg;
 	struct ib_sge *list;
