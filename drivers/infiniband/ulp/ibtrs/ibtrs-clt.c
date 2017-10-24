@@ -2346,10 +2346,10 @@ static struct ibtrs_clt_sess *alloc_sess(const struct ibtrs_clt_ops *ops,
 		goto err_free_sess;
 
 	mutex_init(&sess->init_mutex);
-	sess->peer_addr = *addr;
+	memcpy(&sess->s.addr.sockaddr, addr,
+	       rdma_addr_size((struct sockaddr *)addr));
 	sess->pdu_sz = pdu_sz;
 	sess->ops = *ops;
-	sess->s.addr.sockaddr = *addr;
 	sess->reconnect_delay_sec = reconnect_delay_sec;
 	sess->max_reconnect_attempts = max_reconnect_attempts;
 	sess->max_pages_per_mr = max_segments;
@@ -2528,7 +2528,7 @@ static int create_cm(struct ibtrs_clt_con *con)
 	struct rdma_cm_id *cm_id;
 	int err;
 
-	if (sess->peer_addr.ss_family == AF_IB)
+	if (sess->s.addr.sockaddr.ss_family == AF_IB)
 		cm_id = rdma_create_id(&init_net,
 				       ibtrs_clt_rdma_cm_handler,
 				       con, RDMA_PS_IB, IB_QPT_RC);
@@ -2545,7 +2545,7 @@ static int create_cm(struct ibtrs_clt_con *con)
 	con->c.cm_id = cm_id;
 	con->cm_err = 0;
 	err = rdma_resolve_addr(cm_id, NULL,
-				(struct sockaddr *)&sess->peer_addr,
+				(struct sockaddr *)&sess->s.addr.sockaddr,
 				IBTRS_CONNECT_TIMEOUT_MS);
 	if (unlikely(err)) {
 		ibtrs_err(sess, "Failed to resolve address, err: %d\n", err);
@@ -2760,17 +2760,6 @@ static int ibtrs_rdma_route_resolved(struct ibtrs_clt_con *con)
 	int err;
 
 	sess = con->sess;
-	if (con->cid == 0) {
-		struct sockaddr_storage *peer_addr = &sess->peer_addr;
-		struct sockaddr_storage *self_addr = &sess->self_addr;
-
-		/* initiator is src, target is dst */
-		memcpy(peer_addr, &con->c.cm_id->route.addr.dst_addr,
-		       sizeof(*peer_addr));
-		memcpy(self_addr, &con->c.cm_id->route.addr.src_addr,
-		       sizeof(*self_addr));
-	}
-
 	memset(&param, 0, sizeof(param));
 	param.retry_count = retry_count;
 	param.rnr_retry_count = 7;

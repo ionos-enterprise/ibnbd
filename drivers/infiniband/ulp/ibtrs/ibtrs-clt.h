@@ -133,8 +133,6 @@ struct ibtrs_clt_sess {
 	u32			mr_max_size;
 	u32			max_pages_per_mr;
 	int			max_sge;
-	struct sockaddr_storage peer_addr;
-	struct sockaddr_storage self_addr;
 	struct kobject		kobj;
 	struct kobject		kobj_stats;
 	struct ibtrs_clt_stats  stats;
