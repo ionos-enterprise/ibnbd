@@ -135,7 +135,6 @@ struct ibtrs_clt_sess {
 	int			max_sge;
 	struct sockaddr_storage peer_addr;
 	struct sockaddr_storage self_addr;
-	struct completion	*destroy_completion;
 	struct kobject		kobj;
 	struct kobject		kobj_stats;
 	struct ibtrs_clt_stats  stats;
