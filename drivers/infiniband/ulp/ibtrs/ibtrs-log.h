@@ -28,8 +28,8 @@ struct fake_sess {
 	if (addr->hostname[0])					\
 		str = addr->hostname;				\
 	else							\
-		sockaddr_to_str(&addr->sockaddr, str_addr,	\
-				sizeof(str_addr));		\
+		sockaddr_to_str((struct sockaddr *)&addr->sockaddr, \
+				str_addr, sizeof(str_addr));	\
 	str;							\
 })
 

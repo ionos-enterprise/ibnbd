@@ -270,7 +270,8 @@ int ibtrs_clt_create_sess_files(struct ibtrs_clt_sess *sess)
 	char str_addr[MAXHOSTNAMELEN];
 	int ret;
 
-	sockaddr_to_str(&sess->s.addr.sockaddr, str_addr, sizeof(str_addr));
+	sockaddr_to_str((struct sockaddr *)&sess->s.addr.sockaddr,
+			str_addr, sizeof(str_addr));
 
 	ret = kobject_init_and_add(&sess->kobj, &ibtrs_clt_sess_ktype,
 				   sessions_kobj, "%s", str_addr);

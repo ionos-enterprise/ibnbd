@@ -847,11 +847,11 @@ static void ibnbd_clt_sess_ev(void *priv, enum ibtrs_clt_sess_ev ev, int errno)
 	}
 }
 
-static int ibnbd_cmp_sock_addr(const struct sockaddr_storage *a,
-			       const struct sockaddr_storage *b)
+static int ibnbd_cmp_sock_addr(const struct sockaddr *a,
+			       const struct sockaddr *b)
 {
-	if (a->ss_family == b->ss_family) {
-		switch (a->ss_family) {
+	if (a->sa_family == b->sa_family) {
+		switch (a->sa_family) {
 		case AF_INET:
 			return memcmp(&((struct sockaddr_in *)a)->sin_addr,
 				      &((struct sockaddr_in *)b)->sin_addr,
@@ -865,7 +865,7 @@ static int ibnbd_cmp_sock_addr(const struct sockaddr_storage *a,
 				      &((struct sockaddr_ib *)b)->sib_addr,
 				      sizeof(struct ib_addr));
 		default:
-			pr_err("Unknown address family: %d\n", a->ss_family);
+			pr_err("Unknown address family: %d\n", a->sa_family);
 			return -EINVAL;
 		}
 	} else {
@@ -874,13 +874,13 @@ static int ibnbd_cmp_sock_addr(const struct sockaddr_storage *a,
 }
 
 struct ibnbd_clt_session *
-ibnbd_clt_find_sess(const struct sockaddr_storage *addr)
+ibnbd_clt_find_sess(const struct sockaddr *addr)
 {
 	struct ibnbd_clt_session *sess;
 
 	spin_lock(&sess_lock);
 	list_for_each_entry(sess, &session_list, list)
-		if (!ibnbd_cmp_sock_addr(&sess->addr, addr)) {
+		if (!ibnbd_cmp_sock_addr((struct sockaddr *)&sess->addr, addr)) {
 			spin_unlock(&sess_lock);
 			return sess;
 		}
@@ -926,7 +926,7 @@ static void destroy_mq_tags(struct ibnbd_clt_session *sess)
 	blk_mq_free_tag_set(&sess->tag_set);
 }
 
-struct ibnbd_clt_session *ibnbd_create_session(const struct sockaddr_storage *addr)
+struct ibnbd_clt_session *ibnbd_create_session(const struct sockaddr *addr)
 {
 	struct ibnbd_clt_session *sess;
 	char str_addr[MAXHOSTNAMELEN];

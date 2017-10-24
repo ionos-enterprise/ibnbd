@@ -298,10 +298,10 @@ static inline const char *ib_wc_opcode_str(enum ib_wc_opcode opcode)
 	}
 }
 
-static inline void sockaddr_to_str(const struct sockaddr_storage *addr,
+static inline void sockaddr_to_str(const struct sockaddr *addr,
 				   char *buf, size_t len)
 {
-	switch (addr->ss_family) {
+	switch (addr->sa_family) {
 	case AF_IB:
 		scnprintf(buf, len, "gid:%pI6",
 			  &((struct sockaddr_ib *)addr)->sib_addr.sib_raw);

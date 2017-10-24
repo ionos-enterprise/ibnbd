@@ -16,10 +16,10 @@
 /* TODO: should be configurable */
 #define IBTRS_PORT 1234
 
-static inline int ibnbd_sockaddr_to_str(const struct sockaddr_storage *addr,
+static inline int ibnbd_sockaddr_to_str(const struct sockaddr *addr,
 					char *buf, size_t len)
 {
-	switch (addr->ss_family) {
+	switch (addr->sa_family) {
 	case AF_IB:
 		return scnprintf(buf, len, "gid:%pI6",
 				 &((struct sockaddr_ib *)addr)->sib_addr.sib_raw);

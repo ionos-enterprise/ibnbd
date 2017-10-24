@@ -273,7 +273,7 @@ out:
 
 static int create_sess(struct ibtrs_srv_sess *sess)
 {
-	const struct sockaddr_storage *sockaddr;
+	const struct sockaddr *sockaddr;
 	struct ibnbd_srv_session *srv_sess;
 	char str_addr[MAXHOSTNAMELEN];
 

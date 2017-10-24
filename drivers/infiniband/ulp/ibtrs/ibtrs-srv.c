@@ -1642,10 +1642,10 @@ const char *ibtrs_srv_get_sess_hostname(struct ibtrs_srv_sess *sess)
 }
 EXPORT_SYMBOL(ibtrs_srv_get_sess_hostname);
 
-const struct sockaddr_storage *
+const struct sockaddr *
 ibtrs_srv_get_sess_sockaddr(struct ibtrs_srv_sess *sess)
 {
-	return &sess->s.addr.sockaddr;
+	return (const struct sockaddr *)&sess->s.addr.sockaddr;
 }
 EXPORT_SYMBOL(ibtrs_srv_get_sess_sockaddr);
 

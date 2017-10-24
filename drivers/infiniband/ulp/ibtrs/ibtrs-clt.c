@@ -2329,7 +2329,7 @@ static void ibtrs_clt_reconnect_work(struct work_struct *work);
 static void ibtrs_clt_close_work(struct work_struct *work);
 
 static struct ibtrs_clt_sess *alloc_sess(const struct ibtrs_clt_ops *ops,
-					 const struct sockaddr_storage *addr,
+					 const struct sockaddr *addr,
 					 size_t pdu_sz, u8 reconnect_delay_sec,
 					 u16 max_segments,
 					 s16 max_reconnect_attempts)
@@ -3169,7 +3169,7 @@ reconnect_again:
 }
 
 struct ibtrs_clt_sess *ibtrs_clt_open(const struct ibtrs_clt_ops *ops,
-				      const struct sockaddr_storage *addr,
+				      const struct sockaddr *addr,
 				      size_t pdu_sz, u8 reconnect_delay_sec,
 				      u16 max_segments,
 				      s16 max_reconnect_attempts)

@@ -469,8 +469,8 @@ static ssize_t ibnbd_clt_session_show(struct kobject *kobj,
 	if (dev->dev_state == DEV_STATE_UNMAPPED)
 		return -EIO;
 
-	ret = ibnbd_sockaddr_to_str(&dev->sess->addr, server_addr,
-				    sizeof(server_addr));
+	ret = ibnbd_sockaddr_to_str((struct sockaddr *)&dev->sess->addr,
+				    server_addr, sizeof(server_addr));
 
 	if (ret >= sizeof(server_addr))
 		return -ENOBUFS;
@@ -529,7 +529,7 @@ static int ibnbd_clt_add_dev_kobj(struct ibnbd_clt_dev *dev)
 }
 
 static int ibnbd_clt_str_ipv4_to_sockaddr(const char *con_addr,
-					  struct sockaddr_storage *dst)
+					  struct sockaddr *dst)
 {
 	int ret;
 	char ipaddr[INET6_ADDRSTRLEN];
@@ -551,7 +551,7 @@ static int ibnbd_clt_str_ipv4_to_sockaddr(const char *con_addr,
 }
 
 static int ibnbd_clt_str_ipv6_to_sockaddr(const char *con_addr,
-					  struct sockaddr_storage *dst)
+					  struct sockaddr *dst)
 {
 	int ret;
 	char ipaddr[INET6_ADDRSTRLEN];
@@ -572,7 +572,7 @@ static int ibnbd_clt_str_ipv6_to_sockaddr(const char *con_addr,
 }
 
 static int ibnbd_clt_str_gid_to_sockaddr(const char *con_addr,
-					 struct sockaddr_storage *dst)
+					 struct sockaddr *dst)
 {
 	int ret;
 	char gid[INET6_ADDRSTRLEN];
@@ -600,8 +600,7 @@ static int ibnbd_clt_str_gid_to_sockaddr(const char *con_addr,
 	return 0;
 }
 
-static int ibnbd_clt_str_to_sockaddr(char *addr,
-				     struct sockaddr_storage *sockaddr)
+static int ibnbd_clt_str_to_sockaddr(char *addr, struct sockaddr *sockaddr)
 {
 	if (strncmp(addr, GID_PREFIX, GID_PREFIX_LEN) == 0) {
 		return ibnbd_clt_str_gid_to_sockaddr(addr, sockaddr);
@@ -615,7 +614,7 @@ static int ibnbd_clt_str_to_sockaddr(char *addr,
 }
 
 static struct ibnbd_clt_session *
-ibnbd_clt_get_create_sess(struct sockaddr_storage *sockaddr)
+ibnbd_clt_get_create_sess(struct sockaddr *sockaddr)
 {
 	struct ibnbd_clt_session *sess;
 
@@ -706,7 +705,8 @@ static ssize_t ibnbd_clt_map_device_store(struct kobject *kobj,
 	enum ibnbd_access_mode access_mode = IBNBD_ACCESS_RW;
 	enum ibnbd_queue_mode queue_mode = BLK_MQ;
 	enum ibnbd_io_mode io_mode = IBNBD_AUTOIO;
-	struct sockaddr_storage sockaddr;
+	struct sockaddr_storage sockaddr_s;
+	struct sockaddr *sockaddr = (struct sockaddr *)&sockaddr_s;
 
 	ret = ibnbd_clt_parse_map_options(buf, server_addr, pathname,
 					  &access_mode, &queue_mode,
@@ -714,7 +714,7 @@ static ssize_t ibnbd_clt_map_device_store(struct kobject *kobj,
 	if (ret)
 		return ret;
 
-	ret = ibnbd_clt_str_to_sockaddr(server_addr, &sockaddr);
+	ret = ibnbd_clt_str_to_sockaddr(server_addr, sockaddr);
 	if (ret) {
 		if (ret == -EPROTONOSUPPORT)
 			pr_err("Invalid address protocol provided: %s\n",
@@ -736,7 +736,7 @@ static ssize_t ibnbd_clt_map_device_store(struct kobject *kobj,
 		pathname, server_addr, ibnbd_access_mode_str(access_mode),
 		ibnbd_queue_mode_str(queue_mode), ibnbd_io_mode_str(io_mode));
 
-	sess = ibnbd_clt_get_create_sess(&sockaddr);
+	sess = ibnbd_clt_get_create_sess(sockaddr);
 	if (IS_ERR(sess))
 		return PTR_ERR(sess);
 
