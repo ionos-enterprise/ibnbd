@@ -934,7 +934,7 @@ static int setup_cont_bufs(struct ibtrs_srv_sess *sess)
 	int i, err;
 
 	sess->rcv_buf_pool = get_alloc_rcv_buf_pool();
-	if (!sess->rcv_buf_pool) {
+	if (unlikely(!sess->rcv_buf_pool)) {
 		ibtrs_err(sess, "Failed to allocate receive buffers for session\n");
 		return -ENOMEM;
 	}
@@ -965,13 +965,10 @@ static int setup_cont_bufs(struct ibtrs_srv_sess *sess)
 	return 0;
 
 err_map:
-	for (i = 0; i < sess->queue_depth; i++) {
+	while (i--) {
 		buf = &sess->rcv_buf_pool->rcv_bufs[i];
-
-		if (buf->rdma_addr &&
-		    !ib_dma_mapping_error(sess->s.ib_dev->dev, buf->rdma_addr))
-			ib_dma_unmap_single(sess->s.ib_dev->dev, buf->rdma_addr,
-					    rcv_buf_size, DMA_BIDIRECTIONAL);
+		ib_dma_unmap_single(sess->s.ib_dev->dev, buf->rdma_addr,
+				    rcv_buf_size, DMA_BIDIRECTIONAL);
 	}
 	return err;
 }
