@@ -1480,7 +1480,7 @@ static int post_recv_sess(struct ibtrs_clt_sess *sess)
 	int err, cid;
 
 	for (cid = 0; cid < CONS_PER_SESSION; cid++) {
-		err = post_recv(&sess->con[cid]);
+		err = post_recv(sess->con[cid]);
 		if (unlikely(err)) {
 			ibtrs_err(sess, "post_recv(), err: %d\n", err);
 			return err;
@@ -2335,7 +2335,7 @@ static struct ibtrs_clt_sess *alloc_sess(const struct ibtrs_clt_ops *ops,
 					 s16 max_reconnect_attempts)
 {
 	struct ibtrs_clt_sess *sess;
-	int i, err = -ENOMEM;
+	int err = -ENOMEM;
 
 	sess = kzalloc(sizeof(*sess), GFP_KERNEL);
 	if (unlikely(!sess))
@@ -2346,9 +2346,6 @@ static struct ibtrs_clt_sess *alloc_sess(const struct ibtrs_clt_ops *ops,
 		goto err_free_sess;
 
 	mutex_init(&sess->init_mutex);
-	for (i = 0; i < CONS_PER_SESSION; i++)
-		sess->con->sess = sess;
-
 	sess->peer_addr = *addr;
 	sess->pdu_sz = pdu_sz;
 	sess->ops = *ops;
@@ -2384,6 +2381,33 @@ static void free_sess(struct ibtrs_clt_sess *sess)
 	kfree(sess->con);
 	kfree(sess->srv_rdma_addr);
 	kfree(sess);
+}
+
+static int create_con(struct ibtrs_clt_sess *sess, unsigned cid)
+{
+	struct ibtrs_clt_con *con;
+
+	con = kzalloc(sizeof(*con), GFP_KERNEL);
+	if (unlikely(!con))
+		return -ENOMEM;
+
+	/* Map first two connections to the first CPU */
+	con->cpu  = (cid ? cid - 1 : 0) % num_online_cpus();
+	con->cid = cid;
+	con->sess = sess;
+	atomic_set(&con->io_cnt, 0);
+
+	sess->con[cid] = con;
+
+	return 0;
+}
+
+static void destroy_con(struct ibtrs_clt_con *con)
+{
+	struct ibtrs_clt_sess *sess = con->sess;
+
+	sess->con[con->cid] = NULL;
+	kfree(con);
 }
 
 static int create_con_cq_qp(struct ibtrs_clt_con *con)
@@ -2498,19 +2522,11 @@ static void destroy_cm(struct ibtrs_clt_con *con)
 static int ibtrs_clt_rdma_cm_handler(struct rdma_cm_id *cm_id,
 				     struct rdma_cm_event *ev);
 
-static int create_cm(struct ibtrs_clt_sess *sess, unsigned cid)
+static int create_cm(struct ibtrs_clt_con *con)
 {
-	struct ibtrs_clt_con *con;
+	struct ibtrs_clt_sess *sess = con->sess;
 	struct rdma_cm_id *cm_id;
 	int err;
-
-	con = &sess->con[cid];
-	con->sess = sess;
-	con->cid  = cid;
-	con->cm_err = 0;
-	/* Map first two connections to the first CPU */
-	con->cpu  = (cid ? cid - 1 : 0) % num_online_cpus();
-	atomic_set(&con->io_cnt, 0);
 
 	if (sess->peer_addr.ss_family == AF_IB)
 		cm_id = rdma_create_id(&init_net,
@@ -2527,6 +2543,7 @@ static int create_cm(struct ibtrs_clt_sess *sess, unsigned cid)
 		return err;
 	}
 	con->c.cm_id = cm_id;
+	con->cm_err = 0;
 	err = rdma_resolve_addr(cm_id, NULL,
 				(struct sockaddr *)&sess->peer_addr,
 				IBTRS_CONNECT_TIMEOUT_MS);
@@ -2606,7 +2623,7 @@ static void free_sess_all_bufs(struct ibtrs_clt_sess *sess)
 
 static void ibtrs_clt_stop_and_destroy_conns(struct ibtrs_clt_sess *sess)
 {
-	int cid;
+	unsigned cid;
 
 	WARN_ON(sess->state == IBTRS_CLT_CONNECTED);
 
@@ -2627,11 +2644,14 @@ static void ibtrs_clt_stop_and_destroy_conns(struct ibtrs_clt_sess *sess)
 
 	fail_all_outstanding_reqs(sess);
 	for (cid = 0; cid < CONS_PER_SESSION; cid++)
-		stop_cm(&sess->con[cid]);
+		stop_cm(sess->con[cid]);
 	free_sess_all_bufs(sess);
 	for (cid = 0; cid < CONS_PER_SESSION; cid++) {
-		destroy_con_cq_qp(&sess->con[cid]);
-		destroy_cm(&sess->con[cid]);
+		struct ibtrs_clt_con *con = sess->con[cid];
+
+		destroy_con_cq_qp(con);
+		destroy_cm(con);
+		destroy_con(con);
 	}
 }
 
@@ -2668,16 +2688,23 @@ static void ibtrs_clt_close_conns(struct ibtrs_clt_sess *sess, bool wait)
 
 static int init_conns(struct ibtrs_clt_sess *sess)
 {
-	int cid, err;
+	unsigned cid;
+	int err;
 
 	/* Before connecting generate new session UUID */
 	uuid_le_gen(&sess->s.uuid);
 
 	/* Establish all RDMA connections  */
 	for (cid = 0; cid < CONS_PER_SESSION; cid++) {
-		err = create_cm(sess, cid);
+		err = create_con(sess, cid);
 		if (unlikely(err))
+		    goto destroy;
+
+		err = create_cm(sess->con[cid]);
+		if (unlikely(err)) {
+			destroy_con(sess->con[cid]);
 			goto destroy;
+		}
 	}
 	/* Allocate all session related buffers */
 	err = alloc_sess_all_bufs(sess);
@@ -2687,12 +2714,13 @@ static int init_conns(struct ibtrs_clt_sess *sess)
 	return 0;
 
 destroy:
-	while (cid) {
-		struct ibtrs_clt_con *con = &sess->con[--cid];
+	while (cid--) {
+		struct ibtrs_clt_con *con = sess->con[cid];
 
 		stop_cm(con);
 		destroy_con_cq_qp(con);
 		destroy_cm(con);
+		destroy_con(con);
 	}
 	/*
 	 * If we've never taken async path and got an error, say,
@@ -3047,7 +3075,7 @@ out:
 static int ibtrs_send_sess_info(struct ibtrs_clt_sess *sess,
 				bool timeout_wait)
 {
-	struct ibtrs_clt_con *usr_con = &sess->con[0];
+	struct ibtrs_clt_con *usr_con = sess->con[0];
 	struct ibtrs_msg_info_req *msg;
 	struct ibtrs_iu *tx_iu, *rx_iu;
 	size_t rx_sz;
@@ -3398,7 +3426,7 @@ int ibtrs_clt_rdma_write(struct ibtrs_clt_sess *sess, struct ibtrs_tag *tag,
 	con_id = ibtrs_rdma_con_id(tag);
 	if (WARN_ON(con_id >= CONS_PER_SESSION))
 		return -EINVAL;
-	con = &sess->con[con_id];
+	con = sess->con[con_id];
 	ibtrs_clt_state_lock();
 	if (unlikely(sess->state != IBTRS_CLT_CONNECTED)) {
 		ibtrs_clt_state_unlock();
@@ -3552,7 +3580,7 @@ int ibtrs_clt_request_rdma_write(struct ibtrs_clt_sess *sess,
 	con_id = ibtrs_rdma_con_id(tag);
 	if (WARN_ON(con_id >= CONS_PER_SESSION))
 		return -EINVAL;
-	con = &sess->con[con_id];
+	con = sess->con[con_id];
 	ibtrs_clt_state_lock();
 	if (unlikely(sess->state != IBTRS_CLT_CONNECTED)) {
 		ibtrs_clt_state_unlock();
@@ -3599,7 +3627,7 @@ EXPORT_SYMBOL(ibtrs_clt_request_rdma_write);
 int ibtrs_clt_send(struct ibtrs_clt_sess *sess, const struct kvec *vec,
 		   size_t nr)
 {
-	struct ibtrs_clt_con *usr_con = &sess->con[0];
+	struct ibtrs_clt_con *usr_con = sess->con[0];
 	struct ibtrs_msg_user *msg;
 	struct ibtrs_iu *iu;
 	size_t len;
