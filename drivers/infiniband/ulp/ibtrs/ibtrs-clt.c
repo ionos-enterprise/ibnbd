@@ -1127,7 +1127,9 @@ static void complete_rdma_req(struct ibtrs_clt_sess *sess,
 	ibtrs_clt_decrease_inflight(&sess->stats);
 
 	req->in_use = false;
-	req->con    = NULL;
+	/* paired with fail_all_outstanding_reqs() */
+	smp_wmb();
+	req->con = NULL;
 	priv = req->priv;
 	dir = req->dir;
 
@@ -1497,6 +1499,8 @@ static void fail_all_outstanding_reqs(struct ibtrs_clt_sess *sess)
 
 	if (WARN_ON(!sess->reqs))
 		return;
+	/* paired with ibtrs_clt_[request_]rdma_write(),complete_rdma_req() */
+	smp_rmb();
 	for (i = 0; i < sess->queue_depth; ++i) {
 		req = &sess->reqs[i];
 		if (req->in_use)
@@ -3441,9 +3445,12 @@ int ibtrs_clt_rdma_write(struct ibtrs_clt_sess *sess, struct ibtrs_tag *tag,
 	req->dir        = DMA_TO_DEVICE;
 
 	err = ibtrs_clt_rdma_write_sg(con, req, vec, u_msg_len, data_len);
+	if (unlikely(err))
+	    req->in_use = false;
+	/* paired with fail_all_outstanding_reqs() */
+	smp_wmb();
 	ibtrs_clt_state_unlock();
 	if (unlikely(err)) {
-		req->in_use = false;
 		ibtrs_err_rl(sess, "RDMA-Write failed, failed to transfer scatter"
 			     " gather list, err: %d\n", err);
 		return err;
@@ -3596,9 +3603,12 @@ int ibtrs_clt_request_rdma_write(struct ibtrs_clt_sess *sess,
 
 	err = ibtrs_clt_request_rdma_write_sg(con, req, vec,
 					      u_msg_len, data_len);
+	if (unlikely(err))
+		req->in_use = false;
+	/* paired with fail_all_outstanding_reqs() */
+	smp_wmb();
 	ibtrs_clt_state_unlock();
 	if (unlikely(err)) {
-		req->in_use = false;
 		ibtrs_err_rl(sess, "Request-RDMA-Write failed, failed to transfer"
 			     " scatter gather list, err: %d\n", err);
 		return err;
