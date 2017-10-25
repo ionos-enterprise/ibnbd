@@ -2687,6 +2687,7 @@ static void ibtrs_clt_close_work(struct work_struct *work)
 	 * To avoid that case do cancel twice: before and after.
 	 */
 	cancel_delayed_work_sync(&sess->reconnect_dwork);
+	ibtrs_clt_change_state(sess, IBTRS_CLT_CLOSED);
 }
 
 static void ibtrs_clt_close_conns(struct ibtrs_clt_sess *sess, bool wait)
