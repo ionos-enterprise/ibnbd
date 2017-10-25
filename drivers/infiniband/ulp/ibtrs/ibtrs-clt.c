@@ -3153,6 +3153,13 @@ static void ibtrs_clt_reconnect_work(struct work_struct *work)
 		/* User requested closing */
 		return;
 
+	if (sess->reconnect_attempts == sess->max_reconnect_attempts) {
+		/* Close a session completely if max attempts is reached */
+		ibtrs_clt_close_conns(sess, false);
+		return;
+	}
+	sess->reconnect_attempts++;
+
 	/* Stop everything */
 	ibtrs_clt_stop_and_destroy_conns(sess);
 	ibtrs_clt_change_state(sess, IBTRS_CLT_CONNECTING);
@@ -3168,6 +3175,7 @@ static void ibtrs_clt_reconnect_work(struct work_struct *work)
 		ibtrs_err(sess, "Sending session info failed, err: %d\n", err);
 		goto reconnect_again;
 	}
+	sess->reconnect_attempts = 0;
 	sess->ops.sess_ev(sess->ops.priv, IBTRS_CLT_SESS_EV_RECONNECTED, 0);
 
 	return;
@@ -3248,14 +3256,12 @@ int ibtrs_clt_reconnect(struct ibtrs_clt_sess *sess)
 {
 	if (ibtrs_clt_change_state_from_to(sess,
 				IBTRS_CLT_CONNECTED, IBTRS_CLT_RECONNECTING)) {
-		unsigned delay_ms = sess->reconnect_delay_sec * 1000;
-
-		queue_delayed_work(ibtrs_wq, &sess->reconnect_dwork,
-				   msecs_to_jiffies(delay_ms));
+		sess->reconnect_attempts = 0;
+		queue_delayed_work(ibtrs_wq, &sess->reconnect_dwork, 0);
 		return 0;
 	}
 
-	return -ENOTCONN;
+	return -EBUSY;
 }
 
 void ibtrs_clt_set_max_reconnect_attempts(struct ibtrs_clt_sess *sess, s16 value)

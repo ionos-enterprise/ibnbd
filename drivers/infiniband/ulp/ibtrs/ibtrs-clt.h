@@ -106,7 +106,6 @@ struct ibtrs_clt_sess {
 	struct mutex		init_mutex;
 	struct ibtrs_clt_con	**con;
 	struct ibtrs_iu		**io_tx_ius;
-
 	struct rdma_req		*reqs;
 	struct ib_fmr_pool	*fmr_pool;
 	size_t			pdu_sz;
@@ -114,8 +113,9 @@ struct ibtrs_clt_sess {
 	struct delayed_work	reconnect_dwork;
 	struct work_struct	close_work;
 	bool			enable_rdma_lat;
-	s16			max_reconnect_attempts;
-	u8			reconnect_delay_sec;
+	unsigned		max_reconnect_attempts;
+	unsigned		reconnect_attempts;
+	unsigned		reconnect_delay_sec;
 	void			*tags;
 	unsigned long		*tags_map;
 	wait_queue_head_t	tags_wait;
