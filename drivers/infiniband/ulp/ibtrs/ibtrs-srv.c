@@ -1639,14 +1639,11 @@ static void ibtrs_srv_close_work(struct work_struct *work)
 	sess = container_of(work, typeof(*sess), close_work);
 	ctx = sess->ctx;
 
-	if (sess->was_connected)
-		ctx->ops.sess_ev(sess, IBTRS_SRV_SESS_EV_DISCONNECTED,
-				 sess->priv);
-	ibtrs_srv_destroy_sess_files(sess);
-
 	mutex_lock(&ctx->sess_mutex);
 	list_del(&sess->ctx_list);
 	mutex_unlock(&ctx->sess_mutex);
+
+	ibtrs_srv_destroy_sess_files(sess);
 
 	for (i = 0; i < sess->con_cnt; i++) {
 		con = sess->con[i];
@@ -1656,6 +1653,10 @@ static void ibtrs_srv_close_work(struct work_struct *work)
 		rdma_disconnect(con->c.cm_id);
 		ib_drain_qp(con->c.qp);
 	}
+	if (sess->was_connected)
+		ctx->ops.sess_ev(sess, IBTRS_SRV_SESS_EV_DISCONNECTED,
+				 sess->priv);
+
 	release_cont_bufs(sess);
 	free_sess_bufs(sess);
 
