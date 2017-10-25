@@ -2226,6 +2226,7 @@ static bool __ibtrs_clt_change_state(struct ibtrs_clt_sess *sess,
 		switch (old_state) {
 		case IBTRS_CLT_CONNECTED:
 		case IBTRS_CLT_CONNECTING_ERR:
+		case IBTRS_CLT_CLOSED:
 			changed = true;
 			/* FALLTHRU */
 		default:
@@ -3254,8 +3255,7 @@ EXPORT_SYMBOL(ibtrs_clt_close);
 
 int ibtrs_clt_reconnect(struct ibtrs_clt_sess *sess)
 {
-	if (ibtrs_clt_change_state_from_to(sess,
-				IBTRS_CLT_CONNECTED, IBTRS_CLT_RECONNECTING)) {
+	if (ibtrs_clt_change_state(sess, IBTRS_CLT_RECONNECTING)) {
 		sess->reconnect_attempts = 0;
 		queue_delayed_work(ibtrs_wq, &sess->reconnect_dwork, 0);
 		return 0;
