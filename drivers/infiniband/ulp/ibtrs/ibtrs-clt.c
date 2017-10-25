@@ -2638,17 +2638,24 @@ static void ibtrs_clt_stop_and_destroy_conns(struct ibtrs_clt_sess *sess)
 	mutex_lock(&sess->init_mutex);
 	mutex_unlock(&sess->init_mutex);
 
-	sess->ops.sess_ev(sess->ops.priv, IBTRS_CLT_SESS_EV_DISCONNECTED, 0);
-
 	/*
 	 * All IO paths must observe !CONNECTED state before we
 	 * free everything.
 	 */
 	synchronize_rcu();
 
-	fail_all_outstanding_reqs(sess);
+	/*
+	 * The order it utterly crucial: firstly disconnect and complete all
+	 * rdma requests with error (thus set in_use=false for requests),
+	 * then fail outstanding requests checking in_use for each, and
+	 * eventually notify upper layer about session disconnection.
+	 */
+
 	for (cid = 0; cid < CONS_PER_SESSION; cid++)
 		stop_cm(sess->con[cid]);
+	fail_all_outstanding_reqs(sess);
+	sess->ops.sess_ev(sess->ops.priv, IBTRS_CLT_SESS_EV_DISCONNECTED, 0);
+
 	free_sess_all_bufs(sess);
 	for (cid = 0; cid < CONS_PER_SESSION; cid++) {
 		struct ibtrs_clt_con *con = sess->con[cid];
