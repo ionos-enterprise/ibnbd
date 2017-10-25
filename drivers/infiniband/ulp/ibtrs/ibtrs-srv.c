@@ -226,12 +226,6 @@ struct ibtrs_srv_con {
 	struct ibtrs_srv_sess	*sess;
 };
 
-struct msg_work {
-	struct work_struct	work;
-	struct ibtrs_srv_con	*con;
-	void                    *msg;
-};
-
 struct ibtrs_srv_op {
 	struct ibtrs_srv_con		*con;
 	u32				msg_id;
@@ -1394,56 +1388,6 @@ err:
 	close_sess(sess);
 }
 
-static void msg_worker(struct work_struct *work)
-{
-	struct ibtrs_srv_sess *sess;
-	struct ibtrs_msg_user *msg;
-	struct ibtrs_srv_ctx *ctx;
-	struct ibtrs_srv_con *con;
-	struct msg_work *w;
-	size_t len;
-
-	w = container_of(work, struct msg_work, work);
-	con = w->con;
-	msg = w->msg;
-	kfree(w);
-
-	len = le16_to_cpu(msg->psize);
-	sess = con->sess;
-	ctx = sess->ctx;
-
-	atomic64_inc(&sess->stats.user_ib_msgs.recv_msg_cnt);
-	atomic64_add(len, &sess->stats.user_ib_msgs.recv_size);
-
-	ctx->ops.recv(sess, sess->priv, msg->payl, len);
-	kfree(msg);
-}
-
-static int ibtrs_schedule_msg(struct ibtrs_srv_con *con,
-			      struct ibtrs_msg_user *msg)
-{
-	struct msg_work *w;
-	size_t len;
-
-	len = le16_to_cpu(msg->psize) + sizeof(*msg);
-
-	w = kmalloc(sizeof(*w), GFP_KERNEL | __GFP_REPEAT);
-	if (unlikely(!w))
-		return -ENOMEM;
-
-	w->con = con;
-	w->msg = kmalloc(len, GFP_KERNEL | __GFP_REPEAT);
-	if (unlikely(!w->msg)) {
-		kfree(w);
-		return -ENOMEM;
-	}
-	memcpy(w->msg, msg, len);
-	INIT_WORK(&w->work, msg_worker);
-	queue_work(ibtrs_wq, &w->work);
-
-	return 0;
-}
-
 static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 {
 	struct ibtrs_srv_con *con = cq->cq_context;
@@ -1528,6 +1472,23 @@ static void ibtrs_srv_usr_send_done(struct ib_cq *cq, struct ib_wc *wc)
 	ibtrs_srv_update_wc_stats(con);
 }
 
+static void process_msg(struct ibtrs_srv_sess *sess, struct ibtrs_msg_user *msg)
+{
+	struct ibtrs_srv_ctx *ctx = sess->ctx;
+	size_t len;
+
+	/*
+	 * Callback is called directly, obviously it may sleep somewhere.
+	 */
+	might_sleep();
+
+	len = le16_to_cpu(msg->psize);
+	atomic64_inc(&sess->stats.user_ib_msgs.recv_msg_cnt);
+	atomic64_add(len + sizeof(*msg), &sess->stats.user_ib_msgs.recv_size);
+
+	ctx->ops.recv(sess, sess->priv, msg->payl, len);
+}
+
 static void ibtrs_srv_usr_recv_done(struct ib_cq *cq, struct ib_wc *wc);
 
 static int process_usr_msg(struct ibtrs_srv_con *con, struct ib_wc *wc)
@@ -1549,11 +1510,8 @@ static int process_usr_msg(struct ibtrs_srv_con *con, struct ib_wc *wc)
 
 	switch (type) {
 	case IBTRS_MSG_USER:
-		err = ibtrs_schedule_msg(con, msg);
-		if (unlikely(err)) {
-			ibtrs_err(sess, "ibtrs_schedule_msg(), err: %d\n", err);
-			goto out;
-		}
+		process_msg(sess, msg);
+
 		err = ibtrs_post_recv(&con->c, iu, ibtrs_srv_usr_recv_done);
 		if (unlikely(err)) {
 			ibtrs_err(sess, "ibtrs_post_recv(), err: %d\n", err);
