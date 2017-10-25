@@ -2305,6 +2305,17 @@ static bool ibtrs_clt_change_state(struct ibtrs_clt_sess *sess,
 	return changed;
 }
 
+static enum ibtrs_clt_state ibtrs_clt_state(struct ibtrs_clt_sess *sess)
+{
+	enum ibtrs_clt_state state;
+
+	spin_lock_irq(&sess->state_wq.lock);
+	state = sess->state;
+	spin_unlock_irq(&sess->state_wq.lock);
+
+	return state;
+}
+
 static void ibtrs_clt_reconnect_work(struct work_struct *work);
 static void ibtrs_clt_close_work(struct work_struct *work);
 
@@ -2593,6 +2604,19 @@ static void ibtrs_clt_close_work(struct work_struct *work)
 
 	cancel_delayed_work_sync(&sess->reconnect_dwork);
 	ibtrs_clt_stop_and_destroy_conns(sess);
+	/*
+	 * Sounds stupid, huh?  No, it is not.  Consider this sequence:
+	 *
+	 *   #CPU0                              #CPU1
+	 *   1.  CONNECTED->RECONNECTING
+	 *   2.                                 RECONNECTING->CLOSING
+	 *   3.  queue_work(&reconnect_dwork)
+	 *   4.                                 queue_work(&close_work);
+	 *   5.  reconnect_work();              close_work();
+	 *
+	 * To avoid that case do cancel twice: before and after.
+	 */
+	cancel_delayed_work_sync(&sess->reconnect_dwork);
 }
 
 static void ibtrs_clt_close_conns(struct ibtrs_clt_sess *sess, bool wait)
@@ -3044,12 +3068,13 @@ static void ibtrs_clt_reconnect_work(struct work_struct *work)
 	sess = container_of(to_delayed_work(work), struct ibtrs_clt_sess,
 			    reconnect_dwork);
 
-	/* Stop everything */
-	ibtrs_clt_stop_and_destroy_conns(sess);
-
-	if (!ibtrs_clt_change_state(sess, IBTRS_CLT_CONNECTING))
+	if (ibtrs_clt_state(sess) == IBTRS_CLT_CLOSING)
 		/* User requested closing */
 		return;
+
+	/* Stop everything */
+	ibtrs_clt_stop_and_destroy_conns(sess);
+	ibtrs_clt_change_state(sess, IBTRS_CLT_CONNECTING);
 
 	err = init_conns(sess);
 	if (unlikely(err)) {
