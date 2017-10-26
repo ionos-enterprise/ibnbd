@@ -58,7 +58,7 @@ struct ibtrs_addr {
 
 struct ibtrs_sess {
 	struct ibtrs_addr	addr;
-	uuid_le			uuid;
+	uuid_t			uuid;
 	struct ibtrs_ib_dev	*ib_dev;
 	int			ib_dev_ref;
 	struct ibtrs_iu         **usr_rx_ring;
@@ -120,7 +120,7 @@ struct ibtrs_msg_conn_req {
 	__le16		version;
 	__le16		cid;
 	__le16		cid_num;
-	u8		uuid[16];
+	uuid_t		uuid;
 	u8		reserved[30];
 };
 
@@ -145,7 +145,7 @@ struct ibtrs_msg_conn_rsp {
 	__le32		rkey;
 	__le32		max_io_size;
 	__le32		max_req_size;
-	u8		uuid[16];
+	uuid_t		uuid;
 	u8		reserved[20];
 };
 

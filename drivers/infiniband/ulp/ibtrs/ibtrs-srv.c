@@ -1696,7 +1696,7 @@ static int ibtrs_rdma_do_accept(struct ibtrs_srv_sess *sess,
 	msg.rkey = cpu_to_le32(sess->s.ib_dev->pd->unsafe_global_rkey);
 	msg.max_io_size = cpu_to_le32(max_io_size);
 	msg.max_req_size = cpu_to_le32(MAX_REQ_SIZE);
-	memcpy(&msg.uuid, sess->s.uuid.b, sizeof(msg.uuid));
+	uuid_copy(&msg.uuid, &sess->s.uuid);
 
 	err = rdma_accept(cm_id, &param);
 	if (err)
@@ -1723,12 +1723,12 @@ static int ibtrs_rdma_do_reject(struct rdma_cm_id *cm_id, int errno)
 }
 
 static struct ibtrs_srv_sess *
-__find_sess(struct ibtrs_srv_ctx *ctx, const char *uuid)
+__find_sess(struct ibtrs_srv_ctx *ctx, const uuid_t *uuid)
 {
 	struct ibtrs_srv_sess *sess;
 
 	list_for_each_entry(sess, &ctx->sess_list, ctx_list) {
-		if (!memcmp(&sess->s.uuid, uuid, sizeof(sess->s.uuid)))
+		if (uuid_equal(&sess->s.uuid, uuid))
 			return sess;
 	}
 
@@ -1793,7 +1793,7 @@ err:
 
 static struct ibtrs_srv_sess *__alloc_sess(struct ibtrs_srv_ctx *ctx,
 					   struct rdma_cm_id *cm_id,
-					   unsigned con_cnt, const char *uuid)
+					   unsigned con_cnt, const uuid_t *uuid)
 {
 	struct ibtrs_srv_sess *sess;
 	int err = -ENOMEM;
@@ -1813,7 +1813,7 @@ static struct ibtrs_srv_sess *__alloc_sess(struct ibtrs_srv_ctx *ctx,
 	sess->queue_depth = sess_queue_depth;
 	sess->s.addr.sockaddr = cm_id->route.addr.dst_addr;
 
-	memcpy(&sess->s.uuid, uuid, sizeof(sess->s.uuid));
+	uuid_copy(&sess->s.uuid, uuid);
 	spin_lock_init(&sess->state_lock);
 
 	INIT_WORK(&sess->close_work, ibtrs_srv_close_work);
@@ -1884,7 +1884,7 @@ static int ibtrs_rdma_connect(struct rdma_cm_id *cm_id,
 		goto reject_w_econnreset;
 	}
 	mutex_lock(&ctx->sess_mutex);
-	sess = __find_sess(ctx, msg->uuid);
+	sess = __find_sess(ctx, &msg->uuid);
 	if (sess) {
 		if (unlikely(sess->state != IBTRS_SRV_CONNECTING)) {
 			ibtrs_err(sess, "Session in wrong state: %s\n",
@@ -1909,7 +1909,7 @@ static int ibtrs_rdma_connect(struct rdma_cm_id *cm_id,
 			goto reject_w_econnreset;
 		}
 	} else {
-		sess = __alloc_sess(ctx, cm_id, con_cnt, msg->uuid);
+		sess = __alloc_sess(ctx, cm_id, con_cnt, &msg->uuid);
 		if (unlikely(IS_ERR(sess))) {
 			mutex_unlock(&ctx->sess_mutex);
 			err = PTR_ERR(sess);
