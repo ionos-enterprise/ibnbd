@@ -1639,10 +1639,6 @@ static void ibtrs_srv_close_work(struct work_struct *work)
 	sess = container_of(work, typeof(*sess), close_work);
 	ctx = sess->ctx;
 
-	mutex_lock(&ctx->sess_mutex);
-	list_del(&sess->ctx_list);
-	mutex_unlock(&ctx->sess_mutex);
-
 	ibtrs_srv_destroy_sess_files(sess);
 
 	for (i = 0; i < sess->con_num; i++) {
@@ -1670,7 +1666,13 @@ static void ibtrs_srv_close_work(struct work_struct *work)
 		kfree(con);
 	}
 	ibtrs_ib_dev_put(sess->s.ib_dev);
+
+	mutex_lock(&ctx->sess_mutex);
+	list_del(&sess->ctx_list);
+	mutex_unlock(&ctx->sess_mutex);
+
 	ibtrs_srv_change_state(sess, IBTRS_SRV_CLOSED);
+
 	kfree(sess->con);
 	kfree(sess);
 }
@@ -1793,7 +1795,8 @@ err:
 
 static struct ibtrs_srv_sess *__alloc_sess(struct ibtrs_srv_ctx *ctx,
 					   struct rdma_cm_id *cm_id,
-					   unsigned con_num, const uuid_t *uuid)
+					   unsigned con_num, unsigned recon_cnt,
+					   const uuid_t *uuid)
 {
 	struct ibtrs_srv_sess *sess;
 	int err = -ENOMEM;
@@ -1812,7 +1815,7 @@ static struct ibtrs_srv_sess *__alloc_sess(struct ibtrs_srv_ctx *ctx,
 	sess->cur_cq_vector = -1;
 	sess->queue_depth = sess_queue_depth;
 	sess->s.addr.sockaddr = cm_id->route.addr.dst_addr;
-
+	sess->s.recon_cnt = recon_cnt;
 	uuid_copy(&sess->s.uuid, uuid);
 	spin_lock_init(&sess->state_lock);
 
@@ -1856,6 +1859,7 @@ static int ibtrs_rdma_connect(struct rdma_cm_id *cm_id,
 	struct ibtrs_srv_ctx *ctx = cm_id->context;
 	struct ibtrs_srv_sess *sess;
 	u16 version, con_num, cid;
+	u16 recon_cnt;
 	int err;
 
 	if (unlikely(len < sizeof(*msg))) {
@@ -1883,9 +1887,17 @@ static int ibtrs_rdma_connect(struct rdma_cm_id *cm_id,
 		pr_err("Incorrect cid: %d >= %d\n", cid, con_num);
 		goto reject_w_econnreset;
 	}
+	recon_cnt = le16_to_cpu(msg->recon_cnt);
 	mutex_lock(&ctx->sess_mutex);
 	sess = __find_sess(ctx, &msg->uuid);
 	if (sess) {
+		if (unlikely(sess->s.recon_cnt != recon_cnt)) {
+			ibtrs_err(sess, "Reconnect detected %d != %d, but "
+				  "previous session is still alive, reconnect "
+				  "later\n", sess->s.recon_cnt, recon_cnt);
+			mutex_unlock(&ctx->sess_mutex);
+			goto reject_w_ebusy;
+		}
 		if (unlikely(sess->state != IBTRS_SRV_CONNECTING)) {
 			ibtrs_err(sess, "Session in wrong state: %s\n",
 				  ibtrs_srv_state_str(sess->state));
@@ -1909,7 +1921,7 @@ static int ibtrs_rdma_connect(struct rdma_cm_id *cm_id,
 			goto reject_w_econnreset;
 		}
 	} else {
-		sess = __alloc_sess(ctx, cm_id, con_num, &msg->uuid);
+		sess = __alloc_sess(ctx, cm_id, con_num, recon_cnt, &msg->uuid);
 		if (unlikely(IS_ERR(sess))) {
 			mutex_unlock(&ctx->sess_mutex);
 			err = PTR_ERR(sess);
@@ -1933,6 +1945,9 @@ reject_w_err:
 
 reject_w_econnreset:
 	return ibtrs_rdma_do_reject(cm_id, -ECONNRESET);
+
+reject_w_ebusy:
+	return ibtrs_rdma_do_reject(cm_id, -EBUSY);
 
 close_and_reject_w_err:
 	close_sess(sess);

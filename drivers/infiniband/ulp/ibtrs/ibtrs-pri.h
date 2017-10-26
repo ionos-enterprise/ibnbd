@@ -59,6 +59,7 @@ struct ibtrs_addr {
 struct ibtrs_sess {
 	struct ibtrs_addr	addr;
 	uuid_t			uuid;
+	unsigned int		recon_cnt;
 	struct ibtrs_ib_dev	*ib_dev;
 	int			ib_dev_ref;
 	struct ibtrs_iu         **usr_rx_ring;
@@ -108,6 +109,7 @@ enum ibtrs_msg_types {
  * @version:	   IBTRS protocol version
  * @cid:	   Current connection id
  * @cid_num:	   Number of connections per session
+ * @recon_cnt:	   Reconnections counter
  * @uuid:	   Client UUID
  *
  * NOTE: max size 56 bytes, see man rdma_connect().
@@ -120,8 +122,9 @@ struct ibtrs_msg_conn_req {
 	__le16		version;
 	__le16		cid;
 	__le16		cid_num;
+	__le16		recon_cnt;
 	uuid_t		uuid;
-	u8		reserved[30];
+	u8		reserved[28];
 };
 
 /**

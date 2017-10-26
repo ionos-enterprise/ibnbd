@@ -2351,6 +2351,7 @@ static struct ibtrs_clt_sess *alloc_sess(const struct ibtrs_clt_ops *ops,
 		goto err_free_sess;
 
 	mutex_init(&sess->init_mutex);
+	uuid_gen(&sess->s.uuid);
 	memcpy(&sess->s.addr.sockaddr, addr,
 	       rdma_addr_size((struct sockaddr *)addr));
 	sess->pdu_sz = pdu_sz;
@@ -2704,8 +2705,12 @@ static int init_conns(struct ibtrs_clt_sess *sess)
 	unsigned cid;
 	int err;
 
-	/* Before connecting generate new session UUID */
-	uuid_gen(&sess->s.uuid);
+	/*
+	 * On every new session connections increase reconnect counter
+	 * to avoid clashes with previous sessions not yet closed
+	 * sessions on a server side.
+	 */
+	sess->s.recon_cnt++;
 
 	/* Establish all RDMA connections  */
 	for (cid = 0; cid < CONS_PER_SESSION; cid++) {
@@ -2783,6 +2788,7 @@ static int ibtrs_rdma_route_resolved(struct ibtrs_clt_con *con)
 	msg.version = cpu_to_le16(IBTRS_VERSION);
 	msg.cid = cpu_to_le16(con->cid);
 	msg.cid_num = cpu_to_le16(CONS_PER_SESSION);
+	msg.recon_cnt = cpu_to_le16(sess->s.recon_cnt);
 	uuid_copy(&msg.uuid, &sess->s.uuid);
 
 	err = rdma_connect(con->c.cm_id, &param);
@@ -2863,21 +2869,27 @@ static int ibtrs_rdma_conn_rejected(struct ibtrs_clt_con *con,
 {
 	const struct ibtrs_msg_conn_rsp *msg;
 	const char *rej_msg;
+	int status, errno;
 	u8 data_len;
-	int status;
 
 	status = ev->status;
 	rej_msg = rdma_reject_msg(con->c.cm_id, status);
 	msg = rdma_consumer_reject_data(con->c.cm_id, ev, &data_len);
 
-	if (msg && data_len >= sizeof(*msg))
+	if (msg && data_len >= sizeof(*msg)) {
+		errno = (int16_t)le16_to_cpu(msg->errno);
+		if (errno == -EBUSY)
+			ibtrs_err(con->sess,
+				  "Previous session is still exists on the "
+				  "server, please reconnect later\n");
+		else
+			ibtrs_err(con->sess,
+				  "Connect rejected: status %d (%s), ibtrs "
+				  "errno %d\n", status, rej_msg, errno);
+	} else
 		ibtrs_err(con->sess,
-			  "Connect rejected: status %d (%s), ibtrs status %d\n",
-			  status, rej_msg, le16_to_cpu(msg->errno));
-	else
-		ibtrs_err(con->sess,
-			  "Connect rejected: status %d (%s)\n",
-			  status, rej_msg);
+			  "Connect rejected but with malformed message: "
+			  "status %d (%s)\n", status, rej_msg);
 
 	return -ECONNRESET;
 }
