@@ -2784,6 +2784,13 @@ static int ibtrs_rdma_route_resolved(struct ibtrs_clt_con *con)
 	param.private_data = &msg;
 	param.private_data_len = sizeof(msg);
 
+	/*
+	 * Those two are the part of struct cma_hdr which is shared
+	 * with private_data in case of AF_IB, so put zeroes to avoid
+	 * wrong validation inside cma.c on receiver side.
+	 */
+	msg.__cma_version = 0;
+	msg.__ip_version = 0;
 	msg.magic = cpu_to_le16(IBTRS_MAGIC);
 	msg.version = cpu_to_le16(IBTRS_VERSION);
 	msg.cid = cpu_to_le16(con->cid);

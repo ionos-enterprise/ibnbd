@@ -117,7 +117,9 @@ enum ibtrs_msg_types {
 struct ibtrs_msg_conn_req {
 	u8		__cma_version; /* Is set to 0 by cma.c in case of
 					* AF_IB, do not touch that. */
-	u8		__padding;
+	u8		__ip_version;  /* On sender side that should be
+					* set to 0, or cma_save_ip_info()
+					* extract garbage and will fail. */
 	__le16		magic;
 	__le16		version;
 	__le16		cid;
