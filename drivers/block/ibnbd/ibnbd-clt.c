@@ -724,18 +724,10 @@ static void __set_dev_states_closed(struct ibnbd_clt_session *sess)
 
 static int update_sess_info(struct ibnbd_clt_session *sess)
 {
+	DECLARE_COMPLETION_ONSTACK(comp);
 	int err;
 
-	sess->sess_info_compl = kmalloc(sizeof(*sess->sess_info_compl),
-					GFP_KERNEL);
-	if (!sess->sess_info_compl) {
-		pr_err("Failed to allocate memory for completion for session"
-		       " %s (%s)\n", sess->str_addr, sess->hostname);
-		return -ENOMEM;
-	}
-
-	init_completion(sess->sess_info_compl);
-
+	sess->sess_info_compl = &comp;
 	err = send_msg_sess_info(sess);
 	if (unlikely(err)) {
 		pr_err("Failed to send SESS_INFO message for session %s (%s)\n",
@@ -744,9 +736,8 @@ static int update_sess_info(struct ibnbd_clt_session *sess)
 	}
 
 	/* wait for IBNBD_MSG_SESS_INFO_RSP from server */
-	wait_for_completion(sess->sess_info_compl);
+	wait_for_completion(&comp);
 out:
-	kfree(sess->sess_info_compl);
 	sess->sess_info_compl = NULL;
 
 	return err;
