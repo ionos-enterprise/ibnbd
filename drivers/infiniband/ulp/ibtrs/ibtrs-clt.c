@@ -3814,7 +3814,7 @@ static int __init ibtrs_client_init(void)
 		       " err: %d\n", err);
 		return err;
 	}
-	ibtrs_wq = create_workqueue("ibtrs_client_wq");
+	ibtrs_wq = alloc_workqueue("ibtrs_client_wq", WQ_MEM_RECLAIM, 0);
 	if (!ibtrs_wq) {
 		pr_err("Failed to load module, alloc ibtrs_client_wq failed\n");
 		return -ENOMEM;

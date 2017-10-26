@@ -2340,7 +2340,7 @@ static int __init ibtrs_server_init(void)
 		       " err: %d\n", err);
 		return err;
 	}
-	ibtrs_wq = create_workqueue("ibtrs_server_wq");
+	ibtrs_wq = alloc_workqueue("ibtrs_server_wq", WQ_MEM_RECLAIM, 0);
 	if (!ibtrs_wq) {
 		pr_err("Failed to load module, alloc ibtrs_server_wq failed\n");
 		return -ENOMEM;
