@@ -1218,7 +1218,7 @@ static int post_recv_sess(struct ibtrs_srv_sess *sess)
 {
 	int err, cid;
 
-	for (cid = 0; cid < sess->con_cnt; cid++) {
+	for (cid = 0; cid < sess->con_num; cid++) {
 		err = post_recv(sess->con[cid]);
 		if (unlikely(err)) {
 			ibtrs_err(sess, "post_recv(), err: %d\n", err);
@@ -1645,7 +1645,7 @@ static void ibtrs_srv_close_work(struct work_struct *work)
 
 	ibtrs_srv_destroy_sess_files(sess);
 
-	for (i = 0; i < sess->con_cnt; i++) {
+	for (i = 0; i < sess->con_num; i++) {
 		con = sess->con[i];
 		if (!con)
 			continue;
@@ -1660,7 +1660,7 @@ static void ibtrs_srv_close_work(struct work_struct *work)
 	release_cont_bufs(sess);
 	free_sess_bufs(sess);
 
-	for (i = 0; i < sess->con_cnt; i++) {
+	for (i = 0; i < sess->con_num; i++) {
 		con = sess->con[i];
 		if (!con)
 			continue;
@@ -1793,7 +1793,7 @@ err:
 
 static struct ibtrs_srv_sess *__alloc_sess(struct ibtrs_srv_ctx *ctx,
 					   struct rdma_cm_id *cm_id,
-					   unsigned con_cnt, const uuid_t *uuid)
+					   unsigned con_num, const uuid_t *uuid)
 {
 	struct ibtrs_srv_sess *sess;
 	int err = -ENOMEM;
@@ -1802,13 +1802,13 @@ static struct ibtrs_srv_sess *__alloc_sess(struct ibtrs_srv_ctx *ctx,
 	if (unlikely(!sess))
 		goto err;
 
-	sess->con = kcalloc(con_cnt, sizeof(*sess->con), GFP_KERNEL);
+	sess->con = kcalloc(con_num, sizeof(*sess->con), GFP_KERNEL);
 	if (unlikely(!sess->con))
 		goto err_free_sess;
 
 	sess->state = IBTRS_SRV_CONNECTING;
 	sess->ctx = ctx;
-	sess->con_cnt = con_cnt;
+	sess->con_num = con_num;
 	sess->cur_cq_vector = -1;
 	sess->queue_depth = sess_queue_depth;
 	sess->s.addr.sockaddr = cm_id->route.addr.dst_addr;
@@ -1855,7 +1855,7 @@ static int ibtrs_rdma_connect(struct rdma_cm_id *cm_id,
 {
 	struct ibtrs_srv_ctx *ctx = cm_id->context;
 	struct ibtrs_srv_sess *sess;
-	u16 version, con_cnt, cid;
+	u16 version, con_num, cid;
 	int err;
 
 	if (unlikely(len < sizeof(*msg))) {
@@ -1871,16 +1871,16 @@ static int ibtrs_rdma_connect(struct rdma_cm_id *cm_id,
 		pr_err("Unsupported major IBTRS version: %d", version);
 		goto reject_w_econnreset;
 	}
-	con_cnt = le16_to_cpu(msg->cid_num);
-	if (unlikely(con_cnt > 4096)) {
+	con_num = le16_to_cpu(msg->cid_num);
+	if (unlikely(con_num > 4096)) {
 		/* Sanity check */
-		pr_err("Too many connections requested: %d\n", con_cnt);
+		pr_err("Too many connections requested: %d\n", con_num);
 		goto reject_w_econnreset;
 	}
 	cid = le16_to_cpu(msg->cid);
-	if (unlikely(cid >= con_cnt)) {
+	if (unlikely(cid >= con_num)) {
 		/* Sanity check */
-		pr_err("Incorrect cid: %d >= %d\n", cid, con_cnt);
+		pr_err("Incorrect cid: %d >= %d\n", cid, con_num);
 		goto reject_w_econnreset;
 	}
 	mutex_lock(&ctx->sess_mutex);
@@ -1895,10 +1895,10 @@ static int ibtrs_rdma_connect(struct rdma_cm_id *cm_id,
 		/*
 		 * Sanity checks
 		 */
-		if (unlikely(con_cnt != sess->con_cnt ||
-			     cid >= sess->con_cnt)) {
+		if (unlikely(con_num != sess->con_num ||
+			     cid >= sess->con_num)) {
 			ibtrs_err(sess, "Incorrect request: %d, %d\n",
-				  cid, con_cnt);
+				  cid, con_num);
 			mutex_unlock(&ctx->sess_mutex);
 			goto reject_w_econnreset;
 		}
@@ -1909,7 +1909,7 @@ static int ibtrs_rdma_connect(struct rdma_cm_id *cm_id,
 			goto reject_w_econnreset;
 		}
 	} else {
-		sess = __alloc_sess(ctx, cm_id, con_cnt, &msg->uuid);
+		sess = __alloc_sess(ctx, cm_id, con_num, &msg->uuid);
 		if (unlikely(IS_ERR(sess))) {
 			mutex_unlock(&ctx->sess_mutex);
 			err = PTR_ERR(sess);

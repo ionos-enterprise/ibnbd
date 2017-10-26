@@ -94,7 +94,7 @@ struct ibtrs_srv_sess {
 	int			cur_cq_vector;
 	struct ibtrs_srv_con    **con;
 	struct ibtrs_srv_op	**ops_ids;
-	unsigned int		con_cnt;
+	unsigned int		con_num;
 	struct ibtrs_rcv_buf_pool *rcv_buf_pool;
 	bool			was_connected;
 	u8			off_len; /* number of bits for offset in
