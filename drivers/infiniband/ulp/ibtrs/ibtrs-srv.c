@@ -539,7 +539,7 @@ static int rdma_write_sg(struct ibtrs_srv_op *id)
 	return err;
 }
 
-static void ibtrs_srv_ack_done(struct ib_cq *cq, struct ib_wc *wc)
+static void ibtrs_srv_hb_and_ack_done(struct ib_cq *cq, struct ib_wc *wc)
 {
 	struct ibtrs_srv_con *con = cq->cq_context;
 	struct ibtrs_srv_sess *sess = con->sess;
@@ -551,8 +551,8 @@ static void ibtrs_srv_ack_done(struct ib_cq *cq, struct ib_wc *wc)
 	}
 }
 
-static struct ib_cqe ack_cqe = {
-	.done = ibtrs_srv_ack_done
+static struct ib_cqe hb_and_ack_cqe = {
+	.done = ibtrs_srv_hb_and_ack_done
 };
 
 static int send_io_resp_imm(struct ibtrs_srv_con *con, int msg_id, s16 errno)
@@ -569,7 +569,8 @@ static int send_io_resp_imm(struct ibtrs_srv_con *con, int msg_id, s16 errno)
 	flags = atomic_inc_return(&con->wr_cnt) % sess->queue_depth ?
 			0 : IB_SEND_SIGNALED;
 	imm = (msg_id << 16) | (u16)errno;
-	err = ibtrs_post_rdma_write_imm_empty(&con->c, &ack_cqe, imm, flags);
+	err = ibtrs_post_rdma_write_imm_empty(&con->c, &hb_and_ack_cqe,
+					      imm, flags);
 	if (unlikely(err))
 		ibtrs_err_rl(sess, "ib_post_send(), err: %d\n", err);
 
@@ -1018,6 +1019,29 @@ static int alloc_sess_bufs(struct ibtrs_srv_sess *sess)
 	return err;
 }
 
+static void ibtrs_srv_hb_err_handler(struct ibtrs_con *c, int err)
+{
+	struct ibtrs_srv_con *con;
+
+	(void)err;
+	con = container_of(c, typeof(*con), c);
+	close_sess(con->sess);
+}
+
+static void ibtrs_srv_start_hb(struct ibtrs_srv_sess *sess)
+{
+	struct ibtrs_srv_con *usr_con = sess->con[0];
+
+	ibtrs_start_hb(&usr_con->c, &hb_and_ack_cqe,
+		       IBTRS_HB_TIMEOUT_MS,
+		       ibtrs_srv_hb_err_handler);
+}
+
+static void ibtrs_srv_stop_hb(struct ibtrs_srv_sess *sess)
+{
+	ibtrs_stop_hb(&sess->s);
+}
+
 static void ibtrs_srv_update_wc_stats(struct ibtrs_srv_con *con)
 {
 	atomic64_inc(&con->sess->stats.wc_comp.calls);
@@ -1050,6 +1074,7 @@ static void ibtrs_srv_info_rsp_done(struct ib_cq *cq, struct ib_wc *wc)
 			  "ibtrs_srv_create_sess_files(): err %d\n", err);
 
 	ibtrs_srv_change_state(sess, IBTRS_SRV_CONNECTED);
+	ibtrs_srv_start_hb(sess);
 	ibtrs_srv_update_wc_stats(con);
 
 	/*
@@ -1350,9 +1375,8 @@ static int ibtrs_send_usr_ack(struct ibtrs_srv_con *con)
 			     ibtrs_srv_state_str(sess->state));
 		return -ECOMM;
 	}
-	err = ibtrs_post_rdma_write_imm_empty(&con->c, &ack_cqe,
-					      IBTRS_ACK_IMM,
-					      IB_SEND_SIGNALED);
+	err = ibtrs_post_rdma_write_imm_empty(&con->c, &hb_and_ack_cqe,
+					      IBTRS_ACK_IMM, IB_SEND_SIGNALED);
 	if (unlikely(err)) {
 		ibtrs_err_rl(sess, "Sending user Ack msg failed, err: %d\n",
 			     err);
@@ -1539,15 +1563,24 @@ static int process_usr_ack(struct ibtrs_srv_con *con, struct ib_wc *wc)
 	struct ibtrs_srv_sess *sess = con->sess;
 	struct ibtrs_iu *iu;
 	int err;
-	u32 imm;
 
 	iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
-	imm = be32_to_cpu(wc->ex.imm_data);
-	if (WARN_ON(imm != IBTRS_ACK_IMM))
-		return -ENOENT;
-
 	ibtrs_iu_usrtx_put(&sess->s);
 
+	err = ibtrs_iu_post_recv(&con->c, iu);
+	if (unlikely(err))
+		ibtrs_err(sess, "ibtrs_iu_post_recv(), err: %d\n", err);
+
+	return err;
+}
+
+static int process_hb(struct ibtrs_srv_con *con, struct ib_wc *wc)
+{
+	struct ibtrs_srv_sess *sess = con->sess;
+	struct ibtrs_iu *iu;
+	int err;
+
+	iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
 	err = ibtrs_iu_post_recv(&con->c, iu);
 	if (unlikely(err))
 		ibtrs_err(sess, "ibtrs_iu_post_recv(), err: %d\n", err);
@@ -1559,6 +1592,7 @@ static void ibtrs_srv_usr_recv_done(struct ib_cq *cq, struct ib_wc *wc)
 {
 	struct ibtrs_srv_con *con = cq->cq_context;
 	struct ibtrs_srv_sess *sess = con->sess;
+	u32 imm;
 	int err;
 
 	WARN_ON(con->cid);
@@ -1579,7 +1613,15 @@ static void ibtrs_srv_usr_recv_done(struct ib_cq *cq, struct ib_wc *wc)
 		err = process_usr(con, wc);
 		break;
 	case IB_WC_RECV_RDMA_WITH_IMM:
-		err = process_usr_ack(con, wc);
+		imm = be32_to_cpu(wc->ex.imm_data);
+		if (imm == IBTRS_ACK_IMM)
+			err = process_usr_ack(con, wc);
+		else if (imm == IBTRS_HB_IMM)
+			err = process_hb(con, wc);
+		else {
+			WARN_ONCE(1, "Unknown imm: %d", imm);
+			err = 0;
+		}
 		break;
 	default:
 		ibtrs_err(sess, "Unknown opcode: 0x%02x\n", wc->opcode);
@@ -1640,6 +1682,7 @@ static void ibtrs_srv_close_work(struct work_struct *work)
 	ctx = sess->ctx;
 
 	ibtrs_srv_destroy_sess_files(sess);
+	ibtrs_srv_stop_hb(sess);
 
 	for (i = 0; i < sess->con_num; i++) {
 		con = sess->con[i];

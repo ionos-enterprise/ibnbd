@@ -38,6 +38,9 @@ enum {
 	IB_IMM_SIZE_BITS = 32,
 
 	IBTRS_ACK_IMM = UINT_MAX,
+	IBTRS_HB_IMM  = UINT_MAX - 1,
+
+	IBTRS_HB_TIMEOUT_MS = 5000,
 
 	IBTRS_MAGIC = 0x1BBD,
 	IBTRS_VERSION = (IBTRS_VER_MAJOR << 8) | IBTRS_VER_MINOR,
@@ -56,6 +59,9 @@ struct ibtrs_addr {
 	char	hostname[MAXHOSTNAMELEN];
 };
 
+struct ibtrs_con;
+typedef void (ibtrs_hb_handler_t)(struct ibtrs_con *con, int err);
+
 struct ibtrs_sess {
 	struct ibtrs_addr	addr;
 	uuid_t			uuid;
@@ -68,6 +74,11 @@ struct ibtrs_sess {
 	struct completion	usrtx_comp;
 	atomic_t		usrtx_cnt;
 	struct list_head	usrtx_iu_list;
+	struct ibtrs_con	*hb_con;
+	struct ib_cqe		*hb_cqe;
+	ibtrs_hb_handler_t	*hb_err_handler;
+	struct delayed_work	hb_dwork;
+	unsigned		hb_timeout_ms;
 };
 
 struct ibtrs_con {
@@ -288,6 +299,10 @@ int ibtrs_cq_qp_create(struct ibtrs_sess *ibtrs_sess, struct ibtrs_con *con,
 		       u32 max_send_sge, int cq_vector, u16 cq_size,
 		       u16 wr_queue_size, enum ib_poll_context poll_ctx);
 void ibtrs_cq_qp_destroy(struct ibtrs_con *con);
+
+void ibtrs_start_hb(struct ibtrs_con *con, struct ib_cqe *cqe,
+		    unsigned timeout_ms, ibtrs_hb_handler_t *err_handler);
+void ibtrs_stop_hb(struct ibtrs_sess *sess);
 
 #define XX(a) case (a): return #a
 static inline const char *ib_wc_opcode_str(enum ib_wc_opcode opcode)

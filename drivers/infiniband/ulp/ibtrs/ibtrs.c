@@ -290,3 +290,51 @@ void ibtrs_cq_qp_destroy(struct ibtrs_con *con)
 		ib_free_cq(con->cq);
 }
 EXPORT_SYMBOL_GPL(ibtrs_cq_qp_destroy);
+
+static void schedule_hb(struct ibtrs_sess *sess)
+{
+	schedule_delayed_work(&sess->hb_dwork,
+			      msecs_to_jiffies(sess->hb_timeout_ms));
+}
+
+static void hb_work(struct work_struct *work)
+{
+	struct ibtrs_sess *sess;
+	int err;
+
+	sess = container_of(to_delayed_work(work), typeof(*sess), hb_dwork);
+	err = ibtrs_post_rdma_write_imm_empty(sess->hb_con,
+					      sess->hb_cqe,
+					      IBTRS_HB_IMM,
+					      IB_SEND_SIGNALED);
+	if (unlikely(err)) {
+		sess->hb_err_handler(sess->hb_con, err);
+		return;
+	}
+
+	schedule_hb(sess);
+}
+
+void ibtrs_start_hb(struct ibtrs_con *con, struct ib_cqe *cqe,
+		    unsigned timeout_ms, ibtrs_hb_handler_t *err_handler)
+{
+	struct ibtrs_sess *sess = con->sess;
+
+	sess->hb_con = con;
+	sess->hb_cqe = cqe;
+	sess->hb_timeout_ms = timeout_ms;
+	sess->hb_err_handler = err_handler;
+	INIT_DELAYED_WORK(&sess->hb_dwork, hb_work);
+	schedule_hb(sess);
+}
+EXPORT_SYMBOL_GPL(ibtrs_start_hb);
+
+void ibtrs_stop_hb(struct ibtrs_sess *sess)
+{
+	cancel_delayed_work_sync(&sess->hb_dwork);
+	sess->hb_con = NULL;
+	sess->hb_cqe = NULL;
+	sess->hb_timeout_ms = 0;
+	sess->hb_err_handler = NULL;
+}
+EXPORT_SYMBOL_GPL(ibtrs_stop_hb);

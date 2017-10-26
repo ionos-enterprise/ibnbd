@@ -1140,7 +1140,7 @@ static void process_io_rsp(struct ibtrs_clt_sess *sess, u32 msg_id, s16 errno)
 	complete_rdma_req(sess, &sess->reqs[msg_id], errno);
 }
 
-static void ibtrs_clt_ack_done(struct ib_cq *cq, struct ib_wc *wc)
+static void ibtrs_clt_hb_and_ack_done(struct ib_cq *cq, struct ib_wc *wc)
 {
 	struct ibtrs_clt_con *con = cq->cq_context;
 	struct ibtrs_clt_sess *sess = con->sess;
@@ -1152,8 +1152,8 @@ static void ibtrs_clt_ack_done(struct ib_cq *cq, struct ib_wc *wc)
 	}
 }
 
-static struct ib_cqe ack_cqe = {
-	.done = ibtrs_clt_ack_done
+static struct ib_cqe hb_and_ack_cqe = {
+	.done = ibtrs_clt_hb_and_ack_done
 };
 
 static int ibtrs_send_usr_ack(struct ibtrs_clt_con *con)
@@ -1170,7 +1170,7 @@ static int ibtrs_send_usr_ack(struct ibtrs_clt_con *con)
 		return -ECOMM;
 	}
 
-	err = ibtrs_post_rdma_write_imm_empty(&con->c, &ack_cqe,
+	err = ibtrs_post_rdma_write_imm_empty(&con->c, &hb_and_ack_cqe,
 					      IBTRS_ACK_IMM,
 					      IB_SEND_SIGNALED);
 	ibtrs_clt_state_unlock();
@@ -1377,15 +1377,24 @@ static int process_usr_ack(struct ibtrs_clt_con *con, struct ib_wc *wc)
 	struct ibtrs_clt_sess *sess = con->sess;
 	struct ibtrs_iu *iu;
 	int err;
-	u32 imm;
 
 	iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
-	imm = be32_to_cpu(wc->ex.imm_data);
-	if (WARN_ON(imm != IBTRS_ACK_IMM))
-		return -ENOENT;
-
 	ibtrs_iu_usrtx_put(&sess->s);
 
+	err = ibtrs_iu_post_recv(&con->c, iu);
+	if (unlikely(err))
+		ibtrs_err(sess, "ibtrs_iu_post_recv(), err: %d\n", err);
+
+	return err;
+}
+
+static int process_hb(struct ibtrs_clt_con *con, struct ib_wc *wc)
+{
+	struct ibtrs_clt_sess *sess = con->sess;
+	struct ibtrs_iu *iu;
+	int err;
+
+	iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
 	err = ibtrs_iu_post_recv(&con->c, iu);
 	if (unlikely(err))
 		ibtrs_err(sess, "ibtrs_iu_post_recv(), err: %d\n", err);
@@ -1397,6 +1406,7 @@ static void ibtrs_clt_usr_recv_done(struct ib_cq *cq, struct ib_wc *wc)
 {
 	struct ibtrs_clt_con *con = cq->cq_context;
 	struct ibtrs_clt_sess *sess = con->sess;
+	u32 imm;
 	int err;
 
 	WARN_ON(con->cid);
@@ -1417,7 +1427,15 @@ static void ibtrs_clt_usr_recv_done(struct ib_cq *cq, struct ib_wc *wc)
 		err = process_usr(con, wc);
 		break;
 	case IB_WC_RECV_RDMA_WITH_IMM:
-		err = process_usr_ack(con, wc);
+		imm = be32_to_cpu(wc->ex.imm_data);
+		if (imm == IBTRS_ACK_IMM)
+			err = process_usr_ack(con, wc);
+		else if (imm == IBTRS_HB_IMM)
+			err = process_hb(con, wc);
+		else {
+			WARN_ONCE(1, "Unknown imm: %d", imm);
+			err = 0;
+		}
 		break;
 	default:
 		ibtrs_err(sess, "Unknown opcode: 0x%02x\n", wc->opcode);
@@ -2621,6 +2639,29 @@ static void free_sess_all_bufs(struct ibtrs_clt_sess *sess)
 	free_sess_io_bufs(sess);
 }
 
+static void ibtrs_clt_hb_err_handler(struct ibtrs_con *c, int err)
+{
+	struct ibtrs_clt_con *con;
+
+	(void)err;
+	con = container_of(c, typeof(*con), c);
+	ibtrs_rdma_error_recovery(con);
+}
+
+static void ibtrs_clt_start_hb(struct ibtrs_clt_sess *sess)
+{
+	struct ibtrs_clt_con *usr_con = sess->con[0];
+
+	ibtrs_start_hb(&usr_con->c, &hb_and_ack_cqe,
+		       IBTRS_HB_TIMEOUT_MS,
+		       ibtrs_clt_hb_err_handler);
+}
+
+static void ibtrs_clt_stop_hb(struct ibtrs_clt_sess *sess)
+{
+	ibtrs_stop_hb(&sess->s);
+}
+
 static void ibtrs_clt_stop_and_destroy_conns(struct ibtrs_clt_sess *sess)
 {
 	unsigned cid;
@@ -2642,6 +2683,8 @@ static void ibtrs_clt_stop_and_destroy_conns(struct ibtrs_clt_sess *sess)
 	 * free everything.
 	 */
 	synchronize_rcu();
+
+	ibtrs_clt_stop_hb(sess);
 
 	/*
 	 * The order it utterly crucial: firstly disconnect and complete all
@@ -2727,6 +2770,7 @@ static int init_conns(struct ibtrs_clt_sess *sess)
 	if (unlikely(err))
 		goto destroy;
 
+	ibtrs_clt_start_hb(sess);
 	sess->conns_inited = true;
 
 	return 0;
