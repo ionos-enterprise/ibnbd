@@ -2012,8 +2012,8 @@ static int ibtrs_srv_rdma_cm_handler(struct rdma_cm_id *cm_id,
 		ibtrs_rdma_device_removal(con);
 		break;
 	default:
-		ibtrs_wrn(con->sess, "Ignoring unexpected CM event %s, err %d\n",
-			  rdma_event_msg(event->event), event->status);
+		pr_err("Ignoring unexpected CM event %s, err %d\n",
+		       rdma_event_msg(event->event), event->status);
 		break;
 	}
 
