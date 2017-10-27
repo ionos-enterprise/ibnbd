@@ -131,52 +131,6 @@ int ibtrs_post_rdma_write_imm_empty(struct ibtrs_con *con, struct ib_cqe *cqe,
 }
 EXPORT_SYMBOL_GPL(ibtrs_post_rdma_write_imm_empty);
 
-static const char *ib_event_str(enum ib_event_type ev)
-{
-	switch (ev) {
-	case IB_EVENT_CQ_ERR:
-		return "IB_EVENT_CQ_ERR";
-	case IB_EVENT_QP_FATAL:
-		return "IB_EVENT_QP_FATAIL";
-	case IB_EVENT_QP_REQ_ERR:
-		return "IB_EVENT_QP_REQ_ERR";
-	case IB_EVENT_QP_ACCESS_ERR:
-		return "IB_EVENT_QP_ACCESS_ERR";
-	case IB_EVENT_COMM_EST:
-		return "IB_EVENT_COMM_EST";
-	case IB_EVENT_SQ_DRAINED:
-		return "IB_EVENT_SQ_DRAINED";
-	case IB_EVENT_PATH_MIG:
-		return "IB_EVENT_PATH_MIG";
-	case IB_EVENT_PATH_MIG_ERR:
-		return "IB_EVENT_PATH_MIG_ERR";
-	case IB_EVENT_DEVICE_FATAL:
-		return "IB_EVENT_DEVICE_FATAL";
-	case IB_EVENT_PORT_ACTIVE:
-		return "IB_EVENT_PORT_ACTIVE";
-	case IB_EVENT_PORT_ERR:
-		return "IB_EVENT_PORT_ERR";
-	case IB_EVENT_LID_CHANGE:
-		return "IB_EVENT_LID_CHANGE";
-	case IB_EVENT_PKEY_CHANGE:
-		return "IB_EVENT_PKEY_CHANGE";
-	case IB_EVENT_SM_CHANGE:
-		return "IB_EVENT_SM_CHANGE";
-	case IB_EVENT_SRQ_ERR:
-		return "IB_EVENT_SRQ_ERR";
-	case IB_EVENT_SRQ_LIMIT_REACHED:
-		return "IB_EVENT_SRQ_LIMIT_REACHED";
-	case IB_EVENT_QP_LAST_WQE_REACHED:
-		return "IB_EVENT_QP_LAST_WQE_REACHED";
-	case IB_EVENT_CLIENT_REREGISTER:
-		return "IB_EVENT_CLIENT_REREGISTER";
-	case IB_EVENT_GID_CHANGE:
-		return "IB_EVENT_GID_CHANGE";
-	default:
-		return "Unknown IB event";
-	}
-};
-
 static void qp_event_handler(struct ib_event *ev, void *ctx)
 {
 	struct ibtrs_con *con = ctx;
@@ -184,12 +138,12 @@ static void qp_event_handler(struct ib_event *ev, void *ctx)
 	switch (ev->event) {
 	case IB_EVENT_COMM_EST:
 		ibtrs_info(con, "QP event %s (%d) received\n",
-			   ib_event_str(ev->event), ev->event);
+			   ib_event_msg(ev->event), ev->event);
 		rdma_notify(con->cm_id, IB_EVENT_COMM_EST);
 		break;
 	default:
 		ibtrs_info(con, "Unhandled QP event %s (%d) received\n",
-			   ib_event_str(ev->event), ev->event);
+			   ib_event_msg(ev->event), ev->event);
 		break;
 	}
 }
