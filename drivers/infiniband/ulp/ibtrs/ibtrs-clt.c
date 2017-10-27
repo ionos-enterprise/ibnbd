@@ -3253,6 +3253,7 @@ reconnect_again:
 }
 
 struct ibtrs_clt_sess *ibtrs_clt_open(const struct ibtrs_clt_ops *ops,
+				      const char *sessname,
 				      const struct sockaddr *addr,
 				      size_t pdu_sz, u8 reconnect_delay_sec,
 				      u16 max_segments,
