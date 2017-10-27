@@ -1103,7 +1103,7 @@ static int process_info_req(struct ibtrs_srv_con *con,
 		ibtrs_err(sess, "post_recv_sess(), err: %d\n", err);
 		return err;
 	}
-	memcpy(sess->s.addr.hostname, msg->hostname, sizeof(msg->hostname));
+	memcpy(sess->s.sessname, msg->sessname, sizeof(sess->s.sessname));
 
 	tx_sz  = sizeof(struct ibtrs_msg_info_rsp);
 	tx_sz += sizeof(u64) * sess->queue_depth;
@@ -1117,7 +1117,6 @@ static int process_info_req(struct ibtrs_srv_con *con,
 	rsp = tx_iu->buf;
 	rsp->type = cpu_to_le16(IBTRS_MSG_INFO_RSP);
 	rsp->addr_num = cpu_to_le16(sess->queue_depth);
-	strlcpy(rsp->hostname, hostname, sizeof(rsp->hostname));
 	for (i = 0; i < sess->queue_depth; i++) {
 		addr = sess->rcv_buf_pool->rcv_bufs[i].rdma_addr;
 		rsp->addr[i] = cpu_to_le64(addr);
@@ -1638,7 +1637,7 @@ err:
 
 const char *ibtrs_srv_get_sess_hostname(struct ibtrs_srv_sess *sess)
 {
-	return sess->s.addr.hostname;
+	return sess->s.sessname;
 }
 EXPORT_SYMBOL(ibtrs_srv_get_sess_hostname);
 

@@ -56,7 +56,7 @@ struct ibtrs_ib_dev {
 
 struct ibtrs_addr {
 	struct sockaddr_storage sockaddr;
-	char	hostname[MAXHOSTNAMELEN];
+	char			hostname[MAXHOSTNAMELEN];
 };
 
 struct ibtrs_con;
@@ -64,6 +64,7 @@ typedef void (ibtrs_hb_handler_t)(struct ibtrs_con *con, int err);
 
 struct ibtrs_sess {
 	struct ibtrs_addr	addr;
+	char			sessname[MAXHOSTNAMELEN];
 	uuid_t			uuid;
 	unsigned int		recon_cnt;
 	struct ibtrs_ib_dev	*ib_dev;
@@ -168,11 +169,11 @@ struct ibtrs_msg_conn_rsp {
 /**
  * struct ibtrs_msg_info_req
  * @type:		@IBTRS_MSG_INFO_REQ
- * @hostname:		Client host name
+ * @sessname:		Session name chosen by client
  */
 struct ibtrs_msg_info_req {
 	__le16		type;
-	u8		hostname[MAXHOSTNAMELEN];
+	u8		sessname[MAXHOSTNAMELEN];
 	u8		reserved[14];
 };
 
@@ -180,14 +181,12 @@ struct ibtrs_msg_info_req {
  * struct ibtrs_msg_info_rsp
  * @type:		@IBTRS_MSG_INFO_RSP
  * @addr_num:		Number of rdma addresses
- * @hostname:		Server host name
  * @addr:		RDMA addresses of buffers
  */
 struct ibtrs_msg_info_rsp {
 	__le16		type;
 	__le16		addr_num;
-	u8		hostname[MAXHOSTNAMELEN];
-	u8		reserved[12];
+	u8		reserved[4];
 	__le64		addr[];
 };
 

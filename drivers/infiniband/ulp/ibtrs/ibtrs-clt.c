@@ -2345,6 +2345,7 @@ static void ibtrs_clt_reconnect_work(struct work_struct *work);
 static void ibtrs_clt_close_work(struct work_struct *work);
 
 static struct ibtrs_clt_sess *alloc_sess(const struct ibtrs_clt_ops *ops,
+					 const char *sessname,
 					 const struct sockaddr *addr,
 					 size_t pdu_sz, u8 reconnect_delay_sec,
 					 u16 max_segments,
@@ -2365,6 +2366,7 @@ static struct ibtrs_clt_sess *alloc_sess(const struct ibtrs_clt_ops *ops,
 	uuid_gen(&sess->s.uuid);
 	memcpy(&sess->s.addr.sockaddr, addr,
 	       rdma_addr_size((struct sockaddr *)addr));
+	strlcpy(sess->s.sessname, sessname, sizeof(sess->s.sessname));
 	sess->pdu_sz = pdu_sz;
 	sess->ops = *ops;
 	sess->reconnect_delay_sec = reconnect_delay_sec;
@@ -3077,8 +3079,6 @@ static int process_info_rsp(struct ibtrs_clt_sess *sess,
 	for (i = 0; i < msg->addr_num; i++)
 		sess->srv_rdma_addr[i] = le64_to_cpu(msg->addr[i]);
 
-	memcpy(sess->s.addr.hostname, msg->hostname, sizeof(msg->hostname));
-
 	return 0;
 }
 
@@ -3169,7 +3169,7 @@ static int ibtrs_send_sess_info(struct ibtrs_clt_sess *sess,
 
 	msg = tx_iu->buf;
 	msg->type = cpu_to_le16(IBTRS_MSG_INFO_REQ);
-	memcpy(msg->hostname, hostname, sizeof(msg->hostname));
+	memcpy(msg->sessname, sess->s.sessname, sizeof(msg->sessname));
 
 	/* Send info request */
 	err = ibtrs_iu_post_send(&usr_con->c, tx_iu, sizeof(*msg));
@@ -3267,7 +3267,7 @@ struct ibtrs_clt_sess *ibtrs_clt_open(const struct ibtrs_clt_ops *ops,
 		err = -EINVAL;
 		goto out;
 	}
-	sess = alloc_sess(ops, addr, pdu_sz, reconnect_delay_sec,
+	sess = alloc_sess(ops, sessname, addr, pdu_sz, reconnect_delay_sec,
 			  max_segments, max_reconnect_attempts);
 	if (unlikely(IS_ERR(sess))) {
 		pr_err("Establishing session to server failed, err: %ld\n",
@@ -3771,8 +3771,8 @@ int ibtrs_clt_query(struct ibtrs_clt_sess *sess, struct ibtrs_attrs *attr)
 	attr->max_pages_per_mr = sess->max_pages_per_mr;
 	attr->max_sge          = sess->max_sge;
 	attr->max_io_size      = sess->max_io_size;
-	strlcpy(attr->hostname, sess->s.addr.hostname,
-		sizeof(attr->hostname));
+	strlcpy(attr->sessname, sess->s.sessname,
+		sizeof(attr->sessname));
 
 	return 0;
 }
