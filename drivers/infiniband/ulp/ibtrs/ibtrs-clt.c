@@ -2634,6 +2634,9 @@ static void ibtrs_clt_stop_and_destroy_conns(struct ibtrs_clt_sess *sess)
 	mutex_lock(&sess->init_mutex);
 	mutex_unlock(&sess->init_mutex);
 
+	if (!sess->conns_inited)
+		return;
+
 	/*
 	 * All IO paths must observe !CONNECTED state before we
 	 * free everything.
@@ -2660,6 +2663,7 @@ static void ibtrs_clt_stop_and_destroy_conns(struct ibtrs_clt_sess *sess)
 		destroy_cm(con);
 		destroy_con(con);
 	}
+	sess->conns_inited = false;
 }
 
 static void ibtrs_clt_close_work(struct work_struct *work)
@@ -2722,6 +2726,8 @@ static int init_conns(struct ibtrs_clt_sess *sess)
 	err = alloc_sess_all_bufs(sess);
 	if (unlikely(err))
 		goto destroy;
+
+	sess->conns_inited = true;
 
 	return 0;
 

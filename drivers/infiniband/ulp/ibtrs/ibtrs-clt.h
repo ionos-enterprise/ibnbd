@@ -104,6 +104,7 @@ struct ibtrs_clt_sess {
 	wait_queue_head_t	state_wq;
 	enum ibtrs_clt_state	state;
 	struct mutex		init_mutex;
+	bool			conns_inited;
 	struct ibtrs_clt_con	**con;
 	struct ibtrs_iu		**io_tx_ius;
 	struct rdma_req		*reqs;
