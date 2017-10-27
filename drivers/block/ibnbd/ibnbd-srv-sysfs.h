@@ -7,9 +7,9 @@ int ibnbd_srv_create_dev_sysfs(struct ibnbd_srv_dev *dev,
 
 void ibnbd_srv_destroy_dev_sysfs(struct ibnbd_srv_dev *dev);
 
-int ibnbd_srv_create_dev_client_sysfs(struct ibnbd_srv_sess_dev *sess_dev);
+int ibnbd_srv_create_dev_session_sysfs(struct ibnbd_srv_sess_dev *sess_dev);
 
-void ibnbd_srv_destroy_dev_client_sysfs(struct ibnbd_srv_sess_dev *sess_dev);
+void ibnbd_srv_destroy_dev_session_sysfs(struct ibnbd_srv_sess_dev *sess_dev);
 
 int ibnbd_srv_create_sysfs_files(void);
 

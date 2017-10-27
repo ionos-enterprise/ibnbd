@@ -35,7 +35,7 @@ struct ibnbd_srv_dev {
 	struct list_head                list; /* global dev_list */
 
 	struct kobject                  dev_kobj;
-	struct kobject                  dev_clients_kobj;
+	struct kobject                  dev_sessions_kobj;
 
 	struct kref                     kref;
 	char				id[NAME_MAX];

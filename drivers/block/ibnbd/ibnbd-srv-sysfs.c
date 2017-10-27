@@ -90,7 +90,7 @@ static struct kobj_type ibnbd_srv_dev_ktype = {
 	.sysfs_ops	= &ibnbd_srv_sysfs_ops,
 };
 
-static struct kobj_type ibnbd_srv_dev_clients_ktype = {
+static struct kobj_type ibnbd_srv_dev_sessions_ktype = {
 	.sysfs_ops	= &ibnbd_srv_sysfs_ops,
 };
 
@@ -106,9 +106,9 @@ int ibnbd_srv_create_dev_sysfs(struct ibnbd_srv_dev *dev,
 	if (ret)
 		return ret;
 
-	ret = kobject_init_and_add(&dev->dev_clients_kobj,
-				   &ibnbd_srv_dev_clients_ktype,
-				   &dev->dev_kobj, "clients");
+	ret = kobject_init_and_add(&dev->dev_sessions_kobj,
+				   &ibnbd_srv_dev_sessions_ktype,
+				   &dev->dev_kobj, "sessions");
 	if (ret)
 		goto err;
 
@@ -128,8 +128,8 @@ err3:
 	sysfs_remove_group(&dev->dev_kobj,
 			   &ibnbd_srv_default_dev_attr_group);
 err2:
-	kobject_del(&dev->dev_clients_kobj);
-	kobject_put(&dev->dev_clients_kobj);
+	kobject_del(&dev->dev_sessions_kobj);
+	kobject_put(&dev->dev_sessions_kobj);
 err:
 	kobject_del(&dev->dev_kobj);
 	kobject_put(&dev->dev_kobj);
@@ -140,13 +140,13 @@ void ibnbd_srv_destroy_dev_sysfs(struct ibnbd_srv_dev *dev)
 {
 	sysfs_remove_link(&dev->dev_kobj, "block_dev");
 	sysfs_remove_group(&dev->dev_kobj, &ibnbd_srv_default_dev_attr_group);
-	kobject_del(&dev->dev_clients_kobj);
-	kobject_put(&dev->dev_clients_kobj);
+	kobject_del(&dev->dev_sessions_kobj);
+	kobject_put(&dev->dev_sessions_kobj);
 	kobject_del(&dev->dev_kobj);
 	kobject_put(&dev->dev_kobj);
 }
 
-static ssize_t ibnbd_srv_dev_client_ro_show(struct kobject *kobj,
+static ssize_t ibnbd_srv_dev_session_ro_show(struct kobject *kobj,
 					    struct kobj_attribute *attr,
 					    char *page)
 {
@@ -158,12 +158,12 @@ static ssize_t ibnbd_srv_dev_client_ro_show(struct kobject *kobj,
 			 (sess_dev->open_flags & FMODE_WRITE) ? "0" : "1");
 }
 
-static struct kobj_attribute ibnbd_srv_dev_client_ro_attr =
+static struct kobj_attribute ibnbd_srv_dev_session_ro_attr =
 	__ATTR(read_only, 0444,
-	       ibnbd_srv_dev_client_ro_show,
+	       ibnbd_srv_dev_session_ro_show,
 	       NULL);
 
-static ssize_t ibnbd_srv_dev_client_mapping_path_show(
+static ssize_t ibnbd_srv_dev_session_mapping_path_show(
 	struct kobject *kobj,
 	struct kobj_attribute *attr,
 	char *page)
@@ -175,27 +175,27 @@ static ssize_t ibnbd_srv_dev_client_mapping_path_show(
 	return scnprintf(page, PAGE_SIZE, "%s\n", sess_dev->pathname);
 }
 
-static struct kobj_attribute ibnbd_srv_dev_client_mapping_path_attr =
+static struct kobj_attribute ibnbd_srv_dev_session_mapping_path_attr =
 	__ATTR(mapping_path, 0444,
-	       ibnbd_srv_dev_client_mapping_path_show,
+	       ibnbd_srv_dev_session_mapping_path_show,
 	       NULL);
 
-static struct attribute *ibnbd_srv_default_dev_clients_attrs[] = {
-	&ibnbd_srv_dev_client_ro_attr.attr,
-	&ibnbd_srv_dev_client_mapping_path_attr.attr,
+static struct attribute *ibnbd_srv_default_dev_sessions_attrs[] = {
+	&ibnbd_srv_dev_session_ro_attr.attr,
+	&ibnbd_srv_dev_session_mapping_path_attr.attr,
 	NULL,
 };
 
-static struct attribute_group ibnbd_srv_default_dev_client_attr_group = {
-	.attrs = ibnbd_srv_default_dev_clients_attrs,
+static struct attribute_group ibnbd_srv_default_dev_session_attr_group = {
+	.attrs = ibnbd_srv_default_dev_sessions_attrs,
 };
 
-void ibnbd_srv_destroy_dev_client_sysfs(struct ibnbd_srv_sess_dev *sess_dev)
+void ibnbd_srv_destroy_dev_session_sysfs(struct ibnbd_srv_sess_dev *sess_dev)
 {
 	struct completion sysfs_compl;
 
 	sysfs_remove_group(&sess_dev->kobj,
-			   &ibnbd_srv_default_dev_client_attr_group);
+			   &ibnbd_srv_default_dev_session_attr_group);
 
 	init_completion(&sysfs_compl);
 	sess_dev->sysfs_release_compl = &sysfs_compl;
@@ -218,18 +218,18 @@ static struct kobj_type ibnbd_srv_sess_dev_ktype = {
 	.release	= ibnbd_srv_sess_dev_release,
 };
 
-int ibnbd_srv_create_dev_client_sysfs(struct ibnbd_srv_sess_dev *sess_dev)
+int ibnbd_srv_create_dev_session_sysfs(struct ibnbd_srv_sess_dev *sess_dev)
 {
 	int ret;
 
 	ret = kobject_init_and_add(&sess_dev->kobj, &ibnbd_srv_sess_dev_ktype,
-				   &sess_dev->dev->dev_clients_kobj, "%s",
-				   sess_dev->sess->str_addr);
+				   &sess_dev->dev->dev_sessions_kobj, "%s",
+				   sess_dev->sess->sessname);
 	if (ret)
 		return ret;
 
 	ret = sysfs_create_group(&sess_dev->kobj,
-				 &ibnbd_srv_default_dev_client_attr_group);
+				 &ibnbd_srv_default_dev_session_attr_group);
 	if (ret)
 		goto err;
 

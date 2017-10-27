@@ -253,7 +253,7 @@ static void destroy_sess(struct ibnbd_srv_session *srv_sess)
 	mutex_lock(&srv_sess->lock);
 	list_for_each_entry_safe(sess_dev, tmp, &srv_sess->sess_dev_list,
 				 sess_list) {
-		ibnbd_srv_destroy_dev_client_sysfs(sess_dev);
+		ibnbd_srv_destroy_dev_session_sysfs(sess_dev);
 		ibnbd_destroy_sess_dev(sess_dev, true);
 	}
 	mutex_unlock(&srv_sess->lock);
@@ -758,7 +758,7 @@ static void process_msg_open(struct ibtrs_srv_sess *s,
 		}
 	}
 
-	ret = ibnbd_srv_create_dev_client_sysfs(srv_sess_dev);
+	ret = ibnbd_srv_create_dev_session_sysfs(srv_sess_dev);
 	if (ret) {
 		mutex_unlock(&srv_dev->lock);
 		ibnbd_err(srv_sess_dev, "Opening device failed, failed to create"
@@ -800,7 +800,7 @@ static void process_msg_open(struct ibtrs_srv_sess *s,
 	return;
 
 remove_srv_sess_dev:
-	ibnbd_srv_destroy_dev_client_sysfs(srv_sess_dev);
+	ibnbd_srv_destroy_dev_session_sysfs(srv_sess_dev);
 	mutex_lock(&srv_sess->lock);
 	list_del(&srv_sess_dev->sess_list);
 	mutex_unlock(&srv_sess->lock);
@@ -866,7 +866,7 @@ static void process_msg_close(struct ibtrs_srv_sess *s,
 	if (likely(!IS_ERR(sess_dev))) {
 		u32 clt_device_id = sess_dev->clt_device_id;
 
-		ibnbd_srv_destroy_dev_client_sysfs(sess_dev);
+		ibnbd_srv_destroy_dev_session_sysfs(sess_dev);
 		ibnbd_put_sess_dev(sess_dev);
 		ibnbd_destroy_sess_dev(sess_dev, false);
 		send_msg_close_rsp(s, clt_device_id);

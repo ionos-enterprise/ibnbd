@@ -481,23 +481,10 @@ static ssize_t ibnbd_clt_session_show(struct kobject *kobj,
 				      char *page)
 {
 	struct ibnbd_clt_dev *dev;
-	char server_addr[MAXHOSTNAMELEN];
-	int ret;
 
 	dev = container_of(kobj, struct ibnbd_clt_dev, kobj);
 
-	if (dev->dev_state == DEV_STATE_UNMAPPED)
-		return -EIO;
-
-	ret = ibnbd_sockaddr_to_str((struct sockaddr *)&dev->sess->addr,
-				    server_addr, sizeof(server_addr));
-
-	if (ret >= sizeof(server_addr))
-		return -ENOBUFS;
-	if (ret < 0)
-		return ret;
-
-	return scnprintf(page, PAGE_SIZE, "%s\n", server_addr);
+	return scnprintf(page, PAGE_SIZE, "%s\n", dev->sess->sessname);
 }
 
 static struct kobj_attribute ibnbd_clt_session_attr =
