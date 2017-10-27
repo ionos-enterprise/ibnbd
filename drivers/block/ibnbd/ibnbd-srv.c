@@ -278,7 +278,7 @@ static int create_sess(struct ibtrs_srv_sess *sess)
 	char str_addr[MAXHOSTNAMELEN];
 	char sessname[MAXHOSTNAMELEN];
 
-	strlcpy(sessname, ibtrs_srv_get_sess_hostname(sess), sizeof(sessname));
+	strlcpy(sessname, ibtrs_srv_get_sess_name(sess), sizeof(sessname));
 
 	sockaddr = ibtrs_srv_get_sess_sockaddr(sess);
 	ibnbd_sockaddr_to_str(sockaddr, str_addr, sizeof(str_addr));
