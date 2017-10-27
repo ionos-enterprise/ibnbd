@@ -1313,7 +1313,7 @@ static void ibtrs_clt_usr_send_done(struct ib_cq *cq, struct ib_wc *wc)
 	struct ibtrs_iu *iu;
 
 	iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
-	ibtrs_usr_msg_return_iu(&sess->s, iu);
+	ibtrs_iu_usrtx_return(&sess->s, iu);
 
 	if (unlikely(wc->status != IB_WC_SUCCESS)) {
 		ibtrs_err(sess, "User message send failed: %s\n",
@@ -1372,7 +1372,7 @@ out:
 	return err;
 }
 
-static int process_usr_msg_ack(struct ibtrs_clt_con *con, struct ib_wc *wc)
+static int process_usr_ack(struct ibtrs_clt_con *con, struct ib_wc *wc)
 {
 	struct ibtrs_clt_sess *sess = con->sess;
 	struct ibtrs_iu *iu;
@@ -1384,7 +1384,7 @@ static int process_usr_msg_ack(struct ibtrs_clt_con *con, struct ib_wc *wc)
 	if (WARN_ON(imm != IBTRS_ACK_IMM))
 		return -ENOENT;
 
-	ibtrs_usr_msg_put(&sess->s);
+	ibtrs_iu_usrtx_put(&sess->s);
 
 	err = ibtrs_iu_post_recv(&con->c, iu);
 	if (unlikely(err))
@@ -1417,7 +1417,7 @@ static void ibtrs_clt_usr_recv_done(struct ib_cq *cq, struct ib_wc *wc)
 		err = process_usr_msg(con, wc);
 		break;
 	case IB_WC_RECV_RDMA_WITH_IMM:
-		err = process_usr_msg_ack(con, wc);
+		err = process_usr_ack(con, wc);
 		break;
 	default:
 		ibtrs_err(sess, "Unknown opcode: 0x%02x\n", wc->opcode);
@@ -1453,7 +1453,7 @@ static int post_recv_usr(struct ibtrs_clt_con *con)
 	int err, i;
 
 	for (i = 0; i < USR_CON_BUF_SIZE; i++) {
-		iu = sess->s.usr_rx_ring[i];
+		iu = sess->s.usrrx_ring[i];
 		err = ibtrs_iu_post_recv(&con->c, iu);
 		if (unlikely(err))
 			return err;
@@ -1566,7 +1566,7 @@ static void free_sess_tx_bufs(struct ibtrs_clt_sess *sess)
 		kfree(sess->io_tx_ius);
 		sess->io_tx_ius = NULL;
 	}
-	ibtrs_usr_msg_free_list(&sess->s, sess->s.ib_dev);
+	ibtrs_iu_usrtx_free_list(&sess->s, sess->s.ib_dev);
 }
 
 static int alloc_sess_tx_bufs(struct ibtrs_clt_sess *sess)
@@ -1588,8 +1588,8 @@ static int alloc_sess_tx_bufs(struct ibtrs_clt_sess *sess)
 			goto err;
 		sess->io_tx_ius[i] = iu;
 	}
-	err = ibtrs_usr_msg_alloc_list(&sess->s, sess->s.ib_dev, max_req_size,
-				       ibtrs_clt_usr_send_done);
+	err = ibtrs_iu_usrtx_alloc_list(&sess->s, sess->s.ib_dev, max_req_size,
+					ibtrs_clt_usr_send_done);
 	if (unlikely(err))
 		goto err;
 
@@ -2595,8 +2595,8 @@ static int alloc_sess_all_bufs(struct ibtrs_clt_sess *sess)
 	if (unlikely(err))
 		return err;
 
-	err = ibtrs_iu_alloc_sess_rx_bufs(&sess->s, sess->max_req_size,
-					  ibtrs_clt_usr_recv_done);
+	err = ibtrs_iu_usrrx_alloc_list(&sess->s, sess->max_req_size,
+					ibtrs_clt_usr_recv_done);
 	if (unlikely(err))
 		goto free_io_bufs;
 
@@ -2607,7 +2607,7 @@ static int alloc_sess_all_bufs(struct ibtrs_clt_sess *sess)
 	return 0;
 
 free_rx_bufs:
-	ibtrs_iu_free_sess_rx_bufs(&sess->s);
+	ibtrs_iu_usrrx_free_list(&sess->s);
 free_io_bufs:
 	free_sess_io_bufs(sess);
 
@@ -2617,7 +2617,7 @@ free_io_bufs:
 static void free_sess_all_bufs(struct ibtrs_clt_sess *sess)
 {
 	free_sess_tx_bufs(sess);
-	ibtrs_iu_free_sess_rx_bufs(&sess->s);
+	ibtrs_iu_usrrx_free_list(&sess->s);
 	free_sess_io_bufs(sess);
 }
 
@@ -3664,7 +3664,7 @@ int ibtrs_clt_send(struct ibtrs_clt_sess *sess, const struct kvec *vec,
 		ibtrs_err(sess, "Message size is too long: %zu\n", len);
 		return -EMSGSIZE;
 	}
-	iu = ibtrs_usr_msg_get(&sess->s);
+	iu = ibtrs_iu_usrtx_get(&sess->s);
 	if (unlikely(!iu)) {
 		/* We are in disconnecting state, just return */
 		ibtrs_err_rl(sess, "Sending user message failed, disconnecting");
@@ -3701,8 +3701,8 @@ int ibtrs_clt_send(struct ibtrs_clt_sess *sess, const struct kvec *vec,
 	return 0;
 
 err_post_send:
-	ibtrs_usr_msg_return_iu(&sess->s, iu);
-	ibtrs_usr_msg_put(&sess->s);
+	ibtrs_iu_usrtx_return(&sess->s, iu);
+	ibtrs_iu_usrtx_put(&sess->s);
 
 	return err;
 }

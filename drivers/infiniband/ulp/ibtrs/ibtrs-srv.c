@@ -463,7 +463,7 @@ static void free_sess_tx_bufs(struct ibtrs_srv_sess *sess)
 {
 	int i;
 
-	ibtrs_usr_msg_free_list(&sess->s, sess->s.ib_dev);
+	ibtrs_iu_usrtx_free_list(&sess->s, sess->s.ib_dev);
 
 	if (sess->ops_ids) {
 		for (i = 0; i < sess->queue_depth; i++)
@@ -635,7 +635,7 @@ int ibtrs_srv_send(struct ibtrs_srv_sess *sess, const struct kvec *vec,
 		ibtrs_err(sess, "Message size is too long: %zu\n", len);
 		return -EMSGSIZE;
 	}
-	iu = ibtrs_usr_msg_get(&sess->s);
+	iu = ibtrs_iu_usrtx_get(&sess->s);
 	if (unlikely(!iu)) {
 		/* We are in disconnecting state, just return */
 		ibtrs_err_rl(sess, "Sending user message failed, disconnecting");
@@ -661,8 +661,8 @@ int ibtrs_srv_send(struct ibtrs_srv_sess *sess, const struct kvec *vec,
 	return 0;
 
 err_post_send:
-	ibtrs_usr_msg_return_iu(&sess->s, iu);
-	ibtrs_usr_msg_put(&sess->s);
+	ibtrs_iu_usrtx_return(&sess->s, iu);
+	ibtrs_iu_usrtx_put(&sess->s);
 
 	return err;
 }
@@ -986,8 +986,8 @@ static int alloc_sess_tx_bufs(struct ibtrs_srv_sess *sess)
 		}
 		sess->ops_ids[i] = id;
 	}
-	err = ibtrs_usr_msg_alloc_list(&sess->s, sess->s.ib_dev, MAX_REQ_SIZE,
-				       ibtrs_srv_usr_send_done);
+	err = ibtrs_iu_usrtx_alloc_list(&sess->s, sess->s.ib_dev, MAX_REQ_SIZE,
+					ibtrs_srv_usr_send_done);
 	if (unlikely(err)) {
 		ibtrs_err(sess, "Allocation failed\n");
 		goto err;
@@ -1006,14 +1006,14 @@ static int alloc_sess_bufs(struct ibtrs_srv_sess *sess)
 {
 	int err;
 
-	err = ibtrs_iu_alloc_sess_rx_bufs(&sess->s, MAX_REQ_SIZE,
-					  ibtrs_srv_usr_recv_done);
+	err = ibtrs_iu_usrrx_alloc_list(&sess->s, MAX_REQ_SIZE,
+					ibtrs_srv_usr_recv_done);
 	if (unlikely(err))
 		return err;
 
 	err = alloc_sess_tx_bufs(sess);
 	if (unlikely(err))
-		ibtrs_iu_free_sess_rx_bufs(&sess->s);
+		ibtrs_iu_usrrx_free_list(&sess->s);
 
 	return err;
 }
@@ -1199,7 +1199,7 @@ static int post_recv_usr(struct ibtrs_srv_con *con)
 	int i, err;
 
 	for (i = 0; i < USR_CON_BUF_SIZE; i++) {
-		iu = sess->s.usr_rx_ring[i];
+		iu = sess->s.usrrx_ring[i];
 		err = ibtrs_iu_post_recv(&con->c, iu);
 		if (unlikely(err))
 			return err;
@@ -1232,7 +1232,7 @@ static int post_recv_sess(struct ibtrs_srv_sess *sess)
 
 static void free_sess_bufs(struct ibtrs_srv_sess *sess)
 {
-	ibtrs_iu_free_sess_rx_bufs(&sess->s);
+	ibtrs_iu_usrrx_free_list(&sess->s);
 	free_sess_tx_bufs(sess);
 }
 
@@ -1337,7 +1337,7 @@ send_err_msg:
 	ibtrs_srv_stats_dec_inflight(sess);
 }
 
-static int ibtrs_send_usr_msg_ack(struct ibtrs_srv_con *con)
+static int ibtrs_send_usr_ack(struct ibtrs_srv_con *con)
 {
 	struct ibtrs_srv_sess *sess;
 	int err;
@@ -1460,7 +1460,7 @@ static void ibtrs_srv_usr_send_done(struct ib_cq *cq, struct ib_wc *wc)
 	WARN_ON(con->cid);
 
 	iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
-	ibtrs_usr_msg_return_iu(&sess->s, iu);
+	ibtrs_iu_usrtx_return(&sess->s, iu);
 
 	if (unlikely(wc->status != IB_WC_SUCCESS)) {
 		ibtrs_err(sess, "User message send failed: %s\n",
@@ -1516,9 +1516,9 @@ static int process_usr_msg(struct ibtrs_srv_con *con, struct ib_wc *wc)
 			ibtrs_err(sess, "ibtrs_iu_post_recv(), err: %d\n", err);
 			goto out;
 		}
-		err = ibtrs_send_usr_msg_ack(con);
+		err = ibtrs_send_usr_ack(con);
 		if (unlikely(err)) {
-			ibtrs_err(sess, "ibtrs_send_usr_msg_ack(), err: %d\n",
+			ibtrs_err(sess, "ibtrs_send_usr_ack(), err: %d\n",
 				  err);
 			goto out;
 		}
@@ -1533,7 +1533,7 @@ out:
 	return err;
 }
 
-static int process_usr_msg_ack(struct ibtrs_srv_con *con, struct ib_wc *wc)
+static int process_usr_ack(struct ibtrs_srv_con *con, struct ib_wc *wc)
 {
 	struct ibtrs_srv_sess *sess = con->sess;
 	struct ibtrs_iu *iu;
@@ -1545,7 +1545,7 @@ static int process_usr_msg_ack(struct ibtrs_srv_con *con, struct ib_wc *wc)
 	if (WARN_ON(imm != IBTRS_ACK_IMM))
 		return -ENOENT;
 
-	ibtrs_usr_msg_put(&sess->s);
+	ibtrs_iu_usrtx_put(&sess->s);
 
 	err = ibtrs_iu_post_recv(&con->c, iu);
 	if (unlikely(err))
@@ -1578,7 +1578,7 @@ static void ibtrs_srv_usr_recv_done(struct ib_cq *cq, struct ib_wc *wc)
 		err = process_usr_msg(con, wc);
 		break;
 	case IB_WC_RECV_RDMA_WITH_IMM:
-		err = process_usr_msg_ack(con, wc);
+		err = process_usr_ack(con, wc);
 		break;
 	default:
 		ibtrs_err(sess, "Unknown opcode: 0x%02x\n", wc->opcode);
