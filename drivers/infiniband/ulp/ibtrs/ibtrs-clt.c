@@ -1156,7 +1156,7 @@ static struct ib_cqe ack_cqe = {
 	.done = ibtrs_clt_ack_done
 };
 
-static int ibtrs_send_msg_user_ack(struct ibtrs_clt_con *con)
+static int ibtrs_send_usr_ack(struct ibtrs_clt_con *con)
 {
 	struct ibtrs_clt_sess *sess = con->sess;
 	int err;
@@ -1326,7 +1326,7 @@ static void ibtrs_clt_usr_send_done(struct ib_cq *cq, struct ib_wc *wc)
 	ibtrs_clt_update_wc_stats(con);
 }
 
-static int process_usr_msg(struct ibtrs_clt_con *con, struct ib_wc *wc)
+static int process_usr(struct ibtrs_clt_con *con, struct ib_wc *wc)
 {
 	struct ibtrs_clt_sess *sess = con->sess;
 	struct ibtrs_msg_user *msg;
@@ -1355,9 +1355,9 @@ static int process_usr_msg(struct ibtrs_clt_con *con, struct ib_wc *wc)
 			ibtrs_err(sess, "ibtrs_iu_post_recv(), err: %d\n", err);
 			goto out;
 		}
-		err = ibtrs_send_msg_user_ack(con);
+		err = ibtrs_send_usr_ack(con);
 		if (unlikely(err)) {
-			ibtrs_err(sess, "ibtrs_send_msg_user_ack(), err: %d\n",
+			ibtrs_err(sess, "ibtrs_send_usr_ack(), err: %d\n",
 				  err);
 			goto out;
 		}
@@ -1414,7 +1414,7 @@ static void ibtrs_clt_usr_recv_done(struct ib_cq *cq, struct ib_wc *wc)
 
 	switch (wc->opcode) {
 	case IB_WC_RECV:
-		err = process_usr_msg(con, wc);
+		err = process_usr(con, wc);
 		break;
 	case IB_WC_RECV_RDMA_WITH_IMM:
 		err = process_usr_ack(con, wc);

@@ -1473,7 +1473,8 @@ static void ibtrs_srv_usr_send_done(struct ib_cq *cq, struct ib_wc *wc)
 	ibtrs_srv_update_wc_stats(con);
 }
 
-static void process_msg(struct ibtrs_srv_sess *sess, struct ibtrs_msg_user *msg)
+static void __process_usr(struct ibtrs_srv_sess *sess,
+			  struct ibtrs_msg_user *msg)
 {
 	struct ibtrs_srv_ctx *ctx = sess->ctx;
 	size_t len;
@@ -1490,7 +1491,7 @@ static void process_msg(struct ibtrs_srv_sess *sess, struct ibtrs_msg_user *msg)
 	ctx->ops.recv(sess, sess->priv, msg->payl, len);
 }
 
-static int process_usr_msg(struct ibtrs_srv_con *con, struct ib_wc *wc)
+static int process_usr(struct ibtrs_srv_con *con, struct ib_wc *wc)
 {
 	struct ibtrs_srv_sess *sess = con->sess;
 	struct ibtrs_msg_user *msg;
@@ -1509,7 +1510,7 @@ static int process_usr_msg(struct ibtrs_srv_con *con, struct ib_wc *wc)
 
 	switch (type) {
 	case IBTRS_MSG_USER:
-		process_msg(sess, msg);
+		__process_usr(sess, msg);
 
 		err = ibtrs_iu_post_recv(&con->c, iu);
 		if (unlikely(err)) {
@@ -1575,7 +1576,7 @@ static void ibtrs_srv_usr_recv_done(struct ib_cq *cq, struct ib_wc *wc)
 
 	switch (wc->opcode) {
 	case IB_WC_RECV:
-		err = process_usr_msg(con, wc);
+		err = process_usr(con, wc);
 		break;
 	case IB_WC_RECV_RDMA_WITH_IMM:
 		err = process_usr_ack(con, wc);
