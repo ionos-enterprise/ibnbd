@@ -14,23 +14,15 @@ struct fake_sess {
 
 
 #define ibtrs_prefix(dev) ({					\
-	const struct ibtrs_addr *addr;				\
-	char str_addr[MAXHOSTNAMELEN];				\
-	const char *str = str_addr;				\
+	const struct ibtrs_sess *_sess;				\
 								\
 	__builtin_choose_expr(					\
 		__builtin_types_compatible_p(			\
 			typeof(dev), struct ibtrs_con *),	\
-		addr = &((struct ibtrs_con *)dev)->sess->addr,	\
-		addr = &((FAKE_OR_REAL(dev))(dev))->s.addr	\
+		_sess = ((struct ibtrs_con *)dev)->sess,	\
+		_sess = &((FAKE_OR_REAL(dev))(dev))->s		\
 	);							\
-								\
-	if (addr->hostname[0])					\
-		str = addr->hostname;				\
-	else							\
-		sockaddr_to_str((struct sockaddr *)&addr->sockaddr, \
-				str_addr, sizeof(str_addr));	\
-	str;							\
+	_sess->sessname;					\
 })
 
 #define ibtrs_log(fn, dev, fmt, ...)				\

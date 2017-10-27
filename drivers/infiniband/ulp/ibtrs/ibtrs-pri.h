@@ -56,7 +56,6 @@ struct ibtrs_ib_dev {
 
 struct ibtrs_addr {
 	struct sockaddr_storage sockaddr;
-	char			hostname[MAXHOSTNAMELEN];
 };
 
 struct ibtrs_con;
