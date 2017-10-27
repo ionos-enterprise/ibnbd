@@ -64,22 +64,25 @@ static ssize_t ibtrs_srv_hca_name_show(struct kobject *kobj,
 static struct kobj_attribute hca_name_attr =
 	__ATTR(hca_name, 0444, ibtrs_srv_hca_name_show, NULL);
 
-static ssize_t hostname_show(struct kobject *kobj,
+static ssize_t addr_show(struct kobject *kobj,
 			     struct kobj_attribute *attr, char *page)
 {
 	struct ibtrs_srv_sess *sess;
-
+	char str_addr[MAXHOSTNAMELEN];
 	sess = container_of(kobj, struct ibtrs_srv_sess, kobj);
 
-	return sprintf(page, "%s\n", sess->s.addr.hostname);
+	sockaddr_to_str((struct sockaddr *)&sess->s.addr.sockaddr,
+			str_addr, sizeof(str_addr));
+
+	return sprintf(page, "%s\n", str_addr);
 }
 
-static struct kobj_attribute hostname_attr =
-	__ATTR(hostname, 0444, hostname_show, NULL);
+static struct kobj_attribute addr_attr =
+	__ATTR(addr, 0444, addr_show, NULL);
 
 static struct attribute *default_sess_attrs[] = {
 	&hca_name_attr.attr,
-	&hostname_attr.attr,
+	&addr_attr.attr,
 	&current_hca_port_attr.attr,
 	&disconnect_attr.attr,
 	NULL,
@@ -159,14 +162,11 @@ static struct kobject *ibtrs_srv_sessions_kobj;
 
 int ibtrs_srv_create_sess_files(struct ibtrs_srv_sess *sess)
 {
-	char str_addr[MAXHOSTNAMELEN];
 	int ret;
 
-	sockaddr_to_str((struct sockaddr *)&sess->s.addr.sockaddr,
-			str_addr, sizeof(str_addr));
-
 	ret = kobject_init_and_add(&sess->kobj, &ibtrs_srv_sess_ktype,
-				   ibtrs_srv_sessions_kobj, "%s", str_addr);
+				   ibtrs_srv_sessions_kobj, "%s",
+				   sess->s.sessname);
 	if (ret) {
 		ibtrs_err(sess, "Failed to init and add sysfs directory for session,"
 			  " err: %d\n", ret);

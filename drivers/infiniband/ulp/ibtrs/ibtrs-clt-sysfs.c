@@ -75,18 +75,22 @@ static struct kobj_attribute ibtrs_clt_state_attr = __ATTR(state, 0444,
 							   ibtrs_clt_state_show,
 							   NULL);
 
-static ssize_t ibtrs_clt_hostname_show(struct kobject *kobj,
+static ssize_t ibtrs_clt_addr_show(struct kobject *kobj,
 				       struct kobj_attribute *attr, char *page)
 {
 	struct ibtrs_clt_sess *sess;
+	char str_addr[MAXHOSTNAMELEN];
 
 	sess = container_of(kobj, struct ibtrs_clt_sess, kobj);
 
-	return sprintf(page, "%s\n", sess->s.addr.hostname);
+	sockaddr_to_str((struct sockaddr *)&sess->s.addr.sockaddr,
+			str_addr, sizeof(str_addr));
+
+	return sprintf(page, "%s\n", str_addr);
 }
 
-static struct kobj_attribute ibtrs_clt_hostname_attr =
-	__ATTR(hostname, 0444, ibtrs_clt_hostname_show, NULL);
+static struct kobj_attribute ibtrs_clt_addr_attr =
+	__ATTR(addr, 0444, ibtrs_clt_addr_show, NULL);
 
 static ssize_t ibtrs_clt_reconnect_show(struct kobject *kobj,
 					struct kobj_attribute *attr, char *page)
@@ -251,7 +255,7 @@ static struct kobj_attribute ibtrs_clt_queue_depth_attr =
 static struct attribute *ibtrs_clt_default_sess_attrs[] = {
 	&max_ibtrs_clt_reconnect_attempts_attr.attr,
 	&ibtrs_clt_state_attr.attr,
-	&ibtrs_clt_hostname_attr.attr,
+	&ibtrs_clt_addr_attr.attr,
 	&ibtrs_clt_reconnect_attr.attr,
 	&ibtrs_clt_queue_depth_attr.attr,
 	NULL,
@@ -267,14 +271,10 @@ static struct kobj_type ibtrs_clt_sess_ktype = {
 
 int ibtrs_clt_create_sess_files(struct ibtrs_clt_sess *sess)
 {
-	char str_addr[MAXHOSTNAMELEN];
 	int ret;
 
-	sockaddr_to_str((struct sockaddr *)&sess->s.addr.sockaddr,
-			str_addr, sizeof(str_addr));
-
 	ret = kobject_init_and_add(&sess->kobj, &ibtrs_clt_sess_ktype,
-				   sessions_kobj, "%s", str_addr);
+				   sessions_kobj, "%s", sess->s.sessname);
 	if (ret) {
 		pr_err("Failed to create session kobject, err: %d\n",
 		       ret);
