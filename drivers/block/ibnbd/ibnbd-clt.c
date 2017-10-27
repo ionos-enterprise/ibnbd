@@ -913,7 +913,9 @@ static void destroy_mq_tags(struct ibnbd_clt_session *sess)
 	blk_mq_free_tag_set(&sess->tag_set);
 }
 
-struct ibnbd_clt_session *ibnbd_create_session(const struct sockaddr *addr)
+struct ibnbd_clt_session *
+ibnbd_create_session(const char *sessname,
+		     const struct sockaddr *addr)
 {
 	struct ibnbd_clt_session *sess;
 	char str_addr[MAXHOSTNAMELEN];
@@ -988,7 +990,8 @@ struct ibnbd_clt_session *ibnbd_create_session(const struct sockaddr *addr)
 	ops.rdma_ev = ibnbd_clt_rdma_ev;
 	ops.sess_ev = ibnbd_clt_sess_ev;
 
-	sess->sess = ibtrs_clt_open(&ops, addr, sizeof(struct ibnbd_iu),
+	sess->sess = ibtrs_clt_open(&ops, sessname, addr,
+				    sizeof(struct ibnbd_iu),
 				    RECONNECT_DELAY, BMAX_SEGMENTS,
 				    MAX_RECONNECTS);
 	if (!IS_ERR(sess->sess)) {

@@ -29,11 +29,13 @@ enum {
 	IBNBD_OPT_ACCESS_MODE	= 1 << 3,
 	IBNBD_OPT_INPUT_MODE	= 1 << 4,
 	IBNBD_OPT_IO_MODE	= 1 << 5,
+	IBNBD_OPT_SESSNAME	= 1 << 6,
 };
 
 static unsigned ibnbd_opt_mandatory[] = {
 	IBNBD_OPT_SERVER,
 	IBNBD_OPT_DEV_PATH,
+	IBNBD_OPT_SESSNAME,
 };
 
 static const match_table_t ibnbd_opt_tokens = {
@@ -42,6 +44,7 @@ static const match_table_t ibnbd_opt_tokens = {
 	{	IBNBD_OPT_ACCESS_MODE,	"access_mode=%s"	},
 	{	IBNBD_OPT_INPUT_MODE,	"input_mode=%s"		},
 	{	IBNBD_OPT_IO_MODE,	"io_mode=%s"		},
+	{	IBNBD_OPT_SESSNAME,	"sessname=%s"		},
 	{	IBNBD_OPT_ERR,		NULL			},
 };
 
@@ -59,7 +62,9 @@ static void strip(char *s)
 	*p = '\0';
 }
 
-static int ibnbd_clt_parse_map_options(const char *buf, char *server_addr,
+static int ibnbd_clt_parse_map_options(const char *buf,
+				       char *sessname,
+				       char *server_addr,
 				       char *pathname,
 				       enum ibnbd_access_mode *access_mode,
 				       enum ibnbd_queue_mode *queue_mode,
@@ -88,6 +93,21 @@ static int ibnbd_clt_parse_map_options(const char *buf, char *server_addr,
 		opt_mask |= token;
 
 		switch (token) {
+		case IBNBD_OPT_SESSNAME:
+			p = match_strdup(args);
+			if (!p) {
+				ret = -ENOMEM;
+				goto out;
+			}
+			if (strlen(p) > MAXHOSTNAMELEN) {
+				pr_err("map_device: source name too long\n");
+				ret = -EINVAL;
+				goto out;
+			}
+			strlcpy(sessname, p, MAXHOSTNAMELEN);
+			kfree(p);
+			break;
+
 		case IBNBD_OPT_SERVER:
 			p = match_strdup(args);
 			if (!p) {
@@ -614,7 +634,7 @@ static int ibnbd_clt_str_to_sockaddr(char *addr, struct sockaddr *sockaddr)
 }
 
 static struct ibnbd_clt_session *
-ibnbd_clt_get_create_sess(struct sockaddr *sockaddr)
+ibnbd_clt_get_create_sess(const char *sessname, struct sockaddr *sockaddr)
 {
 	struct ibnbd_clt_session *sess;
 
@@ -628,7 +648,7 @@ ibnbd_clt_get_create_sess(struct sockaddr *sockaddr)
 			sess = ERR_PTR(-EIO);
 		}
 	} else {
-		sess = ibnbd_create_session(sockaddr);
+		sess = ibnbd_create_session(sessname, sockaddr);
 	}
 	mutex_unlock(&sess_lock);
 
@@ -640,6 +660,7 @@ static ssize_t ibnbd_clt_map_device_show(struct kobject *kobj,
 					 char *page)
 {
 	return scnprintf(page, PAGE_SIZE, "Usage: echo \"server=<address>"
+			 " sessname=<name of the ibtrs session>"
 			 " device_path=<full path on remote side>"
 			 " [access_mode=<ro|rw|migration>]"
 			 " [input_mode=<mq|rq>]"
@@ -702,13 +723,15 @@ static ssize_t ibnbd_clt_map_device_store(struct kobject *kobj,
 	int ret;
 	char pathname[NAME_MAX];
 	char server_addr[MAXHOSTNAMELEN];
+	char sessname[MAXHOSTNAMELEN];
 	enum ibnbd_access_mode access_mode = IBNBD_ACCESS_RW;
 	enum ibnbd_queue_mode queue_mode = BLK_MQ;
 	enum ibnbd_io_mode io_mode = IBNBD_AUTOIO;
 	struct sockaddr_storage sockaddr_s;
 	struct sockaddr *sockaddr = (struct sockaddr *)&sockaddr_s;
 
-	ret = ibnbd_clt_parse_map_options(buf, server_addr, pathname,
+	ret = ibnbd_clt_parse_map_options(buf, sessname,
+					  server_addr, pathname,
 					  &access_mode, &queue_mode,
 					  &io_mode);
 	if (ret)
@@ -736,7 +759,7 @@ static ssize_t ibnbd_clt_map_device_store(struct kobject *kobj,
 		pathname, server_addr, ibnbd_access_mode_str(access_mode),
 		ibnbd_queue_mode_str(queue_mode), ibnbd_io_mode_str(io_mode));
 
-	sess = ibnbd_clt_get_create_sess(sockaddr);
+	sess = ibnbd_clt_get_create_sess(sessname, sockaddr);
 	if (IS_ERR(sess))
 		return PTR_ERR(sess);
 
