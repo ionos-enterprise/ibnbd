@@ -251,31 +251,32 @@ struct ibtrs_msg_rdma_write {
 /* ibtrs-iu.c */
 
 int ibtrs_usr_msg_alloc_list(struct ibtrs_sess *sess, struct ibtrs_ib_dev *dev,
-			     unsigned max_req_size);
+			     unsigned max_req_size,
+			     void (*done)(struct ib_cq *cq, struct ib_wc *wc));
 void ibtrs_usr_msg_free_list(struct ibtrs_sess *sess, struct ibtrs_ib_dev *dev);
 struct ibtrs_iu *ibtrs_usr_msg_get(struct ibtrs_sess *sess);
 void ibtrs_usr_msg_return_iu(struct ibtrs_sess *sess, struct ibtrs_iu *iu);
 void ibtrs_usr_msg_put(struct ibtrs_sess *sess);
+
 struct ibtrs_iu *ibtrs_iu_alloc(u32 tag, size_t size, gfp_t t,
-				struct ib_device *dev,
-				enum dma_data_direction);
+				struct ib_device *dev, enum dma_data_direction,
+				void (*done)(struct ib_cq *cq, struct ib_wc *wc));
 void ibtrs_iu_free(struct ibtrs_iu *iu, enum dma_data_direction dir,
 		   struct ib_device *dev);
-int ibtrs_iu_alloc_sess_rx_bufs(struct ibtrs_sess *sess, size_t max_req_size);
+int ibtrs_iu_alloc_sess_rx_bufs(struct ibtrs_sess *sess, size_t max_req_size,
+				void (*done)(struct ib_cq *cq, struct ib_wc *wc));
 void ibtrs_iu_free_sess_rx_bufs(struct ibtrs_sess *sess);
 
 /* ibtrs.c */
 
-int ibtrs_post_recv(struct ibtrs_con *con, struct ibtrs_iu *iu,
-		    void (*done)(struct ib_cq *cq, struct ib_wc *wc));
+int ibtrs_iu_post_recv(struct ibtrs_con *con, struct ibtrs_iu *iu);
+int ibtrs_iu_post_send(struct ibtrs_con *con, struct ibtrs_iu *iu, size_t size);
+int ibtrs_iu_post_rdma_write_imm(struct ibtrs_con *con, struct ibtrs_iu *iu,
+				 struct ib_sge *sge, unsigned int num_sge,
+				 u32 rkey, u64 rdma_addr, u32 imm_data,
+				 enum ib_send_flags flags);
+
 int ibtrs_post_recv_empty(struct ibtrs_con *con, struct ib_cqe *cqe);
-int ibtrs_post_send(struct ibtrs_con *con, struct ibtrs_iu *iu, size_t size,
-		    void (*done)(struct ib_cq *cq, struct ib_wc *wc));
-int ibtrs_post_rdma_write_imm(struct ibtrs_con *con, struct ibtrs_iu *iu,
-			      struct ib_sge *sge, unsigned int num_sge,
-			      u32 rkey, u64 rdma_addr, u32 imm_data,
-			      enum ib_send_flags flags,
-			      void (*done)(struct ib_cq *cq, struct ib_wc *wc));
 int ibtrs_post_rdma_write_imm_empty(struct ibtrs_con *con, struct ib_cqe *cqe,
 				    u32 imm_data, enum ib_send_flags flags);
 

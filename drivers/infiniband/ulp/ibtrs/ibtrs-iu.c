@@ -15,7 +15,8 @@ static void free_usr_msg_list(struct list_head *iu_list,
 
 int ibtrs_usr_msg_alloc_list(struct ibtrs_sess *sess,
 			     struct ibtrs_ib_dev *ibdev,
-			     unsigned max_req_size)
+			     unsigned max_req_size,
+			     void (*done)(struct ib_cq *cq, struct ib_wc *wc))
 {
 	const unsigned msg_cnt = USR_MSG_CNT;
 	struct ibtrs_iu *iu;
@@ -31,7 +32,8 @@ int ibtrs_usr_msg_alloc_list(struct ibtrs_sess *sess,
 
 	for (i = 0; i < msg_cnt; ++i) {
 		iu = ibtrs_iu_alloc(i, max_req_size, GFP_KERNEL,
-				    ibdev->dev, DMA_TO_DEVICE);
+				    ibdev->dev, DMA_TO_DEVICE,
+				    done);
 		if (unlikely(!iu))
 			goto err;
 
@@ -121,7 +123,8 @@ EXPORT_SYMBOL_GPL(ibtrs_usr_msg_put);
 
 struct ibtrs_iu *ibtrs_iu_alloc(u32 tag, size_t size, gfp_t gfp_mask,
 				struct ib_device *dma_dev,
-				enum dma_data_direction direction)
+				enum dma_data_direction direction,
+				void (*done)(struct ib_cq *cq, struct ib_wc *wc))
 {
 	struct ibtrs_iu *iu;
 
@@ -137,6 +140,7 @@ struct ibtrs_iu *ibtrs_iu_alloc(u32 tag, size_t size, gfp_t gfp_mask,
 	if (unlikely(ib_dma_mapping_error(dma_dev, iu->dma_addr)))
 		goto err2;
 
+	iu->cqe.done  = done;
 	iu->size      = size;
 	iu->direction = direction;
 	iu->tag       = tag;
@@ -164,7 +168,8 @@ void ibtrs_iu_free(struct ibtrs_iu *iu, enum dma_data_direction dir,
 }
 EXPORT_SYMBOL_GPL(ibtrs_iu_free);
 
-int ibtrs_iu_alloc_sess_rx_bufs(struct ibtrs_sess *sess, size_t max_req_size)
+int ibtrs_iu_alloc_sess_rx_bufs(struct ibtrs_sess *sess, size_t max_req_size,
+				void (*done)(struct ib_cq *cq, struct ib_wc *wc))
 {
 	int i;
 
@@ -178,7 +183,8 @@ int ibtrs_iu_alloc_sess_rx_bufs(struct ibtrs_sess *sess, size_t max_req_size)
 		struct ibtrs_iu *iu;
 
 		iu = ibtrs_iu_alloc(i, max_req_size, GFP_KERNEL,
-				    sess->ib_dev->dev, DMA_FROM_DEVICE);
+				    sess->ib_dev->dev, DMA_FROM_DEVICE,
+				    done);
 		if (unlikely(!iu))
 			goto err;
 		sess->usr_rx_ring[i] = iu;

@@ -13,8 +13,7 @@ MODULE_LICENSE("GPL");
 static LIST_HEAD(device_list);
 static DEFINE_MUTEX(device_list_mutex);
 
-int ibtrs_post_recv(struct ibtrs_con *con, struct ibtrs_iu *iu,
-		    void (*done)(struct ib_cq *cq, struct ib_wc *wc))
+int ibtrs_iu_post_recv(struct ibtrs_con *con, struct ibtrs_iu *iu)
 {
 	struct ibtrs_sess *sess = con->sess;
 	struct ib_recv_wr wr, *bad_wr;
@@ -30,8 +29,6 @@ int ibtrs_post_recv(struct ibtrs_con *con, struct ibtrs_iu *iu,
 		return -EINVAL;
 	}
 
-	iu->cqe.done = done;
-
 	wr.next    = NULL;
 	wr.wr_cqe  = &iu->cqe;
 	wr.sg_list = &list;
@@ -39,7 +36,7 @@ int ibtrs_post_recv(struct ibtrs_con *con, struct ibtrs_iu *iu,
 
 	return ib_post_recv(con->qp, &wr, &bad_wr);
 }
-EXPORT_SYMBOL_GPL(ibtrs_post_recv);
+EXPORT_SYMBOL_GPL(ibtrs_iu_post_recv);
 
 int ibtrs_post_recv_empty(struct ibtrs_con *con, struct ib_cqe *cqe)
 {
@@ -54,8 +51,7 @@ int ibtrs_post_recv_empty(struct ibtrs_con *con, struct ib_cqe *cqe)
 }
 EXPORT_SYMBOL_GPL(ibtrs_post_recv_empty);
 
-int ibtrs_post_send(struct ibtrs_con *con, struct ibtrs_iu *iu, size_t size,
-		    void (*done)(struct ib_cq *cq, struct ib_wc *wc))
+int ibtrs_iu_post_send(struct ibtrs_con *con, struct ibtrs_iu *iu, size_t size)
 {
 	struct ibtrs_sess *sess = con->sess;
 	struct ib_send_wr wr, *bad_wr;
@@ -68,8 +64,6 @@ int ibtrs_post_send(struct ibtrs_con *con, struct ibtrs_iu *iu, size_t size,
 	list.length = size;
 	list.lkey   = sess->ib_dev->mr->lkey;
 
-	iu->cqe.done = done;
-
 	memset(&wr, 0, sizeof(wr));
 	wr.next       = NULL;
 	wr.wr_cqe     = &iu->cqe;
@@ -80,19 +74,16 @@ int ibtrs_post_send(struct ibtrs_con *con, struct ibtrs_iu *iu, size_t size,
 
 	return ib_post_send(con->qp, &wr, &bad_wr);
 }
-EXPORT_SYMBOL_GPL(ibtrs_post_send);
+EXPORT_SYMBOL_GPL(ibtrs_iu_post_send);
 
-int ibtrs_post_rdma_write_imm(struct ibtrs_con *con, struct ibtrs_iu *iu,
-			      struct ib_sge *sge, unsigned int num_sge,
-			      u32 rkey, u64 rdma_addr, u32 imm_data,
-			      enum ib_send_flags flags,
-			      void (*done)(struct ib_cq *cq, struct ib_wc *wc))
+int ibtrs_iu_post_rdma_write_imm(struct ibtrs_con *con, struct ibtrs_iu *iu,
+				 struct ib_sge *sge, unsigned int num_sge,
+				 u32 rkey, u64 rdma_addr, u32 imm_data,
+				 enum ib_send_flags flags)
 {
 	struct ib_send_wr *bad_wr;
 	struct ib_rdma_wr wr;
 	int i;
-
-	iu->cqe.done = done;
 
 	wr.wr.next	  = NULL;
 	wr.wr.wr_cqe	  = &iu->cqe;
@@ -114,7 +105,7 @@ int ibtrs_post_rdma_write_imm(struct ibtrs_con *con, struct ibtrs_iu *iu,
 
 	return ib_post_send(con->qp, &wr.wr, &bad_wr);
 }
-EXPORT_SYMBOL_GPL(ibtrs_post_rdma_write_imm);
+EXPORT_SYMBOL_GPL(ibtrs_iu_post_rdma_write_imm);
 
 int ibtrs_post_rdma_write_imm_empty(struct ibtrs_con *con, struct ib_cqe *cqe,
 				    u32 imm_data, enum ib_send_flags flags)

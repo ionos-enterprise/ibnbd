@@ -649,7 +649,7 @@ int ibtrs_srv_send(struct ibtrs_srv_sess *sess, const struct kvec *vec,
 
 	len += sizeof(*msg);
 
-	err = ibtrs_post_send(&usr_con->c, iu, len, ibtrs_srv_usr_send_done);
+	err = ibtrs_iu_post_send(&usr_con->c, iu, len);
 	if (unlikely(err)) {
 		ibtrs_err_rl(sess, "Sending message failed, posting message to QP"
 			     " failed, err: %d\n", err);
@@ -986,8 +986,8 @@ static int alloc_sess_tx_bufs(struct ibtrs_srv_sess *sess)
 		}
 		sess->ops_ids[i] = id;
 	}
-	err = ibtrs_usr_msg_alloc_list(&sess->s, sess->s.ib_dev,
-				       MAX_REQ_SIZE);
+	err = ibtrs_usr_msg_alloc_list(&sess->s, sess->s.ib_dev, MAX_REQ_SIZE,
+				       ibtrs_srv_usr_send_done);
 	if (unlikely(err)) {
 		ibtrs_err(sess, "Allocation failed\n");
 		goto err;
@@ -1000,11 +1000,14 @@ err:
 	return -ENOMEM;
 }
 
+static void ibtrs_srv_usr_recv_done(struct ib_cq *cq, struct ib_wc *wc);
+
 static int alloc_sess_bufs(struct ibtrs_srv_sess *sess)
 {
 	int err;
 
-	err = ibtrs_iu_alloc_sess_rx_bufs(&sess->s, MAX_REQ_SIZE);
+	err = ibtrs_iu_alloc_sess_rx_bufs(&sess->s, MAX_REQ_SIZE,
+					  ibtrs_srv_usr_recv_done);
 	if (unlikely(err))
 		return err;
 
@@ -1080,7 +1083,7 @@ static int process_info_req(struct ibtrs_srv_con *con,
 	tx_sz  = sizeof(struct ibtrs_msg_info_rsp);
 	tx_sz += sizeof(u64) * sess->queue_depth;
 	tx_iu = ibtrs_iu_alloc(0, tx_sz, GFP_KERNEL, sess->s.ib_dev->dev,
-			       DMA_TO_DEVICE);
+			       DMA_TO_DEVICE, ibtrs_srv_info_rsp_done);
 	if (unlikely(!tx_iu)) {
 		ibtrs_err(sess, "ibtrs_iu_alloc(), err: %d\n", -ENOMEM);
 		return -ENOMEM;
@@ -1095,9 +1098,9 @@ static int process_info_req(struct ibtrs_srv_con *con,
 		rsp->addr[i] = cpu_to_le64(addr);
 	}
 	/* Send info response */
-	err = ibtrs_post_send(&con->c, tx_iu, tx_sz, ibtrs_srv_info_rsp_done);
+	err = ibtrs_iu_post_send(&con->c, tx_iu, tx_sz);
 	if (unlikely(err)) {
-		ibtrs_err(sess, "ibtrs_post_send(), err: %d\n", err);
+		ibtrs_err(sess, "ibtrs_iu_post_send(), err: %d\n", err);
 		ibtrs_iu_free(tx_iu, DMA_TO_DEVICE, sess->s.ib_dev->dev);
 	}
 
@@ -1153,15 +1156,15 @@ static int post_recv_info_req(struct ibtrs_srv_con *con)
 
 	rx_iu = ibtrs_iu_alloc(0, sizeof(struct ibtrs_msg_info_req),
 			       GFP_KERNEL, sess->s.ib_dev->dev,
-			       DMA_FROM_DEVICE);
+			       DMA_FROM_DEVICE, ibtrs_srv_info_req_done);
 	if (unlikely(!rx_iu)) {
 		ibtrs_err(sess, "ibtrs_iu_alloc(): no memory\n");
 		return -ENOMEM;
 	}
 	/* Prepare for getting info response */
-	err = ibtrs_post_recv(&con->c, rx_iu, ibtrs_srv_info_req_done);
+	err = ibtrs_iu_post_recv(&con->c, rx_iu);
 	if (unlikely(err)) {
-		ibtrs_err(sess, "ibtrs_post_recv(), err: %d\n", err);
+		ibtrs_err(sess, "ibtrs_iu_post_recv(), err: %d\n", err);
 		ibtrs_iu_free(rx_iu, DMA_FROM_DEVICE, sess->s.ib_dev->dev);
 		return err;;
 	}
@@ -1189,8 +1192,6 @@ static int post_recv_io(struct ibtrs_srv_con *con)
 	return 0;
 }
 
-static void ibtrs_srv_usr_recv_done(struct ib_cq *cq, struct ib_wc *wc);
-
 static int post_recv_usr(struct ibtrs_srv_con *con)
 {
 	struct ibtrs_srv_sess *sess = con->sess;
@@ -1199,7 +1200,7 @@ static int post_recv_usr(struct ibtrs_srv_con *con)
 
 	for (i = 0; i < USR_CON_BUF_SIZE; i++) {
 		iu = sess->s.usr_rx_ring[i];
-		err = ibtrs_post_recv(&con->c, iu, ibtrs_srv_usr_recv_done);
+		err = ibtrs_iu_post_recv(&con->c, iu);
 		if (unlikely(err))
 			return err;
 	}
@@ -1489,8 +1490,6 @@ static void process_msg(struct ibtrs_srv_sess *sess, struct ibtrs_msg_user *msg)
 	ctx->ops.recv(sess, sess->priv, msg->payl, len);
 }
 
-static void ibtrs_srv_usr_recv_done(struct ib_cq *cq, struct ib_wc *wc);
-
 static int process_usr_msg(struct ibtrs_srv_con *con, struct ib_wc *wc)
 {
 	struct ibtrs_srv_sess *sess = con->sess;
@@ -1512,9 +1511,9 @@ static int process_usr_msg(struct ibtrs_srv_con *con, struct ib_wc *wc)
 	case IBTRS_MSG_USER:
 		process_msg(sess, msg);
 
-		err = ibtrs_post_recv(&con->c, iu, ibtrs_srv_usr_recv_done);
+		err = ibtrs_iu_post_recv(&con->c, iu);
 		if (unlikely(err)) {
-			ibtrs_err(sess, "ibtrs_post_recv(), err: %d\n", err);
+			ibtrs_err(sess, "ibtrs_iu_post_recv(), err: %d\n", err);
 			goto out;
 		}
 		err = ibtrs_send_usr_msg_ack(con);
@@ -1548,9 +1547,9 @@ static int process_usr_msg_ack(struct ibtrs_srv_con *con, struct ib_wc *wc)
 
 	ibtrs_usr_msg_put(&sess->s);
 
-	err = ibtrs_post_recv(&con->c, iu, ibtrs_srv_usr_recv_done);
+	err = ibtrs_iu_post_recv(&con->c, iu);
 	if (unlikely(err))
-		ibtrs_err(sess, "ibtrs_post_recv(), err: %d\n", err);
+		ibtrs_err(sess, "ibtrs_iu_post_recv(), err: %d\n", err);
 
 	return err;
 }
