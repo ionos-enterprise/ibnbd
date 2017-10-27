@@ -126,8 +126,8 @@ static void process_msg_sess_info_rsp(struct ibnbd_clt_session *sess,
 				      struct ibnbd_msg_sess_info_rsp *msg)
 {
 	sess->ver = min_t(u8, msg->ver, IBNBD_VER_MAJOR);
-	pr_debug("Session to %s (%s) using protocol version %d (client version: %d,"
-		 " server version: %d)\n", sess->str_addr, sess->sessname, sess->ver,
+	pr_debug("Session %s using protocol version %d (client version: %d,"
+		 " server version: %d)\n", sess->sessname, sess->ver,
 		 IBNBD_VER_MAJOR, msg->ver);
 }
 
@@ -139,16 +139,16 @@ static int process_msg_open_rsp(struct ibnbd_clt_session *sess,
 
 	dev = g_get_dev(rsp->clt_device_id);
 	if (IS_ERR(dev)) {
-		pr_err("Open-Response message received from session %s"
-		       " for unknown device (id: %d)\n", sess->str_addr,
+		pr_err("Open-Response message received on session %s"
+		       " for unknown device (id: %d)\n", sess->sessname,
 		       rsp->clt_device_id);
 		return -ENOENT;
 	}
 
 	if (!ibnbd_clt_get_dev(dev)) {
-		pr_err("Failed to process Open-Response message from session"
+		pr_err("Failed to process Open-Response message on session"
 		       " %s, unable to get reference to device (id: %d)",
-		       sess->str_addr, rsp->clt_device_id);
+		       sess->sessname, rsp->clt_device_id);
 		return -ENOENT;
 	}
 
@@ -199,16 +199,16 @@ static void process_msg_revalidate(struct ibnbd_clt_session *sess,
 
 	dev = g_get_dev(msg->clt_device_id);
 	if (IS_ERR(dev)) {
-		pr_err("Received device revalidation message from session %s"
-		       " for non-existent device (id %d)\n", sess->str_addr,
+		pr_err("Received device revalidation message on session %s"
+		       " for non-existent device (id %d)\n", sess->sessname,
 		       msg->clt_device_id);
 		return;
 	}
 
 	if (!ibnbd_clt_get_dev(dev)) {
-		pr_err("Failed to process device revalidation message from"
+		pr_err("Failed to process device revalidation message on"
 		       " session %s, unable to get reference to device"
-		       " (id: %d)", sess->str_addr, msg->clt_device_id);
+		       " (id: %d)", sess->sessname, msg->clt_device_id);
 		return;
 	}
 
@@ -294,8 +294,8 @@ static void ibnbd_clt_recv(void *priv, const void *msg, size_t len)
 
 		dev = g_get_dev(rsp->clt_device_id);
 		if (IS_ERR(dev)) {
-			pr_err("Close-Response message received from session %s"
-			       " for unknown device (id: %u)\n", sess->str_addr,
+			pr_err("Close-Response message received on session %s"
+			       " for unknown device (id: %u)\n", sess->sessname,
 			       rsp->clt_device_id);
 			break;
 		}
@@ -309,8 +309,8 @@ static void ibnbd_clt_recv(void *priv, const void *msg, size_t len)
 				       (struct ibnbd_msg_revalidate *)msg);
 		break;
 	default:
-		pr_err("IBNBD message with unknown type %d received from"
-		       " session %s\n", hdr->type, sess->str_addr);
+		pr_err("IBNBD message with unknown type %d received on"
+		       " session %s\n", hdr->type, sess->sessname);
 		break;
 	}
 }
@@ -726,8 +726,8 @@ static int update_sess_info(struct ibnbd_clt_session *sess)
 	sess->sess_info_compl = &comp;
 	err = send_msg_sess_info(sess);
 	if (unlikely(err)) {
-		pr_err("Failed to send SESS_INFO message for session %s (%s)\n",
-		       sess->str_addr, sess->sessname);
+		pr_err("Failed to send SESS_INFO message on session %s\n",
+		       sess->sessname);
 		goto out;
 	}
 
@@ -775,7 +775,7 @@ static int ibnbd_schedule_reopen(struct ibnbd_clt_session *sess)
 	w = kmalloc(sizeof(*w), GFP_KERNEL);
 	if (!w) {
 		pr_err("Failed to allocate memory to schedule reopen of"
-		       " devices for session %s\n", sess->str_addr);
+		       " devices on session %s\n", sess->sessname);
 		return -ENOMEM;
 	}
 
@@ -828,8 +828,8 @@ static void ibnbd_clt_sess_ev(void *priv, enum ibtrs_clt_sess_ev ev, int errno)
 		ibnbd_schedule_reopen(sess);
 		break;
 	default:
-		pr_err("Unknown session event received (%d), session: (%s)\n",
-		       ev, sess->str_addr);
+		pr_err("Unknown session event received (%d), session: %s\n",
+		       ev, sess->sessname);
 	}
 }
 
@@ -891,36 +891,29 @@ ibnbd_create_session(const char *sessname,
 		     const struct sockaddr *addr)
 {
 	struct ibnbd_clt_session *sess;
-	char str_addr[MAXHOSTNAMELEN];
 	struct ibtrs_clt_ops ops;
 	struct ibtrs_attrs attrs;
 	int err;
 	int cpu;
 
-	err = ibnbd_sockaddr_to_str(addr, str_addr, sizeof(str_addr));
-	if (err < 0) {
-		pr_err("Can't create session, invalid address\n");
-		return ERR_PTR(err);
-	}
-
-	pr_debug("Establishing session to %s\n", str_addr);
+	pr_debug("Establishing session to %s\n", sessname);
 
 	if (ibnbd_clt_find_sess(sessname)) {
-		pr_err("Can't create session, session to %s already exists\n",
-		       str_addr);
+		pr_err("Can't create session, session %s already exists\n",
+		       sessname);
 		return ERR_PTR(-EEXIST);
 	}
 
 	sess = kzalloc_node(sizeof(*sess), GFP_KERNEL, NUMA_NO_NODE);
 	if (unlikely(!sess)) {
-		pr_err("Failed to create session to %s,"
-		       " allocating session struct failed\n", str_addr);
+		pr_err("Failed to create session %s,"
+		       " allocating session struct failed\n", sessname);
 		return ERR_PTR(-ENOMEM);
 	}
 	sess->cpu_queues = alloc_percpu(struct ibnbd_cpu_qlist);
 	if (unlikely(!sess->cpu_queues)) {
 		pr_err("Failed to create session to %s,"
-		       " alloc of percpu var (cpu_queues) failed\n", str_addr);
+		       " alloc of percpu var (cpu_queues) failed\n", sessname);
 		kvfree(sess);
 		return ERR_PTR(-ENOMEM);
 	}
@@ -933,8 +926,8 @@ ibnbd_create_session(const char *sessname,
 	 */
 	sess->cpu_rr = alloc_percpu(int);
 	if (unlikely(!sess->cpu_rr)) {
-		pr_err("Failed to create session to %s,"
-		       " alloc of percpu var (cpu_rr) failed\n", str_addr);
+		pr_err("Failed to create session %s,"
+		       " alloc of percpu var (cpu_rr) failed\n", sessname);
 		free_percpu(sess->cpu_queues);
 		kfree(sess);
 		return ERR_PTR(-ENOMEM);
@@ -946,7 +939,6 @@ ibnbd_create_session(const char *sessname,
 	memset(&attrs, 0, sizeof(attrs));
 	strlcpy(sess->sessname, sessname, sizeof(sess->sessname));
 	memcpy(&sess->addr, addr, sizeof(sess->addr));
-	strlcpy(sess->str_addr, str_addr, sizeof(sess->str_addr));
 
 	spin_lock(&sess_lock);
 	list_add(&sess->list, &session_list);
@@ -1013,7 +1005,7 @@ static void ibnbd_clt_destroy_session(struct ibnbd_clt_session *sess)
 	if (!list_empty(&sess->devs_list)) {
 		mutex_unlock(&sess->lock);
 		pr_warn("Device list is not empty,"
-			" closing session to %s failed\n", sess->str_addr);
+			" closing session to %s failed\n", sess->sessname);
 		return;
 	}
 	mutex_unlock(&sess->lock);
@@ -1524,7 +1516,7 @@ static struct ibnbd_clt_dev *init_dev(struct ibnbd_clt_session *sess,
 	if (!dev) {
 		pr_err("Failed to initialize device '%s' from session %s,"
 		       " allocating device structure failed\n", pathname,
-		       sess->str_addr);
+		       sess->sessname);
 		return ERR_PTR(-ENOMEM);
 	}
 
@@ -1536,7 +1528,7 @@ static struct ibnbd_clt_dev *init_dev(struct ibnbd_clt_session *sess,
 		if (unlikely(!dev->hw_queues)) {
 			pr_err("Failed to initialize device '%s' from session"
 			       " %s, allocating hw_queues failed.", pathname,
-			       sess->str_addr);
+			       sess->sessname);
 			ret = -ENOMEM;
 			goto out_alloc;
 		}
@@ -1556,7 +1548,7 @@ static struct ibnbd_clt_dev *init_dev(struct ibnbd_clt_session *sess,
 	if (ret < 0) {
 		pr_err("Failed to initialize device '%s' from session %s,"
 		       " allocating idr failed, err: %d\n", pathname,
-		       sess->str_addr, ret);
+		       sess->sessname, ret);
 		goto out_queues;
 	}
 
@@ -1566,7 +1558,7 @@ static struct ibnbd_clt_dev *init_dev(struct ibnbd_clt_session *sess,
 	if (!dev->close_compl) {
 		pr_err("Failed to initialize device '%s' from session %s,"
 		       " allocating close completion failed, err: %d\n",
-		       pathname, sess->str_addr, ret);
+		       pathname, sess->sessname, ret);
 		ret = -ENOMEM;
 		goto out_idr;
 	}
@@ -1635,7 +1627,7 @@ ibnbd_client_add_device(struct ibnbd_clt_session *sess,
 	struct completion *open_compl;
 
 	pr_debug("Add remote device: server=%s, path='%s', access_mode=%d,"
-		 " queue_mode=%d\n", sess->str_addr, pathname, access_mode,
+		 " queue_mode=%d\n", sess->sessname, pathname, access_mode,
 		 queue_mode);
 
 	mutex_lock(&sess->lock);
@@ -1643,7 +1635,7 @@ ibnbd_client_add_device(struct ibnbd_clt_session *sess,
 	if (sess->state != CLT_SESS_STATE_READY) {
 		mutex_unlock(&sess->lock);
 		pr_err("map_device: failed to map device '%s' from session %s,"
-		       " session is not connected\n", pathname, sess->str_addr);
+		       " session is not connected\n", pathname, sess->sessname);
 		return ERR_PTR(-ENOENT);
 	}
 
@@ -1651,7 +1643,7 @@ ibnbd_client_add_device(struct ibnbd_clt_session *sess,
 		mutex_unlock(&sess->lock);
 		pr_err("map_device: failed to map device '%s' from session %s,"
 		       " device with same path is already mapped\n", pathname,
-		       sess->str_addr);
+		       sess->sessname);
 		return ERR_PTR(-EEXIST);
 	}
 
@@ -1660,7 +1652,7 @@ ibnbd_client_add_device(struct ibnbd_clt_session *sess,
 	if (IS_ERR(dev)) {
 		pr_err("map_device: failed to map device '%s' from session %s,"
 		       " can't initialize device, err: %ld\n", pathname,
-		       sess->str_addr, PTR_ERR(dev));
+		       sess->sessname, PTR_ERR(dev));
 		return dev;
 	}
 
@@ -1707,7 +1699,7 @@ ibnbd_client_add_device(struct ibnbd_clt_session *sess,
 	list_add(&dev->g_list, &devs_list);
 	spin_unlock(&dev_lock);
 
-	pr_debug("Opened remote device: server=%s, path='%s'\n", sess->str_addr,
+	pr_debug("Opened remote device: session=%s, path='%s'\n", sess->sessname,
 		 pathname);
 	ret = ibnbd_client_setup_device(sess, dev, dev->clt_device_id);
 	if (ret) {
