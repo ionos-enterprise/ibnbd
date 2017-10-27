@@ -167,37 +167,6 @@ module_param_cb(cq_affinity_list, &cq_affinity_list_ops,
 MODULE_PARM_DESC(cq_affinity_list, "Sets the list of cpus to use as cq vectors."
 		 "(default: use all possible CPUs)");
 
-static char hostname[MAXHOSTNAMELEN] = "";
-
-static int hostname_set(const char *val, const struct kernel_param *kp)
-{
-	int ret = 0, len = strlen(val);
-
-	if (len >= sizeof(hostname))
-		return -EINVAL;
-	strlcpy(hostname, val, sizeof(hostname));
-	*strchrnul(hostname, '\n') = '\0';
-
-	pr_info("hostname changed to %s\n", hostname);
-	return ret;
-}
-
-static struct kparam_string hostname_kparam_str = {
-	.maxlen	= sizeof(hostname),
-	.string	= hostname
-};
-
-static const struct kernel_param_ops hostname_ops = {
-	.set	= hostname_set,
-	.get	= param_get_string,
-};
-
-module_param_cb(hostname, &hostname_ops,
-		&hostname_kparam_str, 0644);
-MODULE_PARM_DESC(hostname, "Sets hostname of local server, will send to the"
-		 " other side if set,  will display togather with addr "
-		 "(default: empty)");
-
 static struct dentry *ibtrs_srv_debugfs_dir;
 static struct dentry *mempool_debugfs_dir;
 
@@ -2364,15 +2333,13 @@ static int __init ibtrs_server_init(void)
 	if (!strlen(cq_affinity_list))
 		init_cq_affinity();
 
-	scnprintf(hostname, sizeof(hostname), "%s", utsname()->nodename);
 	pr_info("Loading module %s, version: %s "
 		"(retry_count: %d, cq_affinity_list: %s, "
 		"max_io_size: %d, sess_queue_depth: %d, "
-		"init_pool_size: %d, pool_size_hi_wm: %d, "
-		"hostname: %s)\n",
+		"init_pool_size: %d, pool_size_hi_wm: %d)\n",
 		KBUILD_MODNAME, IBTRS_VER_STRING, retry_count,
 		cq_affinity_list, max_io_size, sess_queue_depth,
-		init_pool_size, pool_size_hi_wm, hostname);
+		init_pool_size, pool_size_hi_wm);
 
 	err = check_module_params();
 	if (err) {

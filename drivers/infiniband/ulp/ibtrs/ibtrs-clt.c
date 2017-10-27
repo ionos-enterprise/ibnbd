@@ -70,37 +70,6 @@ module_param_named(fmr_sg_cnt, fmr_sg_cnt, int, 0644);
 MODULE_PARM_DESC(fmr_sg_cnt, "when sg_cnt is bigger than fmr_sg_cnt, enable"
 		 " FMR (default: 4)");
 
-static char hostname[MAXHOSTNAMELEN] = "";
-
-static int hostname_set(const char *val, const struct kernel_param *kp)
-{
-	int ret = 0, len = strlen(val);
-
-	if (len >= sizeof(hostname))
-		return -EINVAL;
-	strlcpy(hostname, val, sizeof(hostname));
-	*strchrnul(hostname, '\n') = '\0';
-
-	pr_info("hostname changed to %s\n", hostname);
-	return ret;
-}
-
-static struct kparam_string hostname_kparam_str = {
-	.maxlen	= sizeof(hostname),
-	.string	= hostname
-};
-
-static const struct kernel_param_ops hostname_ops = {
-	.set	= hostname_set,
-	.get	= param_get_string,
-};
-
-module_param_cb(hostname, &hostname_ops,
-		&hostname_kparam_str, 0644);
-MODULE_PARM_DESC(hostname, "Sets hostname of local server, will send to the"
-		 " other side if set,  will display togather with addr "
-		 "(default: empty)");
-
 static void ibtrs_rdma_error_recovery(struct ibtrs_clt_con *con);
 static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc);
 
@@ -3865,13 +3834,11 @@ static int __init ibtrs_client_init(void)
 {
 	int err;
 
-	scnprintf(hostname, sizeof(hostname), "%s", utsname()->nodename);
 	pr_info("Loading module %s, version: %s "
 		"(use_fr: %d, retry_count: %d, "
-		"fmr_sg_cnt: %d, hostname: %s)\n",
+		"fmr_sg_cnt: %d)\n",
 		KBUILD_MODNAME, IBTRS_VER_STRING,
-		use_fr,	retry_count, fmr_sg_cnt,
-		hostname);
+		use_fr,	retry_count, fmr_sg_cnt);
 	err = check_module_params();
 	if (err) {
 		pr_err("Failed to load module, invalid module parameters,"
