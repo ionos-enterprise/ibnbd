@@ -127,7 +127,7 @@ static void process_msg_sess_info_rsp(struct ibnbd_clt_session *sess,
 {
 	sess->ver = min_t(u8, msg->ver, IBNBD_VER_MAJOR);
 	pr_debug("Session to %s (%s) using protocol version %d (client version: %d,"
-		 " server version: %d)\n", sess->str_addr, sess->hostname, sess->ver,
+		 " server version: %d)\n", sess->str_addr, sess->sessname, sess->ver,
 		 IBNBD_VER_MAJOR, msg->ver);
 }
 
@@ -727,7 +727,7 @@ static int update_sess_info(struct ibnbd_clt_session *sess)
 	err = send_msg_sess_info(sess);
 	if (unlikely(err)) {
 		pr_err("Failed to send SESS_INFO message for session %s (%s)\n",
-		       sess->str_addr, sess->hostname);
+		       sess->str_addr, sess->sessname);
 		goto out;
 	}
 
@@ -824,7 +824,6 @@ static void ibnbd_clt_sess_ev(void *priv, enum ibtrs_clt_sess_ev ev, int errno)
 		mutex_unlock(&sess->lock);
 		memset(&attrs, 0, sizeof(attrs));
 		ibtrs_clt_query(sess->sess, &attrs);
-		strlcpy(sess->hostname, attrs.hostname, sizeof(sess->hostname));
 		sess->max_io_size = attrs.max_io_size;
 		ibnbd_schedule_reopen(sess);
 		break;
@@ -979,7 +978,6 @@ ibnbd_create_session(const char *sessname,
 	}
 
 	ibtrs_clt_query(sess->sess, &attrs);
-	strlcpy(sess->hostname, attrs.hostname, sizeof(sess->hostname));
 	sess->max_io_size = attrs.max_io_size;
 	sess->queue_depth = attrs.queue_depth;
 

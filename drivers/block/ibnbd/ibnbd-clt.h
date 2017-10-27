@@ -72,7 +72,6 @@ struct ibnbd_clt_session {
 	char			sessname[MAXHOSTNAMELEN];
 	struct sockaddr_storage addr;	/* TODO: remove later */
 	char			str_addr[MAXHOSTNAMELEN]; /* TODO: remove later */
-	char			hostname[MAXHOSTNAMELEN]; /* TODO: remove later */
 	enum ibnbd_clt_sess_state state;
 	u8			ver; /* protocol version */
 	struct completion	*sess_info_compl;
