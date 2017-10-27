@@ -276,6 +276,9 @@ static int create_sess(struct ibtrs_srv_sess *sess)
 	const struct sockaddr *sockaddr;
 	struct ibnbd_srv_session *srv_sess;
 	char str_addr[MAXHOSTNAMELEN];
+	char sessname[MAXHOSTNAMELEN];
+
+	strlcpy(sessname, ibtrs_srv_get_sess_hostname(sess), sizeof(sessname));
 
 	sockaddr = ibtrs_srv_get_sess_sockaddr(sess);
 	ibnbd_sockaddr_to_str(sockaddr, str_addr, sizeof(str_addr));
@@ -308,6 +311,8 @@ static int create_sess(struct ibtrs_srv_sess *sess)
 	srv_sess->ibtrs_sess = sess;
 	srv_sess->queue_depth = ibtrs_srv_get_sess_qdepth(sess);
 	strlcpy(srv_sess->str_addr, str_addr, sizeof(srv_sess->str_addr));
+	strlcpy(srv_sess->sessname, sessname, sizeof(srv_sess->sessname));
+
 
 	ibtrs_srv_set_sess_priv(sess, srv_sess);
 
@@ -640,13 +645,9 @@ static void process_msg_sess_info(struct ibtrs_srv_sess *s,
 		.iov_len  = sizeof(rsp)
 	};
 
-	if (srv_sess->hostname[0] == '\0')
-		strlcpy(srv_sess->hostname, ibtrs_srv_get_sess_hostname(s),
-			sizeof(srv_sess->hostname));
-
 	srv_sess->ver = min_t(u8, sess_info_msg->ver, IBNBD_VER_MAJOR);
 	pr_debug("Session to %s (%s) using protocol version %d (client version: %d,"
-		 " server version: %d)\n", srv_sess->str_addr, srv_sess->hostname,
+		 " server version: %d)\n", srv_sess->str_addr, srv_sess->sessname,
 		 srv_sess->ver, sess_info_msg->ver, IBNBD_VER_MAJOR);
 
 	rsp.hdr.type = IBNBD_MSG_SESS_INFO_RSP;
@@ -655,7 +656,7 @@ static void process_msg_sess_info(struct ibtrs_srv_sess *s,
 	err = ibtrs_srv_send(s, &vec, 1);
 	if (unlikely(err))
 		pr_err("Failed to send session info response to client"
-		       "%s (%s)\n", srv_sess->str_addr, srv_sess->hostname);
+		       "%s (%s)\n", srv_sess->str_addr, srv_sess->sessname);
 }
 
 static void process_msg_open(struct ibtrs_srv_sess *s,
