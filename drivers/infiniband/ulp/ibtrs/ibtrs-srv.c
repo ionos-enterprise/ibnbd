@@ -1955,61 +1955,44 @@ close_and_reject_w_err:
 	goto reject_w_err;
 }
 
-static void ibtrs_rdma_disconnect(struct ibtrs_srv_con *con)
-{
-	struct ibtrs_srv_sess *sess = con->sess;
-
-	close_sess(sess);
-}
-
-static void ibtrs_rdma_conn_error(struct ibtrs_srv_con *con)
-{
-	struct ibtrs_srv_sess *sess = con->sess;
-
-	close_sess(sess);
-}
-
-static void ibtrs_rdma_device_removal(struct ibtrs_srv_con *con)
-{
-	struct ibtrs_srv_sess *sess = con->sess;
-
-	close_sess(sess);
-}
-
 static int ibtrs_srv_rdma_cm_handler(struct rdma_cm_id *cm_id,
 				     struct rdma_cm_event *event)
 {
+	struct ibtrs_srv_sess *sess = NULL;
 	struct ibtrs_srv_con *con = NULL;
-	int err = 0;
 
 	if (cm_id->qp) {
 		struct ibtrs_con *ibtrs_con = cm_id->qp->qp_context;
 
 		con = container_of(ibtrs_con, struct ibtrs_srv_con, c);
+		sess = con->sess;
 	}
 
 	switch (event->event) {
 	case RDMA_CM_EVENT_CONNECT_REQUEST:
-		err = ibtrs_rdma_connect(cm_id, event->param.conn.private_data,
-					 event->param.conn.private_data_len);
-		break;
+		/*
+		 * In case of error cma.c will destroy cm_id,
+		 * see cma_process_remove()
+		 */
+		return ibtrs_rdma_connect(cm_id, event->param.conn.private_data,
+					  event->param.conn.private_data_len);
 	case RDMA_CM_EVENT_ESTABLISHED:
 		/* Nothing here */
 		break;
 	case RDMA_CM_EVENT_REJECTED:
 	case RDMA_CM_EVENT_CONNECT_ERROR:
 	case RDMA_CM_EVENT_UNREACHABLE:
-		ibtrs_err(con->sess, "CM error (CM event: %s, err: %d)\n",
+		ibtrs_err(sess, "CM error (CM event: %s, err: %d)\n",
 			  rdma_event_msg(event->event), event->status);
-		ibtrs_rdma_conn_error(con);
+		close_sess(sess);
 		break;
 	case RDMA_CM_EVENT_DISCONNECTED:
 	case RDMA_CM_EVENT_ADDR_CHANGE:
 	case RDMA_CM_EVENT_TIMEWAIT_EXIT:
-		ibtrs_rdma_disconnect(con);
+		close_sess(sess);
 		break;
 	case RDMA_CM_EVENT_DEVICE_REMOVAL:
-		ibtrs_rdma_device_removal(con);
+		close_sess(sess);
 		break;
 	default:
 		pr_err("Ignoring unexpected CM event %s, err %d\n",
@@ -2017,7 +2000,7 @@ static int ibtrs_srv_rdma_cm_handler(struct rdma_cm_id *cm_id,
 		break;
 	}
 
-	return err;
+	return 0;
 }
 
 static struct rdma_cm_id *ibtrs_srv_cm_init(struct ibtrs_srv_ctx *ctx,
