@@ -1604,11 +1604,11 @@ err:
 	close_sess(sess);
 }
 
-const char *ibtrs_srv_get_sess_hostname(struct ibtrs_srv_sess *sess)
+const char *ibtrs_srv_get_sess_name(struct ibtrs_srv_sess *sess)
 {
 	return sess->s.sessname;
 }
-EXPORT_SYMBOL(ibtrs_srv_get_sess_hostname);
+EXPORT_SYMBOL(ibtrs_srv_get_sess_name);
 
 const struct sockaddr *
 ibtrs_srv_get_sess_sockaddr(struct ibtrs_srv_sess *sess)
