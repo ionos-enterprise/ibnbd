@@ -834,40 +834,14 @@ static void ibnbd_clt_sess_ev(void *priv, enum ibtrs_clt_sess_ev ev, int errno)
 	}
 }
 
-static int ibnbd_cmp_sock_addr(const struct sockaddr *a,
-			       const struct sockaddr *b)
-{
-	if (a->sa_family == b->sa_family) {
-		switch (a->sa_family) {
-		case AF_INET:
-			return memcmp(&((struct sockaddr_in *)a)->sin_addr,
-				      &((struct sockaddr_in *)b)->sin_addr,
-				      sizeof(struct in_addr));
-		case AF_INET6:
-			return memcmp(&((struct sockaddr_in6 *)a)->sin6_addr,
-				      &((struct sockaddr_in6 *)b)->sin6_addr,
-				      sizeof(struct in6_addr));
-		case AF_IB:
-			return memcmp(&((struct sockaddr_ib *)a)->sib_addr,
-				      &((struct sockaddr_ib *)b)->sib_addr,
-				      sizeof(struct ib_addr));
-		default:
-			pr_err("Unknown address family: %d\n", a->sa_family);
-			return -EINVAL;
-		}
-	} else {
-		return -1;
-	}
-}
-
 struct ibnbd_clt_session *
-ibnbd_clt_find_sess(const struct sockaddr *addr)
+ibnbd_clt_find_sess(const char *sessname)
 {
 	struct ibnbd_clt_session *sess;
 
 	spin_lock(&sess_lock);
 	list_for_each_entry(sess, &session_list, list)
-		if (!ibnbd_cmp_sock_addr((struct sockaddr *)&sess->addr, addr)) {
+		if (!strcmp(sessname, sess->sessname)) {
 			spin_unlock(&sess_lock);
 			return sess;
 		}
@@ -932,7 +906,7 @@ ibnbd_create_session(const char *sessname,
 
 	pr_debug("Establishing session to %s\n", str_addr);
 
-	if (ibnbd_clt_find_sess(addr)) {
+	if (ibnbd_clt_find_sess(sessname)) {
 		pr_err("Can't create session, session to %s already exists\n",
 		       str_addr);
 		return ERR_PTR(-EEXIST);
@@ -971,6 +945,7 @@ ibnbd_create_session(const char *sessname,
 	}
 
 	memset(&attrs, 0, sizeof(attrs));
+	strlcpy(sess->sessname, sessname, sizeof(sess->sessname));
 	memcpy(&sess->addr, addr, sizeof(sess->addr));
 	strlcpy(sess->str_addr, str_addr, sizeof(sess->str_addr));
 

@@ -69,9 +69,10 @@ struct ibnbd_clt_session {
 	struct mutex		lock; /* protects state and devs_list */
 	struct list_head        devs_list; /* list of struct ibnbd_clt_dev */
 	struct kref		refcount;
-	struct sockaddr_storage addr;
-	char			str_addr[MAXHOSTNAMELEN];
-	char			hostname[MAXHOSTNAMELEN];
+	char			sessname[MAXHOSTNAMELEN];
+	struct sockaddr_storage addr;	/* TODO: remove later */
+	char			str_addr[MAXHOSTNAMELEN]; /* TODO: remove later */
+	char			hostname[MAXHOSTNAMELEN]; /* TODO: remove later */
 	enum ibnbd_clt_sess_state state;
 	u8			ver; /* protocol version */
 	struct completion	*sess_info_compl;
@@ -146,7 +147,7 @@ static inline const char *ibnbd_queue_mode_str(enum ibnbd_queue_mode mode)
 int ibnbd_close_device(struct ibnbd_clt_dev *dev, bool force);
 struct ibnbd_clt_session *ibnbd_create_session(const char *sessname,
 					       const struct sockaddr *addr);
-struct ibnbd_clt_session *ibnbd_clt_find_sess(const struct sockaddr *addr);
+struct ibnbd_clt_session *ibnbd_clt_find_sess(const char *sessname);
 void ibnbd_clt_sess_release(struct kref *ref);
 struct ibnbd_clt_dev *ibnbd_client_add_device(struct ibnbd_clt_session *sess,
 					      const char *pathname,

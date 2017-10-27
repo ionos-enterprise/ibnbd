@@ -639,7 +639,7 @@ ibnbd_clt_get_create_sess(const char *sessname, struct sockaddr *sockaddr)
 	struct ibnbd_clt_session *sess;
 
 	mutex_lock(&sess_lock);
-	sess = ibnbd_clt_find_sess(sockaddr);
+	sess = ibnbd_clt_find_sess(sessname);
 	if (sess) {
 		if (sess->state != CLT_SESS_STATE_READY ||
 		    !ibnbd_clt_get_sess(sess)) {
