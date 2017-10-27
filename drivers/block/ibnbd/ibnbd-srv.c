@@ -146,9 +146,9 @@ static int process_rdma(struct ibtrs_srv_sess *sess,
 
 	sess_dev = ibnbd_get_sess_dev(dev_id, srv_sess);
 	if (unlikely(IS_ERR(sess_dev))) {
-		pr_err_ratelimited("Got I/O request from client %s for "
+		pr_err_ratelimited("Got I/O request on session %s for "
 				   "unknown device id %d\n",
-				   srv_sess->str_addr, dev_id);
+				   srv_sess->sessname, dev_id);
 		err = -ENOTCONN;
 		goto err;
 	}
@@ -262,7 +262,7 @@ out:
 	idr_destroy(&srv_sess->index_idr);
 	bioset_free(srv_sess->sess_bio_set);
 
-	pr_info("IBTRS Session to %s disconnected\n", srv_sess->str_addr);
+	pr_info("IBTRS Session %s disconnected\n", srv_sess->sessname);
 
 	mutex_lock(&sess_lock);
 	list_del(&srv_sess->list);
@@ -275,26 +275,24 @@ static int create_sess(struct ibtrs_srv_sess *sess)
 {
 	const struct sockaddr *sockaddr;
 	struct ibnbd_srv_session *srv_sess;
-	char str_addr[MAXHOSTNAMELEN];
 	char sessname[MAXHOSTNAMELEN];
 
 	strlcpy(sessname, ibtrs_srv_get_sess_name(sess), sizeof(sessname));
 
 	sockaddr = ibtrs_srv_get_sess_sockaddr(sess);
-	ibnbd_sockaddr_to_str(sockaddr, str_addr, sizeof(str_addr));
 
 	srv_sess = kzalloc(sizeof(*srv_sess), GFP_KERNEL);
 	if (!srv_sess) {
-		pr_err("Allocating srv_session for client %s failed\n",
-		       str_addr);
+		pr_err("Allocating srv_session for session %s failed\n",
+		       sessname);
 		return -ENOMEM;
 	}
 	srv_sess->queue_depth = ibtrs_srv_get_sess_qdepth(sess);
 	srv_sess->sess_bio_set = bioset_create(srv_sess->queue_depth, 0,
 					       BIOSET_NEED_BVECS);
 	if (!srv_sess->sess_bio_set) {
-		pr_err("Allocating srv_session for client %s failed\n",
-		       str_addr);
+		pr_err("Allocating srv_session for session %s failed\n",
+		       sessname);
 		kfree(srv_sess);
 		return -ENOMEM;
 	}
@@ -310,7 +308,6 @@ static int create_sess(struct ibtrs_srv_sess *sess)
 
 	srv_sess->ibtrs_sess = sess;
 	srv_sess->queue_depth = ibtrs_srv_get_sess_qdepth(sess);
-	strlcpy(srv_sess->str_addr, str_addr, sizeof(srv_sess->str_addr));
 	strlcpy(srv_sess->sessname, sessname, sizeof(srv_sess->sessname));
 
 
@@ -337,7 +334,7 @@ static int ibnbd_srv_sess_ev(struct ibtrs_srv_sess *sess,
 
 	default:
 		pr_warn("Received unknown IBTRS session event %d from session"
-			" %s\n", ev, srv_sess->str_addr);
+			" %s\n", ev, srv_sess->sessname);
 		return -EINVAL;
 	}
 }
@@ -359,7 +356,7 @@ static int ibnbd_srv_rdma_ev(struct ibtrs_srv_sess *sess, void *priv,
 
 	default:
 		pr_warn("Received unexpected RDMA event %d from session %s\n",
-			ev, srv_sess->str_addr);
+			ev, srv_sess->sessname);
 		return -EINVAL;
 	}
 }
@@ -449,9 +446,9 @@ static int ibnbd_srv_check_update_open_perm(struct ibnbd_srv_dev *srv_dev,
 	mutex_lock(&srv_dev->lock);
 
 	if (srv_dev->mode != io_mode) {
-		pr_err("Mapping device '%s' for client %s in %s mode forbidden,"
+		pr_err("Mapping device '%s' for session %s in %s mode forbidden,"
 		       " device is already mapped from other client(s) in"
-		       " %s mode\n", srv_dev->id, srv_sess->str_addr,
+		       " %s mode\n", srv_dev->id, srv_sess->sessname,
 		       ibnbd_io_mode_str(io_mode),
 		       ibnbd_io_mode_str(srv_dev->mode));
 		goto out;
@@ -466,10 +463,10 @@ static int ibnbd_srv_check_update_open_perm(struct ibnbd_srv_dev *srv_dev,
 			srv_dev->open_write_cnt++;
 			ret = 0;
 		} else {
-			pr_err("Mapping device '%s' for client %s with"
+			pr_err("Mapping device '%s' for session %s with"
 			       " RW permissions failed. Device already opened"
 			       " as 'RW' by %d client(s) in %s mode.\n",
-			       srv_dev->id, srv_sess->str_addr,
+			       srv_dev->id, srv_sess->sessname,
 			       srv_dev->open_write_cnt,
 			       ibnbd_io_mode_str(srv_dev->mode));
 		}
@@ -479,18 +476,18 @@ static int ibnbd_srv_check_update_open_perm(struct ibnbd_srv_dev *srv_dev,
 			srv_dev->open_write_cnt++;
 			ret = 0;
 		} else {
-			pr_err("Mapping device '%s' for client %s with"
+			pr_err("Mapping device '%s' for session %s with"
 			       " migration permissions failed. Device already"
 			       " opened as 'RW' by %d client(s) in %s mode.\n",
-			       srv_dev->id, srv_sess->str_addr,
+			       srv_dev->id, srv_sess->sessname,
 			       srv_dev->open_write_cnt,
 			       ibnbd_io_mode_str(srv_dev->mode));
 		}
 		break;
 	default:
-		pr_err("Received mapping request for device '%s' from client %s"
+		pr_err("Received mapping request for device '%s' on session %s"
 		       " with invalid access mode: %d\n", srv_dev->id,
-		       srv_sess->str_addr, access_mode);
+		       srv_sess->sessname, access_mode);
 		ret = -EINVAL;
 	}
 
@@ -646,8 +643,8 @@ static void process_msg_sess_info(struct ibtrs_srv_sess *s,
 	};
 
 	srv_sess->ver = min_t(u8, sess_info_msg->ver, IBNBD_VER_MAJOR);
-	pr_debug("Session to %s (%s) using protocol version %d (client version: %d,"
-		 " server version: %d)\n", srv_sess->str_addr, srv_sess->sessname,
+	pr_debug("Session %s using protocol version %d (client version: %d,"
+		 " server version: %d)\n", srv_sess->sessname,
 		 srv_sess->ver, sess_info_msg->ver, IBNBD_VER_MAJOR);
 
 	rsp.hdr.type = IBNBD_MSG_SESS_INFO_RSP;
@@ -656,7 +653,7 @@ static void process_msg_sess_info(struct ibtrs_srv_sess *s,
 	err = ibtrs_srv_send(s, &vec, 1);
 	if (unlikely(err))
 		pr_err("Failed to send session info response to client"
-		       "%s (%s)\n", srv_sess->str_addr, srv_sess->sessname);
+		       " %s\n", srv_sess->sessname);
 }
 
 static void process_msg_open(struct ibtrs_srv_sess *s,
@@ -677,8 +674,8 @@ static void process_msg_open(struct ibtrs_srv_sess *s,
 		.iov_len  = sizeof(rsp)
 	};
 
-	pr_debug("Open message received: client='%s' path='%s' access_mode=%d"
-		 " io_mode=%d\n", srv_sess->str_addr, open_msg->dev_name,
+	pr_debug("Open message received: session='%s' path='%s' access_mode=%d"
+		 " io_mode=%d\n", srv_sess->sessname, open_msg->dev_name,
 		 open_msg->access_mode, open_msg->io_mode);
 	open_flags = FMODE_READ;
 	if (open_msg->access_mode != IBNBD_ACCESS_RO)
@@ -686,9 +683,9 @@ static void process_msg_open(struct ibtrs_srv_sess *s,
 
 	if ((strlen(dev_search_path) + strlen(open_msg->dev_name))
 	    >= PATH_MAX) {
-		pr_err("Opening device for client %s failed, device path too"
+		pr_err("Opening device for session %s failed, device path too"
 		       " long. '%s/%s' is longer than PATH_MAX (%d)\n",
-		       srv_sess->str_addr, dev_search_path, open_msg->dev_name,
+		       srv_sess->sessname, dev_search_path, open_msg->dev_name,
 		       PATH_MAX);
 		ret = -EINVAL;
 		goto reject;
@@ -698,7 +695,7 @@ static void process_msg_open(struct ibtrs_srv_sess *s,
 		ret = PTR_ERR(full_path);
 		pr_err("Opening device '%s' for client %s failed,"
 		       " failed to get device full path, err: %d\n",
-		       open_msg->dev_name, srv_sess->str_addr, ret);
+		       open_msg->dev_name, srv_sess->sessname, ret);
 		goto reject;
 	}
 
@@ -712,9 +709,9 @@ static void process_msg_open(struct ibtrs_srv_sess *s,
 	ibnbd_dev = ibnbd_dev_open(full_path, open_flags, io_mode,
 				   srv_sess->sess_bio_set, ibnbd_endio);
 	if (IS_ERR(ibnbd_dev)) {
-		pr_err("Opening device '%s' for client %s failed,"
+		pr_err("Opening device '%s' on session %s failed,"
 		       " failed to open the block device, err: %ld\n",
-		       full_path, srv_sess->str_addr, PTR_ERR(ibnbd_dev));
+		       full_path, srv_sess->sessname, PTR_ERR(ibnbd_dev));
 		ret = PTR_ERR(ibnbd_dev);
 		goto free_path;
 	}
@@ -722,9 +719,9 @@ static void process_msg_open(struct ibtrs_srv_sess *s,
 	srv_dev = ibnbd_srv_get_or_create_srv_dev(ibnbd_dev, srv_sess, io_mode,
 						  open_msg->access_mode);
 	if (IS_ERR(srv_dev)) {
-		pr_err("Opening device '%s' for client %s failed,"
+		pr_err("Opening device '%s' on session %s failed,"
 		       " creating srv_dev failed, err: %ld\n",
-		       full_path, srv_sess->str_addr, PTR_ERR(srv_dev));
+		       full_path, srv_sess->sessname, PTR_ERR(srv_dev));
 		ret = PTR_ERR(srv_dev);
 		goto ibnbd_dev_close;
 	}
@@ -733,9 +730,9 @@ static void process_msg_open(struct ibtrs_srv_sess *s,
 						     ibnbd_dev, open_flags,
 						     srv_dev);
 	if (IS_ERR(srv_sess_dev)) {
-		pr_err("Opening device '%s' for client %s failed,"
+		pr_err("Opening device '%s' on session %s failed,"
 		       " creating sess_dev failed, err: %ld\n",
-		       full_path, srv_sess->str_addr, PTR_ERR(srv_sess_dev));
+		       full_path, srv_sess->sessname, PTR_ERR(srv_sess_dev));
 		ret = PTR_ERR(srv_sess_dev);
 		goto srv_dev_put;
 	}
@@ -825,17 +822,17 @@ ibnbd_dev_close:
 free_path:
 	kfree(full_path);
 reject:
-	pr_debug("Sending negative response to client %s for device '%s' err: %d\n",
-		 srv_sess->str_addr, open_msg->dev_name, ret);
+	pr_debug("Sending negative response on sessopm %s for device '%s' err: %d\n",
+		 srv_sess->sessname, open_msg->dev_name, ret);
 	ibnbd_srv_fill_msg_open_rsp_header(&rsp, open_msg->clt_device_id);
 	rsp.result = ret;
 	if (unlikely(srv_sess->state == SRV_SESS_STATE_DISCONNECTED))
 		return;
 	ret = ibtrs_srv_send(s, &vec, 1);
 	if (ret)
-		pr_err("Rejecting mapping request of device '%s' from client %s"
+		pr_err("Rejecting mapping request of device '%s' on session %s"
 		       " failed, err: %d\n", open_msg->dev_name,
-		       srv_sess->str_addr, ret);
+		       srv_sess->sessname, ret);
 }
 
 static int send_msg_close_rsp(struct ibtrs_srv_sess *sess, u32 clt_device_id)
@@ -871,8 +868,8 @@ static void process_msg_close(struct ibtrs_srv_sess *s,
 		ibnbd_destroy_sess_dev(sess_dev, false);
 		send_msg_close_rsp(s, clt_device_id);
 	} else {
-		pr_err("Destroying device id %d from client %s failed,"
-		       " device not open\n", dev_id, srv_sess->str_addr);
+		pr_err("Destroying device id %d on session %s failed,"
+		       " device not open\n", dev_id, srv_sess->sessname);
 	}
 }
 
@@ -903,8 +900,8 @@ static void ibnbd_srv_recv(struct ibtrs_srv_sess *sess, void *priv,
 		process_msg_close(sess, srv_sess, msg, len);
 		break;
 	default:
-		pr_warn("Message with unexpected type %d received from client"
-			" %s\n", hdr->type, srv_sess->str_addr);
+		pr_warn("Message with unexpected type %d received on session"
+			" %s\n", hdr->type, srv_sess->sessname);
 		break;
 	}
 }
