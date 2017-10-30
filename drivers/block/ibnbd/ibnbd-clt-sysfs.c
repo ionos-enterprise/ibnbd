@@ -786,9 +786,9 @@ static ssize_t ibnbd_clt_map_device_store(struct kobject *kobj,
 		return -EEXIST;
 	}
 
-	pr_info("Mapping device %s from server %s,"
+	pr_info("Mapping device %s on session %s,"
 		" (access_mode: %s, input_mode: %s, io_mode: %s)\n",
-		pathname, server_addr, ibnbd_access_mode_str(access_mode),
+		pathname, sessname, ibnbd_access_mode_str(access_mode),
 		ibnbd_queue_mode_str(queue_mode), ibnbd_io_mode_str(io_mode));
 
 	sess = ibnbd_clt_get_create_sess(sessname, sockaddr);
