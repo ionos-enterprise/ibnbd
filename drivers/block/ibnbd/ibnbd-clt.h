@@ -108,7 +108,7 @@ struct ibnbd_clt_session {
 	struct mutex		lock; /* protects state and devs_list */
 	struct list_head        devs_list; /* list of struct ibnbd_clt_dev */
 	struct kref		refcount;
-	char			sessname[MAXHOSTNAMELEN];
+	char			sessname[NAME_MAX];
 	struct sockaddr_storage addr;	/* TODO: remove later */
 	enum ibnbd_clt_sess_state state;
 	u8			ver; /* protocol version */

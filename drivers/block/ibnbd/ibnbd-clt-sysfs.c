@@ -144,12 +144,12 @@ static int ibnbd_clt_parse_map_options(const char *buf,
 				ret = -ENOMEM;
 				goto out;
 			}
-			if (strlen(p) > MAXHOSTNAMELEN) {
+			if (strlen(p) > NAME_MAX) {
 				pr_err("map_device: source name too long\n");
 				ret = -EINVAL;
 				goto out;
 			}
-			strlcpy(sessname, p, MAXHOSTNAMELEN);
+			strlcpy(sessname, p, NAME_MAX);
 			kfree(p);
 			break;
 
@@ -669,7 +669,7 @@ static ssize_t ibnbd_clt_map_device_store(struct kobject *kobj,
 	int ret;
 	char pathname[NAME_MAX];
 	char server_addr[MAXHOSTNAMELEN];
-	char sessname[MAXHOSTNAMELEN];
+	char sessname[NAME_MAX];
 	enum ibnbd_access_mode access_mode = IBNBD_ACCESS_RW;
 	enum ibnbd_queue_mode queue_mode = BLK_MQ;
 	enum ibnbd_io_mode io_mode = IBNBD_AUTOIO;

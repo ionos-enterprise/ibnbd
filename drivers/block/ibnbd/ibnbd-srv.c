@@ -320,7 +320,7 @@ static int create_sess(struct ibtrs_srv_sess *sess)
 {
 	const struct sockaddr *sockaddr;
 	struct ibnbd_srv_session *srv_sess;
-	char sessname[MAXHOSTNAMELEN];
+	char sessname[NAME_MAX];
 
 	strlcpy(sessname, ibtrs_srv_get_sess_name(sess), sizeof(sessname));
 

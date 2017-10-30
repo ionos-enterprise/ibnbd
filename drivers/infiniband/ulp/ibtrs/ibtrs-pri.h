@@ -105,7 +105,7 @@ typedef void (ibtrs_hb_handler_t)(struct ibtrs_con *con, int err);
 
 struct ibtrs_sess {
 	struct sockaddr_storage dst_addr;
-	char			sessname[MAXHOSTNAMELEN];
+	char			sessname[NAME_MAX];
 	uuid_t			uuid;
 	struct ibtrs_con	**con;
 	unsigned int		con_num;
@@ -217,8 +217,8 @@ struct ibtrs_msg_conn_rsp {
  */
 struct ibtrs_msg_info_req {
 	__le16		type;
-	u8		sessname[MAXHOSTNAMELEN];
-	u8		reserved[14];
+	u8		sessname[NAME_MAX];
+	u8		reserved[15];
 };
 
 /**
