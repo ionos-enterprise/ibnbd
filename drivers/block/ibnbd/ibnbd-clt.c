@@ -936,6 +936,7 @@ ibnbd_create_session(const char *sessname,
 	struct ibtrs_attrs attrs;
 	int err;
 	int cpu;
+	struct ibtrs_addr path;
 
 	pr_debug("Establishing session to %s\n", sessname);
 
@@ -997,7 +998,9 @@ ibnbd_create_session(const char *sessname,
 	ops.rdma_ev = ibnbd_clt_rdma_ev;
 	ops.sess_ev = ibnbd_clt_sess_ev;
 
-	sess->sess = ibtrs_clt_open(&ops, sessname, addr,
+	path.src = NULL;
+	path.dst = addr;
+	sess->sess = ibtrs_clt_open(&ops, sessname, &path, 1,
 				    sizeof(struct ibnbd_iu),
 				    RECONNECT_DELAY, BMAX_SEGMENTS,
 				    MAX_RECONNECTS);

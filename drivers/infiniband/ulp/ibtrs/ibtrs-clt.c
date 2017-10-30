@@ -3281,7 +3281,8 @@ reconnect_again:
 
 struct ibtrs_clt_sess *ibtrs_clt_open(const struct ibtrs_clt_ops *ops,
 				      const char *sessname,
-				      const struct sockaddr *addr,
+				      const struct ibtrs_addr *paths,
+				      size_t path_cnt,
 				      size_t pdu_sz, u8 reconnect_delay_sec,
 				      u16 max_segments,
 				      s16 max_reconnect_attempts)
@@ -3294,7 +3295,11 @@ struct ibtrs_clt_sess *ibtrs_clt_open(const struct ibtrs_clt_ops *ops,
 		err = -EINVAL;
 		goto out;
 	}
-	sess = alloc_sess(ops, sessname, addr, CONS_PER_SESSION,
+	if (!path_cnt) {
+		err = -EINVAL;
+		goto out;
+	}
+	sess = alloc_sess(ops, sessname, paths[0].dst, CONS_PER_SESSION,
 			  pdu_sz, reconnect_delay_sec, max_segments,
 			  max_reconnect_attempts);
 	if (unlikely(IS_ERR(sess))) {
