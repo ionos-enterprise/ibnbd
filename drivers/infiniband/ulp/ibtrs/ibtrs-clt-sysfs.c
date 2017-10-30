@@ -172,6 +172,30 @@ static struct kobj_attribute ibtrs_clt_reconnect_attr =
 	__ATTR(reconnect, 0644, ibtrs_clt_reconnect_show,
 	       ibtrs_clt_reconnect_store);
 
+static ssize_t ibtrs_clt_add_path_show(struct kobject *kobj,
+				       struct kobj_attribute *attr, char *page)
+{
+	return scnprintf(page, PAGE_SIZE, "Usage: echo"
+			 " [<source addr>,]<destination addr> > %s\n\n"
+			"*addr ::= [ ip:<ipv4|ipv6> | gid:<gid> ]\n",
+			 attr->attr.name);
+}
+
+static ssize_t ibtrs_clt_add_path_store(struct kobject *kobj,
+					struct kobj_attribute *attr,
+					const char *buf, size_t count)
+{
+	struct ibtrs_clt_sess *sess;
+
+	sess = container_of(kobj, struct ibtrs_clt_sess, kobj);
+
+	return 0;
+}
+
+static struct kobj_attribute ibtrs_clt_add_path_attr =
+	__ATTR(add_path, 0644, ibtrs_clt_add_path_show,
+	       ibtrs_clt_add_path_store);
+
 static ssize_t ibtrs_clt_queue_show(struct kobject *kobj,
 				    struct kobj_attribute *attr, char *page)
 {
@@ -304,6 +328,7 @@ static struct attribute *ibtrs_clt_default_sess_attrs[] = {
 	&ibtrs_clt_state_attr.attr,
 	&ibtrs_clt_addr_attr.attr,
 	&ibtrs_clt_reconnect_attr.attr,
+	&ibtrs_clt_add_path_attr.attr,
 	&ibtrs_clt_queue_depth_attr.attr,
 	NULL,
 };
