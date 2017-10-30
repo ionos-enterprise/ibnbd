@@ -579,92 +579,6 @@ static int ibnbd_clt_add_dev_kobj(struct ibnbd_clt_dev *dev)
 
 	return ret;
 }
-
-static int ibnbd_clt_str_ipv4_to_sockaddr(const char *con_addr,
-					  struct sockaddr *dst)
-{
-	int ret;
-	char ipaddr[INET6_ADDRSTRLEN];
-	struct sockaddr_in *dst_sin = (struct sockaddr_in *)dst;
-	u8 ip4[4];
-
-	strlcpy(ipaddr, &con_addr[IP_PREFIX_LEN], sizeof(ipaddr));
-
-	ret = in4_pton(ipaddr, strlen(ipaddr), ip4, '\0', NULL);
-	if (ret == 0)
-		return -EINVAL;
-
-	memcpy(&dst_sin->sin_addr.s_addr, ip4,
-	       sizeof(dst_sin->sin_addr.s_addr));
-	dst_sin->sin_family = AF_INET;
-	dst_sin->sin_port = htons(IBTRS_PORT);
-
-	return 0;
-}
-
-static int ibnbd_clt_str_ipv6_to_sockaddr(const char *con_addr,
-					  struct sockaddr *dst)
-{
-	int ret;
-	char ipaddr[INET6_ADDRSTRLEN];
-	struct sockaddr_in6 *dst_sin6 = (struct sockaddr_in6 *)dst;
-
-	strlcpy(ipaddr, &con_addr[IP_PREFIX_LEN], sizeof(ipaddr));
-
-	ret = in6_pton(ipaddr, strlen(ipaddr),
-		       dst_sin6->sin6_addr.s6_addr,
-		       '\0', NULL);
-	if (ret != 1)
-		return -EINVAL;
-
-	dst_sin6->sin6_family = AF_INET6;
-	dst_sin6->sin6_port = htons(IBTRS_PORT);
-
-	return 0;
-}
-
-static int ibnbd_clt_str_gid_to_sockaddr(const char *con_addr,
-					 struct sockaddr *dst)
-{
-	int ret;
-	char gid[INET6_ADDRSTRLEN];
-	struct sockaddr_ib *dst_ib = (struct sockaddr_ib *)dst;
-
-	strlcpy(gid, &con_addr[GID_PREFIX_LEN], sizeof(gid));
-
-	/* We can use some of the I6 functions since GID is a valid
-	 * IPv6 address format
-	 */
-	ret = in6_pton(gid, strlen(gid),
-		       dst_ib->sib_addr.sib_raw, '\0', NULL);
-	if (ret == 0)
-		return -EINVAL;
-
-	dst_ib->sib_family = AF_IB;
-	/*
-	 * Use the same TCP server port number as the IB service ID
-	 * on the IB port space range
-	 */
-	dst_ib->sib_sid = cpu_to_be64(RDMA_IB_IP_PS_IB | IBTRS_PORT);
-	dst_ib->sib_sid_mask = cpu_to_be64(0xffffffffffffffffULL);
-	dst_ib->sib_pkey = cpu_to_be16(0xffff);
-
-	return 0;
-}
-
-static int ibnbd_clt_str_to_sockaddr(char *addr, struct sockaddr *sockaddr)
-{
-	if (strncmp(addr, GID_PREFIX, GID_PREFIX_LEN) == 0) {
-		return ibnbd_clt_str_gid_to_sockaddr(addr, sockaddr);
-	} else if (strncmp(addr, IP_PREFIX, IP_PREFIX_LEN) == 0) {
-		if (ibnbd_clt_str_ipv4_to_sockaddr(addr, sockaddr))
-			return ibnbd_clt_str_ipv6_to_sockaddr(addr, sockaddr);
-		else
-			return 0;
-	}
-	return -EPROTONOSUPPORT;
-}
-
 static struct ibnbd_clt_session *
 ibnbd_clt_get_create_sess(const char *sessname, struct sockaddr *sockaddr)
 {
@@ -769,7 +683,7 @@ static ssize_t ibnbd_clt_map_device_store(struct kobject *kobj,
 	if (ret)
 		return ret;
 
-	ret = ibnbd_clt_str_to_sockaddr(server_addr, sockaddr);
+	ret = ibtrs_str_to_sockaddr(server_addr, IBTRS_PORT, sockaddr);
 	if (ret) {
 		if (ret == -EPROTONOSUPPORT)
 			pr_err("Invalid address protocol provided: %s\n",

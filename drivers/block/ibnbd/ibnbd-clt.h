@@ -56,11 +56,6 @@
 #include "ibnbd-proto.h"
 #include "ibnbd-log.h"
 
-#define IP_PREFIX "ip:"
-#define IP_PREFIX_LEN strlen(IP_PREFIX)
-#define GID_PREFIX "gid:"
-#define GID_PREFIX_LEN strlen(GID_PREFIX)
-
 #define BMAX_SEGMENTS 31
 #define RECONNECT_DELAY 30
 #define MAX_RECONNECTS -1
