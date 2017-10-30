@@ -47,6 +47,7 @@
 
 #include <linux/module.h>
 #include <rdma/ibtrs.h>
+#include <linux/inet.h>
 #include "ibtrs-pri.h"
 #include "ibtrs-log.h"
 
@@ -401,3 +402,78 @@ void ibtrs_stop_hb(struct ibtrs_sess *sess)
 	sess->hb_err_handler = NULL;
 }
 EXPORT_SYMBOL_GPL(ibtrs_stop_hb);
+
+static int ibtrs_str_ipv4_to_sockaddr(const char *addr, short port,
+				      struct sockaddr *dst)
+{
+	struct sockaddr_in *dst_sin = (struct sockaddr_in *)dst;
+	int ret;
+
+	ret = in4_pton(addr, strlen(addr), (u8 *)&dst_sin->sin_addr.s_addr,
+		       '\0', NULL);
+	if (ret == 0)
+		return -EINVAL;
+
+	dst_sin->sin_family = AF_INET;
+	dst_sin->sin_port = htons(port);
+
+	return 0;
+}
+
+static int ibtrs_str_ipv6_to_sockaddr(const char *addr, short port,
+				      struct sockaddr *dst)
+{
+	struct sockaddr_in6 *dst_sin6 = (struct sockaddr_in6 *)dst;
+	int ret;
+
+	ret = in6_pton(addr, strlen(addr),
+		       dst_sin6->sin6_addr.s6_addr,
+		       '\0', NULL);
+	if (ret != 1)
+		return -EINVAL;
+
+	dst_sin6->sin6_family = AF_INET6;
+	dst_sin6->sin6_port = htons(port);
+
+	return 0;
+}
+
+static int ibtrs_str_gid_to_sockaddr(const char *addr, short port,
+				     struct sockaddr *dst)
+{
+	struct sockaddr_ib *dst_ib = (struct sockaddr_ib *)dst;
+	int ret;
+
+	/* We can use some of the I6 functions since GID is a valid
+	 * IPv6 address format
+	 */
+	ret = in6_pton(addr, strlen(addr),
+		       dst_ib->sib_addr.sib_raw, '\0', NULL);
+	if (ret == 0)
+		return -EINVAL;
+
+	dst_ib->sib_family = AF_IB;
+	/*
+	 * Use the same TCP server port number as the IB service ID
+	 * on the IB port space range
+	 */
+	dst_ib->sib_sid = cpu_to_be64(RDMA_IB_IP_PS_IB | port);
+	dst_ib->sib_sid_mask = cpu_to_be64(0xffffffffffffffffULL);
+	dst_ib->sib_pkey = cpu_to_be16(0xffff);
+
+	return 0;
+}
+
+int ibtrs_str_to_sockaddr(const char *addr, short port, struct sockaddr *dst)
+{
+	if (strncmp(addr, "gid:", 4) == 0) {
+		return ibtrs_str_gid_to_sockaddr(addr + 4, port, dst);
+	} else if (strncmp(addr, "ip:", 3) == 0) {
+		if (ibtrs_str_ipv4_to_sockaddr(addr + 3, port, dst))
+			return ibtrs_str_ipv6_to_sockaddr(addr + 3, port, dst);
+		else
+			return 0;
+	}
+	return -EPROTONOSUPPORT;
+}
+EXPORT_SYMBOL_GPL(ibtrs_str_to_sockaddr);
