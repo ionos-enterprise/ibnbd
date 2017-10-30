@@ -442,6 +442,12 @@ static void free_sess_tx_bufs(struct ibtrs_srv_sess *sess)
 	}
 }
 
+static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc);
+
+static struct ib_cqe io_comp_cqe = {
+	.done = ibtrs_srv_rdma_done
+};
+
 static int rdma_write_sg(struct ibtrs_srv_op *id)
 {
 	struct ibtrs_srv_sess *sess = id->con->sess;
@@ -475,6 +481,7 @@ static int rdma_write_sg(struct ibtrs_srv_op *id)
 		list->lkey = sess->s.ib_dev->pd->local_dma_lkey;
 		offset += list->length;
 
+		wr->wr.wr_cqe	= &io_comp_cqe;
 		wr->wr.sg_list	= list;
 		wr->wr.num_sge	= 1;
 		wr->remote_addr	= le64_to_cpu(id->req->desc[i].addr);
@@ -494,6 +501,7 @@ static int rdma_write_sg(struct ibtrs_srv_op *id)
 	flags = atomic_inc_return(&id->con->wr_cnt) % sess->queue_depth ?
 			0 : IB_SEND_SIGNALED;
 
+	wr->wr.wr_cqe = &io_comp_cqe;
 	wr->wr.opcode = IB_WR_RDMA_WRITE_WITH_IMM;
 	wr->wr.next = NULL;
 	wr->wr.send_flags = flags;
@@ -507,22 +515,6 @@ static int rdma_write_sg(struct ibtrs_srv_op *id)
 
 	return err;
 }
-
-static void ibtrs_srv_hb_and_ack_done(struct ib_cq *cq, struct ib_wc *wc)
-{
-	struct ibtrs_srv_con *con = cq->cq_context;
-	struct ibtrs_srv_sess *sess = con->sess;
-
-	if (unlikely(wc->status != IB_WC_SUCCESS)) {
-		ibtrs_err(sess, "Failed ACK: %s\n",
-			  ib_wc_status_msg(wc->status));
-		close_sess(sess);
-	}
-}
-
-static struct ib_cqe hb_and_ack_cqe = {
-	.done = ibtrs_srv_hb_and_ack_done
-};
 
 static int send_io_resp_imm(struct ibtrs_srv_con *con, int msg_id, s16 errno)
 {
@@ -538,7 +530,7 @@ static int send_io_resp_imm(struct ibtrs_srv_con *con, int msg_id, s16 errno)
 	flags = atomic_inc_return(&con->wr_cnt) % sess->queue_depth ?
 			0 : IB_SEND_SIGNALED;
 	imm = (msg_id << 16) | (u16)errno;
-	err = ibtrs_post_rdma_write_imm_empty(&con->c, &hb_and_ack_cqe,
+	err = ibtrs_post_rdma_write_imm_empty(&con->c, &io_comp_cqe,
 					      imm, flags);
 	if (unlikely(err))
 		ibtrs_err_rl(sess, "ib_post_send(), err: %d\n", err);
@@ -997,6 +989,23 @@ static void ibtrs_srv_hb_err_handler(struct ibtrs_con *c, int err)
 	close_sess(con->sess);
 }
 
+
+static void ibtrs_srv_hb_and_ack_done(struct ib_cq *cq, struct ib_wc *wc)
+{
+	struct ibtrs_srv_con *con = cq->cq_context;
+	struct ibtrs_srv_sess *sess = con->sess;
+
+	if (unlikely(wc->status != IB_WC_SUCCESS)) {
+		ibtrs_err(sess, "Failed ACK: %s\n",
+			  ib_wc_status_msg(wc->status));
+		close_sess(sess);
+	}
+}
+
+static struct ib_cqe hb_and_ack_cqe = {
+	.done = ibtrs_srv_hb_and_ack_done
+};
+
 static void ibtrs_srv_start_hb(struct ibtrs_srv_sess *sess)
 {
 	struct ibtrs_srv_con *usr_con = sess->con[0];
@@ -1164,12 +1173,6 @@ static int post_recv_info_req(struct ibtrs_srv_con *con)
 
 	return 0;
 }
-
-static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc);
-
-static struct ib_cqe io_comp_cqe = {
-	.done = ibtrs_srv_rdma_done
-};
 
 static int post_recv_io(struct ibtrs_srv_con *con)
 {
