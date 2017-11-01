@@ -130,7 +130,7 @@ static ssize_t ibtrs_clt_addr_show(struct kobject *kobj,
 
 	sess = container_of(kobj, struct ibtrs_clt_sess, kobj);
 
-	sockaddr_to_str((struct sockaddr *)&sess->s.addr.sockaddr,
+	sockaddr_to_str((struct sockaddr *)&sess->s.dst_addr,
 			str_addr, sizeof(str_addr));
 
 	return sprintf(page, "%s\n", str_addr);

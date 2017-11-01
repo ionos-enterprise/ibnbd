@@ -116,7 +116,7 @@ static ssize_t addr_show(struct kobject *kobj,
 	char str_addr[MAXHOSTNAMELEN];
 	sess = container_of(kobj, struct ibtrs_srv_sess, kobj);
 
-	sockaddr_to_str((struct sockaddr *)&sess->s.addr.sockaddr,
+	sockaddr_to_str((struct sockaddr *)&sess->s.dst_addr,
 			str_addr, sizeof(str_addr));
 
 	return sprintf(page, "%s\n", str_addr);

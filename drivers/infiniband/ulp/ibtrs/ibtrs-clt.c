@@ -2394,7 +2394,7 @@ static struct ibtrs_clt_sess *alloc_sess(const struct ibtrs_clt_ops *ops,
 
 	mutex_init(&sess->init_mutex);
 	uuid_gen(&sess->s.uuid);
-	memcpy(&sess->s.addr.sockaddr, addr,
+	memcpy(&sess->s.dst_addr, addr,
 	       rdma_addr_size((struct sockaddr *)addr));
 	strlcpy(sess->s.sessname, sessname, sizeof(sess->s.sessname));
 	sess->s.con_num = con_num;
@@ -2578,14 +2578,9 @@ static int create_cm(struct ibtrs_clt_con *con)
 	struct rdma_cm_id *cm_id;
 	int err;
 
-	if (sess->s.addr.sockaddr.ss_family == AF_IB)
-		cm_id = rdma_create_id(&init_net,
-				       ibtrs_clt_rdma_cm_handler,
-				       con, RDMA_PS_IB, IB_QPT_RC);
-	else
-		cm_id = rdma_create_id(&init_net,
-				       ibtrs_clt_rdma_cm_handler,
-				       con, RDMA_PS_TCP, IB_QPT_RC);
+	cm_id = rdma_create_id(&init_net, ibtrs_clt_rdma_cm_handler, con,
+			       sess->s.dst_addr.ss_family == AF_IB ?
+			       RDMA_PS_IB : RDMA_PS_TCP, IB_QPT_RC);
 	if (unlikely(IS_ERR(cm_id))) {
 		err = PTR_ERR(cm_id);
 		ibtrs_wrn(sess, "Failed to create CM ID, err: %d\n", err);
@@ -2595,7 +2590,7 @@ static int create_cm(struct ibtrs_clt_con *con)
 	con->c.cm_id = cm_id;
 	con->cm_err = 0;
 	err = rdma_resolve_addr(cm_id, NULL,
-				(struct sockaddr *)&sess->s.addr.sockaddr,
+				(struct sockaddr *)&sess->s.dst_addr,
 				IBTRS_CONNECT_TIMEOUT_MS);
 	if (unlikely(err)) {
 		ibtrs_err(sess, "Failed to resolve address, err: %d\n", err);

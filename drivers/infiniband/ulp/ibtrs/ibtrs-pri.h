@@ -100,15 +100,11 @@ struct ibtrs_ib_dev {
 	u32			rkey;
 };
 
-struct ibtrs_addr {
-	struct sockaddr_storage sockaddr;
-};
-
 struct ibtrs_con;
 typedef void (ibtrs_hb_handler_t)(struct ibtrs_con *con, int err);
 
 struct ibtrs_sess {
-	struct ibtrs_addr	addr;
+	struct sockaddr_storage dst_addr;
 	char			sessname[MAXHOSTNAMELEN];
 	uuid_t			uuid;
 	struct ibtrs_con	**con;

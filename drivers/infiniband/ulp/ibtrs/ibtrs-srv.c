@@ -1672,7 +1672,7 @@ EXPORT_SYMBOL(ibtrs_srv_get_sess_name);
 const struct sockaddr *
 ibtrs_srv_get_sess_sockaddr(struct ibtrs_srv_sess *sess)
 {
-	return (const struct sockaddr *)&sess->s.addr.sockaddr;
+	return (const struct sockaddr *)&sess->s.dst_addr;
 }
 EXPORT_SYMBOL(ibtrs_srv_get_sess_sockaddr);
 
@@ -1883,7 +1883,7 @@ static struct ibtrs_srv_sess *__alloc_sess(struct ibtrs_srv_ctx *ctx,
 	sess->ctx = ctx;
 	sess->cur_cq_vector = -1;
 	sess->queue_depth = sess_queue_depth;
-	sess->s.addr.sockaddr = cm_id->route.addr.dst_addr;
+	sess->s.dst_addr = cm_id->route.addr.dst_addr;
 	sess->s.con_num = con_num;
 	sess->s.recon_cnt = recon_cnt;
 	uuid_copy(&sess->s.uuid, uuid);
