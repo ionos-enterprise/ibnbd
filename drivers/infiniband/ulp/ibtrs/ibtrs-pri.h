@@ -105,6 +105,7 @@ typedef void (ibtrs_hb_handler_t)(struct ibtrs_con *con, int err);
 
 struct ibtrs_sess {
 	struct sockaddr_storage dst_addr;
+	struct sockaddr_storage src_addr;
 	char			sessname[NAME_MAX];
 	uuid_t			uuid;
 	struct ibtrs_con	**con;
