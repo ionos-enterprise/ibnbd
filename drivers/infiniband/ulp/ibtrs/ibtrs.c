@@ -464,7 +464,18 @@ static int ibtrs_str_gid_to_sockaddr(const char *addr, short port,
 	return 0;
 }
 
-int ibtrs_str_to_sockaddr(const char *addr, short port, struct sockaddr *dst)
+/**
+ * ibtrs_str_to_sockaddr() - Convert ibtrs address string to sockaddr
+ * @addr	String representation of an addr (IPv4, IPv6 or IB GID):
+ *              - "ip:192.168.1.1"
+ *              - "ip:fe80::200:5aee:feaa:20a2"
+ *              - "gid:fe80::200:5aee:feaa:20a2"
+ * @port	Destination port
+ * @dst		Destination sockaddr structure
+ *
+ * Returns 0 if conversion successfull. Non-zero on error.
+ */
+static int ibtrs_str_to_sockaddr(const char *addr, short port, struct sockaddr *dst)
 {
 	if (strncmp(addr, "gid:", 4) == 0) {
 		return ibtrs_str_gid_to_sockaddr(addr + 4, port, dst);
@@ -476,7 +487,6 @@ int ibtrs_str_to_sockaddr(const char *addr, short port, struct sockaddr *dst)
 	}
 	return -EPROTONOSUPPORT;
 }
-EXPORT_SYMBOL_GPL(ibtrs_str_to_sockaddr);
 
 int ibtrs_addr_to_sockaddr(const char *str, short port,
 			   struct sockaddr **src, struct sockaddr **dst)
