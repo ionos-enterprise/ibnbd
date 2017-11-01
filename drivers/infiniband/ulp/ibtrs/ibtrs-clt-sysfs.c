@@ -186,8 +186,16 @@ static ssize_t ibtrs_clt_add_path_store(struct kobject *kobj,
 					const char *buf, size_t count)
 {
 	struct ibtrs_clt_sess *sess;
+	struct sockaddr_storage srcaddr, dstaddr;
+	struct sockaddr *saddr = (struct sockaddr *)&srcaddr;
+	struct sockaddr *daddr = (struct sockaddr *)&dstaddr;
+	int ret;
 
 	sess = container_of(kobj, struct ibtrs_clt_sess, kobj);
+
+	ret = ibtrs_addr_to_sockaddr(buf, sess->port, &saddr, &daddr);
+	if (unlikely(ret))
+		return -EINVAL;
 
 	return 0;
 }
