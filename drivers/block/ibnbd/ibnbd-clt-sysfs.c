@@ -620,8 +620,8 @@ static ssize_t ibnbd_clt_map_device_show(struct kobject *kobj,
 {
 	return scnprintf(page, PAGE_SIZE, "Usage: echo \""
 			 " sessname=<name of the ibtrs session>"
-			 " path=<srcaddr,dstaddr>"
-			 " [path=<...,...>]"
+			 " path=<[srcaddr,]dstaddr>"
+			 " [path=<[srcaddr,]dstaddr>]"
 			 " device_path=<full path on remote side>"
 			 " [access_mode=<ro|rw|migration>]"
 			 " [input_mode=<mq|rq>]"
