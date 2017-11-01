@@ -109,7 +109,6 @@ struct ibnbd_clt_session {
 	struct list_head        devs_list; /* list of struct ibnbd_clt_dev */
 	struct kref		refcount;
 	char			sessname[NAME_MAX];
-	struct sockaddr_storage addr;	/* TODO: remove later */
 	enum ibnbd_clt_sess_state state;
 	u8			ver; /* protocol version */
 	struct completion	*sess_info_compl;
@@ -183,7 +182,8 @@ static inline const char *ibnbd_queue_mode_str(enum ibnbd_queue_mode mode)
 
 int ibnbd_close_device(struct ibnbd_clt_dev *dev, bool force);
 struct ibnbd_clt_session *ibnbd_create_session(const char *sessname,
-					       const struct sockaddr *addr);
+					const struct ibtrs_addr *paths,
+					size_t path_cnt);
 struct ibnbd_clt_session *ibnbd_clt_find_sess(const char *sessname);
 void ibnbd_clt_sess_release(struct kref *ref);
 struct ibnbd_clt_dev *ibnbd_client_add_device(struct ibnbd_clt_session *sess,

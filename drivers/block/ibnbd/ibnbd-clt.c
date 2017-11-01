@@ -929,14 +929,13 @@ static void destroy_mq_tags(struct ibnbd_clt_session *sess)
 
 struct ibnbd_clt_session *
 ibnbd_create_session(const char *sessname,
-		     const struct sockaddr *addr)
+		     const struct ibtrs_addr *paths, size_t path_cnt)
 {
 	struct ibnbd_clt_session *sess;
 	struct ibtrs_clt_ops ops;
 	struct ibtrs_attrs attrs;
 	int err;
 	int cpu;
-	struct ibtrs_addr path;
 
 	pr_debug("Establishing session to %s\n", sessname);
 
@@ -980,7 +979,6 @@ ibnbd_create_session(const char *sessname,
 
 	memset(&attrs, 0, sizeof(attrs));
 	strlcpy(sess->sessname, sessname, sizeof(sess->sessname));
-	memcpy(&sess->addr, addr, sizeof(sess->addr));
 
 	spin_lock(&sess_lock);
 	list_add(&sess->list, &session_list);
@@ -998,9 +996,7 @@ ibnbd_create_session(const char *sessname,
 	ops.rdma_ev = ibnbd_clt_rdma_ev;
 	ops.sess_ev = ibnbd_clt_sess_ev;
 
-	path.src = NULL;
-	path.dst = addr;
-	sess->sess = ibtrs_clt_open(&ops, sessname, &path, 1,
+	sess->sess = ibtrs_clt_open(&ops, sessname, paths, path_cnt,
 				    sizeof(struct ibnbd_iu),
 				    RECONNECT_DELAY, BMAX_SEGMENTS,
 				    MAX_RECONNECTS);

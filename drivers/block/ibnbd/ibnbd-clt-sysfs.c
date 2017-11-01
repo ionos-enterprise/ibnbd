@@ -69,7 +69,7 @@ struct ibnbd_clt_dev_destroy_kobj_work {
 
 enum {
 	IBNBD_OPT_ERR		= 0,
-	IBNBD_OPT_SERVER	= 1 << 0,
+	IBNBD_OPT_PATH		= 1 << 0,
 	IBNBD_OPT_DEV_PATH	= 1 << 1,
 	IBNBD_OPT_ACCESS_MODE	= 1 << 3,
 	IBNBD_OPT_INPUT_MODE	= 1 << 4,
@@ -78,13 +78,13 @@ enum {
 };
 
 static unsigned ibnbd_opt_mandatory[] = {
-	IBNBD_OPT_SERVER,
+	IBNBD_OPT_PATH,
 	IBNBD_OPT_DEV_PATH,
 	IBNBD_OPT_SESSNAME,
 };
 
 static const match_table_t ibnbd_opt_tokens = {
-	{	IBNBD_OPT_SERVER,	"server=%s"		},
+	{	IBNBD_OPT_PATH,		"path=%s"		},
 	{	IBNBD_OPT_DEV_PATH,	"device_path=%s"	},
 	{	IBNBD_OPT_ACCESS_MODE,	"access_mode=%s"	},
 	{	IBNBD_OPT_INPUT_MODE,	"input_mode=%s"		},
@@ -109,7 +109,9 @@ static void strip(char *s)
 
 static int ibnbd_clt_parse_map_options(const char *buf,
 				       char *sessname,
-				       char *server_addr,
+				       struct ibtrs_addr *paths,
+				       size_t *path_cnt,
+				       size_t max_path_cnt,
 				       char *pathname,
 				       enum ibnbd_access_mode *access_mode,
 				       enum ibnbd_queue_mode *queue_mode,
@@ -122,6 +124,7 @@ static int ibnbd_clt_parse_map_options(const char *buf,
 	int token;
 	int ret = -EINVAL;
 	int i;
+	int p_cnt = 0;
 
 	options = kstrdup(buf, GFP_KERNEL);
 	if (!options)
@@ -147,24 +150,31 @@ static int ibnbd_clt_parse_map_options(const char *buf,
 			if (strlen(p) > NAME_MAX) {
 				pr_err("map_device: source name too long\n");
 				ret = -EINVAL;
+				kfree(p);
 				goto out;
 			}
 			strlcpy(sessname, p, NAME_MAX);
 			kfree(p);
 			break;
 
-		case IBNBD_OPT_SERVER:
+		case IBNBD_OPT_PATH:
 			p = match_strdup(args);
-			if (!p) {
+			if (!p || p_cnt >= max_path_cnt) {
 				ret = -ENOMEM;
 				goto out;
 			}
-			if (strlen(p) > MAXHOSTNAMELEN) {
-				pr_err("map_device: Server address too long\n");
-				ret = -EINVAL;
+
+			ret = ibtrs_addr_to_sockaddr(p, IBTRS_PORT,
+					(struct sockaddr **)&paths[p_cnt].src,
+					(struct sockaddr **)&paths[p_cnt].dst);
+			if (ret) {
+				pr_err("Can't parse path %s: %d\n", p, ret);
+				kfree(p);
 				goto out;
 			}
-			strlcpy(server_addr, p, MAXHOSTNAMELEN);
+
+			p_cnt++;
+
 			kfree(p);
 			break;
 
@@ -177,6 +187,7 @@ static int ibnbd_clt_parse_map_options(const char *buf,
 			if (strlen(p) > NAME_MAX) {
 				pr_err("map_device: Device path too long\n");
 				ret = -EINVAL;
+				kfree(p);
 				goto out;
 			}
 			strlcpy(pathname, p, NAME_MAX);
@@ -266,6 +277,7 @@ static int ibnbd_clt_parse_map_options(const char *buf,
 	}
 
 out:
+	*path_cnt = p_cnt;
 	kfree(options);
 	return ret;
 }
@@ -580,7 +592,8 @@ static int ibnbd_clt_add_dev_kobj(struct ibnbd_clt_dev *dev)
 	return ret;
 }
 static struct ibnbd_clt_session *
-ibnbd_clt_get_create_sess(const char *sessname, struct sockaddr *sockaddr)
+ibnbd_clt_get_create_sess(const char *sessname, struct ibtrs_addr *paths,
+			  size_t path_cnt)
 {
 	struct ibnbd_clt_session *sess;
 
@@ -594,7 +607,7 @@ ibnbd_clt_get_create_sess(const char *sessname, struct sockaddr *sockaddr)
 			sess = ERR_PTR(-EIO);
 		}
 	} else {
-		sess = ibnbd_create_session(sessname, sockaddr);
+		sess = ibnbd_create_session(sessname, paths, path_cnt);
 	}
 	mutex_unlock(&sess_lock);
 
@@ -605,13 +618,15 @@ static ssize_t ibnbd_clt_map_device_show(struct kobject *kobj,
 					 struct kobj_attribute *attr,
 					 char *page)
 {
-	return scnprintf(page, PAGE_SIZE, "Usage: echo \"server=<address>"
+	return scnprintf(page, PAGE_SIZE, "Usage: echo \""
 			 " sessname=<name of the ibtrs session>"
+			 " path=<srcaddr,dstaddr>"
+			 " [path=<...,...>]"
 			 " device_path=<full path on remote side>"
 			 " [access_mode=<ro|rw|migration>]"
 			 " [input_mode=<mq|rq>]"
 			 " [io_mode=<fileio|blockio>]\" > %s\n\n"
-			 "address ::= [ ip:<ipv4> | ip:<ipv6> | gid:<gid> ]\n",
+			 "addr ::= [ ip:<ipv4> | ip:<ipv6> | gid:<gid> ]\n",
 			 attr->attr.name);
 }
 
@@ -668,31 +683,29 @@ static ssize_t ibnbd_clt_map_device_store(struct kobject *kobj,
 	struct ibnbd_clt_dev *dev;
 	int ret;
 	char pathname[NAME_MAX];
-	char server_addr[MAXHOSTNAMELEN];
 	char sessname[NAME_MAX];
 	enum ibnbd_access_mode access_mode = IBNBD_ACCESS_RW;
 	enum ibnbd_queue_mode queue_mode = BLK_MQ;
 	enum ibnbd_io_mode io_mode = IBNBD_AUTOIO;
-	struct sockaddr_storage sockaddr_s;
-	struct sockaddr *sockaddr = (struct sockaddr *)&sockaddr_s;
+
+#define MAX_PATH_CNT 3
+	size_t path_cnt;
+	struct ibtrs_addr paths[MAX_PATH_CNT];
+	struct sockaddr_storage saddr[MAX_PATH_CNT];
+	struct sockaddr_storage daddr[MAX_PATH_CNT];
+
+	for (path_cnt = 0; path_cnt < MAX_PATH_CNT; path_cnt++) {
+		paths[path_cnt].src = (struct sockaddr *)&saddr[path_cnt];
+		paths[path_cnt].dst = (struct sockaddr *)&daddr[path_cnt];
+	}
 
 	ret = ibnbd_clt_parse_map_options(buf, sessname,
-					  server_addr, pathname,
+					  paths, &path_cnt, MAX_PATH_CNT,
+					  pathname,
 					  &access_mode, &queue_mode,
 					  &io_mode);
 	if (ret)
 		return ret;
-
-	ret = ibtrs_str_to_sockaddr(server_addr, IBTRS_PORT, sockaddr);
-	if (ret) {
-		if (ret == -EPROTONOSUPPORT)
-			pr_err("Invalid address protocol provided: %s\n",
-			       server_addr);
-		else
-			pr_err("Converting address to binary format failed: "
-			       "%s\n", server_addr);
-		return -EINVAL;
-	}
 
 	if (ibnbd_clt_dev_is_mapped(pathname)) {
 		pr_err("map_device: failed, Device with same path '%s' is"
@@ -705,7 +718,7 @@ static ssize_t ibnbd_clt_map_device_store(struct kobject *kobj,
 		pathname, sessname, ibnbd_access_mode_str(access_mode),
 		ibnbd_queue_mode_str(queue_mode), ibnbd_io_mode_str(io_mode));
 
-	sess = ibnbd_clt_get_create_sess(sessname, sockaddr);
+	sess = ibnbd_clt_get_create_sess(sessname, paths, path_cnt);
 	if (IS_ERR(sess))
 		return PTR_ERR(sess);
 
