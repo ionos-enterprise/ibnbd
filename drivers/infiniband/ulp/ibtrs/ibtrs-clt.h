@@ -150,6 +150,7 @@ struct ibtrs_clt_sess {
 	struct mutex		init_mutex;
 	bool			conns_inited;
 	struct ibtrs_iu		**io_tx_ius;
+	short			port;
 	struct rdma_req		*reqs;
 	struct ib_fmr_pool	*fmr_pool;
 	size_t			pdu_sz;

@@ -996,7 +996,7 @@ ibnbd_create_session(const char *sessname,
 	ops.rdma_ev = ibnbd_clt_rdma_ev;
 	ops.sess_ev = ibnbd_clt_sess_ev;
 
-	sess->sess = ibtrs_clt_open(&ops, sessname, paths, path_cnt,
+	sess->sess = ibtrs_clt_open(&ops, sessname, paths, path_cnt, IBTRS_PORT,
 				    sizeof(struct ibnbd_iu),
 				    RECONNECT_DELAY, BMAX_SEGMENTS,
 				    MAX_RECONNECTS);

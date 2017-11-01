@@ -2376,8 +2376,8 @@ static void ibtrs_clt_close_work(struct work_struct *work);
 static struct ibtrs_clt_sess *alloc_sess(const struct ibtrs_clt_ops *ops,
 					 const char *sessname,
 					 const struct sockaddr *addr,
-					 size_t con_num, size_t pdu_sz,
-					 u8 reconnect_delay_sec,
+					 short port, size_t con_num,
+					 size_t pdu_sz, u8 reconnect_delay_sec,
 					 u16 max_segments,
 					 s16 max_reconnect_attempts)
 {
@@ -2401,6 +2401,7 @@ static struct ibtrs_clt_sess *alloc_sess(const struct ibtrs_clt_ops *ops,
 	sess->pdu_sz = pdu_sz;
 	sess->ops = *ops;
 	sess->reconnect_delay_sec = reconnect_delay_sec;
+	sess->port = port;
 	sess->max_reconnect_attempts = max_reconnect_attempts;
 	sess->max_pages_per_mr = max_segments;
 	init_waitqueue_head(&sess->state_wq);
@@ -3283,6 +3284,7 @@ struct ibtrs_clt_sess *ibtrs_clt_open(const struct ibtrs_clt_ops *ops,
 				      const char *sessname,
 				      const struct ibtrs_addr *paths,
 				      size_t path_cnt,
+				      short port,
 				      size_t pdu_sz, u8 reconnect_delay_sec,
 				      u16 max_segments,
 				      s16 max_reconnect_attempts)
@@ -3299,9 +3301,9 @@ struct ibtrs_clt_sess *ibtrs_clt_open(const struct ibtrs_clt_ops *ops,
 		err = -EINVAL;
 		goto out;
 	}
-	sess = alloc_sess(ops, sessname, paths[0].dst, CONS_PER_SESSION,
-			  pdu_sz, reconnect_delay_sec, max_segments,
-			  max_reconnect_attempts);
+	sess = alloc_sess(ops, sessname, paths[0].dst, port,
+			  CONS_PER_SESSION, pdu_sz, reconnect_delay_sec,
+			  max_segments, max_reconnect_attempts);
 	if (unlikely(IS_ERR(sess))) {
 		pr_err("Establishing session to server failed, err: %ld\n",
 		       PTR_ERR(sess));
