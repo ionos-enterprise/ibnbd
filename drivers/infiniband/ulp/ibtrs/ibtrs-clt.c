@@ -2600,6 +2600,12 @@ static int create_cm(struct ibtrs_clt_con *con)
 	}
 	con->c.cm_id = cm_id;
 	con->cm_err = 0;
+	/* allow the port to be reused */
+	err = rdma_set_reuseaddr(cm_id, 1);
+	if (err != 0) {
+		ibtrs_wrn(sess, "set address reuse failed, err: %d\n", err);
+		return err;
+	}
 	err = rdma_resolve_addr(cm_id, (struct sockaddr *)&sess->s.src_addr,
 				(struct sockaddr *)&sess->s.dst_addr,
 				IBTRS_CONNECT_TIMEOUT_MS);
