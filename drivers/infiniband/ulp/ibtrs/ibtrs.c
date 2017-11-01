@@ -477,3 +477,35 @@ int ibtrs_str_to_sockaddr(const char *addr, short port, struct sockaddr *dst)
 	return -EPROTONOSUPPORT;
 }
 EXPORT_SYMBOL_GPL(ibtrs_str_to_sockaddr);
+
+int ibtrs_addr_to_sockaddr(const char *str, short port,
+			   struct sockaddr **src, struct sockaddr **dst)
+{
+	int ret;
+	char *d, *buf;
+
+	buf = kstrdup(str, GFP_KERNEL);
+	if (unlikely(!buf))
+		return -ENOMEM;
+
+	d = strchr(buf, ',');
+	if (d) {
+		*d = 0;
+
+		if (ibtrs_str_to_sockaddr(buf, port, *src)) {
+			kfree(buf);
+			return -EINVAL;
+		}
+
+		d++;
+	} else {
+		*src = NULL;
+		d = buf;
+	}
+
+	ret = ibtrs_str_to_sockaddr(d, port, *dst);
+
+	kfree(buf);
+	return ret;
+}
+EXPORT_SYMBOL_GPL(ibtrs_addr_to_sockaddr);
