@@ -10,3 +10,5 @@ ibtrs-core-y := ibtrs.o \
 obj-$(CONFIG_INFINIBAND_IBTRS)        += ibtrs-core.o
 obj-$(CONFIG_INFINIBAND_IBTRS_CLIENT) += ibtrs-client.o
 obj-$(CONFIG_INFINIBAND_IBTRS_SERVER) += ibtrs-server.o
+
+include $(srctree)/$(src)/compat/compat.mk
