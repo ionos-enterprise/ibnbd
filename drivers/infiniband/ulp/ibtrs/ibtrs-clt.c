@@ -158,6 +158,14 @@ struct msg_work {
 static void ibtrs_rdma_error_recovery(struct ibtrs_clt_con *con);
 static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc);
 
+static inline struct ibtrs_clt_con *to_clt_con(struct ibtrs_con *c)
+{
+	if (unlikely(!c))
+		return NULL;
+
+	return container_of(c, struct ibtrs_clt_con, c);
+}
+
 static inline void ibtrs_clt_state_lock(void)
 {
 	rcu_read_lock();
@@ -1506,7 +1514,7 @@ static int post_recv_sess(struct ibtrs_clt_sess *sess)
 	int err, cid;
 
 	for (cid = 0; cid < sess->s.con_num; cid++) {
-		err = post_recv(sess->con[cid]);
+		err = post_recv(to_clt_con(sess->s.con[cid]));
 		if (unlikely(err)) {
 			ibtrs_err(sess, "post_recv(), err: %d\n", err);
 			return err;
@@ -2373,8 +2381,8 @@ static struct ibtrs_clt_sess *alloc_sess(const struct ibtrs_clt_ops *ops,
 	if (unlikely(!sess))
 		goto err;
 
-	sess->con = kcalloc(con_num, sizeof(*sess->con), GFP_KERNEL);
-	if (unlikely(!sess->con))
+	sess->s.con = kcalloc(con_num, sizeof(*sess->s.con), GFP_KERNEL);
+	if (unlikely(!sess->s.con))
 		goto err_free_sess;
 
 	mutex_init(&sess->init_mutex);
@@ -2403,7 +2411,7 @@ static struct ibtrs_clt_sess *alloc_sess(const struct ibtrs_clt_ops *ops,
 	return sess;
 
 err_free_con:
-	kfree(sess->con);
+	kfree(sess->s.con);
 err_free_sess:
 	kfree(sess);
 err:
@@ -2413,7 +2421,7 @@ err:
 static void free_sess(struct ibtrs_clt_sess *sess)
 {
 	ibtrs_clt_free_stats(sess);
-	kfree(sess->con);
+	kfree(sess->s.con);
 	kfree(sess->srv_rdma_addr);
 	kfree(sess);
 }
@@ -2432,7 +2440,7 @@ static int create_con(struct ibtrs_clt_sess *sess, unsigned cid)
 	con->sess = sess;
 	atomic_set(&con->io_cnt, 0);
 
-	sess->con[cid] = con;
+	sess->s.con[cid] = &con->c;
 
 	return 0;
 }
@@ -2441,7 +2449,7 @@ static void destroy_con(struct ibtrs_clt_con *con)
 {
 	struct ibtrs_clt_sess *sess = con->sess;
 
-	sess->con[con->cid] = NULL;
+	sess->s.con[con->cid] = NULL;
 	kfree(con);
 }
 
@@ -2668,7 +2676,7 @@ static void ibtrs_clt_hb_err_handler(struct ibtrs_con *c, int err)
 
 static void ibtrs_clt_start_hb(struct ibtrs_clt_sess *sess)
 {
-	struct ibtrs_clt_con *usr_con = sess->con[0];
+	struct ibtrs_clt_con *usr_con = to_clt_con(sess->s.con[0]);
 
 	ibtrs_start_hb(&usr_con->c, &hb_and_ack_cqe,
 		       IBTRS_HB_TIMEOUT_MS,
@@ -2712,13 +2720,13 @@ static void ibtrs_clt_stop_and_destroy_conns(struct ibtrs_clt_sess *sess)
 	 */
 
 	for (cid = 0; cid < sess->s.con_num; cid++)
-		stop_cm(sess->con[cid]);
+		stop_cm(to_clt_con(sess->s.con[cid]));
 	fail_all_outstanding_reqs(sess);
 	sess->ops.sess_ev(sess->ops.priv, IBTRS_CLT_SESS_EV_DISCONNECTED, 0);
 
 	free_sess_all_bufs(sess);
 	for (cid = 0; cid < sess->s.con_num; cid++) {
-		struct ibtrs_clt_con *con = sess->con[cid];
+		struct ibtrs_clt_con *con = to_clt_con(sess->s.con[cid]);
 
 		destroy_con_cq_qp(con);
 		destroy_cm(con);
@@ -2777,9 +2785,9 @@ static int init_conns(struct ibtrs_clt_sess *sess)
 		if (unlikely(err))
 		    goto destroy;
 
-		err = create_cm(sess->con[cid]);
+		err = create_cm(to_clt_con(sess->s.con[cid]));
 		if (unlikely(err)) {
-			destroy_con(sess->con[cid]);
+			destroy_con(to_clt_con(sess->s.con[cid]));
 			goto destroy;
 		}
 	}
@@ -2795,7 +2803,7 @@ static int init_conns(struct ibtrs_clt_sess *sess)
 
 destroy:
 	while (cid--) {
-		struct ibtrs_clt_con *con = sess->con[cid];
+		struct ibtrs_clt_con *con = to_clt_con(sess->s.con[cid]);
 
 		stop_cm(con);
 		destroy_con_cq_qp(con);
@@ -3156,7 +3164,7 @@ out:
 static int ibtrs_send_sess_info(struct ibtrs_clt_sess *sess,
 				bool timeout_wait)
 {
-	struct ibtrs_clt_con *usr_con = sess->con[0];
+	struct ibtrs_clt_con *usr_con = to_clt_con(sess->s.con[0]);
 	struct ibtrs_msg_info_req *msg;
 	struct ibtrs_iu *tx_iu, *rx_iu;
 	size_t rx_sz;
@@ -3515,7 +3523,7 @@ int ibtrs_clt_rdma_write(struct ibtrs_clt_sess *sess, struct ibtrs_tag *tag,
 	con_id = ibtrs_rdma_con_id(sess, tag);
 	if (WARN_ON(con_id >= sess->s.con_num))
 		return -EINVAL;
-	con = sess->con[con_id];
+	con = to_clt_con(sess->s.con[con_id]);
 	ibtrs_clt_state_lock();
 	if (unlikely(sess->state != IBTRS_CLT_CONNECTED)) {
 		ibtrs_clt_state_unlock();
@@ -3672,7 +3680,7 @@ int ibtrs_clt_request_rdma_write(struct ibtrs_clt_sess *sess,
 	con_id = ibtrs_rdma_con_id(sess, tag);
 	if (WARN_ON(con_id >= sess->s.con_num))
 		return -EINVAL;
-	con = sess->con[con_id];
+	con = to_clt_con(sess->s.con[con_id]);
 	ibtrs_clt_state_lock();
 	if (unlikely(sess->state != IBTRS_CLT_CONNECTED)) {
 		ibtrs_clt_state_unlock();
@@ -3722,7 +3730,7 @@ EXPORT_SYMBOL(ibtrs_clt_request_rdma_write);
 int ibtrs_clt_send(struct ibtrs_clt_sess *sess, const struct kvec *vec,
 		   size_t nr)
 {
-	struct ibtrs_clt_con *usr_con = sess->con[0];
+	struct ibtrs_clt_con *usr_con = to_clt_con(sess->s.con[0]);
 	struct ibtrs_msg_user *msg;
 	struct ibtrs_iu *iu;
 	size_t len;

@@ -136,7 +136,6 @@ struct ibtrs_srv_sess {
 	enum ibtrs_srv_state	state;
 	spinlock_t		state_lock;
 	int			cur_cq_vector;
-	struct ibtrs_srv_con    **con;
 	struct ibtrs_srv_op	**ops_ids;
 	struct ibtrs_rcv_buf_pool *rcv_buf_pool;
 	bool			was_connected;

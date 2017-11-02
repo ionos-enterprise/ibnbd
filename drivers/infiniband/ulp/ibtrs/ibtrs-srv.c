@@ -250,6 +250,14 @@ struct ibtrs_srv_op {
 	struct ib_sge			*tx_sg;
 };
 
+static inline struct ibtrs_srv_con *to_srv_con(struct ibtrs_con *c)
+{
+	if (unlikely(!c))
+		return NULL;
+
+	return container_of(c, struct ibtrs_srv_con, c);
+}
+
 static bool __ibtrs_srv_change_state(struct ibtrs_srv_sess *sess,
 				     enum ibtrs_srv_state new_state)
 {
@@ -320,7 +328,7 @@ static bool ibtrs_srv_change_state(struct ibtrs_srv_sess *sess,
 int ibtrs_srv_current_hca_port_to_str(struct ibtrs_srv_sess *sess,
 				      char *buf, size_t len)
 {
-	struct ibtrs_srv_con *usr_con = sess->con[0];
+	struct ibtrs_srv_con *usr_con = to_srv_con(sess->s.con[0]);
 	char str[16] = "n/a\n";
 	int sz = 4;
 
@@ -334,7 +342,7 @@ int ibtrs_srv_current_hca_port_to_str(struct ibtrs_srv_sess *sess,
 
 const char *ibtrs_srv_get_sess_hca_name(struct ibtrs_srv_sess *sess)
 {
-	struct ibtrs_srv_con *usr_con = sess->con[0];
+	struct ibtrs_srv_con *usr_con = to_srv_con(sess->s.con[0]);
 
 	if (usr_con)
 		return sess->s.ib_dev->dev->name;
@@ -631,7 +639,7 @@ static void ibtrs_srv_usr_send_done(struct ib_cq *cq, struct ib_wc *wc);
 int ibtrs_srv_send(struct ibtrs_srv_sess *sess, const struct kvec *vec,
 		   size_t nr)
 {
-	struct ibtrs_srv_con *usr_con = sess->con[0];
+	struct ibtrs_srv_con *usr_con = to_srv_con(sess->s.con[0]);
 	struct ibtrs_msg_user *msg;
 	struct ibtrs_iu *iu;
 	size_t len;
@@ -1053,7 +1061,7 @@ static struct ib_cqe hb_and_ack_cqe = {
 
 static void ibtrs_srv_start_hb(struct ibtrs_srv_sess *sess)
 {
-	struct ibtrs_srv_con *usr_con = sess->con[0];
+	struct ibtrs_srv_con *usr_con = to_srv_con(sess->s.con[0]);
 
 	ibtrs_start_hb(&usr_con->c, &hb_and_ack_cqe,
 		       IBTRS_HB_TIMEOUT_MS,
@@ -1261,7 +1269,7 @@ static int post_recv_sess(struct ibtrs_srv_sess *sess)
 	int err, cid;
 
 	for (cid = 0; cid < sess->s.con_num; cid++) {
-		err = post_recv(sess->con[cid]);
+		err = post_recv(to_srv_con(sess->s.con[cid]));
 		if (unlikely(err)) {
 			ibtrs_err(sess, "post_recv(), err: %d\n", err);
 			return err;
@@ -1701,7 +1709,7 @@ static void ibtrs_srv_close_work(struct work_struct *work)
 	ibtrs_srv_stop_hb(sess);
 
 	for (i = 0; i < sess->s.con_num; i++) {
-		con = sess->con[i];
+		con = to_srv_con(sess->s.con[i]);
 		if (!con)
 			continue;
 
@@ -1716,7 +1724,7 @@ static void ibtrs_srv_close_work(struct work_struct *work)
 	free_sess_bufs(sess);
 
 	for (i = 0; i < sess->s.con_num; i++) {
-		con = sess->con[i];
+		con = to_srv_con(sess->s.con[i]);
 		if (!con)
 			continue;
 
@@ -1732,7 +1740,7 @@ static void ibtrs_srv_close_work(struct work_struct *work)
 
 	ibtrs_srv_change_state(sess, IBTRS_SRV_CLOSED);
 
-	kfree(sess->con);
+	kfree(sess->s.con);
 	kfree(sess);
 }
 
@@ -1838,8 +1846,8 @@ static int create_con(struct ibtrs_srv_sess *sess,
 		if (unlikely(err))
 			goto free_cqqp;
 	}
-	WARN_ON(sess->con[cid]);
-	sess->con[cid] = con;
+	WARN_ON(sess->s.con[cid]);
+	sess->s.con[cid] = &con->c;
 
 	return 0;
 
@@ -1864,8 +1872,8 @@ static struct ibtrs_srv_sess *__alloc_sess(struct ibtrs_srv_ctx *ctx,
 	if (unlikely(!sess))
 		goto err;
 
-	sess->con = kcalloc(con_num, sizeof(*sess->con), GFP_KERNEL);
-	if (unlikely(!sess->con))
+	sess->s.con = kcalloc(con_num, sizeof(*sess->s.con), GFP_KERNEL);
+	if (unlikely(!sess->s.con))
 		goto err_free_sess;
 
 	sess->state = IBTRS_SRV_CONNECTING;
@@ -1903,7 +1911,7 @@ err_release_bufs:
 err_put_dev:
 	ibtrs_ib_dev_put(sess->s.ib_dev);
 err_free_con:
-	kfree(sess->con);
+	kfree(sess->s.con);
 err_free_sess:
 	kfree(sess);
 
@@ -1973,7 +1981,7 @@ static int ibtrs_rdma_connect(struct rdma_cm_id *cm_id,
 			mutex_unlock(&ctx->sess_mutex);
 			goto reject_w_econnreset;
 		}
-		if (unlikely(sess->con[cid])) {
+		if (unlikely(sess->s.con[cid])) {
 			ibtrs_err(sess, "Connection already exists: %d\n",
 				  cid);
 			mutex_unlock(&ctx->sess_mutex);
