@@ -541,29 +541,30 @@ static void ibtrs_map_desc(struct ibtrs_map_state *state, dma_addr_t dma_addr,
 static int ibtrs_map_finish_fmr(struct ibtrs_map_state *state,
 				struct ibtrs_clt_con *con)
 {
+	struct ibtrs_clt_sess *sess = con->sess;
 	struct ib_pool_fmr *fmr;
-	u64 io_addr = 0;
 	dma_addr_t dma_addr;
+	u64 io_addr = 0;
 
-	fmr = ib_fmr_pool_map_phys(con->sess->fmr_pool, state->pages,
+	fmr = ib_fmr_pool_map_phys(sess->fmr_pool, state->pages,
 				   state->npages, io_addr);
 	if (IS_ERR(fmr)) {
-		ibtrs_wrn_rl(con->sess, "Failed to map FMR from FMR pool, "
+		ibtrs_wrn_rl(sess, "Failed to map FMR from FMR pool, "
 			     "err: %ld\n", PTR_ERR(fmr));
 		return PTR_ERR(fmr);
 	}
 
 	*state->next_fmr++ = fmr;
 	state->nmdesc++;
-	dma_addr = state->base_dma_addr & ~con->sess->mr_page_mask;
+	dma_addr = state->base_dma_addr & ~sess->mr_page_mask;
 	pr_debug("ndesc = %d, nmdesc = %d, npages = %d\n",
 		 state->ndesc, state->nmdesc, state->npages);
 	if (state->dir == DMA_TO_DEVICE)
 		ibtrs_map_desc(state, dma_addr, state->dma_len, fmr->fmr->lkey,
-			       con->sess->max_desc);
+			       sess->max_desc);
 	else
 		ibtrs_map_desc(state, dma_addr, state->dma_len, fmr->fmr->rkey,
-			       con->sess->max_desc);
+			       sess->max_desc);
 
 	return 0;
 }
@@ -589,19 +590,21 @@ static int ibtrs_map_finish_fr(struct ibtrs_map_state *state,
 			       struct ibtrs_clt_con *con, int sg_cnt,
 			       unsigned int *sg_offset_p)
 {
+	struct ibtrs_clt_sess *sess = con->sess;
+	struct ibtrs_fr_desc *desc;
 	struct ib_send_wr *bad_wr;
 	struct ib_reg_wr wr;
-	struct ibtrs_fr_desc *desc;
-	struct ib_pd *pd = con->sess->s.ib_dev->pd;
+	struct ib_pd *pd;
 	u32 rkey;
 	int n;
 
+	pd = sess->s.ib_dev->pd;
 	if (sg_cnt == 1 && (pd->flags & IB_PD_UNSAFE_GLOBAL_RKEY)) {
 		unsigned int sg_offset = sg_offset_p ? *sg_offset_p : 0;
 
 		ibtrs_map_desc(state, sg_dma_address(state->sg) + sg_offset,
 			       sg_dma_len(state->sg) - sg_offset,
-			       pd->unsafe_global_rkey, con->sess->max_desc);
+			       pd->unsafe_global_rkey, sess->max_desc);
 		if (sg_offset_p)
 			*sg_offset_p = 0;
 		return 1;
@@ -609,7 +612,7 @@ static int ibtrs_map_finish_fr(struct ibtrs_map_state *state,
 
 	desc = ibtrs_fr_pool_get(con->fr_pool);
 	if (!desc) {
-		ibtrs_wrn_rl(con->sess, "Failed to get descriptor from FR pool\n");
+		ibtrs_wrn_rl(sess, "Failed to get descriptor from FR pool\n");
 		return -ENOMEM;
 	}
 
@@ -618,7 +621,7 @@ static int ibtrs_map_finish_fr(struct ibtrs_map_state *state,
 
 	memset(&wr, 0, sizeof(wr));
 	n = ib_map_mr_sg(desc->mr, state->sg, sg_cnt, sg_offset_p,
-			 con->sess->mr_page_size);
+			 sess->mr_page_size);
 	if (unlikely(n < 0)) {
 		ibtrs_fr_pool_put(con->fr_pool, &desc, 1);
 		return n;
@@ -637,7 +640,7 @@ static int ibtrs_map_finish_fr(struct ibtrs_map_state *state,
 	state->nmdesc++;
 
 	ibtrs_map_desc(state, state->base_dma_addr, state->dma_len,
-		       desc->mr->rkey, con->sess->max_desc);
+		       desc->mr->rkey, sess->max_desc);
 
 	return ib_post_send(con->c.qp, &wr.wr, &bad_wr);
 }
@@ -645,8 +648,9 @@ static int ibtrs_map_finish_fr(struct ibtrs_map_state *state,
 static int ibtrs_finish_fmr_mapping(struct ibtrs_map_state *state,
 				    struct ibtrs_clt_con *con)
 {
+	struct ibtrs_clt_sess *sess = con->sess;
+	struct ib_pd *pd = sess->s.ib_dev->pd;
 	int ret = 0;
-	struct ib_pd *pd = con->sess->s.ib_dev->pd;
 
 	if (state->npages == 0)
 		return 0;
@@ -654,7 +658,7 @@ static int ibtrs_finish_fmr_mapping(struct ibtrs_map_state *state,
 	if (state->npages == 1 && (pd->flags & IB_PD_UNSAFE_GLOBAL_RKEY))
 		ibtrs_map_desc(state, state->base_dma_addr, state->dma_len,
 			       pd->unsafe_global_rkey,
-			       con->sess->max_desc);
+			       sess->max_desc);
 	else
 		ret = ibtrs_map_finish_fmr(state, con);
 
@@ -670,19 +674,22 @@ static int ibtrs_map_sg_entry(struct ibtrs_map_state *state,
 			      struct ibtrs_clt_con *con, struct scatterlist *sg,
 			      int sg_count)
 {
-	struct ib_device *ibdev = con->sess->s.ib_dev->dev;
-	dma_addr_t dma_addr = ib_sg_dma_address(ibdev, sg);
-	unsigned int dma_len = ib_sg_dma_len(ibdev, sg);
-	unsigned int len;
+	struct ibtrs_clt_sess *sess = con->sess;
+	unsigned int dma_len, len;
+	struct ib_device *ibdev;
+	dma_addr_t dma_addr;
 	int ret;
 
+	ibdev = sess->s.ib_dev->dev;
+	dma_addr = ib_sg_dma_address(ibdev, sg);
+	dma_len = ib_sg_dma_len(ibdev, sg);
 	if (!dma_len)
 		return 0;
 
 	while (dma_len) {
-		unsigned offset = dma_addr & ~con->sess->mr_page_mask;
+		unsigned offset = dma_addr & ~sess->mr_page_mask;
 
-		if (state->npages == con->sess->max_pages_per_mr ||
+		if (state->npages == sess->max_pages_per_mr ||
 		    offset != 0) {
 			ret = ibtrs_finish_fmr_mapping(state, con);
 			if (ret)
@@ -690,12 +697,12 @@ static int ibtrs_map_sg_entry(struct ibtrs_map_state *state,
 		}
 
 		len = min_t(unsigned int, dma_len,
-			    con->sess->mr_page_size - offset);
+			    sess->mr_page_size - offset);
 
 		if (!state->npages)
 			state->base_dma_addr = dma_addr;
 		state->pages[state->npages++] =
-			dma_addr & con->sess->mr_page_mask;
+			dma_addr & sess->mr_page_mask;
 		state->dma_len += len;
 		dma_addr += len;
 		dma_len -= len;
@@ -707,7 +714,7 @@ static int ibtrs_map_sg_entry(struct ibtrs_map_state *state,
 	 * boundaries.
 	 */
 	ret = 0;
-	if (len != con->sess->mr_page_size)
+	if (len != sess->mr_page_size)
 		ret = ibtrs_finish_fmr_mapping(state, con);
 	return ret;
 }
@@ -754,15 +761,16 @@ static int ibtrs_map_sg(struct ibtrs_map_state *state,
 			struct ibtrs_clt_con *con,
 			struct rdma_req *req)
 {
+	struct ibtrs_clt_sess *sess = con->sess;
 	int ret = 0;
 
 	state->pages = req->map_page;
-	if (con->sess->fast_reg_mode == IBTRS_FAST_MEM_FR) {
+	if (sess->fast_reg_mode == IBTRS_FAST_MEM_FR) {
 		state->next_fr = req->fr_list;
 		ret = ibtrs_map_fr(state, con, req->sglist, req->sg_cnt);
 		if (ret)
 			goto out;
-	} else if (con->sess->fast_reg_mode == IBTRS_FAST_MEM_FMR) {
+	} else if (sess->fast_reg_mode == IBTRS_FAST_MEM_FMR) {
 		state->next_fmr = req->fmr_list;
 		ret = ibtrs_map_fmr(state, con, req->sglist, 0,
 				    req->sg_cnt);
@@ -772,8 +780,6 @@ static int ibtrs_map_sg(struct ibtrs_map_state *state,
 		if (ret)
 			goto out;
 	}
-
-
 
 out:
 	req->nmdesc = state->nmdesc;
@@ -814,15 +820,16 @@ static int ibtrs_inv_rkey(struct ibtrs_clt_con *con, u32 rkey)
 static void ibtrs_unmap_fast_reg_data(struct ibtrs_clt_con *con,
 				      struct rdma_req *req)
 {
+	struct ibtrs_clt_sess *sess = con->sess;
 	int i, ret;
 
-	if (con->sess->fast_reg_mode == IBTRS_FAST_MEM_FR) {
+	if (sess->fast_reg_mode == IBTRS_FAST_MEM_FR) {
 		struct ibtrs_fr_desc **pfr;
 
 		for (i = req->nmdesc, pfr = req->fr_list; i > 0; i--, pfr++) {
 			ret = ibtrs_inv_rkey(con, (*pfr)->mr->rkey);
 			if (ret < 0) {
-				ibtrs_err(con->sess,
+				ibtrs_err(sess,
 					  "Invalidating registered RDMA memory for"
 					  " rkey %#x failed, err: %d\n",
 					  (*pfr)->mr->rkey, ret);
@@ -848,6 +855,7 @@ static int ibtrs_fast_reg_map_data(struct ibtrs_clt_con *con,
 				   struct ibtrs_sg_desc *desc,
 				   struct rdma_req *req)
 {
+	struct ibtrs_clt_sess *sess = con->sess;
 	struct ibtrs_map_state state;
 	int ret;
 
@@ -860,7 +868,7 @@ static int ibtrs_fast_reg_map_data(struct ibtrs_clt_con *con,
 		goto unmap;
 
 	if (unlikely(state.ndesc <= 0)) {
-		ibtrs_err(con->sess,
+		ibtrs_err(sess,
 			  "Could not fit S/G list into buffer descriptor %d\n",
 			  state.ndesc);
 		ret = -EIO;
@@ -882,7 +890,7 @@ static int ibtrs_post_send_rdma(struct ibtrs_clt_con *con, struct rdma_req *req,
 
 	pr_debug("called, imm: %x\n", imm);
 	if (unlikely(!req->sg_size)) {
-		ibtrs_wrn(con->sess, "Doing RDMA Write failed, no data supplied\n");
+		ibtrs_wrn(sess, "Doing RDMA Write failed, no data supplied\n");
 		return -EINVAL;
 	}
 
@@ -954,15 +962,17 @@ static int ibtrs_post_send_rdma_desc_more(struct ibtrs_clt_con *con,
 					  struct ibtrs_sg_desc *desc, int n,
 					  u64 addr, u32 size, u32 imm)
 {
-	int ret;
-	size_t num_sge = 1 + n;
 	struct ibtrs_clt_sess *sess = con->sess;
-	int max_sge = sess->max_sge;
-	int num_wr =  DIV_ROUND_UP(num_sge, max_sge);
+	size_t max_sge, num_sge, num_wr;
 	struct ib_send_wr *bad_wr;
 	struct ib_rdma_wr *wrs, *wr;
 	int j = 0, k, offset = 0, len = 0;
 	int m = 0;
+	int ret;
+
+	max_sge = sess->max_sge;
+	num_sge = 1 + n;
+	num_wr = DIV_ROUND_UP(num_sge, max_sge);
 
 	wrs = kcalloc(num_wr, sizeof(*wrs), GFP_ATOMIC);
 	if (!wrs)
@@ -2841,13 +2851,12 @@ static int ibtrs_rdma_addr_resolved(struct ibtrs_clt_con *con)
 
 static int ibtrs_rdma_route_resolved(struct ibtrs_clt_con *con)
 {
+	struct ibtrs_clt_sess *sess = con->sess;
 	struct ibtrs_msg_conn_req msg;
 	struct rdma_conn_param param;
-	struct ibtrs_clt_sess *sess;
 
 	int err;
 
-	sess = con->sess;
 	memset(&param, 0, sizeof(param));
 	param.retry_count = retry_count;
 	param.rnr_retry_count = 7;
@@ -2878,13 +2887,12 @@ static int ibtrs_rdma_route_resolved(struct ibtrs_clt_con *con)
 static int ibtrs_rdma_conn_established(struct ibtrs_clt_con *con,
 				       struct rdma_cm_event *ev)
 {
+	struct ibtrs_clt_sess *sess = con->sess;
 	const struct ibtrs_msg_conn_rsp *msg;
-	struct ibtrs_clt_sess *sess;
 	u16 version, queue_depth;
 	int errno;
 	u8 len;
 
-	sess = con->sess;
 	msg = ev->param.conn.private_data;
 	len = ev->param.conn.private_data_len;
 	if (unlikely(len < sizeof(*msg))) {
@@ -2944,6 +2952,7 @@ static int ibtrs_rdma_conn_established(struct ibtrs_clt_con *con,
 static int ibtrs_rdma_conn_rejected(struct ibtrs_clt_con *con,
 				    struct rdma_cm_event *ev)
 {
+	struct ibtrs_clt_sess *sess = con->sess;
 	const struct ibtrs_msg_conn_rsp *msg;
 	const char *rej_msg;
 	int status, errno;
@@ -2956,15 +2965,15 @@ static int ibtrs_rdma_conn_rejected(struct ibtrs_clt_con *con,
 	if (msg && data_len >= sizeof(*msg)) {
 		errno = (int16_t)le16_to_cpu(msg->errno);
 		if (errno == -EBUSY)
-			ibtrs_err(con->sess,
+			ibtrs_err(sess,
 				  "Previous session is still exists on the "
 				  "server, please reconnect later\n");
 		else
-			ibtrs_err(con->sess,
+			ibtrs_err(sess,
 				  "Connect rejected: status %d (%s), ibtrs "
 				  "errno %d\n", status, rej_msg, errno);
 	} else
-		ibtrs_err(con->sess,
+		ibtrs_err(sess,
 			  "Connect rejected but with malformed message: "
 			  "status %d (%s)\n", status, rej_msg);
 
