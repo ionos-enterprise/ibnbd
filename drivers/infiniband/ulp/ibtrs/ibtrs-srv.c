@@ -1260,7 +1260,7 @@ static int post_recv_sess(struct ibtrs_srv_sess *sess)
 {
 	int err, cid;
 
-	for (cid = 0; cid < sess->con_num; cid++) {
+	for (cid = 0; cid < sess->s.con_num; cid++) {
 		err = post_recv(sess->con[cid]);
 		if (unlikely(err)) {
 			ibtrs_err(sess, "post_recv(), err: %d\n", err);
@@ -1700,7 +1700,7 @@ static void ibtrs_srv_close_work(struct work_struct *work)
 	ibtrs_srv_destroy_sess_files(sess);
 	ibtrs_srv_stop_hb(sess);
 
-	for (i = 0; i < sess->con_num; i++) {
+	for (i = 0; i < sess->s.con_num; i++) {
 		con = sess->con[i];
 		if (!con)
 			continue;
@@ -1715,7 +1715,7 @@ static void ibtrs_srv_close_work(struct work_struct *work)
 	release_cont_bufs(sess);
 	free_sess_bufs(sess);
 
-	for (i = 0; i < sess->con_num; i++) {
+	for (i = 0; i < sess->s.con_num; i++) {
 		con = sess->con[i];
 		if (!con)
 			continue;
@@ -1870,10 +1870,10 @@ static struct ibtrs_srv_sess *__alloc_sess(struct ibtrs_srv_ctx *ctx,
 
 	sess->state = IBTRS_SRV_CONNECTING;
 	sess->ctx = ctx;
-	sess->con_num = con_num;
 	sess->cur_cq_vector = -1;
 	sess->queue_depth = sess_queue_depth;
 	sess->s.addr.sockaddr = cm_id->route.addr.dst_addr;
+	sess->s.con_num = con_num;
 	sess->s.recon_cnt = recon_cnt;
 	uuid_copy(&sess->s.uuid, uuid);
 	spin_lock_init(&sess->state_lock);
@@ -1966,8 +1966,8 @@ static int ibtrs_rdma_connect(struct rdma_cm_id *cm_id,
 		/*
 		 * Sanity checks
 		 */
-		if (unlikely(con_num != sess->con_num ||
-			     cid >= sess->con_num)) {
+		if (unlikely(con_num != sess->s.con_num ||
+			     cid >= sess->s.con_num)) {
 			ibtrs_err(sess, "Incorrect request: %d, %d\n",
 				  cid, con_num);
 			mutex_unlock(&ctx->sess_mutex);

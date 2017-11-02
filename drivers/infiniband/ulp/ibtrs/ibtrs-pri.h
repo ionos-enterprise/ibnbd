@@ -109,6 +109,7 @@ struct ibtrs_sess {
 	struct ibtrs_addr	addr;
 	char			sessname[MAXHOSTNAMELEN];
 	uuid_t			uuid;
+	unsigned int		con_num;
 	unsigned int		recon_cnt;
 	struct ibtrs_ib_dev	*ib_dev;
 	int			ib_dev_ref;
