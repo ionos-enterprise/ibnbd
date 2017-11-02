@@ -1505,7 +1505,7 @@ static int post_recv_sess(struct ibtrs_clt_sess *sess)
 {
 	int err, cid;
 
-	for (cid = 0; cid < CONS_PER_SESSION; cid++) {
+	for (cid = 0; cid < sess->s.con_num; cid++) {
 		err = post_recv(sess->con[cid]);
 		if (unlikely(err)) {
 			ibtrs_err(sess, "post_recv(), err: %d\n", err);
@@ -2361,7 +2361,8 @@ static void ibtrs_clt_close_work(struct work_struct *work);
 static struct ibtrs_clt_sess *alloc_sess(const struct ibtrs_clt_ops *ops,
 					 const char *sessname,
 					 const struct sockaddr *addr,
-					 size_t pdu_sz, u8 reconnect_delay_sec,
+					 size_t con_num, size_t pdu_sz,
+					 u8 reconnect_delay_sec,
 					 u16 max_segments,
 					 s16 max_reconnect_attempts)
 {
@@ -2372,7 +2373,7 @@ static struct ibtrs_clt_sess *alloc_sess(const struct ibtrs_clt_ops *ops,
 	if (unlikely(!sess))
 		goto err;
 
-	sess->con = kcalloc(CONS_PER_SESSION, sizeof(*sess->con), GFP_KERNEL);
+	sess->con = kcalloc(con_num, sizeof(*sess->con), GFP_KERNEL);
 	if (unlikely(!sess->con))
 		goto err_free_sess;
 
@@ -2381,6 +2382,7 @@ static struct ibtrs_clt_sess *alloc_sess(const struct ibtrs_clt_ops *ops,
 	memcpy(&sess->s.addr.sockaddr, addr,
 	       rdma_addr_size((struct sockaddr *)addr));
 	strlcpy(sess->s.sessname, sessname, sizeof(sess->s.sessname));
+	sess->s.con_num = con_num;
 	sess->pdu_sz = pdu_sz;
 	sess->ops = *ops;
 	sess->reconnect_delay_sec = reconnect_delay_sec;
@@ -2709,13 +2711,13 @@ static void ibtrs_clt_stop_and_destroy_conns(struct ibtrs_clt_sess *sess)
 	 * eventually notify upper layer about session disconnection.
 	 */
 
-	for (cid = 0; cid < CONS_PER_SESSION; cid++)
+	for (cid = 0; cid < sess->s.con_num; cid++)
 		stop_cm(sess->con[cid]);
 	fail_all_outstanding_reqs(sess);
 	sess->ops.sess_ev(sess->ops.priv, IBTRS_CLT_SESS_EV_DISCONNECTED, 0);
 
 	free_sess_all_bufs(sess);
-	for (cid = 0; cid < CONS_PER_SESSION; cid++) {
+	for (cid = 0; cid < sess->s.con_num; cid++) {
 		struct ibtrs_clt_con *con = sess->con[cid];
 
 		destroy_con_cq_qp(con);
@@ -2770,7 +2772,7 @@ static int init_conns(struct ibtrs_clt_sess *sess)
 	sess->s.recon_cnt++;
 
 	/* Establish all RDMA connections  */
-	for (cid = 0; cid < CONS_PER_SESSION; cid++) {
+	for (cid = 0; cid < sess->s.con_num; cid++) {
 		err = create_con(sess, cid);
 		if (unlikely(err))
 		    goto destroy;
@@ -2854,7 +2856,7 @@ static int ibtrs_rdma_route_resolved(struct ibtrs_clt_con *con)
 	msg.magic = cpu_to_le16(IBTRS_MAGIC);
 	msg.version = cpu_to_le16(IBTRS_VERSION);
 	msg.cid = cpu_to_le16(con->cid);
-	msg.cid_num = cpu_to_le16(CONS_PER_SESSION);
+	msg.cid_num = cpu_to_le16(sess->s.con_num);
 	msg.recon_cnt = cpu_to_le16(sess->s.recon_cnt);
 	uuid_copy(&msg.uuid, &sess->s.uuid);
 
@@ -3281,8 +3283,9 @@ struct ibtrs_clt_sess *ibtrs_clt_open(const struct ibtrs_clt_ops *ops,
 		err = -EINVAL;
 		goto out;
 	}
-	sess = alloc_sess(ops, sessname, addr, pdu_sz, reconnect_delay_sec,
-			  max_segments, max_reconnect_attempts);
+	sess = alloc_sess(ops, sessname, addr, CONS_PER_SESSION,
+			  pdu_sz, reconnect_delay_sec, max_segments,
+			  max_reconnect_attempts);
 	if (unlikely(IS_ERR(sess))) {
 		pr_err("Establishing session to server failed, err: %ld\n",
 		       PTR_ERR(sess));
@@ -3483,9 +3486,10 @@ static void ibtrs_clt_update_rdma_stats(struct ibtrs_clt_stats *s,
  *     RDMA connection starts from 1.
  *     0 connection is for user messages.
  */
-static inline int ibtrs_rdma_con_id(struct ibtrs_tag *tag)
+static inline int ibtrs_rdma_con_id(struct ibtrs_clt_sess *sess,
+				    struct ibtrs_tag *tag)
 {
-	return (tag->cpu_id % (CONS_PER_SESSION - 1)) + 1;
+	return (tag->cpu_id % (sess->s.con_num - 1)) + 1;
 }
 
 int ibtrs_clt_rdma_write(struct ibtrs_clt_sess *sess, struct ibtrs_tag *tag,
@@ -3508,8 +3512,8 @@ int ibtrs_clt_rdma_write(struct ibtrs_clt_sess *sess, struct ibtrs_tag *tag,
 		return -EMSGSIZE;
 	}
 
-	con_id = ibtrs_rdma_con_id(tag);
-	if (WARN_ON(con_id >= CONS_PER_SESSION))
+	con_id = ibtrs_rdma_con_id(sess, tag);
+	if (WARN_ON(con_id >= sess->s.con_num))
 		return -EINVAL;
 	con = sess->con[con_id];
 	ibtrs_clt_state_lock();
@@ -3665,8 +3669,8 @@ int ibtrs_clt_request_rdma_write(struct ibtrs_clt_sess *sess,
 		return -EMSGSIZE;
 	}
 
-	con_id = ibtrs_rdma_con_id(tag);
-	if (WARN_ON(con_id >= CONS_PER_SESSION))
+	con_id = ibtrs_rdma_con_id(sess, tag);
+	if (WARN_ON(con_id >= sess->s.con_num))
 		return -EINVAL;
 	con = sess->con[con_id];
 	ibtrs_clt_state_lock();
