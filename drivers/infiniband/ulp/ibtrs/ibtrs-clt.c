@@ -115,9 +115,6 @@ module_param_named(fmr_sg_cnt, fmr_sg_cnt, int, 0644);
 MODULE_PARM_DESC(fmr_sg_cnt, "when sg_cnt is bigger than fmr_sg_cnt, enable"
 		 " FMR (default: 4)");
 
-static void ibtrs_rdma_error_recovery(struct ibtrs_clt_con *con);
-static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc);
-
 static struct workqueue_struct *ibtrs_wq;
 
 /* rdma_req which connect iu with sglist received from user */
@@ -157,6 +154,9 @@ struct msg_work {
 	struct ibtrs_clt_con	*con;
 	void                    *msg;
 };
+
+static void ibtrs_rdma_error_recovery(struct ibtrs_clt_con *con);
+static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc);
 
 static inline void ibtrs_clt_state_lock(void)
 {
