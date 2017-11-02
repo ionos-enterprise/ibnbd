@@ -87,17 +87,17 @@ enum ibtrs_fast_reg {
 	IBTRS_FAST_MEM_FMR
 };
 
-struct ibtrs_stats_reconnects {
+struct ibtrs_clt_stats_reconnects {
 	u32 successful_cnt;
 	u32 fail_cnt;
 };
 
-struct ibtrs_stats_wc_comp {
+struct ibtrs_clt_stats_wc_comp {
 	u32 cnt;
 	u64 total_cnt;
 };
 
-struct ibtrs_stats_cpu_migration {
+struct ibtrs_clt_stats_cpu_migration {
 	atomic_t *from;
 	int *to;
 };
@@ -132,15 +132,15 @@ struct ibtrs_clt_stats_user_ib_msgs {
 };
 
 struct ibtrs_clt_stats {
-	struct ibtrs_stats_cpu_migration	cpu_migr;
+	struct ibtrs_clt_stats_cpu_migration	cpu_migr;
 	struct ibtrs_clt_stats_rdma_stats	*rdma_stats;
 	u64					*sg_list_total;
 	u64					**sg_list_distr;
-	struct ibtrs_stats_reconnects		reconnects;
+	struct ibtrs_clt_stats_reconnects	reconnects;
 	struct ibtrs_clt_stats_rdma_lat_entry	**rdma_lat_distr;
 	struct ibtrs_clt_stats_rdma_lat_entry	*rdma_lat_max;
 	struct ibtrs_clt_stats_user_ib_msgs	user_ib_msgs;
-	struct ibtrs_stats_wc_comp		*wc_comp;
+	struct ibtrs_clt_stats_wc_comp		*wc_comp;
 };
 
 struct ibtrs_clt_sess {
