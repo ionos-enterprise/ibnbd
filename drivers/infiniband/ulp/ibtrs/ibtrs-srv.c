@@ -237,7 +237,6 @@ struct ibtrs_srv_con {
 	struct ibtrs_con	c;
 	unsigned		cid;
 	atomic_t		wr_cnt;
-	struct ibtrs_srv_sess	*sess;
 };
 
 struct ibtrs_srv_op {
@@ -256,6 +255,14 @@ static inline struct ibtrs_srv_con *to_srv_con(struct ibtrs_con *c)
 		return NULL;
 
 	return container_of(c, struct ibtrs_srv_con, c);
+}
+
+static inline struct ibtrs_srv_sess *to_srv_sess(struct ibtrs_sess *s)
+{
+	if (unlikely(!s))
+		return NULL;
+
+	return container_of(s, struct ibtrs_srv_sess, s);
 }
 
 static bool __ibtrs_srv_change_state(struct ibtrs_srv_sess *sess,
@@ -503,7 +510,7 @@ static struct ib_cqe io_comp_cqe = {
 
 static int rdma_write_sg(struct ibtrs_srv_op *id)
 {
-	struct ibtrs_srv_sess *sess = id->con->sess;
+	struct ibtrs_srv_sess *sess = to_srv_sess(id->con->c.sess);
 	struct ib_rdma_wr *wr = NULL;
 	struct ib_send_wr *bad_wr;
 	enum ib_send_flags flags;
@@ -571,7 +578,7 @@ static int rdma_write_sg(struct ibtrs_srv_op *id)
 
 static int send_io_resp_imm(struct ibtrs_srv_con *con, int msg_id, s16 errno)
 {
-	struct ibtrs_srv_sess *sess = con->sess;
+	struct ibtrs_srv_sess *sess = to_srv_sess(con->c.sess);
 	enum ib_send_flags flags;
 	u32 imm;
 	int err;
@@ -599,7 +606,7 @@ static int send_io_resp_imm(struct ibtrs_srv_con *con, int msg_id, s16 errno)
 int ibtrs_srv_resp_rdma(struct ibtrs_srv_op *id, int status)
 {
 	struct ibtrs_srv_con *con = id->con;
-	struct ibtrs_srv_sess *sess = con->sess;
+	struct ibtrs_srv_sess *sess = to_srv_sess(con->c.sess);
 	int err;
 
 	if (unlikely(!id))
@@ -1035,18 +1042,15 @@ static int alloc_sess_bufs(struct ibtrs_srv_sess *sess)
 
 static void ibtrs_srv_hb_err_handler(struct ibtrs_con *c, int err)
 {
-	struct ibtrs_srv_con *con;
-
 	(void)err;
-	con = container_of(c, typeof(*con), c);
-	close_sess(con->sess);
+	close_sess(to_srv_sess(c->sess));
 }
 
 
 static void ibtrs_srv_hb_and_ack_done(struct ib_cq *cq, struct ib_wc *wc)
 {
 	struct ibtrs_srv_con *con = cq->cq_context;
-	struct ibtrs_srv_sess *sess = con->sess;
+	struct ibtrs_srv_sess *sess = to_srv_sess(con->c.sess);
 
 	if (unlikely(wc->status != IB_WC_SUCCESS)) {
 		ibtrs_err(sess, "Failed ACK: %s\n",
@@ -1075,7 +1079,7 @@ static void ibtrs_srv_stop_hb(struct ibtrs_srv_sess *sess)
 
 static void ibtrs_srv_update_wc_stats(struct ibtrs_srv_con *con)
 {
-	struct ibtrs_srv_sess *sess = con->sess;
+	struct ibtrs_srv_sess *sess = to_srv_sess(con->c.sess);
 
 	atomic64_inc(&sess->stats.wc_comp.calls);
 	atomic64_inc(&sess->stats.wc_comp.total_wc_cnt);
@@ -1084,7 +1088,7 @@ static void ibtrs_srv_update_wc_stats(struct ibtrs_srv_con *con)
 static void ibtrs_srv_info_rsp_done(struct ib_cq *cq, struct ib_wc *wc)
 {
 	struct ibtrs_srv_con *con = cq->cq_context;
-	struct ibtrs_srv_sess *sess = con->sess;
+	struct ibtrs_srv_sess *sess = to_srv_sess(con->c.sess);
 	struct ibtrs_srv_ctx *ctx = sess->ctx;
 	struct ibtrs_iu *iu;
 	int err;
@@ -1124,7 +1128,7 @@ static int post_recv_sess(struct ibtrs_srv_sess *sess);
 static int process_info_req(struct ibtrs_srv_con *con,
 			    struct ibtrs_msg_info_req *msg)
 {
-	struct ibtrs_srv_sess *sess = con->sess;
+	struct ibtrs_srv_sess *sess = to_srv_sess(con->c.sess);
 	struct ibtrs_msg_info_rsp *rsp;
 	struct ibtrs_iu *tx_iu;
 	size_t tx_sz;
@@ -1167,7 +1171,7 @@ static int process_info_req(struct ibtrs_srv_con *con,
 static void ibtrs_srv_info_req_done(struct ib_cq *cq, struct ib_wc *wc)
 {
 	struct ibtrs_srv_con *con = cq->cq_context;
-	struct ibtrs_srv_sess *sess = con->sess;
+	struct ibtrs_srv_sess *sess = to_srv_sess(con->c.sess);
 	struct ibtrs_msg_info_req *msg;
 	struct ibtrs_iu *iu;
 	int err;
@@ -1207,7 +1211,7 @@ close:
 
 static int post_recv_info_req(struct ibtrs_srv_con *con)
 {
-	struct ibtrs_srv_sess *sess = con->sess;
+	struct ibtrs_srv_sess *sess = to_srv_sess(con->c.sess);
 	struct ibtrs_iu *rx_iu;
 	int err;
 
@@ -1231,7 +1235,7 @@ static int post_recv_info_req(struct ibtrs_srv_con *con)
 
 static int post_recv_io(struct ibtrs_srv_con *con)
 {
-	struct ibtrs_srv_sess *sess = con->sess;
+	struct ibtrs_srv_sess *sess = to_srv_sess(con->c.sess);
 	int i, err;
 
 	for (i = 0; i < sess->queue_depth; i++) {
@@ -1245,7 +1249,7 @@ static int post_recv_io(struct ibtrs_srv_con *con)
 
 static int post_recv_usr(struct ibtrs_srv_con *con)
 {
-	struct ibtrs_srv_sess *sess = con->sess;
+	struct ibtrs_srv_sess *sess = to_srv_sess(con->c.sess);
 	struct ibtrs_iu *iu;
 	int i, err;
 
@@ -1291,7 +1295,7 @@ static void process_rdma_write_req(struct ibtrs_srv_con *con,
 				   struct ibtrs_msg_req_rdma_write *req,
 				   u32 buf_id, u32 off)
 {
-	struct ibtrs_srv_sess *sess = con->sess;
+	struct ibtrs_srv_sess *sess = to_srv_sess(con->c.sess);
 	struct ibtrs_srv_ctx *ctx = sess->ctx;
 	struct ibtrs_srv_op *id;
 	size_t sg_cnt;
@@ -1350,7 +1354,7 @@ static void process_rdma_write(struct ibtrs_srv_con *con,
 			       struct ibtrs_msg_rdma_write *req,
 			       u32 buf_id, u32 off)
 {
-	struct ibtrs_srv_sess *sess = con->sess;
+	struct ibtrs_srv_sess *sess = to_srv_sess(con->c.sess);
 	struct ibtrs_srv_ctx *ctx = sess->ctx;
 	struct ibtrs_srv_op *id;
 	int ret;
@@ -1390,7 +1394,7 @@ send_err_msg:
 
 static int ibtrs_send_usr_ack(struct ibtrs_srv_con *con)
 {
-	struct ibtrs_srv_sess *sess = con->sess;
+	struct ibtrs_srv_sess *sess = to_srv_sess(con->c.sess);
 	int err;
 
 	if (unlikely(sess->state != IBTRS_SRV_CONNECTED)) {
@@ -1413,7 +1417,7 @@ static int ibtrs_send_usr_ack(struct ibtrs_srv_con *con)
 static void process_io_req(struct ibtrs_srv_con *con, void *msg,
 			   u32 id, u32 off)
 {
-	struct ibtrs_srv_sess *sess = con->sess;
+	struct ibtrs_srv_sess *sess = to_srv_sess(con->c.sess);
 	unsigned type;
 
 	type = le16_to_cpu(le16_to_cpu(*(__le16 *)msg));
@@ -1440,7 +1444,7 @@ err:
 static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 {
 	struct ibtrs_srv_con *con = cq->cq_context;
-	struct ibtrs_srv_sess *sess = con->sess;
+	struct ibtrs_srv_sess *sess = to_srv_sess(con->c.sess);
 	u32 imm, msg_id, off;
 	void *buf;
 	int err;
@@ -1502,7 +1506,7 @@ static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 static void ibtrs_srv_usr_send_done(struct ib_cq *cq, struct ib_wc *wc)
 {
 	struct ibtrs_srv_con *con = cq->cq_context;
-	struct ibtrs_srv_sess *sess = con->sess;
+	struct ibtrs_srv_sess *sess = to_srv_sess(con->c.sess);
 	struct ibtrs_iu *iu;
 
 	WARN_ON(con->cid);
@@ -1541,7 +1545,7 @@ static void __process_usr(struct ibtrs_srv_sess *sess,
 
 static int process_usr(struct ibtrs_srv_con *con, struct ib_wc *wc)
 {
-	struct ibtrs_srv_sess *sess = con->sess;
+	struct ibtrs_srv_sess *sess = to_srv_sess(con->c.sess);
 	struct ibtrs_msg_user *msg;
 	int err = -EMSGSIZE;
 	struct ibtrs_iu *iu;
@@ -1584,7 +1588,7 @@ out:
 
 static int process_usr_ack(struct ibtrs_srv_con *con, struct ib_wc *wc)
 {
-	struct ibtrs_srv_sess *sess = con->sess;
+	struct ibtrs_srv_sess *sess = to_srv_sess(con->c.sess);
 	struct ibtrs_iu *iu;
 	int err;
 
@@ -1600,7 +1604,7 @@ static int process_usr_ack(struct ibtrs_srv_con *con, struct ib_wc *wc)
 
 static int process_hb(struct ibtrs_srv_con *con, struct ib_wc *wc)
 {
-	struct ibtrs_srv_sess *sess = con->sess;
+	struct ibtrs_srv_sess *sess = to_srv_sess(con->c.sess);
 	struct ibtrs_iu *iu;
 	int err;
 
@@ -1615,7 +1619,7 @@ static int process_hb(struct ibtrs_srv_con *con, struct ib_wc *wc)
 static void ibtrs_srv_usr_recv_done(struct ib_cq *cq, struct ib_wc *wc)
 {
 	struct ibtrs_srv_con *con = cq->cq_context;
-	struct ibtrs_srv_sess *sess = con->sess;
+	struct ibtrs_srv_sess *sess = to_srv_sess(con->c.sess);
 	u32 imm;
 	int err;
 
@@ -1820,7 +1824,7 @@ static int create_con(struct ibtrs_srv_sess *sess,
 	}
 
 	con->c.cm_id = cm_id;
-	con->sess = sess;
+	con->c.sess = &sess->s;
 	con->cid = cid;
 	atomic_set(&con->wr_cnt, 0);
 
@@ -2026,13 +2030,11 @@ static int ibtrs_srv_rdma_cm_handler(struct rdma_cm_id *cm_id,
 				     struct rdma_cm_event *event)
 {
 	struct ibtrs_srv_sess *sess = NULL;
-	struct ibtrs_srv_con *con = NULL;
 
 	if (cm_id->qp) {
-		struct ibtrs_con *ibtrs_con = cm_id->qp->qp_context;
+		struct ibtrs_con *c = cm_id->qp->qp_context;
 
-		con = container_of(ibtrs_con, struct ibtrs_srv_con, c);
-		sess = con->sess;
+		sess = to_srv_sess(c->sess);
 	}
 
 	switch (event->event) {
