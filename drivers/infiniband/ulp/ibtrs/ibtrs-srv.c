@@ -1075,8 +1075,10 @@ static void ibtrs_srv_stop_hb(struct ibtrs_srv_sess *sess)
 
 static void ibtrs_srv_update_wc_stats(struct ibtrs_srv_con *con)
 {
-	atomic64_inc(&con->sess->stats.wc_comp.calls);
-	atomic64_inc(&con->sess->stats.wc_comp.total_wc_cnt);
+	struct ibtrs_srv_sess *sess = con->sess;
+
+	atomic64_inc(&sess->stats.wc_comp.calls);
+	atomic64_inc(&sess->stats.wc_comp.total_wc_cnt);
 }
 
 static void ibtrs_srv_info_rsp_done(struct ib_cq *cq, struct ib_wc *wc)
@@ -1321,7 +1323,7 @@ static void process_rdma_write_req(struct ibtrs_srv_con *con,
 	}
 
 	id->data_dma_addr = sess->rcv_buf_pool->rcv_bufs[buf_id].rdma_addr;
-	ret = ctx->ops.rdma_ev(con->sess, sess->priv, id,
+	ret = ctx->ops.rdma_ev(sess, sess->priv, id,
 			       IBTRS_SRV_RDMA_EV_WRITE_REQ,
 			       sess->rcv_buf_pool->rcv_bufs[buf_id].buf, off);
 
@@ -1360,7 +1362,7 @@ static void process_rdma_write(struct ibtrs_srv_con *con,
 		return;
 	}
 	ibtrs_srv_update_rdma_stats(&sess->stats, off, false);
-	id = con->sess->ops_ids[buf_id];
+	id = sess->ops_ids[buf_id];
 	id->con    = con;
 	id->dir    = WRITE;
 	id->msg_id = buf_id;
@@ -1388,10 +1390,8 @@ send_err_msg:
 
 static int ibtrs_send_usr_ack(struct ibtrs_srv_con *con)
 {
-	struct ibtrs_srv_sess *sess;
+	struct ibtrs_srv_sess *sess = con->sess;
 	int err;
-
-	sess = con->sess;
 
 	if (unlikely(sess->state != IBTRS_SRV_CONNECTED)) {
 		ibtrs_err_rl(sess, "Sending user msg ack failed, disconnected,"
