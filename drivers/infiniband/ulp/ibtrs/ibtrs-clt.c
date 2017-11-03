@@ -2375,8 +2375,8 @@ static void ibtrs_clt_close_work(struct work_struct *work);
 
 static struct ibtrs_clt_sess *alloc_sess(const struct ibtrs_clt_ops *ops,
 					 const char *sessname,
-					 const struct sockaddr *src_addr,
-					 const struct sockaddr *dst_addr,
+					 const struct ibtrs_addr *paths,
+					 size_t path_cnt,
 					 short port, size_t con_num,
 					 size_t pdu_sz, u8 reconnect_delay_sec,
 					 u16 max_segments,
@@ -2395,17 +2395,17 @@ static struct ibtrs_clt_sess *alloc_sess(const struct ibtrs_clt_ops *ops,
 
 	mutex_init(&sess->init_mutex);
 	uuid_gen(&sess->s.uuid);
-	memcpy(&sess->s.dst_addr, dst_addr,
-	       rdma_addr_size((struct sockaddr *)dst_addr));
+	memcpy(&sess->s.dst_addr, paths[0].dst,
+	       rdma_addr_size((struct sockaddr *)paths[0].dst));
 
 	/*
 	 * rdma_resolve_addr() passes src_addr to cma_bind_addr, which
 	 * checks the sa_family to be non-zero. If user passed src_addr=NULL
 	 * the sess->src_addr will contain only zeros, which is then fine.
 	 */
-	if (src_addr)
-		memcpy(&sess->s.src_addr, src_addr,
-		       rdma_addr_size((struct sockaddr *)src_addr));
+	if (paths[0].src)
+		memcpy(&sess->s.src_addr, paths[0].src,
+		       rdma_addr_size((struct sockaddr *)paths[0].src));
 	strlcpy(sess->s.sessname, sessname, sizeof(sess->s.sessname));
 	sess->s.con_num = con_num;
 	sess->pdu_sz = pdu_sz;
@@ -3317,7 +3317,7 @@ struct ibtrs_clt_sess *ibtrs_clt_open(const struct ibtrs_clt_ops *ops,
 		err = -EINVAL;
 		goto out;
 	}
-	sess = alloc_sess(ops, sessname, paths[0].src, paths[0].dst, port,
+	sess = alloc_sess(ops, sessname, paths, path_cnt, port,
 			  CONS_PER_SESSION, pdu_sz, reconnect_delay_sec,
 			  max_segments, max_reconnect_attempts);
 	if (unlikely(IS_ERR(sess))) {
