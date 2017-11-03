@@ -100,7 +100,14 @@ struct ibtrs_ib_dev {
 	u32			rkey;
 };
 
-struct ibtrs_con;
+struct ibtrs_con {
+	struct ibtrs_sess	*sess;
+	struct ib_qp		*qp;
+	struct ib_cq		*cq;
+	struct rdma_cm_id	*cm_id;
+	unsigned		cid;
+};
+
 typedef void (ibtrs_hb_handler_t)(struct ibtrs_con *con, int err);
 
 struct ibtrs_sess {
@@ -124,14 +131,6 @@ struct ibtrs_sess {
 	ibtrs_hb_handler_t	*hb_err_handler;
 	struct delayed_work	hb_dwork;
 	unsigned		hb_timeout_ms;
-};
-
-struct ibtrs_con {
-	struct ibtrs_sess	*sess;
-	struct ib_qp		*qp;
-	struct ib_cq		*cq;
-	struct rdma_cm_id	*cm_id;
-	unsigned		cid;
 };
 
 struct ibtrs_iu {
