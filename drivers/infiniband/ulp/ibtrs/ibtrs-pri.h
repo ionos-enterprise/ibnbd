@@ -96,6 +96,7 @@ struct ibtrs_ib_dev {
 	struct ib_pd		*pd;
 	struct ib_mr		*mr;
 	struct ib_device	*dev;
+	struct ib_device_attr	attrs;
 };
 
 struct ibtrs_addr {

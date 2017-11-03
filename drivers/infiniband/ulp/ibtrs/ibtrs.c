@@ -184,15 +184,30 @@ static void qp_event_handler(struct ib_event *ev, void *ctx)
 	}
 }
 
+static int ibtrs_query_device(struct ibtrs_ib_dev *ib_dev)
+{
+	struct ib_udata uhw = {.outlen = 0, .inlen = 0};
+
+	memset(&ib_dev->attrs, 0, sizeof(ib_dev->attrs));
+
+	return ib_dev->dev->query_device(ib_dev->dev, &ib_dev->attrs, &uhw);
+}
+
 static int ibtrs_ib_dev_init(struct ibtrs_ib_dev *d, struct ib_device *dev)
 {
+	int err;
+
 	d->pd = ib_alloc_pd(dev, IB_PD_UNSAFE_GLOBAL_RKEY);
 	if (IS_ERR(d->pd))
 		return PTR_ERR(d->pd);
 	d->mr = d->pd->__internal_mr;
 	d->dev = dev;
 
-	return 0;
+	err = ibtrs_query_device(d);
+	if (unlikely(err))
+		ib_dealloc_pd(d->pd);
+
+	return err;
 }
 
 static void ibtrs_ib_dev_destroy(struct ibtrs_ib_dev *d)
