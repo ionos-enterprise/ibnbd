@@ -1832,7 +1832,7 @@ static int create_con(struct ibtrs_srv_sess *sess,
 		wr_queue_size = USR_CON_BUF_SIZE + 1;
 	} else {
 		cq_size       = sess->queue_depth;
-		wr_queue_size = cm_id->device->attrs.max_qp_wr - 1;
+		wr_queue_size = sess->s.ib_dev->attrs.max_qp_wr - 1;
 	}
 
 	cq_vector = ibtrs_srv_get_next_cq_vector(sess);

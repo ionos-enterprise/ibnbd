@@ -1698,23 +1698,20 @@ out_err:
 
 static void query_fast_reg_mode(struct ibtrs_clt_sess *sess)
 {
-	struct ib_device_attr *dev_attr;
-	struct ib_device *ibdev;
+	struct ibtrs_ib_dev *ib_dev;
 	u64 max_pages_per_mr;
 	int mr_page_shift;
 
-	ibdev = sess->s.ib_dev->dev;
-	dev_attr = &ibdev->attrs;
-
-	if (ibdev->alloc_fmr && ibdev->dealloc_fmr &&
-	    ibdev->map_phys_fmr && ibdev->unmap_fmr) {
+	ib_dev = sess->s.ib_dev;
+	if (ib_dev->dev->alloc_fmr && ib_dev->dev->dealloc_fmr &&
+	    ib_dev->dev->map_phys_fmr && ib_dev->dev->unmap_fmr) {
 		sess->fast_reg_mode = IBTRS_FAST_MEM_FMR;
-		ibtrs_info(sess, "Device %s supports FMR\n", ibdev->name);
+		ibtrs_info(sess, "Device %s supports FMR\n", ib_dev->dev->name);
 	}
-	if (dev_attr->device_cap_flags & IB_DEVICE_MEM_MGT_EXTENSIONS &&
+	if (ib_dev->attrs.device_cap_flags & IB_DEVICE_MEM_MGT_EXTENSIONS &&
 	    use_fr) {
 		sess->fast_reg_mode = IBTRS_FAST_MEM_FR;
-		ibtrs_info(sess, "Device %s supports FR\n", ibdev->name);
+		ibtrs_info(sess, "Device %s supports FR\n", ib_dev->dev->name);
 	}
 
 	/*
@@ -1722,25 +1719,20 @@ static void query_fast_reg_mode(struct ibtrs_clt_sess *sess)
 	 * minimum of 4096 bytes. We're unlikely to build large sglists
 	 * out of smaller entries.
 	 */
-	mr_page_shift      = max(12, ffs(dev_attr->page_size_cap) - 1);
+	mr_page_shift      = max(12, ffs(ib_dev->attrs.page_size_cap) - 1);
 	sess->mr_page_size = 1 << mr_page_shift;
-	sess->max_sge      = dev_attr->max_sge;
+	sess->max_sge      = ib_dev->attrs.max_sge;
 	sess->mr_page_mask = ~((u64)sess->mr_page_size - 1);
-	max_pages_per_mr   = dev_attr->max_mr_size;
+	max_pages_per_mr   = ib_dev->attrs.max_mr_size;
 	do_div(max_pages_per_mr, sess->mr_page_size);
 	sess->max_pages_per_mr = min_t(u64, sess->max_pages_per_mr,
 				       max_pages_per_mr);
 	if (sess->fast_reg_mode == IBTRS_FAST_MEM_FR) {
-		sess->max_pages_per_mr = min_t(u32, sess->max_pages_per_mr,
-					  dev_attr->max_fast_reg_page_list_len);
+		sess->max_pages_per_mr =
+			min_t(u32, sess->max_pages_per_mr,
+			      ib_dev->attrs.max_fast_reg_page_list_len);
 	}
 	sess->mr_max_size = sess->mr_page_size * sess->max_pages_per_mr;
-
-	pr_debug("%s: mr_page_shift = %d, dev_attr->max_mr_size = %#llx, "
-		 "dev_attr->max_fast_reg_page_list_len = %u, max_pages_per_mr = %d, "
-		 "mr_max_size = %#x\n", ibdev->name, mr_page_shift,
-		 dev_attr->max_mr_size, dev_attr->max_fast_reg_page_list_len,
-		 sess->max_pages_per_mr, sess->mr_max_size);
 }
 
 static int alloc_con_fast_pool(struct ibtrs_clt_con *con)
@@ -2522,7 +2514,7 @@ static int create_con_cq_qp(struct ibtrs_clt_con *con)
 
 		cq_size = sess->queue_depth;
 		num_wr = DIV_ROUND_UP(sess->max_pages_per_mr, sess->max_sge);
-		wr_queue_size = sess->s.ib_dev->dev->attrs.max_qp_wr - 1;
+		wr_queue_size = sess->s.ib_dev->attrs.max_qp_wr - 1;
 		wr_queue_size = min_t(int, wr_queue_size,
 				      sess->queue_depth * num_wr *
 				      (use_fr ? 3 : 2));
