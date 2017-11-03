@@ -148,7 +148,7 @@ static int ibnbd_clt_parse_map_options(const char *buf,
 				goto out;
 			}
 			if (strlen(p) > NAME_MAX) {
-				pr_err("map_device: source name too long\n");
+				pr_err("map_device: sessname too long\n");
 				ret = -EINVAL;
 				kfree(p);
 				goto out;
