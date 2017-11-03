@@ -235,7 +235,6 @@ struct ibtrs_srv_ctx {
 
 struct ibtrs_srv_con {
 	struct ibtrs_con	c;
-	unsigned		cid;
 	atomic_t		wr_cnt;
 };
 
@@ -1176,7 +1175,7 @@ static void ibtrs_srv_info_req_done(struct ib_cq *cq, struct ib_wc *wc)
 	struct ibtrs_iu *iu;
 	int err;
 
-	WARN_ON(con->cid);
+	WARN_ON(con->c.cid);
 
 	iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
 	if (unlikely(wc->status != IB_WC_SUCCESS)) {
@@ -1265,7 +1264,7 @@ static int post_recv_usr(struct ibtrs_srv_con *con)
 
 static int post_recv(struct ibtrs_srv_con *con)
 {
-	if (con->cid == 0)
+	if (con->c.cid == 0)
 		return post_recv_usr(con);
 	return post_recv_io(con);
 }
@@ -1449,7 +1448,7 @@ static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 	void *buf;
 	int err;
 
-	WARN_ON(!con->cid);
+	WARN_ON(!con->c.cid);
 
 	if (unlikely(wc->status != IB_WC_SUCCESS)) {
 		if (wc->status != IB_WC_WR_FLUSH_ERR) {
@@ -1509,7 +1508,7 @@ static void ibtrs_srv_usr_send_done(struct ib_cq *cq, struct ib_wc *wc)
 	struct ibtrs_srv_sess *sess = to_srv_sess(con->c.sess);
 	struct ibtrs_iu *iu;
 
-	WARN_ON(con->cid);
+	WARN_ON(con->c.cid);
 
 	iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
 	ibtrs_iu_usrtx_return(&sess->s, iu);
@@ -1623,7 +1622,7 @@ static void ibtrs_srv_usr_recv_done(struct ib_cq *cq, struct ib_wc *wc)
 	u32 imm;
 	int err;
 
-	WARN_ON(con->cid);
+	WARN_ON(con->c.cid);
 
 	if (unlikely(wc->status != IB_WC_SUCCESS)) {
 		if (wc->status != IB_WC_WR_FLUSH_ERR) {
@@ -1825,10 +1824,10 @@ static int create_con(struct ibtrs_srv_sess *sess,
 
 	con->c.cm_id = cm_id;
 	con->c.sess = &sess->s;
-	con->cid = cid;
+	con->c.cid = cid;
 	atomic_set(&con->wr_cnt, 0);
 
-	if (con->cid == 0) {
+	if (con->c.cid == 0) {
 		cq_size       = USR_CON_BUF_SIZE + 1;
 		wr_queue_size = USR_CON_BUF_SIZE + 1;
 	} else {
@@ -1845,7 +1844,7 @@ static int create_con(struct ibtrs_srv_sess *sess,
 		ibtrs_err(sess, "ibtrs_cq_qp_create(), err: %d\n", err);
 		goto free_con;
 	}
-	if (con->cid == 0) {
+	if (con->c.cid == 0) {
 		err = post_recv_info_req(con);
 		if (unlikely(err))
 			goto free_cqqp;

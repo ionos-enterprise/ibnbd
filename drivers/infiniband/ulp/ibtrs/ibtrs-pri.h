@@ -132,6 +132,7 @@ struct ibtrs_con {
 	struct ib_qp		*qp;
 	struct ib_cq		*cq;
 	struct rdma_cm_id	*cm_id;
+	unsigned		cid;
 };
 
 struct ibtrs_iu {

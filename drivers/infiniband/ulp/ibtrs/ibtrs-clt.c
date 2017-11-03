@@ -141,7 +141,6 @@ struct rdma_req {
 
 struct ibtrs_clt_con {
 	struct ibtrs_con	c;
-	unsigned		cid;
 	unsigned		cpu;
 	atomic_t		io_cnt;
 	struct ibtrs_fr_pool	*fr_pool;
@@ -1285,7 +1284,7 @@ static void ibtrs_clt_update_wc_stats(struct ibtrs_clt_con *con)
 				     "%d, state %s, user: %s\n",
 				     con->cpu, cpu,
 				     ibtrs_clt_state_str(sess->state),
-				     con->cid == 0 ? "true" : "false");
+				     con->c.cid == 0 ? "true" : "false");
 		atomic_inc(&sess->stats.cpu_migr.from[con->cpu]);
 		sess->stats.cpu_migr.to[cpu]++;
 	}
@@ -1304,7 +1303,7 @@ static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 	u32 imm, msg_id;
 	int err;
 
-	WARN_ON(!con->cid);
+	WARN_ON(!con->c.cid);
 
 	if (unlikely(wc->status != IB_WC_SUCCESS)) {
 		if (wc->status != IB_WC_WR_FLUSH_ERR) {
@@ -1448,7 +1447,7 @@ static void ibtrs_clt_usr_recv_done(struct ib_cq *cq, struct ib_wc *wc)
 	u32 imm;
 	int err;
 
-	WARN_ON(con->cid);
+	WARN_ON(con->c.cid);
 
 	if (unlikely(wc->status != IB_WC_SUCCESS)) {
 		if (wc->status != IB_WC_WR_FLUSH_ERR) {
@@ -1521,7 +1520,7 @@ static int post_recv_usr(struct ibtrs_clt_con *con)
 
 static int post_recv(struct ibtrs_clt_con *con)
 {
-	if (con->cid == 0)
+	if (con->c.cid == 0)
 		return post_recv_usr(con);
 	return post_recv_io(con);
 }
@@ -2453,7 +2452,7 @@ static int create_con(struct ibtrs_clt_sess *sess, unsigned cid)
 
 	/* Map first two connections to the first CPU */
 	con->cpu  = (cid ? cid - 1 : 0) % num_online_cpus();
-	con->cid = cid;
+	con->c.cid = cid;
 	con->c.sess = &sess->s;
 	atomic_set(&con->io_cnt, 0);
 
@@ -2466,7 +2465,7 @@ static void destroy_con(struct ibtrs_clt_con *con)
 {
 	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
 
-	sess->s.con[con->cid] = NULL;
+	sess->s.con[con->c.cid] = NULL;
 	kfree(con);
 }
 
@@ -2485,7 +2484,7 @@ static int create_con_cq_qp(struct ibtrs_clt_con *con)
 	 * called many times.
 	 */
 
-	if (con->cid == 0) {
+	if (con->c.cid == 0) {
 		cq_size	      = USR_CON_BUF_SIZE + 1;
 		wr_queue_size = USR_CON_BUF_SIZE + 1;
 
@@ -2540,7 +2539,7 @@ static int create_con_cq_qp(struct ibtrs_clt_con *con)
 	if (unlikely(err))
 		return err;
 
-	if (con->cid) {
+	if (con->c.cid) {
 		err = alloc_con_fast_pool(con);
 		if (unlikely(err))
 			ibtrs_cq_qp_destroy(&con->c);
@@ -2559,7 +2558,7 @@ static void destroy_con_cq_qp(struct ibtrs_clt_con *con)
 	 */
 
 	ibtrs_cq_qp_destroy(&con->c);
-	if (con->cid != 0)
+	if (con->c.cid != 0)
 		free_con_fast_pool(con);
 	if (sess->s.ib_dev_ref && !--sess->s.ib_dev_ref) {
 		ibtrs_ib_dev_put(sess->s.ib_dev);
@@ -2879,7 +2878,7 @@ static int ibtrs_rdma_route_resolved(struct ibtrs_clt_con *con)
 	msg.__ip_version = 0;
 	msg.magic = cpu_to_le16(IBTRS_MAGIC);
 	msg.version = cpu_to_le16(IBTRS_VERSION);
-	msg.cid = cpu_to_le16(con->cid);
+	msg.cid = cpu_to_le16(con->c.cid);
 	msg.cid_num = cpu_to_le16(sess->s.con_num);
 	msg.recon_cnt = cpu_to_le16(sess->s.recon_cnt);
 	uuid_copy(&msg.uuid, &sess->s.uuid);
@@ -2922,7 +2921,7 @@ static int ibtrs_rdma_conn_established(struct ibtrs_clt_con *con,
 			  errno);
 		return -ECONNRESET;
 	}
-	if (con->cid == 0) {
+	if (con->c.cid == 0) {
 		queue_depth = le16_to_cpu(msg->queue_depth);
 
 		if (queue_depth > MAX_SESS_QUEUE_DEPTH) {
@@ -3134,7 +3133,7 @@ static void ibtrs_clt_info_rsp_done(struct ib_cq *cq, struct ib_wc *wc)
 
 	state = IBTRS_CLT_CONNECTING_ERR;
 
-	WARN_ON(con->cid);
+	WARN_ON(con->c.cid);
 	iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
 	if (unlikely(wc->status != IB_WC_SUCCESS)) {
 		ibtrs_err(sess, "Sess info response recv failed: %s\n",
