@@ -66,7 +66,7 @@ int ibtrs_iu_post_recv(struct ibtrs_con *con, struct ibtrs_iu *iu)
 
 	list.addr   = iu->dma_addr;
 	list.length = iu->size;
-	list.lkey   = sess->ib_dev->pd->local_dma_lkey;
+	list.lkey   = sess->ib_dev->lkey;
 
 	if (WARN_ON(list.length == 0)) {
 		ibtrs_wrn(con, "Posting receive work request failed,"
@@ -107,7 +107,7 @@ int ibtrs_iu_post_send(struct ibtrs_con *con, struct ibtrs_iu *iu, size_t size)
 
 	list.addr   = iu->dma_addr;
 	list.length = size;
-	list.lkey   = sess->ib_dev->mr->lkey;
+	list.lkey   = sess->ib_dev->lkey;
 
 	memset(&wr, 0, sizeof(wr));
 	wr.next       = NULL;
@@ -200,8 +200,9 @@ static int ibtrs_ib_dev_init(struct ibtrs_ib_dev *d, struct ib_device *dev)
 	d->pd = ib_alloc_pd(dev, IB_PD_UNSAFE_GLOBAL_RKEY);
 	if (IS_ERR(d->pd))
 		return PTR_ERR(d->pd);
-	d->mr = d->pd->__internal_mr;
 	d->dev = dev;
+	d->lkey = d->pd->local_dma_lkey;
+	d->rkey = d->pd->unsafe_global_rkey;
 
 	err = ibtrs_query_device(d);
 	if (unlikely(err))
@@ -214,9 +215,10 @@ static void ibtrs_ib_dev_destroy(struct ibtrs_ib_dev *d)
 {
 	if (d->pd) {
 		ib_dealloc_pd(d->pd);
-		d->mr = NULL;
 		d->pd = NULL;
 		d->dev = NULL;
+		d->lkey = 0;
+		d->rkey = 0;
 	}
 }
 

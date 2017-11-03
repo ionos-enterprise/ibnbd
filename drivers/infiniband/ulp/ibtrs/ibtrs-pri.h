@@ -94,9 +94,10 @@ struct ibtrs_ib_dev {
 	struct list_head	entry;
 	struct kref		ref;
 	struct ib_pd		*pd;
-	struct ib_mr		*mr;
 	struct ib_device	*dev;
 	struct ib_device_attr	attrs;
+	u32			lkey;
+	u32			rkey;
 };
 
 struct ibtrs_addr {

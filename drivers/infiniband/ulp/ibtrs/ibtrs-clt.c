@@ -903,7 +903,7 @@ static int ibtrs_post_send_rdma(struct ibtrs_clt_con *con, struct rdma_req *req,
 	/* user data and user message in the first list element */
 	list[0].addr   = req->iu->dma_addr;
 	list[0].length = req->sg_size;
-	list[0].lkey   = sess->s.ib_dev->pd->local_dma_lkey;
+	list[0].lkey   = sess->s.ib_dev->lkey;
 
 	/*
 	 * From time to time we have to post signalled sends,
@@ -942,7 +942,7 @@ static void ibtrs_set_rdma_desc_last(struct ibtrs_clt_con *con,
 
 	list[i].addr   = req->iu->dma_addr;
 	list[i].length = size;
-	list[i].lkey   = sess->s.ib_dev->pd->local_dma_lkey;
+	list[i].lkey   = sess->s.ib_dev->lkey;
 
 	wr->wr.wr_cqe = &req->iu->cqe;
 	wr->wr.sg_list = &list[m];
@@ -1040,7 +1040,7 @@ static int ibtrs_post_send_rdma_desc(struct ibtrs_clt_con *con,
 			ibtrs_set_sge_with_desc(&list[i], desc);
 		list[i].addr   = req->iu->dma_addr;
 		list[i].length = size;
-		list[i].lkey   = sess->s.ib_dev->pd->local_dma_lkey;
+		list[i].lkey   = sess->s.ib_dev->lkey;
 
 		/*
 		 * From time to time we have to post signalled sends,
@@ -1080,11 +1080,11 @@ static int ibtrs_post_send_rdma_more(struct ibtrs_clt_con *con,
 	for_each_sg(req->sglist, sg, req->sg_cnt, i) {
 		list[i].addr   = ib_sg_dma_address(ibdev, sg);
 		list[i].length = ib_sg_dma_len(ibdev, sg);
-		list[i].lkey   = sess->s.ib_dev->pd->local_dma_lkey;
+		list[i].lkey   = sess->s.ib_dev->lkey;
 	}
 	list[i].addr   = req->iu->dma_addr;
 	list[i].length = size;
-	list[i].lkey   = sess->s.ib_dev->pd->local_dma_lkey;
+	list[i].lkey   = sess->s.ib_dev->lkey;
 
 	/*
 	 * From time to time we have to post signalled sends,
@@ -3629,7 +3629,7 @@ static int ibtrs_clt_request_rdma_write_sg(struct ibtrs_clt_con *con,
 			msg->desc[i].addr =
 				cpu_to_le64(ib_sg_dma_address(ibdev->dev, sg));
 			msg->desc[i].key =
-				cpu_to_le32(ibdev->mr->rkey);
+				cpu_to_le32(ibdev->rkey);
 			msg->desc[i].len =
 				cpu_to_le32(ib_sg_dma_len(ibdev->dev, sg));
 		}

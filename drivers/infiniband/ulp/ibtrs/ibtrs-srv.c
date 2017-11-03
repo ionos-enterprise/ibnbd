@@ -537,7 +537,7 @@ static int rdma_write_sg(struct ibtrs_srv_op *id)
 			return -EINVAL;
 		}
 
-		list->lkey = sess->s.ib_dev->pd->local_dma_lkey;
+		list->lkey = sess->s.ib_dev->lkey;
 		offset += list->length;
 
 		wr->wr.wr_cqe	= &io_comp_cqe;
@@ -1765,7 +1765,7 @@ static int ibtrs_rdma_do_accept(struct ibtrs_srv_sess *sess,
 	msg.version = cpu_to_le16(IBTRS_VERSION);
 	msg.errno = 0;
 	msg.queue_depth = cpu_to_le16(sess->queue_depth);
-	msg.rkey = cpu_to_le32(sess->s.ib_dev->pd->unsafe_global_rkey);
+	msg.rkey = cpu_to_le32(sess->s.ib_dev->rkey);
 	msg.max_io_size = cpu_to_le32(max_io_size);
 	msg.max_req_size = cpu_to_le32(MAX_REQ_SIZE);
 	uuid_copy(&msg.uuid, &sess->s.uuid);
