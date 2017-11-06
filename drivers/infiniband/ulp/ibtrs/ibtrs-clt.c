@@ -184,58 +184,58 @@ static inline void ibtrs_clt_state_unlock(void)
 	rcu_read_unlock();
 }
 
-static void ibtrs_clt_free_sg_list_distr_stats(struct ibtrs_clt_sess *sess)
+static void ibtrs_clt_free_sg_list_distr_stats(struct ibtrs_clt_stats *stats)
 {
 	int i;
 
 	for (i = 0; i < num_online_cpus(); i++)
-		kfree(sess->stats.sg_list_distr[i]);
-	kfree(sess->stats.sg_list_distr);
-	sess->stats.sg_list_distr = NULL;
-	kfree(sess->stats.sg_list_total);
-	sess->stats.sg_list_total = NULL;
+		kfree(stats->sg_list_distr[i]);
+	kfree(stats->sg_list_distr);
+	stats->sg_list_distr = NULL;
+	kfree(stats->sg_list_total);
+	stats->sg_list_total = NULL;
 }
 
-static void ibtrs_clt_free_cpu_migr_stats(struct ibtrs_clt_sess *sess)
+static void ibtrs_clt_free_cpu_migr_stats(struct ibtrs_clt_stats *stats)
 {
-	kfree(sess->stats.cpu_migr.to);
-	sess->stats.cpu_migr.to = NULL;
-	kfree(sess->stats.cpu_migr.from);
-	sess->stats.cpu_migr.from = NULL;
+	kfree(stats->cpu_migr.to);
+	stats->cpu_migr.to = NULL;
+	kfree(stats->cpu_migr.from);
+	stats->cpu_migr.from = NULL;
 }
 
-static void ibtrs_clt_free_rdma_lat_stats(struct ibtrs_clt_sess *sess)
+static void ibtrs_clt_free_rdma_lat_stats(struct ibtrs_clt_stats *stats)
 {
 	int i;
 
 	for (i = 0; i < num_online_cpus(); i++)
-		kfree(sess->stats.rdma_lat_distr[i]);
+		kfree(stats->rdma_lat_distr[i]);
 
-	kfree(sess->stats.rdma_lat_distr);
-	sess->stats.rdma_lat_distr = NULL;
-	kfree(sess->stats.rdma_lat_max);
-	sess->stats.rdma_lat_max = NULL;
+	kfree(stats->rdma_lat_distr);
+	stats->rdma_lat_distr = NULL;
+	kfree(stats->rdma_lat_max);
+	stats->rdma_lat_max = NULL;
 }
 
-static void ibtrs_clt_free_wc_comp_stats(struct ibtrs_clt_sess *sess)
+static void ibtrs_clt_free_wc_comp_stats(struct ibtrs_clt_stats *stats)
 {
-	kfree(sess->stats.wc_comp);
-	sess->stats.wc_comp = NULL;
+	kfree(stats->wc_comp);
+	stats->wc_comp = NULL;
 }
 
-static void ibtrs_clt_free_rdma_stats(struct ibtrs_clt_sess *sess)
+static void ibtrs_clt_free_rdma_stats(struct ibtrs_clt_stats *stats)
 {
-	kfree(sess->stats.rdma_stats);
-	sess->stats.rdma_stats = NULL;
+	kfree(stats->rdma_stats);
+	stats->rdma_stats = NULL;
 }
 
-static void ibtrs_clt_free_stats(struct ibtrs_clt_sess *sess)
+static void ibtrs_clt_free_stats(struct ibtrs_clt_stats *stats)
 {
-	ibtrs_clt_free_rdma_stats(sess);
-	ibtrs_clt_free_rdma_lat_stats(sess);
-	ibtrs_clt_free_cpu_migr_stats(sess);
-	ibtrs_clt_free_sg_list_distr_stats(sess);
-	ibtrs_clt_free_wc_comp_stats(sess);
+	ibtrs_clt_free_rdma_stats(stats);
+	ibtrs_clt_free_rdma_lat_stats(stats);
+	ibtrs_clt_free_cpu_migr_stats(stats);
+	ibtrs_clt_free_sg_list_distr_stats(stats);
+	ibtrs_clt_free_wc_comp_stats(stats);
 }
 
 int ibtrs_clt_get_user_queue_depth(struct ibtrs_clt_sess *sess)
@@ -1904,12 +1904,12 @@ int ibtrs_clt_reset_wc_comp_stats(struct ibtrs_clt_sess *sess, bool enable)
 	return -EINVAL;
 }
 
-static int ibtrs_clt_init_wc_comp_stats(struct ibtrs_clt_sess *sess)
+static int ibtrs_clt_init_wc_comp_stats(struct ibtrs_clt_stats *stats)
 {
-	sess->stats.wc_comp = kcalloc(num_online_cpus(),
-				      sizeof(*sess->stats.wc_comp),
-				      GFP_KERNEL);
-	if (unlikely(!sess->stats.wc_comp))
+	stats->wc_comp = kcalloc(num_online_cpus(),
+				 sizeof(*stats->wc_comp),
+				 GFP_KERNEL);
+	if (unlikely(!stats->wc_comp))
 		return -ENOMEM;
 
 	return 0;
@@ -1930,20 +1930,20 @@ int ibtrs_clt_reset_cpu_migr_stats(struct ibtrs_clt_sess *sess, bool enable)
 	return -EINVAL;
 }
 
-static int ibtrs_clt_init_cpu_migr_stats(struct ibtrs_clt_sess *sess)
+static int ibtrs_clt_init_cpu_migr_stats(struct ibtrs_clt_stats *stats)
 {
-	sess->stats.cpu_migr.from = kcalloc(num_online_cpus(),
-					    sizeof(*sess->stats.cpu_migr.from),
-					    GFP_KERNEL);
-	if (unlikely(!sess->stats.cpu_migr.from))
+	stats->cpu_migr.from = kcalloc(num_online_cpus(),
+				       sizeof(*stats->cpu_migr.from),
+				       GFP_KERNEL);
+	if (unlikely(!stats->cpu_migr.from))
 		return -ENOMEM;
 
-	sess->stats.cpu_migr.to = kcalloc(num_online_cpus(),
-					  sizeof(*sess->stats.cpu_migr.to),
-					  GFP_KERNEL);
-	if (unlikely(!sess->stats.cpu_migr.to)) {
-		kfree(sess->stats.cpu_migr.from);
-		sess->stats.cpu_migr.from = NULL;
+	stats->cpu_migr.to = kcalloc(num_online_cpus(),
+				     sizeof(*stats->cpu_migr.to),
+				     GFP_KERNEL);
+	if (unlikely(!stats->cpu_migr.to)) {
+		kfree(stats->cpu_migr.from);
+		stats->cpu_migr.from = NULL;
 
 		return -ENOMEM;
 	}
@@ -1951,7 +1951,7 @@ static int ibtrs_clt_init_cpu_migr_stats(struct ibtrs_clt_sess *sess)
 	return 0;
 }
 
-static int ibtrs_clt_init_sg_list_distr_stats(struct ibtrs_clt_sess *sess)
+static int ibtrs_clt_init_sg_list_distr_stats(struct ibtrs_clt_stats *stats)
 {
 	u64 **list_d, *list_t;
 	int i;
@@ -1970,8 +1970,8 @@ static int ibtrs_clt_init_sg_list_distr_stats(struct ibtrs_clt_sess *sess)
 	if (unlikely(!list_t))
 		goto err;
 
-	sess->stats.sg_list_distr = list_d;
-	sess->stats.sg_list_total = list_t;
+	stats->sg_list_distr = list_d;
+	stats->sg_list_total = list_t;
 
 	return 0;
 
@@ -2066,9 +2066,8 @@ int ibtrs_clt_reset_rdma_lat_distr_stats(struct ibtrs_clt_sess *sess,
 	return 0;
 }
 
-static int ibtrs_clt_init_rdma_lat_distr_stats(struct ibtrs_clt_sess *sess)
+static int ibtrs_clt_init_rdma_lat_distr_stats(struct ibtrs_clt_stats *s)
 {
-	struct ibtrs_clt_stats *s = &sess->stats;
 	int i;
 
 	s->rdma_lat_max = kzalloc(num_online_cpus() *
@@ -2119,10 +2118,8 @@ int ibtrs_clt_reset_rdma_stats(struct ibtrs_clt_sess *sess, bool enable)
 	return -EINVAL;
 }
 
-static int ibtrs_clt_init_rdma_stats(struct ibtrs_clt_sess *sess)
+static int ibtrs_clt_init_rdma_stats(struct ibtrs_clt_stats *s)
 {
-	struct ibtrs_clt_stats *s = &sess->stats;
-
 	s->rdma_stats = kcalloc(num_online_cpus(), sizeof(*s->rdma_stats),
 				GFP_KERNEL);
 	if (unlikely(!s->rdma_stats))
@@ -2154,53 +2151,40 @@ int ibtrs_clt_reset_all_stats(struct ibtrs_clt_sess *sess, bool enable)
 	return -EINVAL;
 }
 
-static int ibtrs_clt_init_stats(struct ibtrs_clt_sess *sess)
+static int ibtrs_clt_init_stats(struct ibtrs_clt_stats *stats)
 {
 	int err;
 
-	err = ibtrs_clt_init_sg_list_distr_stats(sess);
-	if (unlikely(err)) {
-		ibtrs_err(sess,
-			  "Failed to init S/G list distribution stats, err: %d\n",
-			  err);
+	err = ibtrs_clt_init_sg_list_distr_stats(stats);
+	if (unlikely(err))
 		return err;
-	}
-	err = ibtrs_clt_init_cpu_migr_stats(sess);
-	if (unlikely(err)) {
-		ibtrs_err(sess, "Failed to init CPU migration stats, err: %d\n",
-			  err);
+
+	err = ibtrs_clt_init_cpu_migr_stats(stats);
+	if (unlikely(err))
 		goto err_sg_list;
-	}
-	err = ibtrs_clt_init_rdma_lat_distr_stats(sess);
-	if (unlikely(err)) {
-		ibtrs_err(sess,
-			  "Failed to init RDMA lat distribution stats, err: %d\n",
-			  err);
+
+	err = ibtrs_clt_init_rdma_lat_distr_stats(stats);
+	if (unlikely(err))
 		goto err_migr;
-	}
-	err = ibtrs_clt_init_wc_comp_stats(sess);
-	if (unlikely(err)) {
-		ibtrs_err(sess, "Failed to init WC completion stats, err: %d\n",
-			  err);
+
+	err = ibtrs_clt_init_wc_comp_stats(stats);
+	if (unlikely(err))
 		goto err_rdma_lat;
-	}
-	err = ibtrs_clt_init_rdma_stats(sess);
-	if (unlikely(err)) {
-		ibtrs_err(sess, "Failed to init RDMA stats, err: %d\n",
-			  err);
+
+	err = ibtrs_clt_init_rdma_stats(stats);
+	if (unlikely(err))
 		goto err_wc_comp;
-	}
 
 	return 0;
 
 err_wc_comp:
-	ibtrs_clt_free_wc_comp_stats(sess);
+	ibtrs_clt_free_wc_comp_stats(stats);
 err_rdma_lat:
-	ibtrs_clt_free_rdma_lat_stats(sess);
+	ibtrs_clt_free_rdma_lat_stats(stats);
 err_migr:
-	ibtrs_clt_free_cpu_migr_stats(sess);
+	ibtrs_clt_free_cpu_migr_stats(stats);
 err_sg_list:
-	ibtrs_clt_free_sg_list_distr_stats(sess);
+	ibtrs_clt_free_sg_list_distr_stats(stats);
 
 	return err;
 }
@@ -2420,7 +2404,7 @@ static struct ibtrs_clt_sess *alloc_sess(const struct ibtrs_clt_ops *ops,
 	INIT_WORK(&sess->close_work, ibtrs_clt_close_work);
 	INIT_DELAYED_WORK(&sess->reconnect_dwork, ibtrs_clt_reconnect_work);
 
-	err = ibtrs_clt_init_stats(sess);
+	err = ibtrs_clt_init_stats(&sess->stats);
 	if (unlikely(err)) {
 		pr_err("Failed to initialize statistics\n");
 		goto err_free_con;
@@ -2438,7 +2422,7 @@ err:
 
 static void free_sess(struct ibtrs_clt_sess *sess)
 {
-	ibtrs_clt_free_stats(sess);
+	ibtrs_clt_free_stats(&sess->stats);
 	kfree(sess->s.con);
 	kfree(sess->srv_rdma_addr);
 	kfree(sess);
