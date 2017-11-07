@@ -612,14 +612,10 @@ static void ibnbd_softirq_done_fn(struct request *rq)
 		iu = blk_mq_rq_to_pdu(rq);
 		ibnbd_put_tag(sess, iu->tag);
 		blk_mq_end_request(rq, iu->status);
-		if (rq->rq_flags & RQF_SPECIAL_PAYLOAD)
-			__free_page(rq->special_vec.bv_page);
 		break;
 	case BLK_RQ:
 		iu = rq->special;
 		blk_end_request_all(rq, iu->status);
-		if (rq->rq_flags & RQF_SPECIAL_PAYLOAD)
-			__free_page(rq->special_vec.bv_page);
 		break;
 	default:
 		WARN(true, "dev->queue_mode , contains unexpected"
@@ -646,10 +642,6 @@ static void ibnbd_clt_rdma_ev(void *priv, enum ibtrs_clt_rdma_ev ev, int errno)
 		} else {
 			ibnbd_put_tag(dev->sess, iu->tag);
 			blk_mq_end_request(rq, iu->status);
-
-			if (rq->rq_flags & RQF_SPECIAL_PAYLOAD)
-				__free_page(rq->special_vec.bv_page);
-
 		}
 		break;
 	case BLK_RQ:
@@ -657,8 +649,6 @@ static void ibnbd_clt_rdma_ev(void *priv, enum ibtrs_clt_rdma_ev ev, int errno)
 			blk_complete_request(rq);
 		} else {
 			blk_end_request_all(rq, iu->status);
-			if (rq->rq_flags & RQF_SPECIAL_PAYLOAD)
-				__free_page(rq->special_vec.bv_page);
 		}
 		break;
 	default:
@@ -1120,20 +1110,6 @@ static const struct block_device_operations ibnbd_client_ops = {
 	.getgeo		= ibnbd_client_getgeo
 };
 
-static inline int ibnbd_clt_setup_discard(struct request *rq)
-{
-	struct page *page;
-
-	page = alloc_page(GFP_ATOMIC | __GFP_ZERO);
-	if (!page)
-		return -ENOMEM;
-	rq->special_vec.bv_page = page;
-	rq->special_vec.bv_offset = 0;
-	rq->special_vec.bv_len = PAGE_SIZE;
-	rq->rq_flags |= RQF_SPECIAL_PAYLOAD;
-	return 0;
-}
-
 static int ibnbd_client_xfer_request(struct ibnbd_clt_dev *dev,
 				     struct request *rq,
 				     struct ibnbd_iu *iu)
@@ -1145,11 +1121,6 @@ static int ibnbd_client_xfer_request(struct ibnbd_clt_dev *dev,
 	size_t size;
 	int err;
 
-	if (req_op(rq) == REQ_OP_DISCARD) {
-		err = ibnbd_clt_setup_discard(rq);
-		if (err)
-			return err;
-	}
 	iu->rq		= rq;
 	iu->dev		= dev;
 	iu->msg.sector	= blk_rq_pos(rq);
