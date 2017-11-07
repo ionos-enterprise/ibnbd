@@ -260,7 +260,7 @@ static int ibnbd_dev_blk_submit_io(struct ibnbd_dev *dev, sector_t sector,
 
 	bio->bi_end_io		= ibnbd_dev_bi_end_io;
 	bio->bi_private		= io;
-	bio->bi_opf		= ibnbd_io_flags_to_bi_rw(flags);
+	bio->bi_opf		= ibnbd_to_bio_flags(flags);
 	bio->bi_iter.bi_sector	= sector;
 	bio->bi_iter.bi_size	= bi_size;
 	bio_set_dev(bio, dev->bdev);

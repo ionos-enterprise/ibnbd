@@ -60,7 +60,7 @@
 /* TODO: should be configurable */
 #define IBTRS_PORT 1234
 
-u32 rq_cmd_to_ibnbd_io_flags(struct request *rq);
-u32 ibnbd_io_flags_to_bi_rw(u32 flags);
+u32 rq_to_ibnbd_flags(struct request *rq);
+u32 ibnbd_to_bio_flags(u32 flags);
 
 #endif /* IBNBD_H */

@@ -46,7 +46,7 @@
 #include "ibnbd.h"
 #include "ibnbd-proto.h"
 
-u32 ibnbd_io_flags_to_bi_rw(u32 flags)
+u32 ibnbd_to_bio_flags(u32 flags)
 {
 	u32 result = 0;
 
@@ -76,9 +76,9 @@ u32 ibnbd_io_flags_to_bi_rw(u32 flags)
 
 	return result;
 }
-EXPORT_SYMBOL_GPL(ibnbd_io_flags_to_bi_rw);
+EXPORT_SYMBOL_GPL(ibnbd_to_bio_flags);
 
-u32 rq_cmd_to_ibnbd_io_flags(struct request *rq)
+u32 rq_to_ibnbd_flags(struct request *rq)
 {
 	u32 result = 0;
 
@@ -105,4 +105,4 @@ u32 rq_cmd_to_ibnbd_io_flags(struct request *rq)
 
 	return result;
 }
-EXPORT_SYMBOL_GPL(rq_cmd_to_ibnbd_io_flags);
+EXPORT_SYMBOL_GPL(rq_to_ibnbd_flags);

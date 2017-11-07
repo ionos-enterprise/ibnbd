@@ -1125,7 +1125,7 @@ static int ibnbd_client_xfer_request(struct ibnbd_clt_dev *dev,
 	iu->dev		= dev;
 	iu->msg.sector	= blk_rq_pos(rq);
 	iu->msg.bi_size = blk_rq_bytes(rq);
-	iu->msg.rw	= rq_cmd_to_ibnbd_io_flags(rq);
+	iu->msg.rw	= rq_to_ibnbd_flags(rq);
 
 	size = blk_rq_bytes(rq);
 	sg_cnt = blk_rq_map_sg(dev->queue, rq, iu->sglist);
