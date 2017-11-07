@@ -300,8 +300,9 @@ static int create_qp(struct ibtrs_con *con, struct ib_pd *pd,
 	struct rdma_cm_id *cm_id = con->cm_id;
 	int ret;
 
-	init_attr.cap.max_send_wr = wr_queue_size + 1;/*1 more for beacon*/
-	init_attr.cap.max_recv_wr = wr_queue_size;
+	/* + 1 for both queues to have enough room to drain */
+	init_attr.cap.max_send_wr = wr_queue_size + 1;
+	init_attr.cap.max_recv_wr = wr_queue_size + 1;
 	init_attr.cap.max_recv_sge = 2;
 	init_attr.event_handler = qp_event_handler;
 	init_attr.qp_context = con;
