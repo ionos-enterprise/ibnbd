@@ -272,7 +272,6 @@ static inline bool clt_ops_are_valid(const struct ibtrs_clt_ops *ops)
  * struct ibtrs_fr_desc - fast registration work request arguments
  * @entry: Entry in ibtrs_fr_pool.free_list.
  * @mr:    Memory region.
- * @frpl:  Fast registration page list.
  */
 struct ibtrs_fr_desc {
 	struct list_head		entry;
@@ -300,7 +299,7 @@ struct ibtrs_fr_pool {
 
 /**
  * struct ibtrs_map_state - per-request DMA memory mapping state
- * @desc:	    Pointer to the element of the SRP buffer descriptor array
+ * @desc:	    Pointer to the element of the buffer descriptor array
  *		    that is being filled in.
  * @pages:	    Array with DMA addresses of pages being considered for
  *		    memory registration.
@@ -3393,7 +3392,7 @@ static int ibtrs_clt_rdma_write_desc(struct ibtrs_clt_con *con,
 	int ret;
 
 	desc = kmalloc_array(sess->max_pages_per_mr, sizeof(*desc), GFP_ATOMIC);
-	if (!desc) {
+	if (unlikely(!desc)) {
 		ib_dma_unmap_sg(ibdev->dev, req->sglist,
 				req->sg_cnt, req->dir);
 		return -ENOMEM;
