@@ -3270,12 +3270,14 @@ static void ibtrs_clt_reconnect_work(struct work_struct *work)
 		goto reconnect_again;
 	}
 	sess->reconnect_attempts = 0;
+	sess->stats.reconnects.successful_cnt++;
 	sess->ops.sess_ev(sess->ops.priv, IBTRS_CLT_SESS_EV_RECONNECTED, 0);
 
 	return;
 
 reconnect_again:
 	if (ibtrs_clt_change_state(sess, IBTRS_CLT_RECONNECTING)) {
+		sess->stats.reconnects.fail_cnt++;
 		delay_ms = sess->reconnect_delay_sec * 1000;
 		queue_delayed_work(ibtrs_wq, &sess->reconnect_dwork,
 				   msecs_to_jiffies(delay_ms));
