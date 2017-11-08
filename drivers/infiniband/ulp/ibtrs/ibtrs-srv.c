@@ -378,10 +378,10 @@ static void ibtrs_srv_stats_dec_inflight(struct ibtrs_srv_sess *sess)
 	atomic_dec_return(&sess->stats.rdma_stats.inflight);
 }
 
-int ibtrs_srv_reset_rdma_stats(struct ibtrs_srv_sess *sess, bool enable)
+int ibtrs_srv_reset_rdma_stats(struct ibtrs_srv_stats *stats, bool enable)
 {
 	if (enable) {
-		struct ibtrs_srv_stats_rdma_stats *r = &sess->stats.rdma_stats;
+		struct ibtrs_srv_stats_rdma_stats *r = &stats->rdma_stats;
 
 		/*
 		 * TODO: inflight is used for flow control
@@ -398,10 +398,10 @@ int ibtrs_srv_reset_rdma_stats(struct ibtrs_srv_sess *sess, bool enable)
 	return -EINVAL;
 }
 
-ssize_t ibtrs_srv_stats_rdma_to_str(struct ibtrs_srv_sess *sess,
+ssize_t ibtrs_srv_stats_rdma_to_str(struct ibtrs_srv_stats *stats,
 				    char *page, size_t len)
 {
-	struct ibtrs_srv_stats_rdma_stats *r = &sess->stats.rdma_stats;
+	struct ibtrs_srv_stats_rdma_stats *r = &stats->rdma_stats;
 
 	return scnprintf(page, len, "%ld %ld %ld %ld %u %ld\n",
 			 atomic64_read(&r->cnt_read),
@@ -416,57 +416,57 @@ ssize_t ibtrs_srv_stats_rdma_to_str(struct ibtrs_srv_sess *sess,
 			  atomic64_read(&r->cnt_write)) : 0);
 }
 
-int ibtrs_srv_reset_user_ib_msgs_stats(struct ibtrs_srv_sess *sess, bool enable)
+int ibtrs_srv_reset_user_ib_msgs_stats(struct ibtrs_srv_stats *stats, bool enable)
 {
 	if (enable) {
-		memset(&sess->stats.user_ib_msgs, 0,
-		       sizeof(sess->stats.user_ib_msgs));
+		memset(&stats->user_ib_msgs, 0,
+		       sizeof(stats->user_ib_msgs));
 		return 0;
 	}
 
 	return -EINVAL;
 }
 
-int ibtrs_srv_stats_user_ib_msgs_to_str(struct ibtrs_srv_sess *sess, char *buf,
+int ibtrs_srv_stats_user_ib_msgs_to_str(struct ibtrs_srv_stats *stats, char *buf,
 					size_t len)
 {
 	return snprintf(buf, len, "%ld %ld %ld %ld\n",
-			atomic64_read(&sess->stats.user_ib_msgs.recv_msg_cnt),
-			atomic64_read(&sess->stats.user_ib_msgs.recv_size),
-			atomic64_read(&sess->stats.user_ib_msgs.sent_msg_cnt),
-			atomic64_read(&sess->stats.user_ib_msgs.sent_size));
+			atomic64_read(&stats->user_ib_msgs.recv_msg_cnt),
+			atomic64_read(&stats->user_ib_msgs.recv_size),
+			atomic64_read(&stats->user_ib_msgs.sent_msg_cnt),
+			atomic64_read(&stats->user_ib_msgs.sent_size));
 }
 
-int ibtrs_srv_reset_wc_completion_stats(struct ibtrs_srv_sess *sess, bool enable)
+int ibtrs_srv_reset_wc_completion_stats(struct ibtrs_srv_stats *stats, bool enable)
 {
 	if (enable) {
-		memset(&sess->stats.wc_comp, 0, sizeof(sess->stats.wc_comp));
+		memset(&stats->wc_comp, 0, sizeof(stats->wc_comp));
 		return 0;
 	}
 
 	return -EINVAL;
 }
 
-int ibtrs_srv_stats_wc_completion_to_str(struct ibtrs_srv_sess *sess, char *buf,
+int ibtrs_srv_stats_wc_completion_to_str(struct ibtrs_srv_stats *stats, char *buf,
 					 size_t len)
 {
 	return snprintf(buf, len, "%ld %ld\n",
-			atomic64_read(&sess->stats.wc_comp.total_wc_cnt),
-			atomic64_read(&sess->stats.wc_comp.calls));
+			atomic64_read(&stats->wc_comp.total_wc_cnt),
+			atomic64_read(&stats->wc_comp.calls));
 }
 
-ssize_t ibtrs_srv_reset_all_help(struct ibtrs_srv_sess *sess,
+ssize_t ibtrs_srv_reset_all_help(struct ibtrs_srv_stats *stats,
 				 char *page, size_t len)
 {
 	return scnprintf(page, PAGE_SIZE, "echo 1 to reset all statistics\n");
 }
 
-int ibtrs_srv_reset_all_stats(struct ibtrs_srv_sess *sess, bool enable)
+int ibtrs_srv_reset_all_stats(struct ibtrs_srv_stats *stats, bool enable)
 {
 	if (enable) {
-		ibtrs_srv_reset_wc_completion_stats(sess, enable);
-		ibtrs_srv_reset_user_ib_msgs_stats(sess, enable);
-		ibtrs_srv_reset_rdma_stats(sess, enable);
+		ibtrs_srv_reset_wc_completion_stats(stats, enable);
+		ibtrs_srv_reset_user_ib_msgs_stats(stats, enable);
+		ibtrs_srv_reset_rdma_stats(stats, enable);
 		return 0;
 	}
 

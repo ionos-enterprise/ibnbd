@@ -158,18 +158,18 @@ void ibtrs_srv_queue_close(struct ibtrs_srv_sess *sess);
 int ibtrs_srv_current_hca_port_to_str(struct ibtrs_srv_sess *sess,
 				      char *buf, size_t len);
 const char *ibtrs_srv_get_sess_hca_name(struct ibtrs_srv_sess *sess);
-int ibtrs_srv_reset_rdma_stats(struct ibtrs_srv_sess *sess, bool enable);
-ssize_t ibtrs_srv_stats_rdma_to_str(struct ibtrs_srv_sess *sess,
+int ibtrs_srv_reset_rdma_stats(struct ibtrs_srv_stats *stats, bool enable);
+ssize_t ibtrs_srv_stats_rdma_to_str(struct ibtrs_srv_stats *stats,
 				    char *page, size_t len);
-int ibtrs_srv_reset_user_ib_msgs_stats(struct ibtrs_srv_sess *sess, bool enable);
-int ibtrs_srv_stats_user_ib_msgs_to_str(struct ibtrs_srv_sess *sess, char *buf,
+int ibtrs_srv_reset_user_ib_msgs_stats(struct ibtrs_srv_stats *stats, bool enable);
+int ibtrs_srv_stats_user_ib_msgs_to_str(struct ibtrs_srv_stats *stats, char *buf,
 					size_t len);
-int ibtrs_srv_reset_wc_completion_stats(struct ibtrs_srv_sess *sess,
+int ibtrs_srv_reset_wc_completion_stats(struct ibtrs_srv_stats *stats,
 					bool enable);
-int ibtrs_srv_stats_wc_completion_to_str(struct ibtrs_srv_sess *sess, char *buf,
+int ibtrs_srv_stats_wc_completion_to_str(struct ibtrs_srv_stats *stats, char *buf,
 					 size_t len);
-int ibtrs_srv_reset_all_stats(struct ibtrs_srv_sess *sess, bool enable);
-ssize_t ibtrs_srv_reset_all_help(struct ibtrs_srv_sess *sess,
+int ibtrs_srv_reset_all_stats(struct ibtrs_srv_stats *stats, bool enable);
+ssize_t ibtrs_srv_reset_all_help(struct ibtrs_srv_stats *stats,
 				 char *page, size_t len);
 
 /* ibtrs-srv-sysfs.c */

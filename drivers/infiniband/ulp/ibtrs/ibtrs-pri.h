@@ -422,9 +422,9 @@ static ssize_t store##_store(struct kobject *kobj,			\
 	type *sess = container_of(kobj, type, kobj_stats);		\
 									\
 	if (sysfs_streq(buf, "1"))					\
-		ret = reset(sess, true);				\
+		ret = reset(&sess->stats, true);			\
 	else if (sysfs_streq(buf, "0"))					\
-		ret = reset(sess, false);				\
+		ret = reset(&sess->stats, false);			\
 	if (ret)							\
 		return ret;						\
 									\
@@ -438,7 +438,7 @@ static ssize_t show##_show(struct kobject *kobj,			\
 {									\
 	type *sess = container_of(kobj, type, kobj_stats);		\
 									\
-	return print(sess, page, PAGE_SIZE);				\
+	return print(&sess->stats, page, PAGE_SIZE);			\
 }
 
 #define STAT_ATTR(type, stat, print, reset)				\
