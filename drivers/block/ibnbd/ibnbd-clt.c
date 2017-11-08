@@ -660,7 +660,7 @@ static void ibnbd_clt_rdma_ev(void *priv, enum ibtrs_clt_rdma_ev ev, int errno)
 
 	if (errno)
 		ibnbd_info_rl(dev, "%s I/O failed with err: %d, flags: 0x%x\n",
-			      req_op(rq) == READ ? "read" : "write",
+			      rq_data_dir(rq) == READ ? "read" : "write",
 			      errno, flags);
 }
 
@@ -1141,7 +1141,7 @@ static int ibnbd_client_xfer_request(struct ibnbd_clt_dev *dev,
 		.iov_len  = sizeof(iu->msg)
 	};
 
-	if (req_op(rq) == READ)
+	if (rq_data_dir(rq) == READ)
 		err = ibtrs_clt_request_rdma_write(sess, tag, iu, &vec, 1, size,
 						   iu->sglist, sg_cnt);
 	else
