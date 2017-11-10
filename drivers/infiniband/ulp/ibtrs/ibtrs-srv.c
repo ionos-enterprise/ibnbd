@@ -2026,7 +2026,7 @@ close_and_reject_w_err:
 }
 
 static int ibtrs_srv_rdma_cm_handler(struct rdma_cm_id *cm_id,
-				     struct rdma_cm_event *event)
+				     struct rdma_cm_event *ev)
 {
 	struct ibtrs_srv_sess *sess = NULL;
 
@@ -2036,14 +2036,14 @@ static int ibtrs_srv_rdma_cm_handler(struct rdma_cm_id *cm_id,
 		sess = to_srv_sess(c->sess);
 	}
 
-	switch (event->event) {
+	switch (ev->event) {
 	case RDMA_CM_EVENT_CONNECT_REQUEST:
 		/*
 		 * In case of error cma.c will destroy cm_id,
 		 * see cma_process_remove()
 		 */
-		return ibtrs_rdma_connect(cm_id, event->param.conn.private_data,
-					  event->param.conn.private_data_len);
+		return ibtrs_rdma_connect(cm_id, ev->param.conn.private_data,
+					  ev->param.conn.private_data_len);
 	case RDMA_CM_EVENT_ESTABLISHED:
 		/* Nothing here */
 		break;
@@ -2051,7 +2051,7 @@ static int ibtrs_srv_rdma_cm_handler(struct rdma_cm_id *cm_id,
 	case RDMA_CM_EVENT_CONNECT_ERROR:
 	case RDMA_CM_EVENT_UNREACHABLE:
 		ibtrs_err(sess, "CM error (CM event: %s, err: %d)\n",
-			  rdma_event_msg(event->event), event->status);
+			  rdma_event_msg(ev->event), ev->status);
 		close_sess(sess);
 		break;
 	case RDMA_CM_EVENT_DISCONNECTED:
@@ -2064,7 +2064,7 @@ static int ibtrs_srv_rdma_cm_handler(struct rdma_cm_id *cm_id,
 		break;
 	default:
 		pr_err("Ignoring unexpected CM event %s, err %d\n",
-		       rdma_event_msg(event->event), event->status);
+		       rdma_event_msg(ev->event), ev->status);
 		break;
 	}
 
