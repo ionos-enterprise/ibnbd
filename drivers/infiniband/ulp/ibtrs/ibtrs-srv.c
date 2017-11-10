@@ -1852,6 +1852,12 @@ static int create_con(struct ibtrs_srv_sess *sess,
 	WARN_ON(sess->s.con[cid]);
 	sess->s.con[cid] = &con->c;
 
+	/*
+	 * Change context from server to current connection.  The other
+	 * way is to use cm_id->qp->qp_context, which does not work on OFED.
+	 */
+	cm_id->context = &con->c;
+
 	return 0;
 
 free_cqqp:
@@ -2030,8 +2036,8 @@ static int ibtrs_srv_rdma_cm_handler(struct rdma_cm_id *cm_id,
 {
 	struct ibtrs_srv_sess *sess = NULL;
 
-	if (cm_id->qp) {
-		struct ibtrs_con *c = cm_id->qp->qp_context;
+	if (ev->event != RDMA_CM_EVENT_CONNECT_REQUEST) {
+		struct ibtrs_con *c = cm_id->context;
 
 		sess = to_srv_sess(c->sess);
 	}
