@@ -3133,8 +3133,7 @@ out:
 	ibtrs_clt_change_state(sess, state);
 }
 
-static int ibtrs_send_sess_info(struct ibtrs_clt_sess *sess,
-				bool timeout_wait)
+static int ibtrs_send_sess_info(struct ibtrs_clt_sess *sess)
 {
 	struct ibtrs_clt_con *usr_con = to_clt_con(sess->s.con[0]);
 	struct ibtrs_msg_info_req *msg;
@@ -3176,13 +3175,9 @@ static int ibtrs_send_sess_info(struct ibtrs_clt_sess *sess,
 	tx_iu = NULL;
 
 	/* Wait for state change */
-	if (timeout_wait)
-		wait_event_interruptible_timeout(sess->state_wq,
+	wait_event_interruptible_timeout(sess->state_wq,
 			   sess->state != IBTRS_CLT_CONNECTING,
 			   msecs_to_jiffies(IBTRS_CONNECT_TIMEOUT_MS));
-	else
-		wait_event(sess->state_wq,
-			   sess->state != IBTRS_CLT_CONNECTING);
 	if (unlikely(sess->state != IBTRS_CLT_CONNECTED)) {
 		if (sess->state == IBTRS_CLT_CONNECTING_ERR)
 			err = -ECONNRESET;
@@ -3230,7 +3225,7 @@ static void ibtrs_clt_reconnect_work(struct work_struct *work)
 			  " failed to init connections, err: %d\n", err);
 		goto reconnect_again;
 	}
-	err = ibtrs_send_sess_info(sess, false);
+	err = ibtrs_send_sess_info(sess);
 	if (unlikely(err)) {
 		ibtrs_err(sess, "Sending session info failed, err: %d\n", err);
 		goto reconnect_again;
@@ -3289,7 +3284,7 @@ struct ibtrs_clt_sess *ibtrs_clt_open(const struct ibtrs_clt_ops *ops,
 		err = -EHOSTUNREACH;
 		goto close_sess;
 	}
-	err = ibtrs_send_sess_info(sess, true);
+	err = ibtrs_send_sess_info(sess);
 	if (unlikely(err)) {
 		ibtrs_err(sess, "Sending session info failed, err: %d\n", err);
 		goto close_sess;
