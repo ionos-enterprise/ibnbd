@@ -491,7 +491,7 @@ static void free_sess_tx_bufs(struct ibtrs_srv_sess *sess)
 {
 	int i;
 
-	ibtrs_iu_usrtx_free_list(&sess->s, sess->s.ib_dev);
+	ibtrs_iu_usrtx_free_list(&sess->s);
 
 	if (sess->ops_ids) {
 		for (i = 0; i < sess->queue_depth; i++)
@@ -1007,7 +1007,7 @@ static int alloc_sess_tx_bufs(struct ibtrs_srv_sess *sess)
 		}
 		sess->ops_ids[i] = id;
 	}
-	err = ibtrs_iu_usrtx_alloc_list(&sess->s, sess->s.ib_dev, MAX_REQ_SIZE,
+	err = ibtrs_iu_usrtx_alloc_list(&sess->s, MAX_REQ_SIZE,
 					ibtrs_srv_usr_send_done);
 	if (unlikely(err)) {
 		ibtrs_err(sess, "Allocation failed\n");

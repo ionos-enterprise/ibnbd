@@ -61,7 +61,6 @@ static void free_usrtx_list(struct list_head *iu_list,
 }
 
 int ibtrs_iu_usrtx_alloc_list(struct ibtrs_sess *sess,
-			      struct ibtrs_ib_dev *ibdev,
 			      unsigned max_req_size,
 			      void (*done)(struct ib_cq *cq, struct ib_wc *wc))
 {
@@ -79,7 +78,7 @@ int ibtrs_iu_usrtx_alloc_list(struct ibtrs_sess *sess,
 
 	for (i = 0; i < msg_cnt; ++i) {
 		iu = ibtrs_iu_alloc(i, max_req_size, GFP_KERNEL,
-				    ibdev->dev, DMA_TO_DEVICE,
+				    sess->ib_dev->dev, DMA_TO_DEVICE,
 				    done);
 		if (unlikely(!iu))
 			goto err;
@@ -92,14 +91,13 @@ int ibtrs_iu_usrtx_alloc_list(struct ibtrs_sess *sess,
 	return 0;
 
 err:
-	free_usrtx_list(&sess->usrtx_iu_list, ibdev);
+	free_usrtx_list(&sess->usrtx_iu_list, sess->ib_dev);
 
 	return -ENOMEM;
 }
 EXPORT_SYMBOL_GPL(ibtrs_iu_usrtx_alloc_list);
 
-void ibtrs_iu_usrtx_free_list(struct ibtrs_sess *sess,
-			      struct ibtrs_ib_dev *ibdev)
+void ibtrs_iu_usrtx_free_list(struct ibtrs_sess *sess)
 {
 	struct list_head iu_list;
 
@@ -123,7 +121,7 @@ void ibtrs_iu_usrtx_free_list(struct ibtrs_sess *sess,
 	complete_all(&sess->usrtx_comp);
 	spin_unlock_irq(&sess->usrtx_lock);
 
-	free_usrtx_list(&iu_list, ibdev);
+	free_usrtx_list(&iu_list, sess->ib_dev);
 }
 EXPORT_SYMBOL_GPL(ibtrs_iu_usrtx_free_list);
 

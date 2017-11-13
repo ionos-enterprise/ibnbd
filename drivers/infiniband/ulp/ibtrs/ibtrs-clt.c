@@ -1621,7 +1621,7 @@ static void free_sess_tx_bufs(struct ibtrs_clt_sess *sess)
 		kfree(sess->io_tx_ius);
 		sess->io_tx_ius = NULL;
 	}
-	ibtrs_iu_usrtx_free_list(&sess->s, sess->s.ib_dev);
+	ibtrs_iu_usrtx_free_list(&sess->s);
 }
 
 static int alloc_sess_tx_bufs(struct ibtrs_clt_sess *sess)
@@ -1643,7 +1643,7 @@ static int alloc_sess_tx_bufs(struct ibtrs_clt_sess *sess)
 			goto err;
 		sess->io_tx_ius[i] = iu;
 	}
-	err = ibtrs_iu_usrtx_alloc_list(&sess->s, sess->s.ib_dev, max_req_size,
+	err = ibtrs_iu_usrtx_alloc_list(&sess->s, max_req_size,
 					ibtrs_clt_usr_send_done);
 	if (unlikely(err))
 		goto err;
