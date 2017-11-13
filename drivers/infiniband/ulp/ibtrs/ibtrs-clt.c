@@ -3297,7 +3297,7 @@ struct ibtrs_clt_sess *ibtrs_clt_open(const struct ibtrs_clt_ops *ops,
 		err = -EINVAL;
 		goto out;
 	}
-	if (!path_cnt) {
+	if (unlikely(!path_cnt)) {
 		err = -EINVAL;
 		goto out;
 	}
