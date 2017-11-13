@@ -2656,6 +2656,7 @@ static void ibtrs_clt_stop_hb(struct ibtrs_clt_sess *sess)
 
 static void ibtrs_clt_stop_and_destroy_conns(struct ibtrs_clt_sess *sess)
 {
+	struct ibtrs_clt_con *con;
 	unsigned cid;
 
 	WARN_ON(sess->state == IBTRS_CLT_CONNECTED);
@@ -2666,9 +2667,6 @@ static void ibtrs_clt_stop_and_destroy_conns(struct ibtrs_clt_sess *sess)
 	 */
 	mutex_lock(&sess->init_mutex);
 	mutex_unlock(&sess->init_mutex);
-
-	if (!sess->conns_inited)
-		return;
 
 	/*
 	 * All IO paths must observe !CONNECTED state before we
@@ -2685,20 +2683,30 @@ static void ibtrs_clt_stop_and_destroy_conns(struct ibtrs_clt_sess *sess)
 	 * eventually notify upper layer about session disconnection.
 	 */
 
-	for (cid = 0; cid < sess->s.con_num; cid++)
-		stop_cm(to_clt_con(sess->s.con[cid]));
+	for (cid = 0; cid < sess->s.con_num; cid++) {
+		con = to_clt_con(sess->s.con[cid]);
+		if (!con)
+			break;
+
+		stop_cm(con);
+	}
 	fail_all_outstanding_reqs(sess);
-	sess->ops.sess_ev(sess->ops.priv, IBTRS_CLT_SESS_EV_DISCONNECTED, 0);
+	if (sess->established) {
+		sess->ops.sess_ev(sess->ops.priv,
+				  IBTRS_CLT_SESS_EV_DISCONNECTED, 0);
+		sess->established = false;
+	}
 
 	free_sess_all_bufs(sess);
 	for (cid = 0; cid < sess->s.con_num; cid++) {
-		struct ibtrs_clt_con *con = to_clt_con(sess->s.con[cid]);
+		con = to_clt_con(sess->s.con[cid]);
+		if (!con)
+			break;
 
 		destroy_con_cq_qp(con);
 		destroy_cm(con);
 		destroy_con(con);
 	}
-	sess->conns_inited = false;
 }
 
 static void ibtrs_clt_close_work(struct work_struct *work)
@@ -2763,7 +2771,6 @@ static int init_conns(struct ibtrs_clt_sess *sess)
 		goto destroy;
 
 	ibtrs_clt_start_hb(sess);
-	sess->conns_inited = true;
 
 	return 0;
 
@@ -3228,6 +3235,7 @@ static void ibtrs_clt_reconnect_work(struct work_struct *work)
 		ibtrs_err(sess, "Sending session info failed, err: %d\n", err);
 		goto reconnect_again;
 	}
+	sess->established = true;
 	sess->reconnect_attempts = 0;
 	sess->stats.reconnects.successful_cnt++;
 	sess->ops.sess_ev(sess->ops.priv, IBTRS_CLT_SESS_EV_RECONNECTED, 0);
@@ -3293,6 +3301,7 @@ struct ibtrs_clt_sess *ibtrs_clt_open(const struct ibtrs_clt_ops *ops,
 			  err);
 		goto close_sess;
 	}
+	sess->established = true;
 	mutex_unlock(&sess->init_mutex);
 
 	return sess;

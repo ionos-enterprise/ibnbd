@@ -148,7 +148,7 @@ struct ibtrs_clt_sess {
 	wait_queue_head_t	state_wq;
 	enum ibtrs_clt_state	state;
 	struct mutex		init_mutex;
-	bool			conns_inited;
+	bool			established;
 	short			port;
 	struct rdma_req		*reqs;
 	struct ib_fmr_pool	*fmr_pool;
