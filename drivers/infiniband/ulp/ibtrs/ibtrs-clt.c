@@ -1567,6 +1567,8 @@ static void free_sess_reqs(struct ibtrs_clt_sess *sess)
 		else if (sess->fast_reg_mode == IBTRS_FAST_MEM_FMR)
 			kfree(req->fmr_list);
 		kfree(req->map_page);
+		ibtrs_iu_free(req->iu, DMA_TO_DEVICE,
+			      sess->s.ib_dev->dev);
 	}
 	kfree(sess->reqs);
 	sess->reqs = NULL;
@@ -1585,6 +1587,11 @@ static int alloc_sess_reqs(struct ibtrs_clt_sess *sess)
 
 	for (i = 0; i < sess->queue_depth; ++i) {
 		req = &sess->reqs[i];
+		req->iu = ibtrs_iu_alloc(i, sess->max_req_size, GFP_KERNEL,
+					 sess->s.ib_dev->dev, DMA_TO_DEVICE,
+					 ibtrs_clt_rdma_done);
+		if (unlikely(!req->iu))
+			goto out;
 		mr_list = kmalloc_array(sess->max_pages_per_mr,
 					sizeof(void *), GFP_KERNEL);
 		if (unlikely(!mr_list))
@@ -1604,55 +1611,6 @@ static int alloc_sess_reqs(struct ibtrs_clt_sess *sess)
 
 out:
 	free_sess_reqs(sess);
-
-	return -ENOMEM;
-}
-
-static void free_sess_tx_bufs(struct ibtrs_clt_sess *sess)
-{
-	int i;
-
-	if (sess->io_tx_ius) {
-		for (i = 0; i < sess->queue_depth; i++)
-			if (sess->io_tx_ius[i])
-				ibtrs_iu_free(sess->io_tx_ius[i], DMA_TO_DEVICE,
-					      sess->s.ib_dev->dev);
-
-		kfree(sess->io_tx_ius);
-		sess->io_tx_ius = NULL;
-	}
-	ibtrs_iu_usrtx_free_list(&sess->s);
-}
-
-static int alloc_sess_tx_bufs(struct ibtrs_clt_sess *sess)
-{
-	u32 max_req_size = sess->max_req_size;
-	struct ibtrs_iu *iu;
-	int i, err;
-
-	sess->io_tx_ius = kcalloc(sess->queue_depth, sizeof(*sess->io_tx_ius),
-				  GFP_KERNEL);
-	if (unlikely(!sess->io_tx_ius))
-		goto err;
-
-	for (i = 0; i < sess->queue_depth; ++i) {
-		iu = ibtrs_iu_alloc(i, max_req_size, GFP_KERNEL,
-				    sess->s.ib_dev->dev, DMA_TO_DEVICE,
-				    ibtrs_clt_rdma_done);
-		if (unlikely(!iu))
-			goto err;
-		sess->io_tx_ius[i] = iu;
-	}
-	err = ibtrs_iu_usrtx_alloc_list(&sess->s, max_req_size,
-					ibtrs_clt_usr_send_done);
-	if (unlikely(err))
-		goto err;
-
-	return 0;
-
-err:
-	ibtrs_err(sess, "ibtrs_iu_alloc() failed\n");
-	free_sess_tx_bufs(sess);
 
 	return -ENOMEM;
 }
@@ -2647,7 +2605,8 @@ static int alloc_sess_all_bufs(struct ibtrs_clt_sess *sess)
 	if (unlikely(err))
 		goto free_io_bufs;
 
-	err = alloc_sess_tx_bufs(sess);
+	err = ibtrs_iu_usrtx_alloc_list(&sess->s, sess->max_req_size,
+					ibtrs_clt_usr_send_done);
 	if (unlikely(err))
 		goto free_rx_bufs;
 
@@ -2663,7 +2622,7 @@ free_io_bufs:
 
 static void free_sess_all_bufs(struct ibtrs_clt_sess *sess)
 {
-	free_sess_tx_bufs(sess);
+	ibtrs_iu_usrtx_free_list(&sess->s);
 	ibtrs_iu_usrrx_free_list(&sess->s);
 	free_sess_io_bufs(sess);
 }
@@ -3517,7 +3476,6 @@ int ibtrs_clt_rdma_write(struct ibtrs_clt_sess *sess, struct ibtrs_tag *tag,
 {
 	struct ibtrs_clt_con *con;
 	struct rdma_req *req;
-	struct ibtrs_iu *iu;
 	size_t u_msg_len;
 	int con_id;
 	int err;
@@ -3544,7 +3502,6 @@ int ibtrs_clt_rdma_write(struct ibtrs_clt_sess *sess, struct ibtrs_tag *tag,
 		return -ECOMM;
 	}
 
-	iu = sess->io_tx_ius[tag->mem_id];
 	req = &sess->reqs[tag->mem_id];
 	req->con	= con;
 	req->tag	= tag;
@@ -3552,7 +3509,6 @@ int ibtrs_clt_rdma_write(struct ibtrs_clt_sess *sess, struct ibtrs_tag *tag,
 		req->start_time = ibtrs_clt_get_raw_ms();
 	req->in_use	= true;
 
-	req->iu		= iu;
 	req->sglist	= sg;
 	req->sg_cnt	= sg_len;
 	req->priv	= priv;
@@ -3669,7 +3625,6 @@ int ibtrs_clt_request_rdma_write(struct ibtrs_clt_sess *sess,
 				 struct scatterlist *recv_sg,
 				 unsigned int recv_sg_len)
 {
-	struct ibtrs_iu *iu;
 	struct rdma_req *req;
 	int err;
 	struct ibtrs_clt_con *con;
@@ -3701,7 +3656,6 @@ int ibtrs_clt_request_rdma_write(struct ibtrs_clt_sess *sess,
 		return -ECOMM;
 	}
 
-	iu = sess->io_tx_ius[tag->mem_id];
 	req = &sess->reqs[tag->mem_id];
 	req->con	= con;
 	req->tag	= tag;
@@ -3709,7 +3663,6 @@ int ibtrs_clt_request_rdma_write(struct ibtrs_clt_sess *sess,
 		req->start_time = ibtrs_clt_get_raw_ms();
 	req->in_use	= true;
 
-	req->iu		= iu;
 	req->sglist	= recv_sg;
 	req->sg_cnt	= recv_sg_len;
 	req->priv	= priv;
