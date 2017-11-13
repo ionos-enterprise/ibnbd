@@ -1544,7 +1544,7 @@ static void fail_all_outstanding_reqs(struct ibtrs_clt_sess *sess)
 	struct rdma_req *req;
 	int i;
 
-	if (WARN_ON(!sess->reqs))
+	if (!sess->reqs)
 		return;
 	/* paired with ibtrs_clt_[request_]rdma_write(),complete_rdma_req() */
 	smp_rmb();
@@ -1560,6 +1560,8 @@ static void free_sess_reqs(struct ibtrs_clt_sess *sess)
 	struct rdma_req *req;
 	int i;
 
+	if (!sess->reqs)
+		return;
 	for (i = 0; i < sess->queue_depth; ++i) {
 		req = &sess->reqs[i];
 		if (sess->fast_reg_mode == IBTRS_FAST_MEM_FR)
