@@ -153,6 +153,10 @@ struct ibtrs_srv_sess {
 	struct ibtrs_srv_stats	stats;
 };
 
+/* See ibtrs-log.h */
+#define TYPES_TO_SESSNAME(obj)						\
+	LIST(CASE(obj, struct ibtrs_srv_sess *, s.sessname))
+
 void ibtrs_srv_queue_close(struct ibtrs_srv_sess *sess);
 
 int ibtrs_srv_current_hca_port_to_str(struct ibtrs_srv_sess *sess,

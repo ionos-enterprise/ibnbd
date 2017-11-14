@@ -182,6 +182,10 @@ struct ibtrs_clt_sess {
 	struct ibtrs_clt_stats  stats;
 };
 
+/* See ibtrs-log.h */
+#define TYPES_TO_SESSNAME(obj)						\
+	LIST(CASE(obj, struct ibtrs_clt_sess *, s.sessname))
+
 #define TAG_SIZE(sess) (sizeof(struct ibtrs_tag) + (sess)->pdu_sz)
 #define GET_TAG(sess, idx) ((sess)->tags + TAG_SIZE(sess) * idx)
 
