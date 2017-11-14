@@ -1137,14 +1137,19 @@ static inline void ibtrs_clt_decrease_inflight(struct ibtrs_clt_stats *s)
 	s->rdma_stats[raw_smp_processor_id()].inflight--;
 }
 
-static void complete_rdma_req(struct ibtrs_clt_sess *sess,
-			      struct rdma_req *req, int errno)
+static void complete_rdma_req(struct rdma_req *req, int errno)
 {
+	struct ibtrs_clt_con *con = req->con;
+	struct ibtrs_clt_sess *sess;
 	enum dma_data_direction dir;
 	void *priv;
 
 	if (WARN_ON(!req->in_use))
 		return;
+	if (WARN_ON(!req->con))
+		return;
+	sess = to_clt_sess(con->c.sess);
+
 	if (req->sg_cnt > fmr_sg_cnt)
 		ibtrs_unmap_fast_reg_data(req->con, req);
 	if (req->sg_cnt)
@@ -1174,7 +1179,7 @@ static void process_io_rsp(struct ibtrs_clt_sess *sess, u32 msg_id, s16 errno)
 	if (WARN_ON(msg_id >= sess->queue_depth))
 		return;
 
-	complete_rdma_req(sess, &sess->reqs[msg_id], errno);
+	complete_rdma_req(&sess->reqs[msg_id], errno);
 }
 
 static void ibtrs_clt_hb_and_ack_done(struct ib_cq *cq, struct ib_wc *wc)
@@ -1551,7 +1556,7 @@ static void fail_all_outstanding_reqs(struct ibtrs_clt_sess *sess)
 	for (i = 0; i < sess->queue_depth; ++i) {
 		req = &sess->reqs[i];
 		if (req->in_use)
-			complete_rdma_req(sess, req, -ECONNABORTED);
+			complete_rdma_req(req, -ECONNABORTED);
 	}
 }
 
