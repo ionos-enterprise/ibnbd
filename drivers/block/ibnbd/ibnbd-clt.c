@@ -554,8 +554,8 @@ static struct ibtrs_tag *ibnbd_get_tag(struct ibnbd_clt_session *sess, int cpu,
 {
 	struct ibtrs_tag *tag;
 
-	tag = ibtrs_get_tag(sess->sess, cpu, tag_bytes,
-			    wait ? IBTRS_TAG_WAIT : IBTRS_TAG_NOWAIT);
+	tag = ibtrs_clt_get_tag(sess->sess, cpu, tag_bytes,
+				wait ? IBTRS_TAG_WAIT : IBTRS_TAG_NOWAIT);
 	if (likely(tag))
 		/* We have a subtle rare case here, when all tags can be
 		 * consumed before busy counter increased.  This is safe,
@@ -569,7 +569,7 @@ static struct ibtrs_tag *ibnbd_get_tag(struct ibnbd_clt_session *sess, int cpu,
 
 static void ibnbd_put_tag(struct ibnbd_clt_session *sess, struct ibtrs_tag *tag)
 {
-	ibtrs_put_tag(sess->sess, tag);
+	ibtrs_clt_put_tag(sess->sess, tag);
 	atomic_dec(&sess->busy);
 	/* Paired with ibnbd_clt_dev_add_to_requeue().  Decrement first
 	 * and then check queue bits.

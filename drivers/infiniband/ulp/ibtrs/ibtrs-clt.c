@@ -361,8 +361,8 @@ static inline void __ibtrs_put_tag(struct ibtrs_clt_sess *sess,
 	clear_bit_unlock(tag->mem_id, sess->tags_map);
 }
 
-struct ibtrs_tag *ibtrs_get_tag(struct ibtrs_clt_sess *sess, int cpu_id,
-				size_t nr_bytes, int can_wait)
+struct ibtrs_tag *ibtrs_clt_get_tag(struct ibtrs_clt_sess *sess, int cpu_id,
+				    size_t nr_bytes, int can_wait)
 {
 	struct ibtrs_tag *tag;
 	DEFINE_WAIT(wait);
@@ -387,9 +387,9 @@ struct ibtrs_tag *ibtrs_get_tag(struct ibtrs_clt_sess *sess, int cpu_id,
 
 	return tag;
 }
-EXPORT_SYMBOL(ibtrs_get_tag);
+EXPORT_SYMBOL(ibtrs_clt_get_tag);
 
-void ibtrs_put_tag(struct ibtrs_clt_sess *sess, struct ibtrs_tag *tag)
+void ibtrs_clt_put_tag(struct ibtrs_clt_sess *sess, struct ibtrs_tag *tag)
 {
 	if (WARN_ON(tag->mem_id >= sess->queue_depth))
 		return;
@@ -404,7 +404,7 @@ void ibtrs_put_tag(struct ibtrs_clt_sess *sess, struct ibtrs_tag *tag)
 	if (waitqueue_active(&sess->tags_wait))
 		wake_up(&sess->tags_wait);
 }
-EXPORT_SYMBOL(ibtrs_put_tag);
+EXPORT_SYMBOL(ibtrs_clt_put_tag);
 
 /**
  * ibtrs_destroy_fr_pool() - free the resources owned by a pool
