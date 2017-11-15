@@ -3311,6 +3311,8 @@ struct ibtrs_clt *ibtrs_clt_open(const struct ibtrs_clt_ops *ops,
 		ibtrs_err(sess, "Sending session info failed, err: %d\n", err);
 		goto close_sess;
 	}
+	clt->established = true;
+	mutex_unlock(&sess->init_mutex);
 	err = ibtrs_clt_create_sess_files(sess);
 	if (unlikely(err)) {
 		ibtrs_err(sess, "Establishing session to server failed,"
@@ -3318,8 +3320,6 @@ struct ibtrs_clt *ibtrs_clt_open(const struct ibtrs_clt_ops *ops,
 			  err);
 		goto close_sess;
 	}
-	clt->established = true;
-	mutex_unlock(&sess->init_mutex);
 
 	return clt;
 
