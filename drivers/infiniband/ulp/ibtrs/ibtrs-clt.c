@@ -1649,6 +1649,14 @@ out_err:
 	return err;
 }
 
+static void free_tags(struct ibtrs_clt *clt)
+{
+	kfree(clt->tags_map);
+	clt->tags_map = NULL;
+	kfree(clt->tags);
+	clt->tags = NULL;
+}
+
 static void query_fast_reg_mode(struct ibtrs_clt_sess *sess)
 {
 	struct ibtrs_ib_dev *ib_dev;
@@ -2153,17 +2161,9 @@ static int alloc_sess_io_bufs(struct ibtrs_clt_sess *sess)
 		ibtrs_err(sess, "alloc_sess_fast_pool(), err: %d\n", ret);
 		goto free_reqs;
 	}
-	/* XXX Should be moved */
-	ret = alloc_tags(sess->clt);
-	if (unlikely(ret)) {
-		ibtrs_err(sess, "alloc_tags(), err: %d\n", ret);
-		goto free_fast_pool;
-	}
 
 	return 0;
 
-free_fast_pool:
-	free_sess_fast_pool(sess);
 free_reqs:
 	free_sess_reqs(sess);
 
@@ -2174,12 +2174,6 @@ static void free_sess_io_bufs(struct ibtrs_clt_sess *sess)
 {
 	free_sess_reqs(sess);
 	free_sess_fast_pool(sess);
-
-	/* XXX Should be moved */
-	kfree(sess->clt->tags_map);
-	sess->clt->tags_map = NULL;
-	kfree(sess->clt->tags);
-	sess->clt->tags = NULL;
 }
 
 static bool __ibtrs_clt_change_state(struct ibtrs_clt_sess *sess,
@@ -3268,6 +3262,7 @@ static struct ibtrs_clt *alloc_clt(size_t paths_num, short port, size_t pdu_sz,
 
 static void free_clt(struct ibtrs_clt *clt)
 {
+	free_tags(clt);
 	kfree(clt);
 }
 
@@ -3313,6 +3308,12 @@ struct ibtrs_clt *ibtrs_clt_open(const struct ibtrs_clt_ops *ops,
 	}
 	clt->established = true;
 	mutex_unlock(&sess->init_mutex);
+
+	err = alloc_tags(clt);
+	if (unlikely(err)) {
+		ibtrs_err(sess, "alloc_tags(), err: %d\n", err);
+		goto close_sess;
+	}
 	err = ibtrs_clt_create_sess_files(sess);
 	if (unlikely(err)) {
 		ibtrs_err(sess, "Establishing session to server failed,"
