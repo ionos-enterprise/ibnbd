@@ -70,6 +70,8 @@ enum {
 	MIN_RTR_CNT = 1,
 	MAX_RTR_CNT = 7,
 
+	MAX_PATHS_NUM = 1,
+
 	/*
 	 * With the current size of the tag allocated on the client, 4K
 	 * is the maximum number of tags we can allocate.  This number is

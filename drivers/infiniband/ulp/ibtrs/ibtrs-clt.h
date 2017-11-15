@@ -146,6 +146,7 @@ struct ibtrs_clt_stats {
 
 struct ibtrs_clt_sess {
 	struct ibtrs_sess	s;
+	struct ibtrs_clt	*clt;
 	wait_queue_head_t	state_wq;
 	enum ibtrs_clt_state	state;
 	struct mutex		init_mutex;
@@ -180,6 +181,11 @@ struct ibtrs_clt_sess {
 	struct kobject		kobj;
 	struct kobject		kobj_stats;
 	struct ibtrs_clt_stats  stats;
+};
+
+struct ibtrs_clt {
+	struct ibtrs_clt_sess	*paths[MAX_PATHS_NUM];
+	size_t			paths_num;
 };
 
 /* See ibtrs-log.h */

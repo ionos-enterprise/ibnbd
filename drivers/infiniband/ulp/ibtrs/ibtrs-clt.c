@@ -54,10 +54,6 @@
 #include <rdma/rdma_cm.h>
 #include <rdma/ib_cm.h>
 #include <rdma/ib_fmr_pool.h>
-
-/* XXX Will be removed ASAP */
-#define ibtrs_clt ibtrs_clt_sess
-
 #include <rdma/ibtrs.h>
 
 #include "ibtrs-pri.h"
@@ -365,9 +361,11 @@ static inline void __ibtrs_put_tag(struct ibtrs_clt_sess *sess,
 	clear_bit_unlock(tag->mem_id, sess->tags_map);
 }
 
-struct ibtrs_tag *ibtrs_clt_get_tag(struct ibtrs_clt_sess *sess, int cpu_id,
+struct ibtrs_tag *ibtrs_clt_get_tag(struct ibtrs_clt *clt, int cpu_id,
 				    size_t nr_bytes, int can_wait)
 {
+	/* XXX Should be changed */
+	struct ibtrs_clt_sess *sess = clt->paths[0];
 	struct ibtrs_tag *tag;
 	DEFINE_WAIT(wait);
 
@@ -393,8 +391,11 @@ struct ibtrs_tag *ibtrs_clt_get_tag(struct ibtrs_clt_sess *sess, int cpu_id,
 }
 EXPORT_SYMBOL(ibtrs_clt_get_tag);
 
-void ibtrs_clt_put_tag(struct ibtrs_clt_sess *sess, struct ibtrs_tag *tag)
+void ibtrs_clt_put_tag(struct ibtrs_clt *clt, struct ibtrs_tag *tag)
 {
+	/* XXX Should be changed */
+	struct ibtrs_clt_sess *sess = clt->paths[0];
+
 	if (WARN_ON(tag->mem_id >= sess->queue_depth))
 		return;
 	if (WARN_ON(!test_bit(tag->mem_id, sess->tags_map)))
@@ -2322,10 +2323,11 @@ static enum ibtrs_clt_state ibtrs_clt_state(struct ibtrs_clt_sess *sess)
 static void ibtrs_clt_reconnect_work(struct work_struct *work);
 static void ibtrs_clt_close_work(struct work_struct *work);
 
-static struct ibtrs_clt_sess *alloc_sess(const struct ibtrs_clt_ops *ops,
+static struct ibtrs_clt_sess *alloc_sess(struct ibtrs_clt *clt,
+					 const struct ibtrs_clt_ops *ops,
 					 const char *sessname,
 					 const struct ibtrs_addr *paths,
-					 size_t path_cnt,
+					 size_t paths_num,
 					 short port, size_t con_num,
 					 size_t pdu_sz, u8 reconnect_delay_sec,
 					 u16 max_segments,
@@ -2357,6 +2359,7 @@ static struct ibtrs_clt_sess *alloc_sess(const struct ibtrs_clt_ops *ops,
 		       rdma_addr_size((struct sockaddr *)paths[0].src));
 	strlcpy(sess->s.sessname, sessname, sizeof(sess->s.sessname));
 	sess->s.con_num = con_num;
+	sess->clt = clt;
 	sess->pdu_sz = pdu_sz;
 	sess->ops = *ops;
 	sess->reconnect_delay_sec = reconnect_delay_sec;
@@ -3251,16 +3254,38 @@ reconnect_again:
 	}
 }
 
-struct ibtrs_clt_sess *ibtrs_clt_open(const struct ibtrs_clt_ops *ops,
-				      const char *sessname,
-				      const struct ibtrs_addr *paths,
-				      size_t path_cnt,
-				      short port,
-				      size_t pdu_sz, u8 reconnect_delay_sec,
-				      u16 max_segments,
-				      s16 max_reconnect_attempts)
+static struct ibtrs_clt *alloc_clt(size_t paths_num)
+{
+	struct ibtrs_clt *clt;
+
+	if (unlikely(!paths_num || paths_num > MAX_PATHS_NUM))
+		return ERR_PTR(-EINVAL);
+
+	clt = kzalloc(sizeof(*clt), GFP_KERNEL);
+	if (unlikely(!clt))
+		return ERR_PTR(-ENOMEM);
+
+	clt->paths_num = paths_num;
+
+	return clt;
+}
+
+static void free_clt(struct ibtrs_clt *clt)
+{
+	kfree(clt);
+}
+
+struct ibtrs_clt *ibtrs_clt_open(const struct ibtrs_clt_ops *ops,
+				 const char *sessname,
+				 const struct ibtrs_addr *paths,
+				 size_t paths_num,
+				 short port,
+				 size_t pdu_sz, u8 reconnect_delay_sec,
+				 u16 max_segments,
+				 s16 max_reconnect_attempts)
 {
 	struct ibtrs_clt_sess *sess;
+	struct ibtrs_clt *clt;
 	int err;
 
 	if (unlikely(!clt_ops_are_valid(ops))) {
@@ -3268,19 +3293,21 @@ struct ibtrs_clt_sess *ibtrs_clt_open(const struct ibtrs_clt_ops *ops,
 		err = -EINVAL;
 		goto out;
 	}
-	if (unlikely(!path_cnt)) {
-		err = -EINVAL;
+	clt = alloc_clt(paths_num);
+	if (unlikely(IS_ERR(clt))) {
+		err = PTR_ERR(clt);
 		goto out;
 	}
-	sess = alloc_sess(ops, sessname, paths, path_cnt, port,
+	sess = alloc_sess(clt, ops, sessname, paths, paths_num, port,
 			  CONS_PER_SESSION, pdu_sz, reconnect_delay_sec,
 			  max_segments, max_reconnect_attempts);
 	if (unlikely(IS_ERR(sess))) {
 		pr_err("Establishing session to server failed, err: %ld\n",
 		       PTR_ERR(sess));
 		err = PTR_ERR(sess);
-		goto out;
+		goto free_clt;
 	}
+	clt->paths[0] = sess;
 	mutex_lock(&sess->init_mutex);
 	err = init_conns(sess);
 	if (unlikely(err)) {
@@ -3304,23 +3331,29 @@ struct ibtrs_clt_sess *ibtrs_clt_open(const struct ibtrs_clt_ops *ops,
 	sess->established = true;
 	mutex_unlock(&sess->init_mutex);
 
-	return sess;
+	return clt;
 
 close_sess:
 	mutex_unlock(&sess->init_mutex);
 	ibtrs_clt_close_conns(sess, true);
 	free_sess(sess);
+free_clt:
+	free_clt(clt);
 
 out:
 	return ERR_PTR(err);
 }
 EXPORT_SYMBOL(ibtrs_clt_open);
 
-void ibtrs_clt_close(struct ibtrs_clt_sess *sess)
+void ibtrs_clt_close(struct ibtrs_clt *clt)
 {
+	/* XXX Should be changed */
+	struct ibtrs_clt_sess *sess = clt->paths[0];
+
 	ibtrs_clt_destroy_sess_files(sess);
 	ibtrs_clt_close_conns(sess, true);
 	free_sess(sess);
+	free_clt(clt);
 }
 EXPORT_SYMBOL(ibtrs_clt_close);
 
@@ -3482,11 +3515,13 @@ static inline int ibtrs_rdma_con_id(struct ibtrs_clt_sess *sess,
 	return (tag->cpu_id % (sess->s.con_num - 1)) + 1;
 }
 
-int ibtrs_clt_rdma_write(struct ibtrs_clt_sess *sess, struct ibtrs_tag *tag,
+int ibtrs_clt_rdma_write(struct ibtrs_clt *clt, struct ibtrs_tag *tag,
 			 void *priv, const struct kvec *vec, size_t nr,
 			 size_t data_len, struct scatterlist *sg,
 			 unsigned int sg_len)
 {
+	/* XXX Should be changed */
+	struct ibtrs_clt_sess *sess = clt->paths[0];
 	struct ibtrs_clt_con *con;
 	struct rdma_req *req;
 	size_t u_msg_len;
@@ -3631,18 +3666,19 @@ static int ibtrs_clt_request_rdma_write_sg(struct ibtrs_clt_con *con,
 	return ret;
 }
 
-int ibtrs_clt_request_rdma_write(struct ibtrs_clt_sess *sess,
+int ibtrs_clt_request_rdma_write(struct ibtrs_clt *clt,
 				 struct ibtrs_tag *tag, void *priv,
 				 const struct kvec *vec, size_t nr,
 				 size_t data_len,
 				 struct scatterlist *recv_sg,
 				 unsigned int recv_sg_len)
 {
-	struct rdma_req *req;
-	int err;
+	/* XXX Should be changed */
+	struct ibtrs_clt_sess *sess = clt->paths[0];
 	struct ibtrs_clt_con *con;
-	int con_id;
+	struct rdma_req *req;
 	size_t u_msg_len;
+	int err, con_id;
 
 	u_msg_len = kvec_length(vec, nr);
 	if (unlikely(u_msg_len > IO_MSG_SIZE ||
@@ -3703,9 +3739,10 @@ int ibtrs_clt_request_rdma_write(struct ibtrs_clt_sess *sess,
 }
 EXPORT_SYMBOL(ibtrs_clt_request_rdma_write);
 
-int ibtrs_clt_send(struct ibtrs_clt_sess *sess, const struct kvec *vec,
-		   size_t nr)
+int ibtrs_clt_send(struct ibtrs_clt *clt, const struct kvec *vec, size_t nr)
 {
+	/* XXX Should be changed */
+	struct ibtrs_clt_sess *sess = clt->paths[0];
 	struct ibtrs_clt_con *usr_con = to_clt_con(sess->s.con[0]);
 	struct ibtrs_msg_user *msg;
 	struct ibtrs_iu *iu;
@@ -3761,8 +3798,11 @@ err_post_send:
 }
 EXPORT_SYMBOL(ibtrs_clt_send);
 
-int ibtrs_clt_query(struct ibtrs_clt_sess *sess, struct ibtrs_attrs *attr)
+int ibtrs_clt_query(struct ibtrs_clt *clt, struct ibtrs_attrs *attr)
 {
+	/* XXX Should be changed */
+	struct ibtrs_clt_sess *sess = clt->paths[0];
+
 	if (unlikely(sess->state != IBTRS_CLT_CONNECTED))
 		return -ECOMM;
 
