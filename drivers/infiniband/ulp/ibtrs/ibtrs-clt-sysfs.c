@@ -206,47 +206,6 @@ static struct kobj_attribute ibtrs_clt_add_path_attr =
 	__ATTR(add_path, 0644, ibtrs_clt_add_path_show,
 	       ibtrs_clt_add_path_store);
 
-static ssize_t ibtrs_clt_queue_show(struct kobject *kobj,
-				    struct kobj_attribute *attr, char *page)
-{
-	struct ibtrs_clt_sess *sess;
-
-	sess = container_of(kobj, struct ibtrs_clt_sess, kobj);
-
-	return scnprintf(page, PAGE_SIZE, "%d\n",
-			 ibtrs_clt_get_user_queue_depth(sess));
-}
-
-static ssize_t ibtrs_clt_queue_store(struct kobject *kobj,
-				     struct kobj_attribute *attr,
-				     const char *buf, size_t count)
-{
-	int res;
-	u16 old_queue_depth, queue_depth;
-	struct ibtrs_clt_sess *sess;
-
-	sess = container_of(kobj, struct ibtrs_clt_sess, kobj);
-	res = kstrtou16(buf, 0, &queue_depth);
-	if (res) {
-		ibtrs_err(sess,
-			  "%s: failed to convert string '%s' to unsigned int\n",
-			  attr->attr.name, buf);
-		return res;
-	}
-
-	old_queue_depth = ibtrs_clt_get_user_queue_depth(sess);
-	res = ibtrs_clt_set_user_queue_depth(sess, queue_depth);
-	if (!res) {
-		ibtrs_info(sess, "%s: changed value from %u to %u\n",
-			   attr->attr.name, old_queue_depth, queue_depth);
-	} else {
-		ibtrs_err(sess, "%s: failed to set queue depth, err: %d\n",
-			  attr->attr.name, res);
-		return res;
-	}
-	return count;
-}
-
 STAT_ATTR(struct ibtrs_clt_sess, cpu_migration,
 	  ibtrs_clt_stats_migration_cnt_to_str,
 	  ibtrs_clt_reset_cpu_migr_stats);
@@ -329,17 +288,12 @@ err:
 	return ret;
 }
 
-static struct kobj_attribute ibtrs_clt_queue_depth_attr =
-	__ATTR(queue_depth, 0644, ibtrs_clt_queue_show,
-	       ibtrs_clt_queue_store);
-
 static struct attribute *ibtrs_clt_default_sess_attrs[] = {
 	&max_ibtrs_clt_reconnect_attempts_attr.attr,
 	&ibtrs_clt_state_attr.attr,
 	&ibtrs_clt_addr_attr.attr,
 	&ibtrs_clt_reconnect_attr.attr,
 	&ibtrs_clt_add_path_attr.attr,
-	&ibtrs_clt_queue_depth_attr.attr,
 	NULL,
 };
 

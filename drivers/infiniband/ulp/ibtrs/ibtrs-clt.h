@@ -171,7 +171,6 @@ struct ibtrs_clt_sess {
 	u32			chunk_size;
 	u32			max_desc;
 	u32			queue_depth;
-	u16			user_queue_depth;
 	enum ibtrs_fast_reg	fast_reg_mode;
 	u64			mr_page_mask;
 	u32			mr_page_size;
@@ -205,8 +204,6 @@ void ibtrs_clt_set_max_reconnect_attempts(struct ibtrs_clt_sess *sess,
 					  int value);
 
 int ibtrs_clt_get_max_reconnect_attempts(const struct ibtrs_clt_sess *sess);
-int ibtrs_clt_get_user_queue_depth(struct ibtrs_clt_sess *sess);
-int ibtrs_clt_set_user_queue_depth(struct ibtrs_clt_sess *sess, u16 queue_depth);
 int ibtrs_clt_reset_sg_list_distr_stats(struct ibtrs_clt_stats *stats,
 					bool enable);
 int ibtrs_clt_stats_sg_list_distr_to_str(struct ibtrs_clt_stats *stats,

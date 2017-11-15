@@ -238,25 +238,6 @@ static void ibtrs_clt_free_stats(struct ibtrs_clt_stats *stats)
 	ibtrs_clt_free_wc_comp_stats(stats);
 }
 
-int ibtrs_clt_get_user_queue_depth(struct ibtrs_clt_sess *sess)
-{
-	return sess->user_queue_depth;
-}
-
-int ibtrs_clt_set_user_queue_depth(struct ibtrs_clt_sess *sess,
-					  u16 queue_depth)
-{
-	if (queue_depth < 1 ||
-	    queue_depth > sess->queue_depth) {
-		ibtrs_err(sess, "Queue depth %u is out of range (1 - %u)",
-			  queue_depth,
-			  sess->queue_depth);
-		return -EINVAL;
-	}
-
-	sess->user_queue_depth = queue_depth;
-	return 0;
-}
 
 bool ibtrs_clt_sess_is_connected(const struct ibtrs_clt_sess *sess)
 {
@@ -333,7 +314,7 @@ struct ibtrs_map_state {
 static inline struct ibtrs_tag *__ibtrs_get_tag(struct ibtrs_clt_sess *sess,
 						int cpu_id)
 {
-	size_t max_depth = sess->user_queue_depth;
+	size_t max_depth = sess->queue_depth;
 	struct ibtrs_tag *tag;
 	int cpu, bit;
 
@@ -2906,7 +2887,6 @@ static int ibtrs_rdma_conn_established(struct ibtrs_clt_con *con,
 				return -ENOMEM;
 			}
 		}
-		sess->user_queue_depth = queue_depth;
 		sess->queue_depth = queue_depth;
 		sess->srv_rdma_buf_rkey = le32_to_cpu(msg->rkey);
 		sess->max_req_size = le32_to_cpu(msg->max_req_size);
