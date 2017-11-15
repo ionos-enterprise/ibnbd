@@ -3192,18 +3192,23 @@ static int init_sess(struct ibtrs_clt_sess *sess)
 {
 	int err;
 
+	mutex_lock(&sess->init_mutex);
 	err = init_conns(sess);
 	if (unlikely(err)) {
 		ibtrs_err(sess, "init_conns(), err: %d\n", err);
-		return err;
+		goto out;
 	}
 	err = ibtrs_send_sess_info(sess);
 	if (unlikely(err)) {
 		ibtrs_err(sess, "ibtrs_send_sess_info(), err: %d\n", err);
-		return err;
+		goto out;
 	}
+	/* XXX Should be changed */
+	sess->clt->established = true;
+out:
+	mutex_unlock(&sess->init_mutex);
 
-	return 0;
+	return err;
 }
 
 static void ibtrs_clt_reconnect_work(struct work_struct *work)
@@ -3238,7 +3243,6 @@ static void ibtrs_clt_reconnect_work(struct work_struct *work)
 
 	sess->reconnect_attempts = 0;
 	sess->stats.reconnects.successful_cnt++;
-	clt->established = true;
 	clt->ops.link_ev(clt->ops.priv, IBTRS_CLT_LINK_EV_RECONNECTED, 0);
 
 	return;
@@ -3313,12 +3317,10 @@ struct ibtrs_clt *ibtrs_clt_open(const struct ibtrs_clt_ops *ops,
 		goto free_clt;
 	}
 	clt->paths[0] = sess;
-	mutex_lock(&sess->init_mutex);
+
 	err = init_sess(sess);
 	if (unlikely(err))
 		goto close_sess;
-	clt->established = true;
-	mutex_unlock(&sess->init_mutex);
 
 	err = alloc_tags(clt);
 	if (unlikely(err)) {
@@ -3336,7 +3338,6 @@ struct ibtrs_clt *ibtrs_clt_open(const struct ibtrs_clt_ops *ops,
 	return clt;
 
 close_sess:
-	mutex_unlock(&sess->init_mutex);
 	ibtrs_clt_close_conns(sess, true);
 	free_sess(sess);
 free_clt:
