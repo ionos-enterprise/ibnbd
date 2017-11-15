@@ -202,9 +202,9 @@ struct ibtrs_clt {
 int ibtrs_clt_reconnect(struct ibtrs_clt_sess *sess);
 
 void ibtrs_clt_set_max_reconnect_attempts(struct ibtrs_clt_sess *sess,
-					  s16 value);
+					  int value);
 
-s16 ibtrs_clt_get_max_reconnect_attempts(const struct ibtrs_clt_sess *sess);
+int ibtrs_clt_get_max_reconnect_attempts(const struct ibtrs_clt_sess *sess);
 int ibtrs_clt_get_user_queue_depth(struct ibtrs_clt_sess *sess);
 int ibtrs_clt_set_user_queue_depth(struct ibtrs_clt_sess *sess, u16 queue_depth);
 int ibtrs_clt_reset_sg_list_distr_stats(struct ibtrs_clt_stats *stats,

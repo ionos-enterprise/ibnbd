@@ -76,11 +76,11 @@ static ssize_t ibtrs_clt_max_reconn_attempts_store(struct kobject *kobj,
 						   size_t count)
 {
 	struct ibtrs_clt_sess *sess;
-	s16 value;
+	int value;
 	int ret;
 
 	sess = container_of(kobj, struct ibtrs_clt_sess, kobj);
-	ret = kstrtos16(buf, 10, &value);
+	ret = kstrtoint(buf, 10, &value);
 	if (unlikely(ret)) {
 		ibtrs_err(sess, "%s: failed to convert string '%s' to int\n",
 			  attr->attr.name, buf);

@@ -3368,14 +3368,14 @@ int ibtrs_clt_reconnect(struct ibtrs_clt_sess *sess)
 	return -EBUSY;
 }
 
-void ibtrs_clt_set_max_reconnect_attempts(struct ibtrs_clt_sess *sess, s16 value)
+void ibtrs_clt_set_max_reconnect_attempts(struct ibtrs_clt_sess *sess, int value)
 {
-	sess->max_reconnect_attempts = value;
+	sess->max_reconnect_attempts = (unsigned)value;
 }
 
-s16 ibtrs_clt_get_max_reconnect_attempts(const struct ibtrs_clt_sess *sess)
+int ibtrs_clt_get_max_reconnect_attempts(const struct ibtrs_clt_sess *sess)
 {
-	return sess->max_reconnect_attempts;
+	return (int)sess->max_reconnect_attempts;
 }
 
 static inline void ibtrs_clt_record_sg_distr(u64 *stat, u64 *total,
