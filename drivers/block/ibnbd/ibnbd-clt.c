@@ -275,7 +275,7 @@ out:
 	ibnbd_clt_put_dev(dev);
 }
 
-static int send_msg_close(struct ibtrs_clt_sess *ibtrs, u32 device_id)
+static int send_msg_close(struct ibtrs_clt *ibtrs, u32 device_id)
 {
 	struct ibnbd_msg_close msg;
 	struct kvec vec = {
@@ -1114,7 +1114,7 @@ static int ibnbd_client_xfer_request(struct ibnbd_clt_dev *dev,
 				     struct request *rq,
 				     struct ibnbd_iu *iu)
 {
-	struct ibtrs_clt_sess *ibtrs = dev->sess->ibtrs;
+	struct ibtrs_clt *ibtrs = dev->sess->ibtrs;
 	struct ibtrs_tag *tag = iu->tag;
 	unsigned int sg_cnt;
 	struct kvec vec;

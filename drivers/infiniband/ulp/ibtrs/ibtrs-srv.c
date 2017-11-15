@@ -52,6 +52,10 @@
 #include <linux/debugfs.h>
 #include <rdma/ib_verbs.h>
 #include <rdma/rdma_cm.h>
+
+/* XXX Will be removed ASAP */
+#define ibtrs_srv ibtrs_srv_sess
+
 #include <rdma/ibtrs.h>
 
 #include "ibtrs-pri.h"

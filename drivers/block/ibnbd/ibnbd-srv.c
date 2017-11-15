@@ -168,7 +168,7 @@ ibnbd_get_sess_dev(int dev_id, struct ibnbd_srv_session *srv_sess)
 	return sess_dev;
 }
 
-static int process_rdma(struct ibtrs_srv_sess *ibtrs,
+static int process_rdma(struct ibtrs_srv *sess,
 			struct ibnbd_srv_session *srv_sess,
 			struct ibtrs_srv_op *id, void *data, u32 len)
 {
@@ -316,7 +316,7 @@ out:
 	kfree(srv_sess);
 }
 
-static int create_sess(struct ibtrs_srv_sess *ibtrs)
+static int create_sess(struct ibtrs_srv *ibtrs)
 {
 	const struct sockaddr *sockaddr;
 	struct ibnbd_srv_session *srv_sess;
@@ -361,7 +361,7 @@ static int create_sess(struct ibtrs_srv_sess *ibtrs)
 	return 0;
 }
 
-static int ibnbd_srv_link_ev(struct ibtrs_srv_sess *ibtrs,
+static int ibnbd_srv_link_ev(struct ibtrs_srv *ibtrs,
 			     enum ibtrs_srv_link_ev ev, void *priv)
 {
 	struct ibnbd_srv_session *srv_sess = priv;
@@ -384,7 +384,7 @@ static int ibnbd_srv_link_ev(struct ibtrs_srv_sess *ibtrs,
 	}
 }
 
-static int ibnbd_srv_rdma_ev(struct ibtrs_srv_sess *ibtrs, void *priv,
+static int ibnbd_srv_rdma_ev(struct ibtrs_srv *ibtrs, void *priv,
 			     struct ibtrs_srv_op *id, enum ibtrs_srv_rdma_ev ev,
 			     void *data, size_t len)
 {
@@ -675,7 +675,7 @@ static char *ibnbd_srv_get_full_path(const char *dev_name)
 	return full_path;
 }
 
-static void process_msg_sess_info(struct ibtrs_srv_sess *ibtrs,
+static void process_msg_sess_info(struct ibtrs_srv *ibtrs,
 				  struct ibnbd_srv_session *srv_sess,
 				  const void *msg, size_t len)
 {
@@ -701,7 +701,7 @@ static void process_msg_sess_info(struct ibtrs_srv_sess *ibtrs,
 		       " %s\n", srv_sess->sessname);
 }
 
-static void process_msg_open(struct ibtrs_srv_sess *ibtrs,
+static void process_msg_open(struct ibtrs_srv *ibtrs,
 			     struct ibnbd_srv_session *srv_sess,
 			     const void *msg, size_t len)
 {
@@ -880,7 +880,7 @@ reject:
 		       srv_sess->sessname, ret);
 }
 
-static int send_msg_close_rsp(struct ibtrs_srv_sess *ibtrs, u32 clt_device_id)
+static int send_msg_close_rsp(struct ibtrs_srv *ibtrs, u32 clt_device_id)
 {
 	struct ibnbd_msg_close_rsp msg;
 	struct kvec vec = {
@@ -894,7 +894,7 @@ static int send_msg_close_rsp(struct ibtrs_srv_sess *ibtrs, u32 clt_device_id)
 	return ibtrs_srv_send(ibtrs, &vec, 1);
 }
 
-static void process_msg_close(struct ibtrs_srv_sess *ibtrs,
+static void process_msg_close(struct ibtrs_srv *ibtrs,
 			      struct ibnbd_srv_session *srv_sess,
 			      const void *msg, size_t len)
 {
@@ -918,7 +918,7 @@ static void process_msg_close(struct ibtrs_srv_sess *ibtrs,
 	}
 }
 
-static void ibnbd_srv_recv(struct ibtrs_srv_sess *ibtrs, void *priv,
+static void ibnbd_srv_recv(struct ibtrs_srv *ibtrs, void *priv,
 			   const void *msg, size_t len)
 {
 	struct ibnbd_msg_hdr *hdr;

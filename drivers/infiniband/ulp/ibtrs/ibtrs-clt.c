@@ -50,11 +50,15 @@
 #include <linux/scatterlist.h>
 #include <linux/random.h>
 #include <linux/utsname.h>
+#include <linux/list.h>
 #include <rdma/rdma_cm.h>
 #include <rdma/ib_cm.h>
 #include <rdma/ib_fmr_pool.h>
+
+/* XXX Will be removed ASAP */
+#define ibtrs_clt ibtrs_clt_sess
+
 #include <rdma/ibtrs.h>
-#include <linux/list.h>
 
 #include "ibtrs-pri.h"
 #include "ibtrs-clt.h"
