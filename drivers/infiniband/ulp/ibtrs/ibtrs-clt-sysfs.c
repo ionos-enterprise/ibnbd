@@ -58,28 +58,35 @@ static struct kobject *ibtrs_kobj;
 #define MIN_MAX_RECONN_ATT -1
 #define MAX_MAX_RECONN_ATT 9999
 
+/* XXX Should be a part of clt kobject */
 static ssize_t ibtrs_clt_max_reconn_attempts_show(struct kobject *kobj,
 						  struct kobj_attribute *attr,
 						  char *page)
 {
 	struct ibtrs_clt_sess *sess;
+	struct ibtrs_clt *clt;
 
 	sess = container_of(kobj, struct ibtrs_clt_sess, kobj);
+	clt = sess->clt;
 
 	return sprintf(page, "%d\n",
-		       ibtrs_clt_get_max_reconnect_attempts(sess));
+		       ibtrs_clt_get_max_reconnect_attempts(clt));
 }
 
+/* XXX Should be a part of clt kobject */
 static ssize_t ibtrs_clt_max_reconn_attempts_store(struct kobject *kobj,
 						   struct kobj_attribute *attr,
 						   const char *buf,
 						   size_t count)
 {
 	struct ibtrs_clt_sess *sess;
+	struct ibtrs_clt *clt;
 	int value;
 	int ret;
 
 	sess = container_of(kobj, struct ibtrs_clt_sess, kobj);
+	clt = sess->clt;
+
 	ret = kstrtoint(buf, 10, &value);
 	if (unlikely(ret)) {
 		ibtrs_err(sess, "%s: failed to convert string '%s' to int\n",
@@ -94,10 +101,8 @@ static ssize_t ibtrs_clt_max_reconn_attempts_store(struct kobject *kobj,
 			  MAX_MAX_RECONN_ATT);
 		return -EINVAL;
 	}
+	ibtrs_clt_set_max_reconnect_attempts(clt, value);
 
-	ibtrs_info(sess, "%s: changing value from %d to %d\n", attr->attr.name,
-		   ibtrs_clt_get_max_reconnect_attempts(sess), value);
-	ibtrs_clt_set_max_reconnect_attempts(sess, value);
 	return count;
 }
 
@@ -191,11 +196,13 @@ static ssize_t ibtrs_clt_add_path_store(struct kobject *kobj,
 		.src = (struct sockaddr *)&srcaddr,
 		.dst = (struct sockaddr *)&dstaddr
 	};
+	struct ibtrs_clt *clt;
 	int ret;
 
 	sess = container_of(kobj, struct ibtrs_clt_sess, kobj);
+	clt = sess->clt;
 
-	ret = ibtrs_addr_to_sockaddr(buf, sess->port, &addr);
+	ret = ibtrs_addr_to_sockaddr(buf, clt->port, &addr);
 	if (unlikely(ret))
 		return -EINVAL;
 

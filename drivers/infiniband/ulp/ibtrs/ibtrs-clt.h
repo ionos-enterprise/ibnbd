@@ -150,27 +150,19 @@ struct ibtrs_clt_sess {
 	wait_queue_head_t	state_wq;
 	enum ibtrs_clt_state	state;
 	struct mutex		init_mutex;
-	bool			established;
-	short			port;
 	struct rdma_req		*reqs;
 	struct ib_fmr_pool	*fmr_pool;
-	size_t			pdu_sz;
-	struct ibtrs_clt_ops	ops;
 	struct delayed_work	reconnect_dwork;
 	struct work_struct	close_work;
-	unsigned		max_reconnect_attempts;
 	unsigned		reconnect_attempts;
 	unsigned		reconnect_delay_sec;
-	void			*tags;
-	unsigned long		*tags_map;
-	wait_queue_head_t	tags_wait;
 	u64			*srv_rdma_addr;
 	u32			srv_rdma_buf_rkey;
 	u32			max_io_size;
 	u32			max_req_size;
 	u32			chunk_size;
 	u32			max_desc;
-	u32			queue_depth;
+	size_t			queue_depth;
 	enum ibtrs_fast_reg	fast_reg_mode;
 	u64			mr_page_mask;
 	u32			mr_page_size;
@@ -185,14 +177,25 @@ struct ibtrs_clt_sess {
 struct ibtrs_clt {
 	struct ibtrs_clt_sess	*paths[MAX_PATHS_NUM];
 	size_t			paths_num;
+	bool			established;
+	short			port;
+	unsigned		max_reconnect_attempts;
+	unsigned		reconnect_delay_sec;
+	void			*tags;
+	unsigned long		*tags_map;
+	size_t			user_queue_depth;
+	size_t			queue_depth;
+	wait_queue_head_t	tags_wait;
+	size_t			pdu_sz;
+	struct ibtrs_clt_ops	ops;
 };
 
 /* See ibtrs-log.h */
 #define TYPES_TO_SESSNAME(obj)						\
 	LIST(CASE(obj, struct ibtrs_clt_sess *, s.sessname))
 
-#define TAG_SIZE(sess) (sizeof(struct ibtrs_tag) + (sess)->pdu_sz)
-#define GET_TAG(sess, idx) ((sess)->tags + TAG_SIZE(sess) * idx)
+#define TAG_SIZE(clt) (sizeof(struct ibtrs_tag) + (clt)->pdu_sz)
+#define GET_TAG(clt, idx) ((clt)->tags + TAG_SIZE(clt) * idx)
 
 /**
  * ibtrs_clt_reconnect() - Reconnect the session
@@ -200,10 +203,9 @@ struct ibtrs_clt {
  */
 int ibtrs_clt_reconnect(struct ibtrs_clt_sess *sess);
 
-void ibtrs_clt_set_max_reconnect_attempts(struct ibtrs_clt_sess *sess,
-					  int value);
+void ibtrs_clt_set_max_reconnect_attempts(struct ibtrs_clt *clt, int value);
+int ibtrs_clt_get_max_reconnect_attempts(const struct ibtrs_clt *clt);
 
-int ibtrs_clt_get_max_reconnect_attempts(const struct ibtrs_clt_sess *sess);
 int ibtrs_clt_reset_sg_list_distr_stats(struct ibtrs_clt_stats *stats,
 					bool enable);
 int ibtrs_clt_stats_sg_list_distr_to_str(struct ibtrs_clt_stats *stats,

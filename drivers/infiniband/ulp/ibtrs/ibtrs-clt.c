@@ -238,6 +238,17 @@ static void ibtrs_clt_free_stats(struct ibtrs_clt_stats *stats)
 	ibtrs_clt_free_wc_comp_stats(stats);
 }
 
+static void ibtrs_clt_set_min_queue_depth(struct ibtrs_clt *clt, size_t new)
+{
+	size_t old;
+
+	/* Can be updated from different sessions (paths), choose min */
+
+	do {
+		old = clt->queue_depth;
+		new = (!old ? new : min_t(size_t, old, new));
+	} while (cmpxchg(&clt->queue_depth, old, new) != old);
+}
 
 bool ibtrs_clt_sess_is_connected(const struct ibtrs_clt_sess *sess)
 {
@@ -311,62 +322,60 @@ struct ibtrs_map_state {
 	enum dma_data_direction dir;
 };
 
-static inline struct ibtrs_tag *__ibtrs_get_tag(struct ibtrs_clt_sess *sess,
+static inline struct ibtrs_tag *__ibtrs_get_tag(struct ibtrs_clt *clt,
 						int cpu_id)
 {
-	size_t max_depth = sess->queue_depth;
+	size_t max_depth = clt->queue_depth;
 	struct ibtrs_tag *tag;
 	int cpu, bit;
 
 	cpu = get_cpu();
 	do {
-		bit = find_first_zero_bit(sess->tags_map, max_depth);
+		bit = find_first_zero_bit(clt->tags_map, max_depth);
 		if (unlikely(bit >= max_depth)) {
 			put_cpu();
 			return NULL;
 		}
 
-	} while (unlikely(test_and_set_bit_lock(bit, sess->tags_map)));
+	} while (unlikely(test_and_set_bit_lock(bit, clt->tags_map)));
 	put_cpu();
 
-	tag = GET_TAG(sess, bit);
+	tag = GET_TAG(clt, bit);
 	WARN_ON(tag->mem_id != bit);
 	tag->cpu_id = (cpu_id != -1 ? cpu_id : cpu);
 
 	return tag;
 }
 
-static inline void __ibtrs_put_tag(struct ibtrs_clt_sess *sess,
+static inline void __ibtrs_put_tag(struct ibtrs_clt *clt,
 				   struct ibtrs_tag *tag)
 {
-	clear_bit_unlock(tag->mem_id, sess->tags_map);
+	clear_bit_unlock(tag->mem_id, clt->tags_map);
 }
 
 struct ibtrs_tag *ibtrs_clt_get_tag(struct ibtrs_clt *clt, int cpu_id,
 				    size_t nr_bytes, int can_wait)
 {
-	/* XXX Should be changed */
-	struct ibtrs_clt_sess *sess = clt->paths[0];
 	struct ibtrs_tag *tag;
 	DEFINE_WAIT(wait);
 
 	/* Is not used for now */
 	(void)nr_bytes;
 
-	tag = __ibtrs_get_tag(sess, cpu_id);
+	tag = __ibtrs_get_tag(clt, cpu_id);
 	if (likely(tag) || !can_wait)
 		return tag;
 
 	do {
-		prepare_to_wait(&sess->tags_wait, &wait, TASK_UNINTERRUPTIBLE);
-		tag = __ibtrs_get_tag(sess, cpu_id);
+		prepare_to_wait(&clt->tags_wait, &wait, TASK_UNINTERRUPTIBLE);
+		tag = __ibtrs_get_tag(clt, cpu_id);
 		if (likely(tag))
 			break;
 
 		io_schedule();
 	} while (1);
 
-	finish_wait(&sess->tags_wait, &wait);
+	finish_wait(&clt->tags_wait, &wait);
 
 	return tag;
 }
@@ -374,21 +383,16 @@ EXPORT_SYMBOL(ibtrs_clt_get_tag);
 
 void ibtrs_clt_put_tag(struct ibtrs_clt *clt, struct ibtrs_tag *tag)
 {
-	/* XXX Should be changed */
-	struct ibtrs_clt_sess *sess = clt->paths[0];
-
-	if (WARN_ON(tag->mem_id >= sess->queue_depth))
-		return;
-	if (WARN_ON(!test_bit(tag->mem_id, sess->tags_map)))
+	if (WARN_ON(!test_bit(tag->mem_id, clt->tags_map)))
 		return;
 
-	__ibtrs_put_tag(sess, tag);
+	__ibtrs_put_tag(clt, tag);
 
 	/* Putting a tag is a barrier, so we will observe
 	 * new entry in the wait list, no worries.
 	 */
-	if (waitqueue_active(&sess->tags_wait))
-		wake_up(&sess->tags_wait);
+	if (waitqueue_active(&clt->tags_wait))
+		wake_up(&clt->tags_wait);
 }
 EXPORT_SYMBOL(ibtrs_clt_put_tag);
 
@@ -1128,6 +1132,7 @@ static void complete_rdma_req(struct rdma_req *req, int errno)
 	struct ibtrs_clt_con *con = req->con;
 	struct ibtrs_clt_sess *sess;
 	enum dma_data_direction dir;
+	struct ibtrs_clt *clt;
 	void *priv;
 
 	if (WARN_ON(!req->in_use))
@@ -1135,6 +1140,7 @@ static void complete_rdma_req(struct rdma_req *req, int errno)
 	if (WARN_ON(!req->con))
 		return;
 	sess = to_clt_sess(con->c.sess);
+	clt = sess->clt;
 
 	if (req->sg_cnt > fmr_sg_cnt)
 		ibtrs_unmap_fast_reg_data(req->con, req);
@@ -1155,9 +1161,9 @@ static void complete_rdma_req(struct rdma_req *req, int errno)
 	priv = req->priv;
 	dir = req->dir;
 
-	sess->ops.rdma_ev(priv, dir == DMA_FROM_DEVICE ?
-			  IBTRS_CLT_RDMA_EV_RDMA_REQUEST_WRITE_COMPL :
-			  IBTRS_CLT_RDMA_EV_RDMA_WRITE_COMPL, errno);
+	clt->ops.rdma_ev(priv, dir == DMA_FROM_DEVICE ?
+			 IBTRS_CLT_RDMA_EV_RDMA_REQUEST_WRITE_COMPL :
+			 IBTRS_CLT_RDMA_EV_RDMA_WRITE_COMPL, errno);
 }
 
 static void process_io_rsp(struct ibtrs_clt_sess *sess, u32 msg_id, s16 errno)
@@ -1216,6 +1222,7 @@ static void msg_worker(struct work_struct *work)
 	struct ibtrs_clt_sess *sess;
 	struct ibtrs_msg_user *msg;
 	struct ibtrs_clt_con *con;
+	struct ibtrs_clt *clt;
 	struct msg_work *w;
 	size_t len;
 
@@ -1226,11 +1233,12 @@ static void msg_worker(struct work_struct *work)
 
 	len = le16_to_cpu(msg->psize);
 	sess = to_clt_sess(con->c.sess);
+	clt = sess->clt;
 
 	sess->stats.user_ib_msgs.recv_msg_cnt++;
 	sess->stats.user_ib_msgs.recv_size += len;
 
-	sess->ops.recv(sess->ops.priv, msg->payl, len);
+	clt->ops.recv(clt->ops.priv, msg->payl, len);
 	kfree(msg);
 }
 
@@ -1608,40 +1616,35 @@ out:
 	return -ENOMEM;
 }
 
-static int alloc_sess_tags(struct ibtrs_clt_sess *sess)
+static int alloc_tags(struct ibtrs_clt *clt)
 {
 	int err, i;
 
-	sess->tags_map = kzalloc(BITS_TO_LONGS(sess->queue_depth) *
-				 sizeof(long), GFP_KERNEL);
-	if (!sess->tags_map) {
-		ibtrs_err(sess, "Failed to alloc tags bitmap\n");
+	clt->tags_map = kzalloc(BITS_TO_LONGS(clt->queue_depth) * sizeof(long),
+				GFP_KERNEL);
+	if (unlikely(!clt->tags_map)) {
 		err = -ENOMEM;
 		goto out_err;
 	}
-
-	sess->tags = kcalloc(sess->queue_depth, TAG_SIZE(sess),
-			     GFP_KERNEL);
-	if (!sess->tags) {
-		ibtrs_err(sess, "Failed to alloc memory for tags\n");
+	clt->tags = kcalloc(clt->queue_depth, TAG_SIZE(clt), GFP_KERNEL);
+	if (unlikely(!clt->tags)) {
 		err = -ENOMEM;
 		goto err_map;
 	}
-
-	for (i = 0; i < sess->queue_depth; i++) {
+	for (i = 0; i < clt->queue_depth; i++) {
 		struct ibtrs_tag *tag;
 
-		tag = GET_TAG(sess, i);
+		tag = GET_TAG(clt, i);
 		tag->mem_id = i;
 		tag->mem_id_mask = i << ((IB_IMM_SIZE_BITS - 1) -
-					 ilog2(sess->queue_depth - 1));
+					 ilog2(clt->queue_depth - 1));
 	}
 
 	return 0;
 
 err_map:
-	kfree(sess->tags_map);
-	sess->tags_map = NULL;
+	kfree(clt->tags_map);
+	clt->tags_map = NULL;
 out_err:
 	return err;
 }
@@ -2150,9 +2153,10 @@ static int alloc_sess_io_bufs(struct ibtrs_clt_sess *sess)
 		ibtrs_err(sess, "alloc_sess_fast_pool(), err: %d\n", ret);
 		goto free_reqs;
 	}
-	ret = alloc_sess_tags(sess);
+	/* XXX Should be moved */
+	ret = alloc_tags(sess->clt);
 	if (unlikely(ret)) {
-		ibtrs_err(sess, "alloc_sess_tags(), err: %d\n", ret);
+		ibtrs_err(sess, "alloc_tags(), err: %d\n", ret);
 		goto free_fast_pool;
 	}
 
@@ -2170,10 +2174,12 @@ static void free_sess_io_bufs(struct ibtrs_clt_sess *sess)
 {
 	free_sess_reqs(sess);
 	free_sess_fast_pool(sess);
-	kfree(sess->tags_map);
-	sess->tags_map = NULL;
-	kfree(sess->tags);
-	sess->tags = NULL;
+
+	/* XXX Should be moved */
+	kfree(sess->clt->tags_map);
+	sess->clt->tags_map = NULL;
+	kfree(sess->clt->tags);
+	sess->clt->tags = NULL;
 }
 
 static bool __ibtrs_clt_change_state(struct ibtrs_clt_sess *sess,
@@ -2305,14 +2311,9 @@ static void ibtrs_clt_reconnect_work(struct work_struct *work);
 static void ibtrs_clt_close_work(struct work_struct *work);
 
 static struct ibtrs_clt_sess *alloc_sess(struct ibtrs_clt *clt,
-					 const struct ibtrs_clt_ops *ops,
 					 const char *sessname,
-					 const struct ibtrs_addr *paths,
-					 size_t paths_num,
-					 short port, size_t con_num,
-					 size_t pdu_sz, u8 reconnect_delay_sec,
-					 u16 max_segments,
-					 s16 max_reconnect_attempts)
+					 const struct ibtrs_addr *path,
+					 size_t con_num, u16 max_segments)
 {
 	struct ibtrs_clt_sess *sess;
 	int err = -ENOMEM;
@@ -2327,28 +2328,22 @@ static struct ibtrs_clt_sess *alloc_sess(struct ibtrs_clt *clt,
 
 	mutex_init(&sess->init_mutex);
 	uuid_gen(&sess->s.uuid);
-	memcpy(&sess->s.dst_addr, paths[0].dst,
-	       rdma_addr_size((struct sockaddr *)paths[0].dst));
+	memcpy(&sess->s.dst_addr, path->dst,
+	       rdma_addr_size((struct sockaddr *)path->dst));
 
 	/*
 	 * rdma_resolve_addr() passes src_addr to cma_bind_addr, which
 	 * checks the sa_family to be non-zero. If user passed src_addr=NULL
 	 * the sess->src_addr will contain only zeros, which is then fine.
 	 */
-	if (paths[0].src)
-		memcpy(&sess->s.src_addr, paths[0].src,
-		       rdma_addr_size((struct sockaddr *)paths[0].src));
+	if (path->src)
+		memcpy(&sess->s.src_addr, path->src,
+		       rdma_addr_size((struct sockaddr *)path->src));
 	strlcpy(sess->s.sessname, sessname, sizeof(sess->s.sessname));
 	sess->s.con_num = con_num;
 	sess->clt = clt;
-	sess->pdu_sz = pdu_sz;
-	sess->ops = *ops;
-	sess->reconnect_delay_sec = reconnect_delay_sec;
-	sess->port = port;
-	sess->max_reconnect_attempts = max_reconnect_attempts;
 	sess->max_pages_per_mr = max_segments;
 	init_waitqueue_head(&sess->state_wq);
-	init_waitqueue_head(&sess->tags_wait);
 	sess->state = IBTRS_CLT_CONNECTING;
 	INIT_WORK(&sess->close_work, ibtrs_clt_close_work);
 	INIT_DELAYED_WORK(&sess->reconnect_dwork, ibtrs_clt_reconnect_work);
@@ -2645,6 +2640,7 @@ static void ibtrs_clt_stop_hb(struct ibtrs_clt_sess *sess)
 
 static void ibtrs_clt_stop_and_destroy_conns(struct ibtrs_clt_sess *sess)
 {
+	struct ibtrs_clt *clt = sess->clt;
 	struct ibtrs_clt_con *con;
 	unsigned cid;
 
@@ -2680,13 +2676,12 @@ static void ibtrs_clt_stop_and_destroy_conns(struct ibtrs_clt_sess *sess)
 		stop_cm(con);
 	}
 	fail_all_outstanding_reqs(sess);
-	if (sess->established) {
-		sess->ops.link_ev(sess->ops.priv,
-				  IBTRS_CLT_LINK_EV_DISCONNECTED, 0);
-		sess->established = false;
-	}
-
 	free_sess_all_bufs(sess);
+	if (clt->established) {
+		clt->ops.link_ev(clt->ops.priv,
+				 IBTRS_CLT_LINK_EV_DISCONNECTED, 0);
+		clt->established = false;
+	}
 	for (cid = 0; cid < sess->s.con_num; cid++) {
 		con = to_clt_con(sess->s.con[cid]);
 		if (!con)
@@ -2895,6 +2890,13 @@ static int ibtrs_rdma_conn_established(struct ibtrs_clt_con *con,
 		sess->max_desc  = sess->max_req_size;
 		sess->max_desc -= sizeof(u32) + sizeof(u32) + IO_MSG_SIZE;
 		sess->max_desc /= sizeof(struct ibtrs_sg_desc);
+
+		/*
+		 * Global queue depth is always a minimum.  If while a
+		 * reconnection server sends us a value a bit higher -
+		 * client does side not care and uses cached minimum.
+		 */
+		ibtrs_clt_set_min_queue_depth(sess->clt, queue_depth);
 	}
 
 	return 0;
@@ -3186,17 +3188,19 @@ out:
 static void ibtrs_clt_reconnect_work(struct work_struct *work)
 {
 	struct ibtrs_clt_sess *sess;
+	struct ibtrs_clt *clt;
 	unsigned delay_ms;
 	int err;
 
 	sess = container_of(to_delayed_work(work), struct ibtrs_clt_sess,
 			    reconnect_dwork);
+	clt = sess->clt;
 
 	if (ibtrs_clt_state(sess) == IBTRS_CLT_CLOSING)
 		/* User requested closing */
 		return;
 
-	if (sess->reconnect_attempts == sess->max_reconnect_attempts) {
+	if (sess->reconnect_attempts == clt->max_reconnect_attempts) {
 		/* Close a session completely if max attempts is reached */
 		ibtrs_clt_close_conns(sess, false);
 		return;
@@ -3218,10 +3222,10 @@ static void ibtrs_clt_reconnect_work(struct work_struct *work)
 		ibtrs_err(sess, "Sending session info failed, err: %d\n", err);
 		goto reconnect_again;
 	}
-	sess->established = true;
 	sess->reconnect_attempts = 0;
 	sess->stats.reconnects.successful_cnt++;
-	sess->ops.link_ev(sess->ops.priv, IBTRS_CLT_LINK_EV_RECONNECTED, 0);
+	clt->established = true;
+	clt->ops.link_ev(clt->ops.priv, IBTRS_CLT_LINK_EV_RECONNECTED, 0);
 
 	return;
 
@@ -3234,11 +3238,17 @@ reconnect_again:
 	}
 }
 
-static struct ibtrs_clt *alloc_clt(size_t paths_num)
+static struct ibtrs_clt *alloc_clt(size_t paths_num, short port, size_t pdu_sz,
+				   const struct ibtrs_clt_ops *ops,
+				   unsigned reconnect_delay_sec,
+				   unsigned max_reconnect_attempts)
 {
 	struct ibtrs_clt *clt;
 
 	if (unlikely(!paths_num || paths_num > MAX_PATHS_NUM))
+		return ERR_PTR(-EINVAL);
+
+	if (unlikely(!clt_ops_are_valid(ops)))
 		return ERR_PTR(-EINVAL);
 
 	clt = kzalloc(sizeof(*clt), GFP_KERNEL);
@@ -3246,6 +3256,12 @@ static struct ibtrs_clt *alloc_clt(size_t paths_num)
 		return ERR_PTR(-ENOMEM);
 
 	clt->paths_num = paths_num;
+	clt->port = port;
+	clt->pdu_sz = pdu_sz;
+	clt->reconnect_delay_sec = reconnect_delay_sec;
+	clt->max_reconnect_attempts = max_reconnect_attempts;
+	clt->ops = *ops;
+	init_waitqueue_head(&clt->tags_wait);
 
 	return clt;
 }
@@ -3268,19 +3284,13 @@ struct ibtrs_clt *ibtrs_clt_open(const struct ibtrs_clt_ops *ops,
 	struct ibtrs_clt *clt;
 	int err;
 
-	if (unlikely(!clt_ops_are_valid(ops))) {
-		pr_err("Callbacks are invalid\n");
-		err = -EINVAL;
-		goto out;
-	}
-	clt = alloc_clt(paths_num);
+	clt = alloc_clt(paths_num, port, pdu_sz, ops, reconnect_delay_sec,
+			max_reconnect_attempts);
 	if (unlikely(IS_ERR(clt))) {
 		err = PTR_ERR(clt);
 		goto out;
 	}
-	sess = alloc_sess(clt, ops, sessname, paths, paths_num, port,
-			  CONS_PER_SESSION, pdu_sz, reconnect_delay_sec,
-			  max_segments, max_reconnect_attempts);
+	sess = alloc_sess(clt, sessname, paths, CONS_PER_SESSION, max_segments);
 	if (unlikely(IS_ERR(sess))) {
 		pr_err("Establishing session to server failed, err: %ld\n",
 		       PTR_ERR(sess));
@@ -3308,7 +3318,7 @@ struct ibtrs_clt *ibtrs_clt_open(const struct ibtrs_clt_ops *ops,
 			  err);
 		goto close_sess;
 	}
-	sess->established = true;
+	clt->established = true;
 	mutex_unlock(&sess->init_mutex);
 
 	return clt;
@@ -3348,14 +3358,14 @@ int ibtrs_clt_reconnect(struct ibtrs_clt_sess *sess)
 	return -EBUSY;
 }
 
-void ibtrs_clt_set_max_reconnect_attempts(struct ibtrs_clt_sess *sess, int value)
+void ibtrs_clt_set_max_reconnect_attempts(struct ibtrs_clt *clt, int value)
 {
-	sess->max_reconnect_attempts = (unsigned)value;
+	clt->max_reconnect_attempts = (unsigned)value;
 }
 
-int ibtrs_clt_get_max_reconnect_attempts(const struct ibtrs_clt_sess *sess)
+int ibtrs_clt_get_max_reconnect_attempts(const struct ibtrs_clt *clt)
 {
-	return (int)sess->max_reconnect_attempts;
+	return (int)clt->max_reconnect_attempts;
 }
 
 static inline void ibtrs_clt_record_sg_distr(u64 *stat, u64 *total,
@@ -3786,7 +3796,9 @@ int ibtrs_clt_query(struct ibtrs_clt *clt, struct ibtrs_attrs *attr)
 	if (unlikely(sess->state != IBTRS_CLT_CONNECTED))
 		return -ECOMM;
 
-	attr->queue_depth      = sess->queue_depth;
+	attr->queue_depth      = clt->queue_depth;
+
+	/* XXX Should be changed */
 	attr->mr_page_mask     = sess->mr_page_mask;
 	attr->mr_page_size     = sess->mr_page_size;
 	attr->mr_max_size      = sess->mr_max_size;
