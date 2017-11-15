@@ -168,7 +168,7 @@ ibnbd_get_sess_dev(int dev_id, struct ibnbd_srv_session *srv_sess)
 	return sess_dev;
 }
 
-static int process_rdma(struct ibtrs_srv_sess *sess,
+static int process_rdma(struct ibtrs_srv_sess *ibtrs,
 			struct ibnbd_srv_session *srv_sess,
 			struct ibtrs_srv_op *id, void *data, u32 len)
 {
@@ -316,15 +316,15 @@ out:
 	kfree(srv_sess);
 }
 
-static int create_sess(struct ibtrs_srv_sess *sess)
+static int create_sess(struct ibtrs_srv_sess *ibtrs)
 {
 	const struct sockaddr *sockaddr;
 	struct ibnbd_srv_session *srv_sess;
 	char sessname[NAME_MAX];
 
-	strlcpy(sessname, ibtrs_srv_get_sess_name(sess), sizeof(sessname));
+	strlcpy(sessname, ibtrs_srv_get_sess_name(ibtrs), sizeof(sessname));
 
-	sockaddr = ibtrs_srv_get_sess_sockaddr(sess);
+	sockaddr = ibtrs_srv_get_sess_sockaddr(ibtrs);
 
 	srv_sess = kzalloc(sizeof(*srv_sess), GFP_KERNEL);
 	if (!srv_sess) {
@@ -332,7 +332,7 @@ static int create_sess(struct ibtrs_srv_sess *sess)
 		       sessname);
 		return -ENOMEM;
 	}
-	srv_sess->queue_depth = ibtrs_srv_get_sess_qdepth(sess);
+	srv_sess->queue_depth = ibtrs_srv_get_sess_qdepth(ibtrs);
 	srv_sess->sess_bio_set = bioset_create(srv_sess->queue_depth, 0,
 					       BIOSET_NEED_BVECS);
 	if (!srv_sess->sess_bio_set) {
@@ -351,24 +351,24 @@ static int create_sess(struct ibtrs_srv_sess *sess)
 	list_add(&srv_sess->list, &sess_list);
 	mutex_unlock(&sess_lock);
 
-	srv_sess->ibtrs_sess = sess;
-	srv_sess->queue_depth = ibtrs_srv_get_sess_qdepth(sess);
+	srv_sess->ibtrs = ibtrs;
+	srv_sess->queue_depth = ibtrs_srv_get_sess_qdepth(ibtrs);
 	strlcpy(srv_sess->sessname, sessname, sizeof(srv_sess->sessname));
 
 
-	ibtrs_srv_set_sess_priv(sess, srv_sess);
+	ibtrs_srv_set_sess_priv(ibtrs, srv_sess);
 
 	return 0;
 }
 
-static int ibnbd_srv_sess_ev(struct ibtrs_srv_sess *sess,
+static int ibnbd_srv_sess_ev(struct ibtrs_srv_sess *ibtrs,
 			     enum ibtrs_srv_sess_ev ev, void *priv)
 {
 	struct ibnbd_srv_session *srv_sess = priv;
 
 	switch (ev) {
 	case IBTRS_SRV_SESS_EV_CONNECTED:
-		return create_sess(sess);
+		return create_sess(ibtrs);
 
 	case IBTRS_SRV_SESS_EV_DISCONNECTED:
 		if (WARN_ON(!srv_sess))
@@ -384,7 +384,7 @@ static int ibnbd_srv_sess_ev(struct ibtrs_srv_sess *sess,
 	}
 }
 
-static int ibnbd_srv_rdma_ev(struct ibtrs_srv_sess *sess, void *priv,
+static int ibnbd_srv_rdma_ev(struct ibtrs_srv_sess *ibtrs, void *priv,
 			     struct ibtrs_srv_op *id, enum ibtrs_srv_rdma_ev ev,
 			     void *data, size_t len)
 {
@@ -397,7 +397,7 @@ static int ibnbd_srv_rdma_ev(struct ibtrs_srv_sess *sess, void *priv,
 	switch (ev) {
 	case IBTRS_SRV_RDMA_EV_RECV:
 	case IBTRS_SRV_RDMA_EV_WRITE_REQ:
-		return process_rdma(sess, srv_sess, id, data, len);
+		return process_rdma(ibtrs, srv_sess, id, data, len);
 
 	default:
 		pr_warn("Received unexpected RDMA event %d from session %s\n",
@@ -675,7 +675,7 @@ static char *ibnbd_srv_get_full_path(const char *dev_name)
 	return full_path;
 }
 
-static void process_msg_sess_info(struct ibtrs_srv_sess *s,
+static void process_msg_sess_info(struct ibtrs_srv_sess *ibtrs,
 				  struct ibnbd_srv_session *srv_sess,
 				  const void *msg, size_t len)
 {
@@ -695,13 +695,13 @@ static void process_msg_sess_info(struct ibtrs_srv_sess *s,
 	rsp.hdr.type = IBNBD_MSG_SESS_INFO_RSP;
 	rsp.ver = srv_sess->ver;
 
-	err = ibtrs_srv_send(s, &vec, 1);
+	err = ibtrs_srv_send(ibtrs, &vec, 1);
 	if (unlikely(err))
 		pr_err("Failed to send session info response to client"
 		       " %s\n", srv_sess->sessname);
 }
 
-static void process_msg_open(struct ibtrs_srv_sess *s,
+static void process_msg_open(struct ibtrs_srv_sess *ibtrs,
 			     struct ibnbd_srv_session *srv_sess,
 			     const void *msg, size_t len)
 {
@@ -828,7 +828,7 @@ static void process_msg_open(struct ibtrs_srv_sess *s,
 		goto remove_srv_sess_dev;
 	}
 
-	ret = ibtrs_srv_send(s, &vec, 1);
+	ret = ibtrs_srv_send(ibtrs, &vec, 1);
 	if (unlikely(ret)) {
 		ibnbd_err(srv_sess_dev, "Opening device failed, sending open"
 			  " response msg failed, err: %d\n", ret);
@@ -873,14 +873,14 @@ reject:
 	rsp.result = ret;
 	if (unlikely(srv_sess->state == SRV_SESS_STATE_DISCONNECTED))
 		return;
-	ret = ibtrs_srv_send(s, &vec, 1);
+	ret = ibtrs_srv_send(ibtrs, &vec, 1);
 	if (ret)
 		pr_err("Rejecting mapping request of device '%s' on session %s"
 		       " failed, err: %d\n", open_msg->dev_name,
 		       srv_sess->sessname, ret);
 }
 
-static int send_msg_close_rsp(struct ibtrs_srv_sess *sess, u32 clt_device_id)
+static int send_msg_close_rsp(struct ibtrs_srv_sess *ibtrs, u32 clt_device_id)
 {
 	struct ibnbd_msg_close_rsp msg;
 	struct kvec vec = {
@@ -891,10 +891,10 @@ static int send_msg_close_rsp(struct ibtrs_srv_sess *sess, u32 clt_device_id)
 	msg.hdr.type	= IBNBD_MSG_CLOSE_RSP;
 	msg.clt_device_id	= clt_device_id;
 
-	return ibtrs_srv_send(sess, &vec, 1);
+	return ibtrs_srv_send(ibtrs, &vec, 1);
 }
 
-static void process_msg_close(struct ibtrs_srv_sess *s,
+static void process_msg_close(struct ibtrs_srv_sess *ibtrs,
 			      struct ibnbd_srv_session *srv_sess,
 			      const void *msg, size_t len)
 {
@@ -911,14 +911,14 @@ static void process_msg_close(struct ibtrs_srv_sess *s,
 		ibnbd_srv_destroy_dev_session_sysfs(sess_dev);
 		ibnbd_put_sess_dev(sess_dev);
 		ibnbd_destroy_sess_dev(sess_dev, false);
-		send_msg_close_rsp(s, clt_device_id);
+		send_msg_close_rsp(ibtrs, clt_device_id);
 	} else {
 		pr_err("Destroying device id %d on session %s failed,"
 		       " device not open\n", dev_id, srv_sess->sessname);
 	}
 }
 
-static void ibnbd_srv_recv(struct ibtrs_srv_sess *sess, void *priv,
+static void ibnbd_srv_recv(struct ibtrs_srv_sess *ibtrs, void *priv,
 			   const void *msg, size_t len)
 {
 	struct ibnbd_msg_hdr *hdr;
@@ -936,13 +936,13 @@ static void ibnbd_srv_recv(struct ibtrs_srv_sess *sess, void *priv,
 
 	switch (hdr->type) {
 	case IBNBD_MSG_SESS_INFO:
-		process_msg_sess_info(sess, srv_sess, msg, len);
+		process_msg_sess_info(ibtrs, srv_sess, msg, len);
 		break;
 	case IBNBD_MSG_OPEN:
-		process_msg_open(sess, srv_sess, msg, len);
+		process_msg_open(ibtrs, srv_sess, msg, len);
 		break;
 	case IBNBD_MSG_CLOSE:
-		process_msg_close(sess, srv_sess, msg, len);
+		process_msg_close(ibtrs, srv_sess, msg, len);
 		break;
 	default:
 		pr_warn("Message with unexpected type %d received on session"
@@ -977,7 +977,7 @@ static int ibnbd_srv_revalidate_sess_dev(struct ibnbd_srv_sess_dev *sess_dev)
 		return -EAGAIN;
 	}
 
-	ret = ibtrs_srv_send(sess_dev->sess->ibtrs_sess, &vec, 1);
+	ret = ibtrs_srv_send(sess_dev->sess->ibtrs, &vec, 1);
 	if (unlikely(ret)) {
 		ibnbd_err(sess_dev,
 			  "revalidate: Sending new device size"

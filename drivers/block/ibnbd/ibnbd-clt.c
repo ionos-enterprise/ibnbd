@@ -275,7 +275,7 @@ out:
 	ibnbd_clt_put_dev(dev);
 }
 
-static int send_msg_close(struct ibtrs_clt_sess *sess, u32 device_id)
+static int send_msg_close(struct ibtrs_clt_sess *ibtrs, u32 device_id)
 {
 	struct ibnbd_msg_close msg;
 	struct kvec vec = {
@@ -286,7 +286,7 @@ static int send_msg_close(struct ibtrs_clt_sess *sess, u32 device_id)
 	msg.hdr.type	= IBNBD_MSG_CLOSE;
 	msg.device_id	= device_id;
 
-	return ibtrs_clt_send(sess, &vec, 1);
+	return ibtrs_clt_send(ibtrs, &vec, 1);
 }
 
 static void ibnbd_clt_recv(void *priv, const void *msg, size_t len)
@@ -319,7 +319,7 @@ static void ibnbd_clt_recv(void *priv, const void *msg, size_t len)
 			       " server, sending close message for dev id:"
 			       " %u\n", rsp->device_id);
 
-			err = send_msg_close(sess->sess, rsp->device_id);
+			err = send_msg_close(sess->ibtrs, rsp->device_id);
 			if (err)
 				pr_err("Failed to send close msg for device"
 				       " with id: %u, err: %d\n",
@@ -554,7 +554,7 @@ static struct ibtrs_tag *ibnbd_get_tag(struct ibnbd_clt_session *sess, int cpu,
 {
 	struct ibtrs_tag *tag;
 
-	tag = ibtrs_clt_get_tag(sess->sess, cpu, tag_bytes,
+	tag = ibtrs_clt_get_tag(sess->ibtrs, cpu, tag_bytes,
 				wait ? IBTRS_TAG_WAIT : IBTRS_TAG_NOWAIT);
 	if (likely(tag))
 		/* We have a subtle rare case here, when all tags can be
@@ -569,7 +569,7 @@ static struct ibtrs_tag *ibnbd_get_tag(struct ibnbd_clt_session *sess, int cpu,
 
 static void ibnbd_put_tag(struct ibnbd_clt_session *sess, struct ibtrs_tag *tag)
 {
-	ibtrs_clt_put_tag(sess->sess, tag);
+	ibtrs_clt_put_tag(sess->ibtrs, tag);
 	atomic_dec(&sess->busy);
 	/* Paired with ibnbd_clt_dev_add_to_requeue().  Decrement first
 	 * and then check queue bits.
@@ -679,7 +679,7 @@ static int send_msg_open(struct ibnbd_clt_dev *dev)
 	msg.io_mode		= dev->io_mode;
 	strlcpy(msg.dev_name, dev->pathname, sizeof(msg.dev_name));
 
-	err = ibtrs_clt_send(dev->sess->sess, &vec, 1);
+	err = ibtrs_clt_send(dev->sess->ibtrs, &vec, 1);
 
 	return err;
 }
@@ -695,7 +695,7 @@ static int send_msg_sess_info(struct ibnbd_clt_session *sess)
 	msg.hdr.type = IBNBD_MSG_SESS_INFO;
 	msg.ver      = IBNBD_VER_MAJOR;
 
-	return ibtrs_clt_send(sess->sess, &vec, 1);
+	return ibtrs_clt_send(sess->ibtrs, &vec, 1);
 }
 
 int open_remote_device(struct ibnbd_clt_dev *dev)
@@ -854,7 +854,7 @@ static void ibnbd_clt_sess_ev(void *priv, enum ibtrs_clt_sess_ev ev, int errno)
 
 		mutex_unlock(&sess->lock);
 		memset(&attrs, 0, sizeof(attrs));
-		ibtrs_clt_query(sess->sess, &attrs);
+		ibtrs_clt_query(sess->ibtrs, &attrs);
 		sess->max_io_size = attrs.max_io_size;
 		ibnbd_schedule_reopen(sess);
 		break;
@@ -986,20 +986,20 @@ ibnbd_create_session(const char *sessname,
 	ops.rdma_ev = ibnbd_clt_rdma_ev;
 	ops.sess_ev = ibnbd_clt_sess_ev;
 
-	sess->sess = ibtrs_clt_open(&ops, sessname, paths, path_cnt, IBTRS_PORT,
-				    sizeof(struct ibnbd_iu),
-				    RECONNECT_DELAY, BMAX_SEGMENTS,
-				    MAX_RECONNECTS);
-	if (!IS_ERR(sess->sess)) {
+	sess->ibtrs = ibtrs_clt_open(&ops, sessname, paths, path_cnt, IBTRS_PORT,
+				     sizeof(struct ibnbd_iu),
+				     RECONNECT_DELAY, BMAX_SEGMENTS,
+				     MAX_RECONNECTS);
+	if (likely(!IS_ERR(sess->ibtrs))) {
 		mutex_lock(&sess->lock);
 		sess->state = CLT_SESS_STATE_READY;
 		mutex_unlock(&sess->lock);
 	} else {
-		err = PTR_ERR(sess->sess);
+		err = PTR_ERR(sess->ibtrs);
 		goto out_free;
 	}
 
-	ibtrs_clt_query(sess->sess, &attrs);
+	ibtrs_clt_query(sess->ibtrs, &attrs);
 	sess->max_io_size = attrs.max_io_size;
 	sess->queue_depth = attrs.queue_depth;
 
@@ -1016,7 +1016,7 @@ ibnbd_create_session(const char *sessname,
 destroy_tags:
 	destroy_mq_tags(sess);
 close_sess:
-	ibtrs_clt_close(sess->sess);
+	ibtrs_clt_close(sess->ibtrs);
 out_free:
 	spin_lock(&sess_lock);
 	list_del(&sess->list);
@@ -1039,7 +1039,7 @@ static void ibnbd_clt_destroy_session(struct ibnbd_clt_session *sess)
 		return;
 	}
 	mutex_unlock(&sess->lock);
-	ibtrs_clt_close(sess->sess);
+	ibtrs_clt_close(sess->ibtrs);
 
 	destroy_mq_tags(sess);
 	spin_lock(&sess_lock);
@@ -1114,7 +1114,7 @@ static int ibnbd_client_xfer_request(struct ibnbd_clt_dev *dev,
 				     struct request *rq,
 				     struct ibnbd_iu *iu)
 {
-	struct ibtrs_clt_sess *sess = dev->sess->sess;
+	struct ibtrs_clt_sess *ibtrs = dev->sess->ibtrs;
 	struct ibtrs_tag *tag = iu->tag;
 	unsigned int sg_cnt;
 	struct kvec vec;
@@ -1142,10 +1142,10 @@ static int ibnbd_client_xfer_request(struct ibnbd_clt_dev *dev,
 	};
 
 	if (rq_data_dir(rq) == READ)
-		err = ibtrs_clt_request_rdma_write(sess, tag, iu, &vec, 1, size,
-						   iu->sglist, sg_cnt);
+		err = ibtrs_clt_request_rdma_write(ibtrs, tag, iu, &vec, 1,
+						   size, iu->sglist, sg_cnt);
 	else
-		err = ibtrs_clt_rdma_write(sess, tag, iu, &vec, 1, size,
+		err = ibtrs_clt_rdma_write(ibtrs, tag, iu, &vec, 1, size,
 					   iu->sglist, sg_cnt);
 	if (unlikely(err)) {
 		ibnbd_err_rl(dev, "IBTRS failed to transfer IO, err: %d\n",
@@ -1798,8 +1798,8 @@ __must_hold(&dev->sess->lock)
 	mutex_unlock(&dev->lock);
 
 	mutex_unlock(&dev->sess->lock);
-	if (prev_state == DEV_STATE_OPEN && dev->sess->sess) {
-		if (send_msg_close(dev->sess->sess, dev->device_id))
+	if (prev_state == DEV_STATE_OPEN && dev->sess->ibtrs) {
+		if (send_msg_close(dev->sess->ibtrs, dev->device_id))
 			complete(dev->close_compl);
 	} else {
 		complete(dev->close_compl);

@@ -96,7 +96,7 @@ enum ibnbd_clt_sess_state {
 
 struct ibnbd_clt_session {
 	struct list_head        list;
-	struct ibtrs_clt_sess   *sess;
+	struct ibtrs_clt_sess   *ibtrs;
 	struct ibnbd_cpu_qlist	__percpu
 				*cpu_queues;
 	DECLARE_BITMAP(cpu_queues_bm, NR_CPUS);
