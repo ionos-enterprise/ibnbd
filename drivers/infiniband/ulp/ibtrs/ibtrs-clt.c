@@ -265,7 +265,7 @@ bool ibtrs_clt_sess_is_connected(const struct ibtrs_clt_sess *sess)
 
 static inline bool clt_ops_are_valid(const struct ibtrs_clt_ops *ops)
 {
-	return ops && ops->rdma_ev && ops->sess_ev && ops->recv;
+	return ops && ops->rdma_ev && ops->link_ev && ops->recv;
 }
 
 /**
@@ -2693,8 +2693,8 @@ static void ibtrs_clt_stop_and_destroy_conns(struct ibtrs_clt_sess *sess)
 	}
 	fail_all_outstanding_reqs(sess);
 	if (sess->established) {
-		sess->ops.sess_ev(sess->ops.priv,
-				  IBTRS_CLT_SESS_EV_DISCONNECTED, 0);
+		sess->ops.link_ev(sess->ops.priv,
+				  IBTRS_CLT_LINK_EV_DISCONNECTED, 0);
 		sess->established = false;
 	}
 
@@ -3234,7 +3234,7 @@ static void ibtrs_clt_reconnect_work(struct work_struct *work)
 	sess->established = true;
 	sess->reconnect_attempts = 0;
 	sess->stats.reconnects.successful_cnt++;
-	sess->ops.sess_ev(sess->ops.priv, IBTRS_CLT_SESS_EV_RECONNECTED, 0);
+	sess->ops.link_ev(sess->ops.priv, IBTRS_CLT_LINK_EV_RECONNECTED, 0);
 
 	return;
 

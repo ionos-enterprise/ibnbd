@@ -361,16 +361,16 @@ static int create_sess(struct ibtrs_srv_sess *ibtrs)
 	return 0;
 }
 
-static int ibnbd_srv_sess_ev(struct ibtrs_srv_sess *ibtrs,
-			     enum ibtrs_srv_sess_ev ev, void *priv)
+static int ibnbd_srv_link_ev(struct ibtrs_srv_sess *ibtrs,
+			     enum ibtrs_srv_link_ev ev, void *priv)
 {
 	struct ibnbd_srv_session *srv_sess = priv;
 
 	switch (ev) {
-	case IBTRS_SRV_SESS_EV_CONNECTED:
+	case IBTRS_SRV_LINK_EV_CONNECTED:
 		return create_sess(ibtrs);
 
-	case IBTRS_SRV_SESS_EV_DISCONNECTED:
+	case IBTRS_SRV_LINK_EV_DISCONNECTED:
 		if (WARN_ON(!srv_sess))
 			return -EINVAL;
 
@@ -1018,7 +1018,7 @@ static int __init ibnbd_srv_init_module(void)
 
 	ibtrs_ops.recv    = ibnbd_srv_recv;
 	ibtrs_ops.rdma_ev = ibnbd_srv_rdma_ev;
-	ibtrs_ops.sess_ev = ibnbd_srv_sess_ev;
+	ibtrs_ops.link_ev = ibnbd_srv_link_ev;
 
 	pr_info("Loading module %s, version %s\n",
 		KBUILD_MODNAME, IBNBD_VER_STRING);

@@ -475,7 +475,7 @@ int ibtrs_srv_reset_all_stats(struct ibtrs_srv_stats *stats, bool enable)
 
 static inline bool srv_ops_are_valid(const struct ibtrs_srv_ops *ops)
 {
-	return ops && ops->sess_ev && ops->rdma_ev && ops->recv;
+	return ops && ops->link_ev && ops->rdma_ev && ops->recv;
 }
 
 static void free_id(struct ibtrs_srv_op *id)
@@ -1158,7 +1158,7 @@ static int process_info_req(struct ibtrs_srv_con *con,
 	 * all connections are successfully established.  Thus, simply notify
 	 * listener with a proper event.
 	 */
-	ctx->ops.sess_ev(sess, IBTRS_SRV_SESS_EV_CONNECTED, NULL);
+	ctx->ops.link_ev(sess, IBTRS_SRV_LINK_EV_CONNECTED, NULL);
 
 	/* Send info response */
 	err = ibtrs_iu_post_send(&con->c, tx_iu, tx_sz);
@@ -1723,7 +1723,7 @@ static void ibtrs_srv_close_work(struct work_struct *work)
 		ib_drain_qp(con->c.qp);
 	}
 	if (sess->was_connected)
-		ctx->ops.sess_ev(sess, IBTRS_SRV_SESS_EV_DISCONNECTED,
+		ctx->ops.link_ev(sess, IBTRS_SRV_LINK_EV_DISCONNECTED,
 				 sess->priv);
 
 	release_cont_bufs(sess);

@@ -822,13 +822,13 @@ static int ibnbd_schedule_reopen(struct ibnbd_clt_session *sess)
 	return 0;
 }
 
-static void ibnbd_clt_sess_ev(void *priv, enum ibtrs_clt_sess_ev ev, int errno)
+static void ibnbd_clt_link_ev(void *priv, enum ibtrs_clt_link_ev ev, int errno)
 {
 	struct ibnbd_clt_session *sess = priv;
 	struct ibtrs_attrs attrs;
 
 	switch (ev) {
-	case IBTRS_CLT_SESS_EV_DISCONNECTED:
+	case IBTRS_CLT_LINK_EV_DISCONNECTED:
 		if (sess->sess_info_compl)
 			complete(sess->sess_info_compl);
 		mutex_lock(&sess->lock);
@@ -840,7 +840,7 @@ static void ibnbd_clt_sess_ev(void *priv, enum ibtrs_clt_sess_ev ev, int errno)
 		__set_dev_states_closed(sess);
 		mutex_unlock(&sess->lock);
 		break;
-	case IBTRS_CLT_SESS_EV_RECONNECTED:
+	case IBTRS_CLT_LINK_EV_RECONNECTED:
 		mutex_lock(&sess->lock);
 		if (sess->state == CLT_SESS_STATE_DESTROYED) {
 			/* This may happen if the session started to be closed
@@ -984,7 +984,7 @@ ibnbd_create_session(const char *sessname,
 	ops.priv    = sess;
 	ops.recv    = ibnbd_clt_recv;
 	ops.rdma_ev = ibnbd_clt_rdma_ev;
-	ops.sess_ev = ibnbd_clt_sess_ev;
+	ops.link_ev = ibnbd_clt_link_ev;
 
 	sess->ibtrs = ibtrs_clt_open(&ops, sessname, paths, path_cnt, IBTRS_PORT,
 				     sizeof(struct ibnbd_iu),
