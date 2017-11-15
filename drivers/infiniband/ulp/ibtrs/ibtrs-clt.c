@@ -3182,6 +3182,30 @@ out:
 	return err;
 }
 
+/**
+ * init_sess() - establishes all session connections and does handshake
+ *
+ * In case of error full close or reconnect procedure should be taken,
+ * because reconnect or close async works can be started.
+ */
+static int init_sess(struct ibtrs_clt_sess *sess)
+{
+	int err;
+
+	err = init_conns(sess);
+	if (unlikely(err)) {
+		ibtrs_err(sess, "init_conns(), err: %d\n", err);
+		return err;
+	}
+	err = ibtrs_send_sess_info(sess);
+	if (unlikely(err)) {
+		ibtrs_err(sess, "ibtrs_send_sess_info(), err: %d\n", err);
+		return err;
+	}
+
+	return 0;
+}
+
 static void ibtrs_clt_reconnect_work(struct work_struct *work)
 {
 	struct ibtrs_clt_sess *sess;
@@ -3208,17 +3232,10 @@ static void ibtrs_clt_reconnect_work(struct work_struct *work)
 	ibtrs_clt_stop_and_destroy_conns(sess);
 	ibtrs_clt_change_state(sess, IBTRS_CLT_CONNECTING);
 
-	err = init_conns(sess);
-	if (unlikely(err)) {
-		ibtrs_err(sess, "Establishing session to server failed,"
-			  " failed to init connections, err: %d\n", err);
+	err = init_sess(sess);
+	if (unlikely(err))
 		goto reconnect_again;
-	}
-	err = ibtrs_send_sess_info(sess);
-	if (unlikely(err)) {
-		ibtrs_err(sess, "Sending session info failed, err: %d\n", err);
-		goto reconnect_again;
-	}
+
 	sess->reconnect_attempts = 0;
 	sess->stats.reconnects.successful_cnt++;
 	clt->established = true;
@@ -3297,18 +3314,9 @@ struct ibtrs_clt *ibtrs_clt_open(const struct ibtrs_clt_ops *ops,
 	}
 	clt->paths[0] = sess;
 	mutex_lock(&sess->init_mutex);
-	err = init_conns(sess);
-	if (unlikely(err)) {
-		ibtrs_err(sess, "Establishing session to server failed,"
-			  " failed to init connections, err: %d\n", err);
-		err = -EHOSTUNREACH;
+	err = init_sess(sess);
+	if (unlikely(err))
 		goto close_sess;
-	}
-	err = ibtrs_send_sess_info(sess);
-	if (unlikely(err)) {
-		ibtrs_err(sess, "Sending session info failed, err: %d\n", err);
-		goto close_sess;
-	}
 	clt->established = true;
 	mutex_unlock(&sess->init_mutex);
 
