@@ -3828,11 +3828,6 @@ int ibtrs_clt_query(struct ibtrs_clt *clt, struct ibtrs_attrs *attr)
 	strlcpy(attr->sessname, clt->sessname, sizeof(attr->sessname));
 
 	/* XXX Should be changed */
-	attr->mr_page_mask     = sess->mr_page_mask;
-	attr->mr_page_size     = sess->mr_page_size;
-	attr->mr_max_size      = sess->mr_max_size;
-	attr->max_pages_per_mr = sess->max_pages_per_mr;
-	attr->max_sge          = sess->max_sge;
 	attr->max_io_size      = sess->max_io_size;
 
 	return 0;
