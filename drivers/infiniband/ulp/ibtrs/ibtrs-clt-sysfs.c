@@ -277,10 +277,14 @@ static struct attribute_group ibtrs_clt_sess_attr_group = {
 
 int ibtrs_clt_create_sess_files(struct ibtrs_clt_sess *sess)
 {
+	struct ibtrs_clt *clt = sess->clt;
+	char str[MAXHOSTNAMELEN];
 	int err;
 
-	err = kobject_init_and_add(&sess->kobj, &ktype,
-				   ibtrs_kobj, "%s", sess->s.sessname);
+	sockaddr_to_str((struct sockaddr *)&sess->s.dst_addr, str, sizeof(str));
+
+	err = kobject_init_and_add(&sess->kobj, &ktype, &clt->kobj_paths,
+				   "%s", str);
 	if (unlikely(err)) {
 		pr_err("kobject_init_and_add: %d\n", err);
 		return err;

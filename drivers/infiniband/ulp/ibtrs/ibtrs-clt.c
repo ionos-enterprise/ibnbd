@@ -3285,6 +3285,7 @@ static struct ibtrs_clt *alloc_clt(const char *sessname, size_t paths_num,
 				   unsigned max_reconnect_attempts)
 {
 	struct ibtrs_clt *clt;
+	int err;
 
 	if (unlikely(!paths_num || paths_num > MAX_PATHS_NUM))
 		return ERR_PTR(-EINVAL);
@@ -3308,11 +3309,18 @@ static struct ibtrs_clt *alloc_clt(const char *sessname, size_t paths_num,
 	strlcpy(clt->sessname, sessname, sizeof(clt->sessname));
 	init_waitqueue_head(&clt->tags_wait);
 
+	err = ibtrs_clt_create_sysfs_root_folders(clt);
+	if (unlikely(err)) {
+		kfree(clt);
+		return ERR_PTR(err);
+	}
+
 	return clt;
 }
 
 static void free_clt(struct ibtrs_clt *clt)
 {
+	ibtrs_clt_destroy_sysfs_root_folders(clt);
 	free_tags(clt);
 	kfree(clt);
 }
@@ -3350,20 +3358,19 @@ struct ibtrs_clt *ibtrs_clt_open(const struct ibtrs_clt_ops *ops,
 		err = init_sess(sess);
 		if (unlikely(err))
 			goto close_sess;
+
+		err = ibtrs_clt_create_sess_files(sess);
+		if (unlikely(err))
+			goto close_sess;
 	}
 	err = alloc_tags(clt);
 	if (unlikely(err)) {
 		ibtrs_err(clt, "alloc_tags(), err: %d\n", err);
 		goto close_all_sess;
 	}
-	/* XXX Should be changed */
-	err = ibtrs_clt_create_sess_files(clt->paths[0]);
-	if (unlikely(err)) {
-		ibtrs_err(clt, "Establishing session to server failed,"
-			  " failed to create session sysfs files, err: %d\n",
-			  err);
+	err = ibtrs_clt_create_sysfs_root_files(clt);
+	if (unlikely(err))
 		goto close_all_sess;
-	}
 
 	return clt;
 
@@ -3372,6 +3379,7 @@ close_all_sess:
 		struct ibtrs_clt_sess *sess;
 close_sess:
 		sess = clt->paths[i];
+		ibtrs_clt_destroy_sess_files(sess);
 		ibtrs_clt_close_conns(sess, true);
 		free_sess(sess);
 	}
@@ -3386,11 +3394,11 @@ void ibtrs_clt_close(struct ibtrs_clt *clt)
 {
 	int i;
 
-	/* XXX Should be changed */
-	ibtrs_clt_destroy_sess_files(clt->paths[0]);
+	ibtrs_clt_destroy_sysfs_root_files(clt);
 	for (i = 0; i < clt->paths_num; i++) {
 		struct ibtrs_clt_sess *sess = clt->paths[i];
 
+		ibtrs_clt_destroy_sess_files(sess);
 		ibtrs_clt_close_conns(sess, true);
 		free_sess(sess);
 	}
