@@ -122,23 +122,6 @@ static ssize_t ibtrs_clt_state_show(struct kobject *kobj,
 static struct kobj_attribute ibtrs_clt_state_attr =
 	__ATTR(state, 0444, ibtrs_clt_state_show, NULL);
 
-static ssize_t ibtrs_clt_addr_show(struct kobject *kobj,
-				       struct kobj_attribute *attr, char *page)
-{
-	struct ibtrs_clt_sess *sess;
-	char str_addr[MAXHOSTNAMELEN];
-
-	sess = container_of(kobj, struct ibtrs_clt_sess, kobj);
-
-	sockaddr_to_str((struct sockaddr *)&sess->s.dst_addr,
-			str_addr, sizeof(str_addr));
-
-	return sprintf(page, "%s\n", str_addr);
-}
-
-static struct kobj_attribute ibtrs_clt_addr_attr =
-	__ATTR(addr, 0444, ibtrs_clt_addr_show, NULL);
-
 static ssize_t ibtrs_clt_reconnect_show(struct kobject *kobj,
 					struct kobj_attribute *attr, char *page)
 {
@@ -284,7 +267,6 @@ err:
 
 static struct attribute *ibtrs_clt_sess_attrs[] = {
 	&ibtrs_clt_state_attr.attr,
-	&ibtrs_clt_addr_attr.attr,
 	&ibtrs_clt_reconnect_attr.attr,
 	NULL,
 };
