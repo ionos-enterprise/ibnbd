@@ -2305,7 +2305,6 @@ static void ibtrs_clt_reconnect_work(struct work_struct *work);
 static void ibtrs_clt_close_work(struct work_struct *work);
 
 static struct ibtrs_clt_sess *alloc_sess(struct ibtrs_clt *clt,
-					 const char *sessname,
 					 const struct ibtrs_addr *path,
 					 size_t con_num, u16 max_segments)
 {
@@ -2333,7 +2332,7 @@ static struct ibtrs_clt_sess *alloc_sess(struct ibtrs_clt *clt,
 	if (path->src)
 		memcpy(&sess->s.src_addr, path->src,
 		       rdma_addr_size((struct sockaddr *)path->src));
-	strlcpy(sess->s.sessname, sessname, sizeof(sess->s.sessname));
+	strlcpy(sess->s.sessname, clt->sessname, sizeof(sess->s.sessname));
 	sess->s.con_num = con_num;
 	sess->clt = clt;
 	sess->max_pages_per_mr = max_segments;
@@ -3256,7 +3255,8 @@ reconnect_again:
 	}
 }
 
-static struct ibtrs_clt *alloc_clt(size_t paths_num, short port, size_t pdu_sz,
+static struct ibtrs_clt *alloc_clt(const char *sessname, size_t paths_num,
+				   short port, size_t pdu_sz,
 				   const struct ibtrs_clt_ops *ops,
 				   unsigned reconnect_delay_sec,
 				   unsigned max_reconnect_attempts)
@@ -3269,6 +3269,9 @@ static struct ibtrs_clt *alloc_clt(size_t paths_num, short port, size_t pdu_sz,
 	if (unlikely(!clt_ops_are_valid(ops)))
 		return ERR_PTR(-EINVAL);
 
+	if (unlikely(strlen(sessname) >= sizeof(clt->sessname)))
+		return ERR_PTR(-EINVAL);
+
 	clt = kzalloc(sizeof(*clt), GFP_KERNEL);
 	if (unlikely(!clt))
 		return ERR_PTR(-ENOMEM);
@@ -3279,6 +3282,7 @@ static struct ibtrs_clt *alloc_clt(size_t paths_num, short port, size_t pdu_sz,
 	clt->reconnect_delay_sec = reconnect_delay_sec;
 	clt->max_reconnect_attempts = max_reconnect_attempts;
 	clt->ops = *ops;
+	strlcpy(clt->sessname, sessname, sizeof(clt->sessname));
 	init_waitqueue_head(&clt->tags_wait);
 
 	return clt;
@@ -3303,13 +3307,13 @@ struct ibtrs_clt *ibtrs_clt_open(const struct ibtrs_clt_ops *ops,
 	struct ibtrs_clt *clt;
 	int err;
 
-	clt = alloc_clt(paths_num, port, pdu_sz, ops, reconnect_delay_sec,
-			max_reconnect_attempts);
+	clt = alloc_clt(sessname, paths_num, port, pdu_sz, ops,
+			reconnect_delay_sec, max_reconnect_attempts);
 	if (unlikely(IS_ERR(clt))) {
 		err = PTR_ERR(clt);
 		goto out;
 	}
-	sess = alloc_sess(clt, sessname, paths, CONS_PER_SESSION, max_segments);
+	sess = alloc_sess(clt, paths, CONS_PER_SESSION, max_segments);
 	if (unlikely(IS_ERR(sess))) {
 		pr_err("Establishing session to server failed, err: %ld\n",
 		       PTR_ERR(sess));
@@ -3810,6 +3814,7 @@ int ibtrs_clt_query(struct ibtrs_clt *clt, struct ibtrs_attrs *attr)
 		return -ECOMM;
 
 	attr->queue_depth      = clt->queue_depth;
+	strlcpy(attr->sessname, clt->sessname, sizeof(attr->sessname));
 
 	/* XXX Should be changed */
 	attr->mr_page_mask     = sess->mr_page_mask;
@@ -3818,8 +3823,6 @@ int ibtrs_clt_query(struct ibtrs_clt *clt, struct ibtrs_attrs *attr)
 	attr->max_pages_per_mr = sess->max_pages_per_mr;
 	attr->max_sge          = sess->max_sge;
 	attr->max_io_size      = sess->max_io_size;
-	strlcpy(attr->sessname, sess->s.sessname,
-		sizeof(attr->sessname));
 
 	return 0;
 }

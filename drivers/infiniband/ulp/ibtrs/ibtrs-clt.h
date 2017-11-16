@@ -178,6 +178,7 @@ struct ibtrs_clt {
 	struct ibtrs_clt_sess	*paths[MAX_PATHS_NUM];
 	size_t			paths_num;
 	bool			established;
+	char			sessname[NAME_MAX];
 	short			port;
 	unsigned		max_reconnect_attempts;
 	unsigned		reconnect_delay_sec;
@@ -192,7 +193,8 @@ struct ibtrs_clt {
 
 /* See ibtrs-log.h */
 #define TYPES_TO_SESSNAME(obj)						\
-	LIST(CASE(obj, struct ibtrs_clt_sess *, s.sessname))
+	LIST(CASE(obj, struct ibtrs_clt_sess *, s.sessname),		\
+	     CASE(obj, struct ibtrs_clt *, sessname))
 
 #define TAG_SIZE(clt) (sizeof(struct ibtrs_tag) + (clt)->pdu_sz)
 #define GET_TAG(clt, idx) ((clt)->tags + TAG_SIZE(clt) * idx)
