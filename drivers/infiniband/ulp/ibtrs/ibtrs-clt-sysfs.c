@@ -119,9 +119,8 @@ static ssize_t ibtrs_clt_state_show(struct kobject *kobj,
 	return sprintf(page, "disconnected\n");
 }
 
-static struct kobj_attribute ibtrs_clt_state_attr = __ATTR(state, 0444,
-							   ibtrs_clt_state_show,
-							   NULL);
+static struct kobj_attribute ibtrs_clt_state_attr =
+	__ATTR(state, 0444, ibtrs_clt_state_show, NULL);
 
 static ssize_t ibtrs_clt_addr_show(struct kobject *kobj,
 				       struct kobj_attribute *attr, char *page)
@@ -239,7 +238,7 @@ STAT_ATTR(struct ibtrs_clt_sess, reset_all,
 	  ibtrs_clt_reset_all_help,
 	  ibtrs_clt_reset_all_stats);
 
-static struct attribute *ibtrs_clt_default_stats_attrs[] = {
+static struct attribute *ibtrs_clt_stats_attrs[] = {
 	&sg_entries_attr.attr,
 	&cpu_migration_attr.attr,
 	&reconnects_attr.attr,
@@ -251,8 +250,8 @@ static struct attribute *ibtrs_clt_default_stats_attrs[] = {
 	NULL,
 };
 
-static struct attribute_group ibtrs_clt_default_stats_attr_group = {
-	.attrs = ibtrs_clt_default_stats_attrs,
+static struct attribute_group ibtrs_clt_stats_attr_group = {
+	.attrs = ibtrs_clt_stats_attrs,
 };
 
 static int ibtrs_clt_create_stats_files(struct kobject *kobj,
@@ -267,8 +266,7 @@ static int ibtrs_clt_create_stats_files(struct kobject *kobj,
 		return ret;
 	}
 
-	ret = sysfs_create_group(kobj_stats,
-				 &ibtrs_clt_default_stats_attr_group);
+	ret = sysfs_create_group(kobj_stats, &ibtrs_clt_stats_attr_group);
 	if (ret) {
 		pr_err("failed to create stats sysfs group, err: %d\n",
 		       ret);
@@ -284,15 +282,15 @@ err:
 	return ret;
 }
 
-static struct attribute *ibtrs_clt_default_sess_attrs[] = {
+static struct attribute *ibtrs_clt_sess_attrs[] = {
 	&ibtrs_clt_state_attr.attr,
 	&ibtrs_clt_addr_attr.attr,
 	&ibtrs_clt_reconnect_attr.attr,
 	NULL,
 };
 
-static struct attribute_group ibtrs_clt_default_sess_attr_group = {
-	.attrs = ibtrs_clt_default_sess_attrs,
+static struct attribute_group ibtrs_clt_sess_attr_group = {
+	.attrs = ibtrs_clt_sess_attrs,
 };
 
 int ibtrs_clt_create_sess_files(struct ibtrs_clt_sess *sess)
@@ -307,8 +305,7 @@ int ibtrs_clt_create_sess_files(struct ibtrs_clt_sess *sess)
 		return ret;
 	}
 
-	ret = sysfs_create_group(&sess->kobj,
-				 &ibtrs_clt_default_sess_attr_group);
+	ret = sysfs_create_group(&sess->kobj, &ibtrs_clt_sess_attr_group);
 	if (ret) {
 		pr_err("Failed to create session sysfs group, err: %d\n",
 		       ret);
@@ -325,7 +322,7 @@ int ibtrs_clt_create_sess_files(struct ibtrs_clt_sess *sess)
 	return 0;
 
 err1:
-	sysfs_remove_group(&sess->kobj, &ibtrs_clt_default_sess_attr_group);
+	sysfs_remove_group(&sess->kobj, &ibtrs_clt_sess_attr_group);
 err:
 	kobject_del(&sess->kobj);
 	kobject_put(&sess->kobj);
