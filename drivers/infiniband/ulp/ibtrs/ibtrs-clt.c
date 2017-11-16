@@ -255,6 +255,17 @@ bool ibtrs_clt_sess_is_connected(const struct ibtrs_clt_sess *sess)
 	return sess->state == IBTRS_CLT_CONNECTED;
 }
 
+static inline bool ibtrs_clt_is_connected(const struct ibtrs_clt *clt)
+{
+	bool connected = false;
+	int i;
+
+	for (i = 0; i < clt->paths_num; i++)
+		connected |= ibtrs_clt_sess_is_connected(clt->paths[i]);
+
+	return connected;
+}
+
 static inline bool clt_ops_are_valid(const struct ibtrs_clt_ops *ops)
 {
 	return ops && ops->rdma_ev && ops->link_ev && ops->recv;
@@ -3821,7 +3832,7 @@ int ibtrs_clt_query(struct ibtrs_clt *clt, struct ibtrs_attrs *attr)
 	/* XXX Should be changed */
 	struct ibtrs_clt_sess *sess = clt->paths[0];
 
-	if (unlikely(sess->state != IBTRS_CLT_CONNECTED))
+	if (unlikely(!ibtrs_clt_is_connected(clt)))
 		return -ECOMM;
 
 	attr->queue_depth      = clt->queue_depth;
