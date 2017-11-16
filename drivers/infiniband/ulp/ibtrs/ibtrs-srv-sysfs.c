@@ -49,6 +49,8 @@
 #include "ibtrs-srv.h"
 #include "ibtrs-log.h"
 
+static struct kobject *ibtrs_kobj;
+
 static ssize_t ibtrs_srv_disconnect_show(struct kobject *kobj,
 					 struct kobj_attribute *attr,
 					 char *page)
@@ -202,16 +204,12 @@ err:
 	return ret;
 }
 
-static struct kobject *ibtrs_srv_kobj;
-static struct kobject *ibtrs_srv_sessions_kobj;
-
 int ibtrs_srv_create_sess_files(struct ibtrs_srv_sess *sess)
 {
 	int ret;
 
 	ret = kobject_init_and_add(&sess->kobj, &ibtrs_srv_sess_ktype,
-				   ibtrs_srv_sessions_kobj, "%s",
-				   sess->s.sessname);
+				   ibtrs_kobj, "%s", sess->s.sessname);
 	if (ret) {
 		ibtrs_err(sess, "Failed to init and add sysfs directory for session,"
 			  " err: %d\n", ret);
@@ -252,22 +250,15 @@ void ibtrs_srv_destroy_sess_files(struct ibtrs_srv_sess *sess)
 
 int ibtrs_srv_create_sysfs_module_files(void)
 {
-	ibtrs_srv_kobj = kobject_create_and_add(KBUILD_MODNAME, kernel_kobj);
-	if (!ibtrs_srv_kobj)
+	ibtrs_kobj = kobject_create_and_add(KBUILD_MODNAME, kernel_kobj);
+	if (unlikely(!ibtrs_kobj))
 		return -ENOMEM;
-
-	ibtrs_srv_sessions_kobj = kobject_create_and_add("sessions",
-							 ibtrs_srv_kobj);
-	if (!ibtrs_srv_sessions_kobj) {
-		kobject_put(ibtrs_srv_kobj);
-		return -ENOMEM;
-	}
 
 	return 0;
 }
 
 void ibtrs_srv_destroy_sysfs_module_files(void)
 {
-	kobject_put(ibtrs_srv_sessions_kobj);
-	kobject_put(ibtrs_srv_kobj);
+	kobject_del(ibtrs_kobj);
+	kobject_put(ibtrs_kobj);
 }
