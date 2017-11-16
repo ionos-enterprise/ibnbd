@@ -57,6 +57,10 @@ static struct kobject *ibtrs_kobj;
 #define MIN_MAX_RECONN_ATT -1
 #define MAX_MAX_RECONN_ATT 9999
 
+static struct kobj_type ktype = {
+	.sysfs_ops = &kobj_sysfs_ops,
+};
+
 /* XXX Should be a part of clt kobject */
 static ssize_t ibtrs_clt_max_reconn_attempts_show(struct kobject *kobj,
 						  struct kobj_attribute *attr,
@@ -260,17 +264,12 @@ static struct attribute_group ibtrs_clt_default_stats_attr_group = {
 	.attrs = ibtrs_clt_default_stats_attrs,
 };
 
-static struct kobj_type ibtrs_stats_ktype = {
-	.sysfs_ops = &kobj_sysfs_ops,
-};
-
 static int ibtrs_clt_create_stats_files(struct kobject *kobj,
 					struct kobject *kobj_stats)
 {
 	int ret;
 
-	ret = kobject_init_and_add(kobj_stats, &ibtrs_stats_ktype, kobj,
-				   "stats");
+	ret = kobject_init_and_add(kobj_stats, &ktype, kobj, "stats");
 	if (ret) {
 		pr_err("Failed to init and add stats kobject, err: %d\n",
 		       ret);
@@ -307,15 +306,11 @@ static struct attribute_group ibtrs_clt_default_sess_attr_group = {
 	.attrs = ibtrs_clt_default_sess_attrs,
 };
 
-static struct kobj_type ibtrs_clt_sess_ktype = {
-	.sysfs_ops = &kobj_sysfs_ops,
-};
-
 int ibtrs_clt_create_sess_files(struct ibtrs_clt_sess *sess)
 {
 	int ret;
 
-	ret = kobject_init_and_add(&sess->kobj, &ibtrs_clt_sess_ktype,
+	ret = kobject_init_and_add(&sess->kobj, &ktype,
 				   ibtrs_kobj, "%s", sess->s.sessname);
 	if (ret) {
 		pr_err("Failed to create session kobject, err: %d\n",

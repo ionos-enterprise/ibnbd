@@ -51,6 +51,10 @@
 
 static struct kobject *ibtrs_kobj;
 
+static struct kobj_type ktype = {
+	.sysfs_ops	= &kobj_sysfs_ops,
+};
+
 static ssize_t ibtrs_srv_disconnect_show(struct kobject *kobj,
 					 struct kobj_attribute *attr,
 					 char *page)
@@ -139,10 +143,6 @@ static struct attribute_group default_sess_attr_group = {
 	.attrs = default_sess_attrs,
 };
 
-static struct kobj_type ibtrs_srv_sess_ktype = {
-	.sysfs_ops	= &kobj_sysfs_ops,
-};
-
 STAT_ATTR(struct ibtrs_srv_sess, rdma,
 	  ibtrs_srv_stats_rdma_to_str,
 	  ibtrs_srv_reset_rdma_stats);
@@ -171,15 +171,11 @@ static struct attribute_group ibtrs_srv_default_stats_attr_group = {
 	.attrs = ibtrs_srv_default_stats_attrs,
 };
 
-static struct kobj_type ibtrs_stats_ktype = {
-	.sysfs_ops = &kobj_sysfs_ops,
-};
-
 static int ibtrs_srv_create_stats_files(struct ibtrs_srv_sess *sess)
 {
 	int ret;
 
-	ret = kobject_init_and_add(&sess->kobj_stats, &ibtrs_stats_ktype,
+	ret = kobject_init_and_add(&sess->kobj_stats, &ktype,
 				   &sess->kobj, "stats");
 	if (ret) {
 		ibtrs_err(sess,
@@ -208,8 +204,8 @@ int ibtrs_srv_create_sess_files(struct ibtrs_srv_sess *sess)
 {
 	int ret;
 
-	ret = kobject_init_and_add(&sess->kobj, &ibtrs_srv_sess_ktype,
-				   ibtrs_kobj, "%s", sess->s.sessname);
+	ret = kobject_init_and_add(&sess->kobj, &ktype, ibtrs_kobj,
+				   "%s", sess->s.sessname);
 	if (ret) {
 		ibtrs_err(sess, "Failed to init and add sysfs directory for session,"
 			  " err: %d\n", ret);
