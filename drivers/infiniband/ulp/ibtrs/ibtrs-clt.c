@@ -3841,17 +3841,12 @@ EXPORT_SYMBOL(ibtrs_clt_send);
 
 int ibtrs_clt_query(struct ibtrs_clt *clt, struct ibtrs_attrs *attr)
 {
-	/* XXX Should be changed */
-	struct ibtrs_clt_sess *sess = clt->paths[0];
-
 	if (unlikely(!ibtrs_clt_is_connected(clt)))
 		return -ECOMM;
 
 	attr->queue_depth      = clt->queue_depth;
+	attr->max_io_size      = clt->max_io_size;
 	strlcpy(attr->sessname, clt->sessname, sizeof(attr->sessname));
-
-	/* XXX Should be changed */
-	attr->max_io_size      = sess->max_io_size;
 
 	return 0;
 }
