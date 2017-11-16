@@ -238,16 +238,27 @@ static void ibtrs_clt_free_stats(struct ibtrs_clt_stats *stats)
 	ibtrs_clt_free_wc_comp_stats(stats);
 }
 
+#define cmpxchg_min(var, new) ({					\
+	typeof(var) old;						\
+									\
+	do {								\
+		old = var;						\
+		new = (!old ? new : min_t(typeof(var), old, new));	\
+	} while (cmpxchg(&var, old, new) != old);			\
+})
+
 static void ibtrs_clt_set_min_queue_depth(struct ibtrs_clt *clt, size_t new)
 {
-	size_t old;
+	/* Can be updated from different sessions (paths), so cmpxchg */
 
-	/* Can be updated from different sessions (paths), choose min */
+	cmpxchg_min(clt->queue_depth, new);
+}
 
-	do {
-		old = clt->queue_depth;
-		new = (!old ? new : min_t(size_t, old, new));
-	} while (cmpxchg(&clt->queue_depth, old, new) != old);
+static void ibtrs_clt_set_min_io_size(struct ibtrs_clt *clt, size_t new)
+{
+	/* Can be updated from different sessions (paths), so cmpxchg */
+
+	cmpxchg_min(clt->max_io_size, new);
 }
 
 bool ibtrs_clt_sess_is_connected(const struct ibtrs_clt_sess *sess)
@@ -2896,11 +2907,12 @@ static int ibtrs_rdma_conn_established(struct ibtrs_clt_con *con,
 		sess->max_desc /= sizeof(struct ibtrs_sg_desc);
 
 		/*
-		 * Global queue depth is always a minimum.  If while a
+		 * Global queue depth and is always a minimum.  If while a
 		 * reconnection server sends us a value a bit higher -
 		 * client does side not care and uses cached minimum.
 		 */
-		ibtrs_clt_set_min_queue_depth(sess->clt, queue_depth);
+		ibtrs_clt_set_min_queue_depth(sess->clt, sess->queue_depth);
+		ibtrs_clt_set_min_io_size(sess->clt, sess->max_io_size);
 	}
 
 	return 0;
