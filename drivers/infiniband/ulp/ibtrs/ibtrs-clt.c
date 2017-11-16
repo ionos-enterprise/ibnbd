@@ -3303,9 +3303,8 @@ struct ibtrs_clt *ibtrs_clt_open(const struct ibtrs_clt_ops *ops,
 				 u16 max_segments,
 				 s16 max_reconnect_attempts)
 {
-	struct ibtrs_clt_sess *sess;
 	struct ibtrs_clt *clt;
-	int err;
+	int err, i;
 
 	clt = alloc_clt(sessname, paths_num, port, pdu_sz, ops,
 			reconnect_delay_sec, max_reconnect_attempts);
@@ -3313,38 +3312,46 @@ struct ibtrs_clt *ibtrs_clt_open(const struct ibtrs_clt_ops *ops,
 		err = PTR_ERR(clt);
 		goto out;
 	}
-	sess = alloc_sess(clt, paths, CONS_PER_SESSION, max_segments);
-	if (unlikely(IS_ERR(sess))) {
-		pr_err("Establishing session to server failed, err: %ld\n",
-		       PTR_ERR(sess));
-		err = PTR_ERR(sess);
-		goto free_clt;
+	for (i = 0; i < paths_num; i++) {
+		struct ibtrs_clt_sess *sess;
+
+		sess = alloc_sess(clt, &paths[i], CONS_PER_SESSION,
+				  max_segments);
+		if (unlikely(IS_ERR(sess))) {
+			err = PTR_ERR(sess);
+			ibtrs_err(clt, "alloc_sess(), err: %d\n", err);
+			goto close_all_sess;
+		}
+		clt->paths[i] = sess;
+
+		err = init_sess(sess);
+		if (unlikely(err))
+			goto close_sess;
 	}
-	clt->paths[0] = sess;
-
-	err = init_sess(sess);
-	if (unlikely(err))
-		goto close_sess;
-
 	err = alloc_tags(clt);
 	if (unlikely(err)) {
-		ibtrs_err(sess, "alloc_tags(), err: %d\n", err);
-		goto close_sess;
+		ibtrs_err(clt, "alloc_tags(), err: %d\n", err);
+		goto close_all_sess;
 	}
-	err = ibtrs_clt_create_sess_files(sess);
+	/* XXX Should be changed */
+	err = ibtrs_clt_create_sess_files(clt->paths[0]);
 	if (unlikely(err)) {
-		ibtrs_err(sess, "Establishing session to server failed,"
+		ibtrs_err(clt, "Establishing session to server failed,"
 			  " failed to create session sysfs files, err: %d\n",
 			  err);
-		goto close_sess;
+		goto close_all_sess;
 	}
 
 	return clt;
 
+close_all_sess:
+	while (i--) {
+		struct ibtrs_clt_sess *sess;
 close_sess:
-	ibtrs_clt_close_conns(sess, true);
-	free_sess(sess);
-free_clt:
+		sess = clt->paths[i];
+		ibtrs_clt_close_conns(sess, true);
+		free_sess(sess);
+	}
 	free_clt(clt);
 
 out:
@@ -3354,12 +3361,16 @@ EXPORT_SYMBOL(ibtrs_clt_open);
 
 void ibtrs_clt_close(struct ibtrs_clt *clt)
 {
-	/* XXX Should be changed */
-	struct ibtrs_clt_sess *sess = clt->paths[0];
+	int i;
 
-	ibtrs_clt_destroy_sess_files(sess);
-	ibtrs_clt_close_conns(sess, true);
-	free_sess(sess);
+	/* XXX Should be changed */
+	ibtrs_clt_destroy_sess_files(clt->paths[0]);
+	for (i = 0; i < clt->paths_num; i++) {
+		struct ibtrs_clt_sess *sess = clt->paths[i];
+
+		ibtrs_clt_close_conns(sess, true);
+		free_sess(sess);
+	}
 	free_clt(clt);
 }
 EXPORT_SYMBOL(ibtrs_clt_close);
