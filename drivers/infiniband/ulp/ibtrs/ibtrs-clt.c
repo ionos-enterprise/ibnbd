@@ -3955,7 +3955,7 @@ static int __init ibtrs_client_init(void)
 		pr_err("Failed to load module, alloc ibtrs_client_wq failed\n");
 		return -ENOMEM;
 	}
-	err = ibtrs_clt_create_sysfs_files();
+	err = ibtrs_clt_create_sysfs_module_files();
 	if (err) {
 		pr_err("Failed to load module, can't create sysfs files,"
 		       " err: %d\n", err);
@@ -3972,12 +3972,8 @@ out_ibtrs_wq:
 
 static void __exit ibtrs_client_exit(void)
 {
-	pr_info("Unloading module\n");
-
-	ibtrs_clt_destroy_sysfs_files();
+	ibtrs_clt_destroy_sysfs_module_files();
 	destroy_workqueue(ibtrs_wq);
-
-	pr_info("Module unloaded\n");
 }
 
 module_init(ibtrs_client_init);

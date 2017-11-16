@@ -2423,7 +2423,7 @@ static int __init ibtrs_server_init(void)
 		pr_err("Failed to load module, alloc ibtrs_server_wq failed\n");
 		return -ENOMEM;
 	}
-	err = ibtrs_srv_create_sysfs_files();
+	err = ibtrs_srv_create_sysfs_module_files();
 	if (err) {
 		pr_err("Failed to load module, can't create sysfs files,"
 		       " err: %d\n", err);
@@ -2446,7 +2446,7 @@ out_ibtrs_wq:
 static void __exit ibtrs_server_exit(void)
 {
 	ibtrs_srv_destroy_debugfs_files();
-	ibtrs_srv_destroy_sysfs_files();
+	ibtrs_srv_destroy_sysfs_module_files();
 	destroy_workqueue(ibtrs_wq);
 	ibtrs_srv_free_buf_pool();
 }

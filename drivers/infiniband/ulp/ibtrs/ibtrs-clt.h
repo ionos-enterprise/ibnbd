@@ -239,8 +239,8 @@ ssize_t ibtrs_clt_reset_all_help(struct ibtrs_clt_stats *stats,
 
 /* ibtrs-clt-sysfs.c */
 
-int ibtrs_clt_create_sysfs_files(void);
-void ibtrs_clt_destroy_sysfs_files(void);
+int ibtrs_clt_create_sysfs_module_files(void);
+void ibtrs_clt_destroy_sysfs_module_files(void);
 int ibtrs_clt_create_sess_files(struct ibtrs_clt_sess *sess);
 void ibtrs_clt_destroy_sess_files(struct ibtrs_clt_sess *sess);
 

@@ -250,7 +250,7 @@ void ibtrs_srv_destroy_sess_files(struct ibtrs_srv_sess *sess)
 	}
 }
 
-int ibtrs_srv_create_sysfs_files(void)
+int ibtrs_srv_create_sysfs_module_files(void)
 {
 	ibtrs_srv_kobj = kobject_create_and_add(KBUILD_MODNAME, kernel_kobj);
 	if (!ibtrs_srv_kobj)
@@ -266,7 +266,7 @@ int ibtrs_srv_create_sysfs_files(void)
 	return 0;
 }
 
-void ibtrs_srv_destroy_sysfs_files(void)
+void ibtrs_srv_destroy_sysfs_module_files(void)
 {
 	kobject_put(ibtrs_srv_sessions_kobj);
 	kobject_put(ibtrs_srv_kobj);

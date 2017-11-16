@@ -360,7 +360,7 @@ void ibtrs_clt_destroy_sess_files(struct ibtrs_clt_sess *sess)
 	}
 }
 
-int ibtrs_clt_create_sysfs_files(void)
+int ibtrs_clt_create_sysfs_module_files(void)
 {
 	ibtrs_kobj = kobject_create_and_add(KBUILD_MODNAME, kernel_kobj);
 	if (!ibtrs_kobj)
@@ -376,7 +376,7 @@ int ibtrs_clt_create_sysfs_files(void)
 	return 0;
 }
 
-void ibtrs_clt_destroy_sysfs_files(void)
+void ibtrs_clt_destroy_sysfs_module_files(void)
 {
 	kobject_del(sessions_kobj);
 	kobject_del(ibtrs_kobj);
