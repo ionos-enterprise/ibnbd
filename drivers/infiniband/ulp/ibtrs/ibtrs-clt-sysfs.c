@@ -277,39 +277,33 @@ static struct attribute_group ibtrs_clt_sess_attr_group = {
 
 int ibtrs_clt_create_sess_files(struct ibtrs_clt_sess *sess)
 {
-	int ret;
+	int err;
 
-	ret = kobject_init_and_add(&sess->kobj, &ktype,
+	err = kobject_init_and_add(&sess->kobj, &ktype,
 				   ibtrs_kobj, "%s", sess->s.sessname);
-	if (ret) {
-		pr_err("Failed to create session kobject, err: %d\n",
-		       ret);
-		return ret;
+	if (unlikely(err)) {
+		pr_err("kobject_init_and_add: %d\n", err);
+		return err;
 	}
-
-	ret = sysfs_create_group(&sess->kobj, &ibtrs_clt_sess_attr_group);
-	if (ret) {
-		pr_err("Failed to create session sysfs group, err: %d\n",
-		       ret);
-		goto err;
+	err = sysfs_create_group(&sess->kobj, &ibtrs_clt_sess_attr_group);
+	if (unlikely(err)) {
+		pr_err("sysfs_create_group(): %d\n", err);
+		goto put_kobj;
 	}
-
-	ret = ibtrs_clt_create_stats_files(&sess->kobj, &sess->kobj_stats);
-	if (ret) {
-		pr_err("Failed to create stats files, err: %d\n",
-		       ret);
-		goto err1;
+	err = ibtrs_clt_create_stats_files(&sess->kobj, &sess->kobj_stats);
+	if (unlikely(err)) {
+		goto remove_group;
 	}
 
 	return 0;
 
-err1:
+remove_group:
 	sysfs_remove_group(&sess->kobj, &ibtrs_clt_sess_attr_group);
-err:
+put_kobj:
 	kobject_del(&sess->kobj);
 	kobject_put(&sess->kobj);
 
-	return ret;
+	return err;
 }
 
 void ibtrs_clt_destroy_sess_files(struct ibtrs_clt_sess *sess)
