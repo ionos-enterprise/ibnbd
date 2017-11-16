@@ -61,44 +61,37 @@ static struct kobj_type ktype = {
 	.sysfs_ops = &kobj_sysfs_ops,
 };
 
-/* XXX Should be a part of clt kobject */
 static ssize_t ibtrs_clt_max_reconn_attempts_show(struct kobject *kobj,
 						  struct kobj_attribute *attr,
 						  char *page)
 {
-	struct ibtrs_clt_sess *sess;
 	struct ibtrs_clt *clt;
 
-	sess = container_of(kobj, struct ibtrs_clt_sess, kobj);
-	clt = sess->clt;
+	clt = container_of(kobj, struct ibtrs_clt, kobj);
 
-	return sprintf(page, "%d\n",
-		       ibtrs_clt_get_max_reconnect_attempts(clt));
+	return sprintf(page, "%d\n", ibtrs_clt_get_max_reconnect_attempts(clt));
 }
 
-/* XXX Should be a part of clt kobject */
 static ssize_t ibtrs_clt_max_reconn_attempts_store(struct kobject *kobj,
 						   struct kobj_attribute *attr,
 						   const char *buf,
 						   size_t count)
 {
-	struct ibtrs_clt_sess *sess;
 	struct ibtrs_clt *clt;
 	int value;
 	int ret;
 
-	sess = container_of(kobj, struct ibtrs_clt_sess, kobj);
-	clt = sess->clt;
+	clt = container_of(kobj, struct ibtrs_clt, kobj);
 
 	ret = kstrtoint(buf, 10, &value);
 	if (unlikely(ret)) {
-		ibtrs_err(sess, "%s: failed to convert string '%s' to int\n",
+		ibtrs_err(clt, "%s: failed to convert string '%s' to int\n",
 			  attr->attr.name, buf);
 		return ret;
 	}
 	if (unlikely(value > MAX_MAX_RECONN_ATT ||
 		     value < MIN_MAX_RECONN_ATT)) {
-		ibtrs_err(sess, "%s: invalid range"
+		ibtrs_err(clt, "%s: invalid range"
 			  " (provided: '%s', accepted: min: %d, max: %d)\n",
 			  attr->attr.name, buf, MIN_MAX_RECONN_ATT,
 			  MAX_MAX_RECONN_ATT);
@@ -109,7 +102,7 @@ static ssize_t ibtrs_clt_max_reconn_attempts_store(struct kobject *kobj,
 	return count;
 }
 
-static struct kobj_attribute max_ibtrs_clt_reconnect_attempts_attr =
+static struct kobj_attribute ibtrs_clt_max_reconnect_attempts_attr =
 	__ATTR(max_reconnect_attempts, 0644,
 	       ibtrs_clt_max_reconn_attempts_show,
 	       ibtrs_clt_max_reconn_attempts_store);
@@ -193,7 +186,6 @@ static ssize_t ibtrs_clt_add_path_store(struct kobject *kobj,
 					struct kobj_attribute *attr,
 					const char *buf, size_t count)
 {
-	struct ibtrs_clt_sess *sess;
 	struct sockaddr_storage srcaddr, dstaddr;
 	struct ibtrs_addr addr = {
 		.src = (struct sockaddr *)&srcaddr,
@@ -202,8 +194,7 @@ static ssize_t ibtrs_clt_add_path_store(struct kobject *kobj,
 	struct ibtrs_clt *clt;
 	int ret;
 
-	sess = container_of(kobj, struct ibtrs_clt_sess, kobj);
-	clt = sess->clt;
+	clt = container_of(kobj, struct ibtrs_clt, kobj);
 
 	ret = ibtrs_addr_to_sockaddr(buf, clt->port, &addr);
 	if (unlikely(ret))
@@ -294,11 +285,9 @@ err:
 }
 
 static struct attribute *ibtrs_clt_default_sess_attrs[] = {
-	&max_ibtrs_clt_reconnect_attempts_attr.attr,
 	&ibtrs_clt_state_attr.attr,
 	&ibtrs_clt_addr_attr.attr,
 	&ibtrs_clt_reconnect_attr.attr,
-	&ibtrs_clt_add_path_attr.attr,
 	NULL,
 };
 
@@ -352,6 +341,60 @@ void ibtrs_clt_destroy_sess_files(struct ibtrs_clt_sess *sess)
 		kobject_del(&sess->kobj);
 		kobject_put(&sess->kobj);
 	}
+}
+
+static struct attribute *ibtrs_clt_attrs[] = {
+	&ibtrs_clt_max_reconnect_attempts_attr.attr,
+	&ibtrs_clt_add_path_attr.attr,
+	NULL,
+};
+
+static struct attribute_group ibtrs_clt_attr_group = {
+	.attrs = ibtrs_clt_attrs,
+};
+
+int ibtrs_clt_create_sysfs_root_folders(struct ibtrs_clt *clt)
+{
+	int err;
+
+	err = kobject_init_and_add(&clt->kobj, &ktype, ibtrs_kobj,
+				   "%s", clt->sessname);
+	if (unlikely(err)) {
+		pr_err("kobject_init_and_add(): %d\n", err);
+		return err;
+	}
+	err = kobject_init_and_add(&clt->kobj_paths, &ktype,
+				   &clt->kobj, "paths");
+	if (unlikely(err)) {
+		pr_err("kobject_init_and_add(): %d\n", err);
+		goto put_kobj;
+	}
+
+	return 0;
+
+put_kobj:
+	kobject_del(&clt->kobj);
+	kobject_put(&clt->kobj);
+
+	return err;
+}
+
+int ibtrs_clt_create_sysfs_root_files(struct ibtrs_clt *clt)
+{
+	return sysfs_create_group(&clt->kobj, &ibtrs_clt_attr_group);
+}
+
+void ibtrs_clt_destroy_sysfs_root_folders(struct ibtrs_clt *clt)
+{
+	kobject_del(&clt->kobj_paths);
+	kobject_put(&clt->kobj_paths);
+	kobject_del(&clt->kobj);
+	kobject_put(&clt->kobj);
+}
+
+void ibtrs_clt_destroy_sysfs_root_files(struct ibtrs_clt *clt)
+{
+	sysfs_remove_group(&clt->kobj, &ibtrs_clt_attr_group);
 }
 
 int ibtrs_clt_create_sysfs_module_files(void)

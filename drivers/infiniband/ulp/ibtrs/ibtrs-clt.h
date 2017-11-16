@@ -190,6 +190,8 @@ struct ibtrs_clt {
 	wait_queue_head_t	tags_wait;
 	size_t			pdu_sz;
 	struct ibtrs_clt_ops	ops;
+	struct kobject		kobj;
+	struct kobject		kobj_paths;
 };
 
 /* See ibtrs-log.h */
@@ -241,6 +243,12 @@ ssize_t ibtrs_clt_reset_all_help(struct ibtrs_clt_stats *stats,
 
 int ibtrs_clt_create_sysfs_module_files(void);
 void ibtrs_clt_destroy_sysfs_module_files(void);
+
+int ibtrs_clt_create_sysfs_root_folders(struct ibtrs_clt *clt);
+int ibtrs_clt_create_sysfs_root_files(struct ibtrs_clt *clt);
+void ibtrs_clt_destroy_sysfs_root_folders(struct ibtrs_clt *clt);
+void ibtrs_clt_destroy_sysfs_root_files(struct ibtrs_clt *clt);
+
 int ibtrs_clt_create_sess_files(struct ibtrs_clt_sess *sess);
 void ibtrs_clt_destroy_sess_files(struct ibtrs_clt_sess *sess);
 
