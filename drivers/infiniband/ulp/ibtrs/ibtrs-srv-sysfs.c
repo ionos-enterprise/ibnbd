@@ -220,6 +220,48 @@ void ibtrs_srv_destroy_sess_files(struct ibtrs_srv_sess *sess)
 	}
 }
 
+int ibtrs_srv_create_once_sysfs_root_folders(struct ibtrs_srv *srv,
+					     const char *sessname)
+{
+	int err = 0;
+
+	mutex_lock(&srv->paths_mutex);
+	if (srv->kobj.state_in_sysfs)
+		goto out;
+
+	err = kobject_init_and_add(&srv->kobj, &ktype, ibtrs_kobj,
+				   "%s", sessname);
+	if (unlikely(err)) {
+		pr_err("kobject_init_and_add(): %d\n", err);
+		goto out;
+	}
+	err = kobject_init_and_add(&srv->kobj_paths, &ktype,
+				   &srv->kobj, "paths");
+	if (unlikely(err)) {
+		pr_err("kobject_init_and_add(): %d\n", err);
+		goto put_kobj;
+	}
+out:
+	mutex_unlock(&srv->paths_mutex);
+
+	return err;
+
+put_kobj:
+	kobject_del(&srv->kobj);
+	kobject_put(&srv->kobj);
+	goto out;
+}
+
+void ibtrs_srv_destroy_sysfs_root_folders(struct ibtrs_srv *srv)
+{
+	if (srv->kobj.state_in_sysfs) {
+		kobject_del(&srv->kobj_paths);
+		kobject_put(&srv->kobj_paths);
+		kobject_del(&srv->kobj);
+		kobject_put(&srv->kobj);
+	}
+}
+
 int ibtrs_srv_create_sysfs_module_files(void)
 {
 	ibtrs_kobj = kobject_create_and_add(KBUILD_MODNAME, kernel_kobj);

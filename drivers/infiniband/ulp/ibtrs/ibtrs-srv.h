@@ -176,6 +176,8 @@ struct ibtrs_srv {
 	struct ibtrs_srv_ctx	*ctx;
 	struct list_head	ctx_list;
 	void			*priv;
+	struct kobject		kobj;
+	struct kobject		kobj_paths;
 };
 
 struct ibtrs_srv_ctx {
@@ -213,6 +215,11 @@ ssize_t ibtrs_srv_reset_all_help(struct ibtrs_srv_stats *stats,
 
 int ibtrs_srv_create_sysfs_module_files(void);
 void ibtrs_srv_destroy_sysfs_module_files(void);
+
+int ibtrs_srv_create_once_sysfs_root_folders(struct ibtrs_srv *srv,
+					     const char *sessname);
+void ibtrs_srv_destroy_sysfs_root_folders(struct ibtrs_srv *srv);
+
 int ibtrs_srv_create_sess_files(struct ibtrs_srv_sess *sess);
 void ibtrs_srv_destroy_sess_files(struct ibtrs_srv_sess *sess);
 
