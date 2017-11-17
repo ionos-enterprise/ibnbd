@@ -81,7 +81,7 @@ static ssize_t ibtrs_srv_disconnect_store(struct kobject *kobj,
 	return count;
 }
 
-static struct kobj_attribute disconnect_attr =
+static struct kobj_attribute ibtrs_srv_disconnect_attr =
 	__ATTR(disconnect, 0644,
 	       ibtrs_srv_disconnect_show, ibtrs_srv_disconnect_store);
 
@@ -96,9 +96,9 @@ static ssize_t ibtrs_srv_current_hca_port_show(struct kobject *kobj,
 	return ibtrs_srv_current_hca_port_to_str(sess, page, PAGE_SIZE);
 }
 
-static struct kobj_attribute current_hca_port_attr =
-	__ATTR(current_hca_port, 0444, ibtrs_srv_current_hca_port_show,
-	       NULL);
+static struct kobj_attribute ibtrs_srv_current_hca_port_attr =
+	__ATTR(ibtrs_srv_current_hca_port, 0444,
+	       ibtrs_srv_current_hca_port_show, NULL);
 
 static ssize_t ibtrs_srv_hca_name_show(struct kobject *kobj,
 				       struct kobj_attribute *attr,
@@ -112,66 +112,63 @@ static ssize_t ibtrs_srv_hca_name_show(struct kobject *kobj,
 			 ibtrs_srv_get_sess_hca_name(sess));
 }
 
-static struct kobj_attribute hca_name_attr =
-	__ATTR(hca_name, 0444, ibtrs_srv_hca_name_show, NULL);
+static struct kobj_attribute ibtrs_srv_hca_name_attr =
+	__ATTR(ibtrs_srv_hca_name, 0444,
+	       ibtrs_srv_hca_name_show, NULL);
 
-static struct attribute *default_sess_attrs[] = {
-	&hca_name_attr.attr,
-	&current_hca_port_attr.attr,
-	&disconnect_attr.attr,
+static struct attribute *ibtrs_srv_sess_attrs[] = {
+	&ibtrs_srv_hca_name_attr.attr,
+	&ibtrs_srv_current_hca_port_attr.attr,
+	&ibtrs_srv_disconnect_attr.attr,
 	NULL,
 };
 
-static struct attribute_group default_sess_attr_group = {
-	.attrs = default_sess_attrs,
+static struct attribute_group ibtrs_srv_sess_attr_group = {
+	.attrs = ibtrs_srv_sess_attrs,
 };
 
-STAT_ATTR(struct ibtrs_srv_sess, rdma,
+STAT_ATTR(struct ibtrs_srv_sess, ibtrs_srv_rdma,
 	  ibtrs_srv_stats_rdma_to_str,
 	  ibtrs_srv_reset_rdma_stats);
 
-STAT_ATTR(struct ibtrs_srv_sess, user_ib_messages,
+STAT_ATTR(struct ibtrs_srv_sess, ibtrs_srv_user_ib_messages,
 	  ibtrs_srv_stats_user_ib_msgs_to_str,
 	  ibtrs_srv_reset_user_ib_msgs_stats);
 
-STAT_ATTR(struct ibtrs_srv_sess, wc_completion,
+STAT_ATTR(struct ibtrs_srv_sess, ibtrs_srv_wc_completion,
 	  ibtrs_srv_stats_wc_completion_to_str,
 	  ibtrs_srv_reset_wc_completion_stats);
 
-STAT_ATTR(struct ibtrs_srv_sess, reset_all,
+STAT_ATTR(struct ibtrs_srv_sess, ibtrs_srv_reset_all,
 	  ibtrs_srv_reset_all_help,
 	  ibtrs_srv_reset_all_stats);
 
-static struct attribute *ibtrs_srv_default_stats_attrs[] = {
-	&rdma_attr.attr,
-	&user_ib_messages_attr.attr,
-	&wc_completion_attr.attr,
-	&reset_all_attr.attr,
+static struct attribute *ibtrs_srv_stats_attrs[] = {
+	&ibtrs_srv_rdma_attr.attr,
+	&ibtrs_srv_user_ib_messages_attr.attr,
+	&ibtrs_srv_wc_completion_attr.attr,
+	&ibtrs_srv_reset_all_attr.attr,
 	NULL,
 };
 
-static struct attribute_group ibtrs_srv_default_stats_attr_group = {
-	.attrs = ibtrs_srv_default_stats_attrs,
+static struct attribute_group ibtrs_srv_stats_attr_group = {
+	.attrs = ibtrs_srv_stats_attrs,
 };
 
 static int ibtrs_srv_create_stats_files(struct ibtrs_srv_sess *sess)
 {
-	int ret;
+	int err;
 
-	ret = kobject_init_and_add(&sess->kobj_stats, &ktype,
+	err = kobject_init_and_add(&sess->kobj_stats, &ktype,
 				   &sess->kobj, "stats");
-	if (ret) {
-		ibtrs_err(sess,
-			  "Failed to init and add sysfs directory for session stats,"
-			  " err: %d\n", ret);
-		return ret;
+	if (unlikely(err)) {
+		ibtrs_err(sess, "kobject_init_and_add(): %d\n", err);
+		return err;
 	}
-
-	ret = sysfs_create_group(&sess->kobj_stats,
-				 &ibtrs_srv_default_stats_attr_group);
-	if (ret) {
-		ibtrs_err(sess, "Failed to create sysfs group for session stats,"
-			  " err: %d\n", ret);
+	err = sysfs_create_group(&sess->kobj_stats,
+				 &ibtrs_srv_stats_attr_group);
+	if (unlikely(err)) {
+		ibtrs_err(sess, "sysfs_create_group(): %d\n", err);
 		goto err;
 	}
 
@@ -180,41 +177,37 @@ static int ibtrs_srv_create_stats_files(struct ibtrs_srv_sess *sess)
 err:
 	kobject_put(&sess->kobj_stats);
 
-	return ret;
+	return err;
 }
 
 int ibtrs_srv_create_sess_files(struct ibtrs_srv_sess *sess)
 {
-	int ret;
+	int err;
 
-	ret = kobject_init_and_add(&sess->kobj, &ktype, ibtrs_kobj,
+	err = kobject_init_and_add(&sess->kobj, &ktype, ibtrs_kobj,
 				   "%s", sess->s.sessname);
-	if (ret) {
-		ibtrs_err(sess, "Failed to init and add sysfs directory for session,"
-			  " err: %d\n", ret);
-		return ret;
+	if (unlikely(err)) {
+		ibtrs_err(sess, "kobject_init_and_add(): %d\n", err);
+		return err;
 	}
-
-	ret = sysfs_create_group(&sess->kobj, &default_sess_attr_group);
-	if (ret) {
-		ibtrs_err(sess, "Failed to create sysfs group for session,"
-			  " err: %d\n", ret);
-		goto err;
+	err = sysfs_create_group(&sess->kobj, &ibtrs_srv_sess_attr_group);
+	if (unlikely(err)) {
+		ibtrs_err(sess, "sysfs_create_group(): %d\n", err);
+		goto put_kobj;
 	}
-
-	ret = ibtrs_srv_create_stats_files(sess);
-	if (ret)
-		goto err1;
+	err = ibtrs_srv_create_stats_files(sess);
+	if (unlikely(err))
+		goto remove_group;
 
 	return 0;
 
-err1:
-	sysfs_remove_group(&sess->kobj, &default_sess_attr_group);
-err:
+remove_group:
+	sysfs_remove_group(&sess->kobj, &ibtrs_srv_sess_attr_group);
+put_kobj:
 	kobject_del(&sess->kobj);
 	kobject_put(&sess->kobj);
 
-	return ret;
+	return err;
 }
 
 void ibtrs_srv_destroy_sess_files(struct ibtrs_srv_sess *sess)
