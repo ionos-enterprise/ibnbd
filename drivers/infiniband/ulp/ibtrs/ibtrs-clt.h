@@ -45,8 +45,6 @@
 #ifndef IBTRS_CLT_H
 #define IBTRS_CLT_H
 
-#include <linux/uuid.h>
-
 #include "ibtrs-pri.h"
 
 /**

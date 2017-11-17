@@ -46,19 +46,12 @@
 #define pr_fmt(fmt) KBUILD_MODNAME " L" __stringify(__LINE__) ": " fmt
 
 #include <linux/module.h>
-#include <linux/sizes.h>
-#include <linux/utsname.h>
-#include <linux/cpumask.h>
 #include <linux/debugfs.h>
-#include <rdma/ib_verbs.h>
 #include <rdma/rdma_cm.h>
 
 /* XXX Will be removed ASAP */
 #define ibtrs_srv ibtrs_srv_sess
 
-#include <rdma/ibtrs.h>
-
-#include "ibtrs-pri.h"
 #include "ibtrs-srv.h"
 #include "ibtrs-log.h"
 

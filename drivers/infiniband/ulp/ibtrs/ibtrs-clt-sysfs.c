@@ -45,9 +45,6 @@
 #undef pr_fmt
 #define pr_fmt(fmt) KBUILD_MODNAME " L" __stringify(__LINE__) ": " fmt
 
-#include <linux/types.h>
-#include <rdma/ibtrs.h>
-
 #include "ibtrs-pri.h"
 #include "ibtrs-clt.h"
 #include "ibtrs-log.h"

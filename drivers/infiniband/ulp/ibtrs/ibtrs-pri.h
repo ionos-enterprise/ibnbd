@@ -45,18 +45,10 @@
 #ifndef IBTRS_PRI_H
 #define IBTRS_PRI_H
 
-#include <linux/uio.h>
-#include <linux/types.h>
 #include <linux/uuid.h>
-#include <rdma/rdma_cm.h>
-#include <rdma/ib_cm.h>
-#include <linux/list.h>
-#include <linux/dma-direction.h>
-#include <rdma/ib.h>
 #include <rdma/ib_verbs.h>
-#include <linux/time.h>
-#include <linux/ktime.h>
-#include <linux/timekeeping.h>
+#include <rdma/ib.h>
+#include <rdma/ibtrs.h>
 
 #define IBTRS_VER_MAJOR 1
 #define IBTRS_VER_MINOR 0
