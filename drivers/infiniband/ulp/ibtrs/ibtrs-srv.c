@@ -1061,6 +1061,7 @@ static void ibtrs_srv_info_rsp_done(struct ib_cq *cq, struct ib_wc *wc)
 {
 	struct ibtrs_srv_con *con = cq->cq_context;
 	struct ibtrs_srv_sess *sess = to_srv_sess(con->c.sess);
+	struct ibtrs_srv *srv = sess->srv;
 	struct ibtrs_iu *iu;
 	int err;
 
@@ -1073,6 +1074,10 @@ static void ibtrs_srv_info_rsp_done(struct ib_cq *cq, struct ib_wc *wc)
 		goto close_sess;
 	}
 	WARN_ON(wc->opcode != IB_WC_SEND);
+
+	err = ibtrs_srv_create_once_sysfs_root_folders(srv, sess->s.sessname);
+	if (unlikely(err))
+		goto close_sess;
 
 	err = ibtrs_srv_create_sess_files(sess);
 	if (unlikely(err))
@@ -1746,6 +1751,7 @@ static void put_srv(struct ibtrs_srv *srv)
 		struct ibtrs_srv_ctx *ctx = srv->ctx;
 
 		mutex_lock(&ctx->srv_mutex);
+		ibtrs_srv_destroy_sysfs_root_folders(srv);
 		list_del(&srv->ctx_list);
 		mutex_unlock(&ctx->srv_mutex);
 		free_srv(srv);
