@@ -1973,7 +1973,7 @@ static int ibtrs_rdma_connect(struct rdma_cm_id *cm_id,
 	}
 	recon_cnt = le16_to_cpu(msg->recon_cnt);
 	mutex_lock(&ctx->sess_mutex);
-	sess = __find_sess(ctx, &msg->uuid);
+	sess = __find_sess(ctx, &msg->sess_uuid);
 	if (sess) {
 		if (unlikely(sess->s.recon_cnt != recon_cnt)) {
 			ibtrs_err(sess, "Reconnect detected %d != %d, but "
@@ -2005,7 +2005,8 @@ static int ibtrs_rdma_connect(struct rdma_cm_id *cm_id,
 			goto reject_w_econnreset;
 		}
 	} else {
-		sess = __alloc_sess(ctx, cm_id, con_num, recon_cnt, &msg->uuid);
+		sess = __alloc_sess(ctx, cm_id, con_num, recon_cnt,
+				    &msg->sess_uuid);
 		if (unlikely(IS_ERR(sess))) {
 			mutex_unlock(&ctx->sess_mutex);
 			err = PTR_ERR(sess);

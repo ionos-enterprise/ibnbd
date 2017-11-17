@@ -168,7 +168,8 @@ enum ibtrs_msg_types {
  * @cid:	   Current connection id
  * @cid_num:	   Number of connections per session
  * @recon_cnt:	   Reconnections counter
- * @uuid:	   Client UUID
+ * @sess_uuid:	   UUID of a session (path)
+ * @paths_uuid:	   UUID of a group of sessions (paths)
  *
  * NOTE: max size 56 bytes, see man rdma_connect().
  */
@@ -183,8 +184,9 @@ struct ibtrs_msg_conn_req {
 	__le16		cid;
 	__le16		cid_num;
 	__le16		recon_cnt;
-	uuid_t		uuid;
-	u8		reserved[28];
+	uuid_t		sess_uuid;
+	uuid_t		paths_uuid;
+	u8		reserved[12];
 };
 
 /**

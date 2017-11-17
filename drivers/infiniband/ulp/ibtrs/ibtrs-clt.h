@@ -177,6 +177,7 @@ struct ibtrs_clt_sess {
 struct ibtrs_clt {
 	struct ibtrs_clt_sess	*paths[MAX_PATHS_NUM];
 	size_t			paths_num;
+	uuid_t			paths_uuid;
 	bool			established;
 	char			sessname[NAME_MAX];
 	short			port;

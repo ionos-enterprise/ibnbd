@@ -2814,6 +2814,7 @@ static int ibtrs_rdma_addr_resolved(struct ibtrs_clt_con *con)
 static int ibtrs_rdma_route_resolved(struct ibtrs_clt_con *con)
 {
 	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
+	struct ibtrs_clt *clt = sess->clt;
 	struct ibtrs_msg_conn_req msg;
 	struct rdma_conn_param param;
 
@@ -2837,7 +2838,8 @@ static int ibtrs_rdma_route_resolved(struct ibtrs_clt_con *con)
 	msg.cid = cpu_to_le16(con->c.cid);
 	msg.cid_num = cpu_to_le16(sess->s.con_num);
 	msg.recon_cnt = cpu_to_le16(sess->s.recon_cnt);
-	uuid_copy(&msg.uuid, &sess->s.uuid);
+	uuid_copy(&msg.sess_uuid, &sess->s.uuid);
+	uuid_copy(&msg.paths_uuid, &clt->paths_uuid);
 
 	err = rdma_connect(con->c.cm_id, &param);
 	if (err)
@@ -3300,6 +3302,7 @@ static struct ibtrs_clt *alloc_clt(const char *sessname, size_t paths_num,
 	if (unlikely(!clt))
 		return ERR_PTR(-ENOMEM);
 
+	uuid_gen(&clt->paths_uuid);
 	clt->paths_num = paths_num;
 	clt->port = port;
 	clt->pdu_sz = pdu_sz;
