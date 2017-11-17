@@ -142,6 +142,35 @@ struct ibtrs_clt_stats {
 	struct ibtrs_clt_stats_wc_comp		*wc_comp;
 };
 
+struct ibtrs_clt_con {
+	struct ibtrs_con	c;
+	unsigned		cpu;
+	atomic_t		io_cnt;
+	struct ibtrs_fr_pool	*fr_pool;
+	int			cm_err;
+};
+
+struct rdma_req {
+	struct list_head        list;
+	struct ibtrs_iu		*iu;
+	struct scatterlist	*sglist; /* list holding user data */
+	unsigned int		sg_cnt;
+	unsigned int		sg_size;
+	u32			data_len;
+	void			*priv;
+	bool			in_use;
+	struct ibtrs_clt_con	*con;
+	union {
+		struct ib_pool_fmr	**fmr_list;
+		struct ibtrs_fr_desc	**fr_list;
+	};
+	void			*map_page;
+	struct ibtrs_tag	*tag;
+	u16			nmdesc;
+	enum dma_data_direction dir;
+	unsigned long		start_time;
+};
+
 struct ibtrs_clt_sess {
 	struct ibtrs_sess	s;
 	struct ibtrs_clt	*clt;

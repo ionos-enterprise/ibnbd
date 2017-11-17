@@ -128,6 +128,21 @@ struct ibtrs_srv_stats {
 	struct ibtrs_stats_wc_comp		wc_comp;
 };
 
+struct ibtrs_srv_con {
+	struct ibtrs_con	c;
+	atomic_t		wr_cnt;
+};
+
+struct ibtrs_srv_op {
+	struct ibtrs_srv_con		*con;
+	u32				msg_id;
+	u8				dir;
+	u64				data_dma_addr;
+	struct ibtrs_msg_req_rdma_write *req;
+	struct ib_rdma_wr		*tx_wr;
+	struct ib_sge			*tx_sg;
+};
+
 struct ibtrs_srv_sess {
 	struct ibtrs_sess	s;
 	struct ibtrs_srv_ctx	*ctx;
@@ -151,6 +166,14 @@ struct ibtrs_srv_sess {
 	struct kobject		kobj;
 	struct kobject		kobj_stats;
 	struct ibtrs_srv_stats	stats;
+};
+
+struct ibtrs_srv_ctx {
+	struct ibtrs_srv_ops ops;
+	struct rdma_cm_id *cm_id_ip;
+	struct rdma_cm_id *cm_id_ib;
+	struct mutex sess_mutex;
+	struct list_head sess_list;
 };
 
 /* See ibtrs-log.h */

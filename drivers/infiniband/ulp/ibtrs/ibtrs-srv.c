@@ -222,29 +222,6 @@ static int nr_active_sessions;
 
 static void close_sess(struct ibtrs_srv_sess *sess);
 
-struct ibtrs_srv_ctx {
-	struct ibtrs_srv_ops ops;
-	struct rdma_cm_id *cm_id_ip;
-	struct rdma_cm_id *cm_id_ib;
-	struct mutex sess_mutex;
-	struct list_head sess_list;
-};
-
-struct ibtrs_srv_con {
-	struct ibtrs_con	c;
-	atomic_t		wr_cnt;
-};
-
-struct ibtrs_srv_op {
-	struct ibtrs_srv_con		*con;
-	u32				msg_id;
-	u8				dir;
-	u64				data_dma_addr;
-	struct ibtrs_msg_req_rdma_write *req;
-	struct ib_rdma_wr		*tx_wr;
-	struct ib_sge			*tx_sg;
-};
-
 static inline struct ibtrs_srv_con *to_srv_con(struct ibtrs_con *c)
 {
 	if (unlikely(!c))
