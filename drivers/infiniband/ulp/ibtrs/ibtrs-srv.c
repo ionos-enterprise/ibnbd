@@ -49,9 +49,7 @@
 #include <linux/debugfs.h>
 #include <rdma/rdma_cm.h>
 
-/* XXX Will be removed ASAP */
-#define ibtrs_srv ibtrs_srv_sess
-
+#include "ibtrs-pri.h"
 #include "ibtrs-srv.h"
 #include "ibtrs-log.h"
 
@@ -616,9 +614,10 @@ EXPORT_SYMBOL(ibtrs_srv_resp_rdma);
 
 static void ibtrs_srv_usr_send_done(struct ib_cq *cq, struct ib_wc *wc);
 
-int ibtrs_srv_send(struct ibtrs_srv_sess *sess, const struct kvec *vec,
-		   size_t nr)
+int ibtrs_srv_send(struct ibtrs_srv *srv, const struct kvec *vec, size_t nr)
 {
+	/* XXX Should be changed */
+	struct ibtrs_srv_sess *sess = srv->paths[0];
 	struct ibtrs_srv_con *usr_con = to_srv_con(sess->s.con[0]);
 	struct ibtrs_msg_user *msg;
 	struct ibtrs_iu *iu;
@@ -663,9 +662,9 @@ err_post_send:
 }
 EXPORT_SYMBOL(ibtrs_srv_send);
 
-inline void ibtrs_srv_set_sess_priv(struct ibtrs_srv_sess *sess, void *priv)
+void ibtrs_srv_set_sess_priv(struct ibtrs_srv *srv, void *priv)
 {
-	sess->priv = priv;
+	srv->priv = priv;
 }
 EXPORT_SYMBOL(ibtrs_srv_set_sess_priv);
 
@@ -1095,7 +1094,8 @@ static int process_info_req(struct ibtrs_srv_con *con,
 			    struct ibtrs_msg_info_req *msg)
 {
 	struct ibtrs_srv_sess *sess = to_srv_sess(con->c.sess);
-	struct ibtrs_srv_ctx *ctx = sess->ctx;
+	struct ibtrs_srv *srv = sess->srv;
+	struct ibtrs_srv_ctx *ctx = srv->ctx;
 	struct ibtrs_msg_info_rsp *rsp;
 	struct ibtrs_iu *tx_iu;
 	size_t tx_sz;
@@ -1132,7 +1132,7 @@ static int process_info_req(struct ibtrs_srv_con *con,
 	 * all connections are successfully established.  Thus, simply notify
 	 * listener with a proper event.
 	 */
-	ctx->ops.link_ev(sess, IBTRS_SRV_LINK_EV_CONNECTED, NULL);
+	ctx->ops.link_ev(srv, IBTRS_SRV_LINK_EV_CONNECTED, NULL);
 
 	/* Send info response */
 	err = ibtrs_iu_post_send(&con->c, tx_iu, tx_sz);
@@ -1272,7 +1272,8 @@ static void process_rdma_write_req(struct ibtrs_srv_con *con,
 				   u32 buf_id, u32 off)
 {
 	struct ibtrs_srv_sess *sess = to_srv_sess(con->c.sess);
-	struct ibtrs_srv_ctx *ctx = sess->ctx;
+	struct ibtrs_srv *srv = sess->srv;
+	struct ibtrs_srv_ctx *ctx = srv->ctx;
 	struct ibtrs_srv_op *id;
 	size_t sg_cnt;
 	int ret;
@@ -1303,7 +1304,7 @@ static void process_rdma_write_req(struct ibtrs_srv_con *con,
 	}
 
 	id->data_dma_addr = sess->rcv_buf_pool->rcv_bufs[buf_id].rdma_addr;
-	ret = ctx->ops.rdma_ev(sess, sess->priv, id,
+	ret = ctx->ops.rdma_ev(srv, srv->priv, id,
 			       IBTRS_SRV_RDMA_EV_WRITE_REQ,
 			       sess->rcv_buf_pool->rcv_bufs[buf_id].buf, off);
 
@@ -1331,7 +1332,8 @@ static void process_rdma_write(struct ibtrs_srv_con *con,
 			       u32 buf_id, u32 off)
 {
 	struct ibtrs_srv_sess *sess = to_srv_sess(con->c.sess);
-	struct ibtrs_srv_ctx *ctx = sess->ctx;
+	struct ibtrs_srv *srv = sess->srv;
+	struct ibtrs_srv_ctx *ctx = srv->ctx;
 	struct ibtrs_srv_op *id;
 	int ret;
 
@@ -1347,7 +1349,7 @@ static void process_rdma_write(struct ibtrs_srv_con *con,
 	id->dir    = WRITE;
 	id->msg_id = buf_id;
 
-	ret = ctx->ops.rdma_ev(sess, sess->priv, id, IBTRS_SRV_RDMA_EV_RECV,
+	ret = ctx->ops.rdma_ev(srv, srv->priv, id, IBTRS_SRV_RDMA_EV_RECV,
 			       sess->rcv_buf_pool->rcv_bufs[buf_id].buf, off);
 	if (unlikely(ret)) {
 		ibtrs_err_rl(sess, "Processing RDMA-Write failed, user module"
@@ -1504,7 +1506,8 @@ static void ibtrs_srv_usr_send_done(struct ib_cq *cq, struct ib_wc *wc)
 static void __process_usr(struct ibtrs_srv_sess *sess,
 			  struct ibtrs_msg_user *msg)
 {
-	struct ibtrs_srv_ctx *ctx = sess->ctx;
+	struct ibtrs_srv *srv = sess->srv;
+	struct ibtrs_srv_ctx *ctx = srv->ctx;
 	size_t len;
 
 	/*
@@ -1516,7 +1519,7 @@ static void __process_usr(struct ibtrs_srv_sess *sess,
 	atomic64_inc(&sess->stats.user_ib_msgs.recv_msg_cnt);
 	atomic64_add(len + sizeof(*msg), &sess->stats.user_ib_msgs.recv_size);
 
-	ctx->ops.recv(sess, sess->priv, msg->payl, len);
+	ctx->ops.recv(srv, srv->priv, msg->payl, len);
 }
 
 static int process_usr(struct ibtrs_srv_con *con, struct ib_wc *wc)
@@ -1640,21 +1643,30 @@ err:
 	close_sess(sess);
 }
 
-const char *ibtrs_srv_get_sess_name(struct ibtrs_srv_sess *sess)
+const char *ibtrs_srv_get_sess_name(struct ibtrs_srv *srv)
 {
+	/* XXX Should be changed */
+	struct ibtrs_srv_sess *sess = srv->paths[0];
+
 	return sess->s.sessname;
 }
 EXPORT_SYMBOL(ibtrs_srv_get_sess_name);
 
 const struct sockaddr *
-ibtrs_srv_get_sess_sockaddr(struct ibtrs_srv_sess *sess)
+ibtrs_srv_get_sess_sockaddr(struct ibtrs_srv *srv)
 {
+	/* XXX Should be changed */
+	struct ibtrs_srv_sess *sess = srv->paths[0];
+
 	return (const struct sockaddr *)&sess->s.dst_addr;
 }
 EXPORT_SYMBOL(ibtrs_srv_get_sess_sockaddr);
 
-int ibtrs_srv_get_sess_qdepth(struct ibtrs_srv_sess *sess)
+int ibtrs_srv_get_sess_qdepth(struct ibtrs_srv *srv)
 {
+	/* XXX Should be changed */
+	struct ibtrs_srv_sess *sess = srv->paths[0];
+
 	return sess->queue_depth;
 }
 EXPORT_SYMBOL(ibtrs_srv_get_sess_qdepth);
@@ -1675,6 +1687,107 @@ static int ibtrs_srv_get_next_cq_vector(struct ibtrs_srv_sess *sess)
 	return sess->cur_cq_vector;
 }
 
+static struct ibtrs_srv *__alloc_srv(struct ibtrs_srv_ctx *ctx,
+				     const uuid_t *paths_uuid)
+{
+	struct ibtrs_srv *srv;
+
+	srv = kzalloc(sizeof(*srv), GFP_KERNEL);
+	if  (unlikely(!srv))
+		return NULL;
+
+	refcount_set(&srv->refcount, 1);
+	mutex_init(&srv->paths_mutex);
+	uuid_copy(&srv->paths_uuid, paths_uuid);
+	srv->ctx = ctx;
+
+	list_add(&srv->ctx_list, &ctx->srv_list);
+
+	return srv;
+}
+
+static void free_srv(struct ibtrs_srv *srv)
+{
+	WARN_ON(refcount_read(&srv->refcount));
+	kfree(srv);
+}
+
+static inline struct ibtrs_srv *__find_srv_and_get(struct ibtrs_srv_ctx *ctx,
+						   const uuid_t *paths_uuid)
+{
+	struct ibtrs_srv *srv;
+
+	list_for_each_entry(srv, &ctx->srv_list, ctx_list) {
+		if (uuid_equal(&srv->paths_uuid, paths_uuid) &&
+		    refcount_inc_not_zero(&srv->refcount))
+			return srv;
+	}
+
+	return NULL;
+}
+
+static struct ibtrs_srv *get_or_create_srv(struct ibtrs_srv_ctx *ctx,
+					   const uuid_t *paths_uuid)
+{
+	struct ibtrs_srv *srv;
+
+	mutex_lock(&ctx->srv_mutex);
+	srv = __find_srv_and_get(ctx, paths_uuid);
+	if (!srv)
+		srv = __alloc_srv(ctx, paths_uuid);
+	mutex_unlock(&ctx->srv_mutex);
+
+	return srv;
+}
+
+static void put_srv(struct ibtrs_srv *srv)
+{
+	if (refcount_dec_and_test(&srv->refcount)) {
+		struct ibtrs_srv_ctx *ctx = srv->ctx;
+
+		mutex_lock(&ctx->srv_mutex);
+		list_del(&srv->ctx_list);
+		mutex_unlock(&ctx->srv_mutex);
+		free_srv(srv);
+	}
+}
+
+static void __add_path_to_srv(struct ibtrs_srv *srv,
+			      struct ibtrs_srv_sess *sess)
+{
+	int i;
+
+	for (i = 0; i < MAX_PATHS_NUM; i++) {
+		if (!srv->paths[i]) {
+			srv->paths[i] = sess;
+			srv->paths_num++;
+			break;
+		}
+	}
+	WARN_ON(i >= MAX_PATHS_NUM);
+}
+
+static void del_path_from_srv(struct ibtrs_srv_sess *sess)
+{
+	struct ibtrs_srv* srv = sess->srv;
+	int i;
+
+	if (WARN_ON(!srv))
+		return;
+
+	mutex_lock(&srv->paths_mutex);
+	for (i = 0; i < MAX_PATHS_NUM; i++) {
+		if (sess == srv->paths[i]) {
+			srv->paths[i] = NULL;
+			WARN_ON(!srv->paths_num);
+			srv->paths_num--;
+			break;
+		}
+	}
+	mutex_unlock(&srv->paths_mutex);
+	WARN_ON(i >= MAX_PATHS_NUM);
+}
+
 static void ibtrs_srv_close_work(struct work_struct *work)
 {
 	struct ibtrs_srv_sess *sess;
@@ -1683,7 +1796,7 @@ static void ibtrs_srv_close_work(struct work_struct *work)
 	int i;
 
 	sess = container_of(work, typeof(*sess), close_work);
-	ctx = sess->ctx;
+	ctx = sess->srv->ctx;
 
 	ibtrs_srv_destroy_sess_files(sess);
 	ibtrs_srv_stop_hb(sess);
@@ -1697,8 +1810,8 @@ static void ibtrs_srv_close_work(struct work_struct *work)
 		ib_drain_qp(con->c.qp);
 	}
 	if (sess->was_connected)
-		ctx->ops.link_ev(sess, IBTRS_SRV_LINK_EV_DISCONNECTED,
-				 sess->priv);
+		ctx->ops.link_ev(srv, IBTRS_SRV_LINK_EV_DISCONNECTED,
+				 srv->priv);
 
 	release_cont_bufs(sess);
 	free_sess_bufs(sess);
@@ -1714,10 +1827,9 @@ static void ibtrs_srv_close_work(struct work_struct *work)
 	}
 	ibtrs_ib_dev_put(sess->s.ib_dev);
 
-	mutex_lock(&ctx->sess_mutex);
-	list_del(&sess->ctx_list);
-	mutex_unlock(&ctx->sess_mutex);
-
+	del_path_from_srv(sess);
+	put_srv(sess->srv);
+	sess->srv = NULL;
 	ibtrs_srv_change_state(sess, IBTRS_SRV_CLOSED);
 
 	kfree(sess->s.con);
@@ -1772,12 +1884,16 @@ static int ibtrs_rdma_do_reject(struct rdma_cm_id *cm_id, int errno)
 }
 
 static struct ibtrs_srv_sess *
-__find_sess(struct ibtrs_srv_ctx *ctx, const uuid_t *uuid)
+__find_sess(struct ibtrs_srv *srv, const uuid_t *sess_uuid)
 {
 	struct ibtrs_srv_sess *sess;
+	int i;
 
-	list_for_each_entry(sess, &ctx->sess_list, ctx_list) {
-		if (uuid_equal(&sess->s.uuid, uuid))
+	for (i = 0; i < srv->paths_num; i++) {
+		sess = srv->paths[i];
+		if (!sess)
+			continue;
+		if (uuid_equal(&sess->s.uuid, sess_uuid))
 			return sess;
 	}
 
@@ -1846,7 +1962,7 @@ err:
 	return err;
 }
 
-static struct ibtrs_srv_sess *__alloc_sess(struct ibtrs_srv_ctx *ctx,
+static struct ibtrs_srv_sess *__alloc_sess(struct ibtrs_srv *srv,
 					   struct rdma_cm_id *cm_id,
 					   unsigned con_num, unsigned recon_cnt,
 					   const uuid_t *uuid)
@@ -1854,6 +1970,10 @@ static struct ibtrs_srv_sess *__alloc_sess(struct ibtrs_srv_ctx *ctx,
 	struct ibtrs_srv_sess *sess;
 	int err = -ENOMEM;
 
+	if (unlikely(srv->paths_num >= MAX_PATHS_NUM)) {
+		err = -ECONNRESET;
+		goto err;
+	}
 	sess = kzalloc(sizeof(*sess), GFP_KERNEL);
 	if (unlikely(!sess))
 		goto err;
@@ -1863,7 +1983,7 @@ static struct ibtrs_srv_sess *__alloc_sess(struct ibtrs_srv_ctx *ctx,
 		goto err_free_sess;
 
 	sess->state = IBTRS_SRV_CONNECTING;
-	sess->ctx = ctx;
+	sess->srv = srv;
 	sess->cur_cq_vector = -1;
 	sess->queue_depth = sess_queue_depth;
 	sess->s.dst_addr = cm_id->route.addr.dst_addr;
@@ -1889,7 +2009,7 @@ static struct ibtrs_srv_sess *__alloc_sess(struct ibtrs_srv_ctx *ctx,
 	if (unlikely(err))
 		goto err_release_bufs;
 
-	list_add(&sess->ctx_list, &ctx->sess_list);
+	__add_path_to_srv(srv, sess);
 
 	return sess;
 
@@ -1912,6 +2032,8 @@ static int ibtrs_rdma_connect(struct rdma_cm_id *cm_id,
 {
 	struct ibtrs_srv_ctx *ctx = cm_id->context;
 	struct ibtrs_srv_sess *sess;
+	struct ibtrs_srv *srv;
+
 	u16 version, con_num, cid;
 	u16 recon_cnt;
 	int err;
@@ -1942,20 +2064,28 @@ static int ibtrs_rdma_connect(struct rdma_cm_id *cm_id,
 		goto reject_w_econnreset;
 	}
 	recon_cnt = le16_to_cpu(msg->recon_cnt);
-	mutex_lock(&ctx->sess_mutex);
-	sess = __find_sess(ctx, &msg->sess_uuid);
+	srv = get_or_create_srv(ctx, &msg->paths_uuid);
+	if (unlikely(!srv)) {
+		err = -ENOMEM;
+		goto reject_w_err;
+	}
+	mutex_lock(&srv->paths_mutex);
+	sess = __find_sess(srv, &msg->sess_uuid);
 	if (sess) {
+		/* Session already holds a reference */
+		put_srv(srv);
+
 		if (unlikely(sess->s.recon_cnt != recon_cnt)) {
 			ibtrs_err(sess, "Reconnect detected %d != %d, but "
 				  "previous session is still alive, reconnect "
 				  "later\n", sess->s.recon_cnt, recon_cnt);
-			mutex_unlock(&ctx->sess_mutex);
+			mutex_unlock(&srv->paths_mutex);
 			goto reject_w_ebusy;
 		}
 		if (unlikely(sess->state != IBTRS_SRV_CONNECTING)) {
 			ibtrs_err(sess, "Session in wrong state: %s\n",
 				  ibtrs_srv_state_str(sess->state));
-			mutex_unlock(&ctx->sess_mutex);
+			mutex_unlock(&srv->paths_mutex);
 			goto reject_w_econnreset;
 		}
 		/*
@@ -1965,20 +2095,21 @@ static int ibtrs_rdma_connect(struct rdma_cm_id *cm_id,
 			     cid >= sess->s.con_num)) {
 			ibtrs_err(sess, "Incorrect request: %d, %d\n",
 				  cid, con_num);
-			mutex_unlock(&ctx->sess_mutex);
+			mutex_unlock(&srv->paths_mutex);
 			goto reject_w_econnreset;
 		}
 		if (unlikely(sess->s.con[cid])) {
 			ibtrs_err(sess, "Connection already exists: %d\n",
 				  cid);
-			mutex_unlock(&ctx->sess_mutex);
+			mutex_unlock(&srv->paths_mutex);
 			goto reject_w_econnreset;
 		}
 	} else {
-		sess = __alloc_sess(ctx, cm_id, con_num, recon_cnt,
+		sess = __alloc_sess(srv, cm_id, con_num, recon_cnt,
 				    &msg->sess_uuid);
 		if (unlikely(IS_ERR(sess))) {
-			mutex_unlock(&ctx->sess_mutex);
+			mutex_unlock(&srv->paths_mutex);
+			put_srv(srv);
 			err = PTR_ERR(sess);
 			goto reject_w_err;
 		}
@@ -1991,7 +2122,7 @@ static int ibtrs_rdma_connect(struct rdma_cm_id *cm_id,
 	if (unlikely(err))
 		goto close_and_reject_w_err;
 
-	mutex_unlock(&ctx->sess_mutex);
+	mutex_unlock(&srv->paths_mutex);
 
 	return 0;
 
@@ -2006,7 +2137,7 @@ reject_w_ebusy:
 
 close_and_reject_w_err:
 	close_sess(sess);
-	mutex_unlock(&ctx->sess_mutex);
+	mutex_unlock(&srv->paths_mutex);
 	goto reject_w_err;
 }
 
@@ -2162,15 +2293,15 @@ static struct ibtrs_srv_ctx *alloc_srv_ctx(const struct ibtrs_srv_ops *ops)
 		return NULL;
 
 	ctx->ops = *ops;
-	mutex_init(&ctx->sess_mutex);
-	INIT_LIST_HEAD(&ctx->sess_list);
+	mutex_init(&ctx->srv_mutex);
+	INIT_LIST_HEAD(&ctx->srv_list);
 
 	return ctx;
 }
 
 static void free_srv_ctx(struct ibtrs_srv_ctx *ctx)
 {
-	WARN_ON(!list_empty(&ctx->sess_list));
+	WARN_ON(!list_empty(&ctx->srv_list));
 	kfree(ctx);
 }
 
@@ -2217,14 +2348,29 @@ static void close_sess(struct ibtrs_srv_sess *sess)
 	WARN_ON(sess->state != IBTRS_SRV_CLOSING);
 }
 
-static void close_sessions(struct ibtrs_srv_ctx *ctx)
+static void close_sessions(struct ibtrs_srv *srv)
 {
 	struct ibtrs_srv_sess *sess;
+	int i;
 
-	mutex_lock(&ctx->sess_mutex);
-	list_for_each_entry(sess, &ctx->sess_list, ctx_list)
+	mutex_lock(&srv->paths_mutex);
+	for (i = 0; i < srv->paths_num; i++) {
+		sess = srv->paths[i];
+		if (!sess)
+			continue;
 		close_sess(sess);
-	mutex_unlock(&ctx->sess_mutex);
+	}
+	mutex_unlock(&srv->paths_mutex);
+}
+
+static void close_ctx(struct ibtrs_srv_ctx *ctx)
+{
+	struct ibtrs_srv *srv;
+
+	mutex_lock(&ctx->srv_mutex);
+	list_for_each_entry(srv, &ctx->srv_list, ctx_list)
+		close_sessions(srv);
+	mutex_unlock(&ctx->srv_mutex);
 	flush_workqueue(ibtrs_wq);
 }
 
@@ -2232,7 +2378,7 @@ void ibtrs_srv_close(struct ibtrs_srv_ctx *ctx)
 {
 	rdma_destroy_id(ctx->cm_id_ip);
 	rdma_destroy_id(ctx->cm_id_ib);
-	close_sessions(ctx);
+	close_ctx(ctx);
 	free_srv_ctx(ctx);
 }
 EXPORT_SYMBOL(ibtrs_srv_close);

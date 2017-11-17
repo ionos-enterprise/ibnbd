@@ -45,6 +45,7 @@
 #ifndef IBTRS_SRV_H
 #define IBTRS_SRV_H
 
+#include <linux/refcount.h>
 #include "ibtrs-pri.h"
 
 /**
@@ -145,8 +146,7 @@ struct ibtrs_srv_op {
 
 struct ibtrs_srv_sess {
 	struct ibtrs_sess	s;
-	struct ibtrs_srv_ctx	*ctx;
-	struct list_head	ctx_list;
+	struct ibtrs_srv	*srv;
 	struct work_struct	close_work;
 	enum ibtrs_srv_state	state;
 	spinlock_t		state_lock;
@@ -162,18 +162,28 @@ struct ibtrs_srv_sess {
 					   * out of the imm field
 					   */
 	u16			queue_depth;
-	void			*priv;
 	struct kobject		kobj;
 	struct kobject		kobj_stats;
 	struct ibtrs_srv_stats	stats;
+};
+
+struct ibtrs_srv {
+	struct ibtrs_srv_sess	*paths[MAX_PATHS_NUM];
+	size_t			paths_num;
+	struct mutex		paths_mutex;
+	uuid_t			paths_uuid;
+	refcount_t		refcount;
+	struct ibtrs_srv_ctx	*ctx;
+	struct list_head	ctx_list;
+	void			*priv;
 };
 
 struct ibtrs_srv_ctx {
 	struct ibtrs_srv_ops ops;
 	struct rdma_cm_id *cm_id_ip;
 	struct rdma_cm_id *cm_id_ib;
-	struct mutex sess_mutex;
-	struct list_head sess_list;
+	struct mutex srv_mutex;
+	struct list_head srv_list;
 };
 
 /* See ibtrs-log.h */
