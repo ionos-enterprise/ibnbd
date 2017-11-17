@@ -738,7 +738,7 @@ static int ibtrs_map_fmr(struct ibtrs_map_state *state,
 
 static int ibtrs_map_sg(struct ibtrs_map_state *state,
 			struct ibtrs_clt_con *con,
-			struct rdma_req *req)
+			struct ibtrs_clt_io_req *req)
 {
 	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
 	int ret = 0;
@@ -797,7 +797,7 @@ static int ibtrs_inv_rkey(struct ibtrs_clt_con *con, u32 rkey)
 }
 
 static void ibtrs_unmap_fast_reg_data(struct ibtrs_clt_con *con,
-				      struct rdma_req *req)
+				      struct ibtrs_clt_io_req *req)
 {
 	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
 	int i, ret;
@@ -832,7 +832,7 @@ static void ibtrs_unmap_fast_reg_data(struct ibtrs_clt_con *con,
  */
 static int ibtrs_fast_reg_map_data(struct ibtrs_clt_con *con,
 				   struct ibtrs_sg_desc *desc,
-				   struct rdma_req *req)
+				   struct ibtrs_clt_io_req *req)
 {
 	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
 	struct ibtrs_map_state state;
@@ -860,7 +860,8 @@ unmap:
 	return ret;
 }
 
-static int ibtrs_post_send_rdma(struct ibtrs_clt_con *con, struct rdma_req *req,
+static int ibtrs_post_send_rdma(struct ibtrs_clt_con *con,
+				struct ibtrs_clt_io_req *req,
 				u64 addr, u32 off, u32 imm)
 {
 	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
@@ -901,7 +902,7 @@ static void ibtrs_set_sge_with_desc(struct ib_sge *list,
 
 static void ibtrs_set_rdma_desc_last(struct ibtrs_clt_con *con,
 				     struct ib_sge *list,
-				     struct rdma_req *req,
+				     struct ibtrs_clt_io_req *req,
 				     struct ib_rdma_wr *wr, int offset,
 				     struct ibtrs_sg_desc *desc, int m,
 				     int n, u64 addr, u32 size, u32 imm)
@@ -937,7 +938,7 @@ static void ibtrs_set_rdma_desc_last(struct ibtrs_clt_con *con,
 
 static int ibtrs_post_send_rdma_desc_more(struct ibtrs_clt_con *con,
 					  struct ib_sge *list,
-					  struct rdma_req *req,
+					  struct ibtrs_clt_io_req *req,
 					  struct ibtrs_sg_desc *desc, int n,
 					  u64 addr, u32 size, u32 imm)
 {
@@ -993,7 +994,7 @@ last_one:
 }
 
 static int ibtrs_post_send_rdma_desc(struct ibtrs_clt_con *con,
-				     struct rdma_req *req,
+				     struct ibtrs_clt_io_req *req,
 				     struct ibtrs_sg_desc *desc, int n,
 				     u64 addr, u32 size, u32 imm)
 {
@@ -1034,7 +1035,7 @@ static int ibtrs_post_send_rdma_desc(struct ibtrs_clt_con *con,
 }
 
 static int ibtrs_post_send_rdma_more(struct ibtrs_clt_con *con,
-				     struct rdma_req *req,
+				     struct ibtrs_clt_io_req *req,
 				     u64 addr, u32 size, u32 imm)
 {
 	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
@@ -1111,7 +1112,7 @@ static inline void ibtrs_clt_decrease_inflight(struct ibtrs_clt_stats *s)
 	s->rdma_stats[raw_smp_processor_id()].inflight--;
 }
 
-static void complete_rdma_req(struct rdma_req *req, int errno)
+static void complete_rdma_req(struct ibtrs_clt_io_req *req, int errno)
 {
 	struct ibtrs_clt_con *con = req->con;
 	struct ibtrs_clt_sess *sess;
@@ -1524,7 +1525,7 @@ static int post_recv_sess(struct ibtrs_clt_sess *sess)
 
 static void fail_all_outstanding_reqs(struct ibtrs_clt_sess *sess)
 {
-	struct rdma_req *req;
+	struct ibtrs_clt_io_req *req;
 	int i;
 
 	if (!sess->reqs)
@@ -1540,7 +1541,7 @@ static void fail_all_outstanding_reqs(struct ibtrs_clt_sess *sess)
 
 static void free_sess_reqs(struct ibtrs_clt_sess *sess)
 {
-	struct rdma_req *req;
+	struct ibtrs_clt_io_req *req;
 	int i;
 
 	if (!sess->reqs)
@@ -1561,7 +1562,7 @@ static void free_sess_reqs(struct ibtrs_clt_sess *sess)
 
 static int alloc_sess_reqs(struct ibtrs_clt_sess *sess)
 {
-	struct rdma_req *req;
+	struct ibtrs_clt_io_req *req;
 	void *mr_list;
 	int i;
 
@@ -3405,7 +3406,7 @@ static inline void ibtrs_clt_record_sg_distr(u64 *stat, u64 *total,
 }
 
 static int ibtrs_clt_rdma_write_desc(struct ibtrs_clt_con *con,
-				     struct rdma_req *req, u64 buf,
+				     struct ibtrs_clt_io_req *req, u64 buf,
 				     size_t u_msg_len, u32 imm,
 				     struct ibtrs_msg_rdma_write *msg)
 {
@@ -3444,7 +3445,7 @@ static int ibtrs_clt_rdma_write_desc(struct ibtrs_clt_con *con,
 }
 
 static int ibtrs_clt_rdma_write_sg(struct ibtrs_clt_con *con,
-				   struct rdma_req *req,
+				   struct ibtrs_clt_io_req *req,
 				   const struct kvec *vec,
 				   size_t u_msg_len,
 				   size_t data_len)
@@ -3536,8 +3537,8 @@ int ibtrs_clt_rdma_write(struct ibtrs_clt *clt, struct ibtrs_tag *tag,
 {
 	/* XXX Should be changed */
 	struct ibtrs_clt_sess *sess = clt->paths[0];
+	struct ibtrs_clt_io_req *req;
 	struct ibtrs_clt_con *con;
-	struct rdma_req *req;
 	size_t u_msg_len;
 	int con_id;
 	int err;
@@ -3598,7 +3599,7 @@ int ibtrs_clt_rdma_write(struct ibtrs_clt *clt, struct ibtrs_tag *tag,
 EXPORT_SYMBOL(ibtrs_clt_rdma_write);
 
 static int ibtrs_clt_request_rdma_write_sg(struct ibtrs_clt_con *con,
-					   struct rdma_req *req,
+					   struct ibtrs_clt_io_req *req,
 					   const struct kvec *vec,
 					   size_t u_msg_len,
 					   size_t data_len)
@@ -3689,8 +3690,8 @@ int ibtrs_clt_request_rdma_write(struct ibtrs_clt *clt,
 {
 	/* XXX Should be changed */
 	struct ibtrs_clt_sess *sess = clt->paths[0];
+	struct ibtrs_clt_io_req *req;
 	struct ibtrs_clt_con *con;
-	struct rdma_req *req;
 	size_t u_msg_len;
 	int err, con_id;
 

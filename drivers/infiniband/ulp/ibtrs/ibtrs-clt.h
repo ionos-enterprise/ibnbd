@@ -150,7 +150,7 @@ struct ibtrs_clt_con {
 	int			cm_err;
 };
 
-struct rdma_req {
+struct ibtrs_clt_io_req {
 	struct list_head        list;
 	struct ibtrs_iu		*iu;
 	struct scatterlist	*sglist; /* list holding user data */
@@ -177,7 +177,7 @@ struct ibtrs_clt_sess {
 	wait_queue_head_t	state_wq;
 	enum ibtrs_clt_state	state;
 	struct mutex		init_mutex;
-	struct rdma_req		*reqs;
+	struct ibtrs_clt_io_req	*reqs;
 	struct ib_fmr_pool	*fmr_pool;
 	struct delayed_work	reconnect_dwork;
 	struct work_struct	close_work;
