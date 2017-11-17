@@ -115,25 +115,8 @@ static ssize_t ibtrs_srv_hca_name_show(struct kobject *kobj,
 static struct kobj_attribute hca_name_attr =
 	__ATTR(hca_name, 0444, ibtrs_srv_hca_name_show, NULL);
 
-static ssize_t addr_show(struct kobject *kobj,
-			     struct kobj_attribute *attr, char *page)
-{
-	struct ibtrs_srv_sess *sess;
-	char str_addr[MAXHOSTNAMELEN];
-	sess = container_of(kobj, struct ibtrs_srv_sess, kobj);
-
-	sockaddr_to_str((struct sockaddr *)&sess->s.dst_addr,
-			str_addr, sizeof(str_addr));
-
-	return sprintf(page, "%s\n", str_addr);
-}
-
-static struct kobj_attribute addr_attr =
-	__ATTR(addr, 0444, addr_show, NULL);
-
 static struct attribute *default_sess_attrs[] = {
 	&hca_name_attr.attr,
-	&addr_attr.attr,
 	&current_hca_port_attr.attr,
 	&disconnect_attr.attr,
 	NULL,
