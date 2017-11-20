@@ -310,6 +310,7 @@ struct ibtrs_iu *ibtrs_iu_alloc(u32 tag, size_t size, gfp_t t,
 void ibtrs_iu_free(struct ibtrs_iu *iu, enum dma_data_direction dir,
 		   struct ib_device *dev);
 
+void ibtrs_iu_usrtx_init_list(struct ibtrs_sess *sess);
 int ibtrs_iu_usrtx_alloc_list(struct ibtrs_sess *sess, unsigned max_req_size,
 			      void (*done)(struct ib_cq *cq, struct ib_wc *wc));
 void ibtrs_iu_usrtx_free_list(struct ibtrs_sess *sess);
@@ -317,6 +318,7 @@ struct ibtrs_iu *ibtrs_iu_usrtx_get(struct ibtrs_sess *sess);
 void ibtrs_iu_usrtx_return(struct ibtrs_sess *sess, struct ibtrs_iu *iu);
 void ibtrs_iu_usrtx_put(struct ibtrs_sess *sess);
 
+void ibtrs_iu_usrrx_init_list(struct ibtrs_sess *sess);
 int ibtrs_iu_usrrx_alloc_list(struct ibtrs_sess *sess, size_t max_req_size,
 			      void (*done)(struct ib_cq *cq, struct ib_wc *wc));
 void ibtrs_iu_usrrx_free_list(struct ibtrs_sess *sess);

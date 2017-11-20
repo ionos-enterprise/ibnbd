@@ -2363,6 +2363,8 @@ static struct ibtrs_clt_sess *alloc_sess(const struct ibtrs_clt_ops *ops,
 	sess->state = IBTRS_CLT_CONNECTING;
 	INIT_WORK(&sess->close_work, ibtrs_clt_close_work);
 	INIT_DELAYED_WORK(&sess->reconnect_dwork, ibtrs_clt_reconnect_work);
+	ibtrs_iu_usrtx_init_list(&sess->s);
+	ibtrs_iu_usrrx_init_list(&sess->s);
 
 	err = ibtrs_clt_init_stats(&sess->stats);
 	if (unlikely(err)) {

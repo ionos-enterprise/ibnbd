@@ -1897,8 +1897,9 @@ static struct ibtrs_srv_sess *__alloc_sess(struct ibtrs_srv_ctx *ctx,
 	sess->s.recon_cnt = recon_cnt;
 	uuid_copy(&sess->s.uuid, uuid);
 	spin_lock_init(&sess->state_lock);
-
 	INIT_WORK(&sess->close_work, ibtrs_srv_close_work);
+	ibtrs_iu_usrtx_init_list(&sess->s);
+	ibtrs_iu_usrrx_init_list(&sess->s);
 
 	sess->s.ib_dev = ibtrs_ib_dev_find_get(cm_id);
 	if (unlikely(!sess->s.ib_dev)) {

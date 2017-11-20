@@ -48,6 +48,16 @@
 #include <linux/slab.h>
 #include "ibtrs-pri.h"
 
+void ibtrs_iu_usrtx_init_list(struct ibtrs_sess *sess)
+{
+	spin_lock_init(&sess->usrtx_lock);
+	INIT_LIST_HEAD(&sess->usrtx_iu_list);
+	init_completion(&sess->usrtx_comp);
+	atomic_set(&sess->usrtx_cnt, -1);
+	sess->usrtx_freed = false;
+}
+EXPORT_SYMBOL_GPL(ibtrs_iu_usrtx_init_list);
+
 static void free_usrtx_list(struct list_head *iu_list,
 			    struct ibtrs_ib_dev *ibdev)
 {
@@ -70,12 +80,6 @@ int ibtrs_iu_usrtx_alloc_list(struct ibtrs_sess *sess,
 
 	might_sleep();
 
-	spin_lock_init(&sess->usrtx_lock);
-	INIT_LIST_HEAD(&sess->usrtx_iu_list);
-	init_completion(&sess->usrtx_comp);
-	atomic_set(&sess->usrtx_cnt, msg_cnt);
-	sess->usrtx_freed = false;
-
 	for (i = 0; i < msg_cnt; ++i) {
 		iu = ibtrs_iu_alloc(i, max_req_size, GFP_KERNEL,
 				    sess->ib_dev->dev, DMA_TO_DEVICE,
@@ -87,6 +91,7 @@ int ibtrs_iu_usrtx_alloc_list(struct ibtrs_sess *sess,
 		/* Prepare completions */
 		complete(&sess->usrtx_comp);
 	}
+	atomic_set(&sess->usrtx_cnt, msg_cnt);
 
 	return 0;
 
@@ -102,6 +107,10 @@ void ibtrs_iu_usrtx_free_list(struct ibtrs_sess *sess)
 	struct list_head iu_list;
 
 	might_sleep();
+
+	if (atomic_read(&sess->usrtx_cnt) == -1)
+		/* Nothing was allocated */
+		return;
 
 	INIT_LIST_HEAD(&iu_list);
 
@@ -212,6 +221,12 @@ void ibtrs_iu_free(struct ibtrs_iu *iu, enum dma_data_direction dir,
 	kfree(iu);
 }
 EXPORT_SYMBOL_GPL(ibtrs_iu_free);
+
+void ibtrs_iu_usrrx_init_list(struct ibtrs_sess *sess)
+{
+	sess->usrrx_ring = NULL;
+}
+EXPORT_SYMBOL_GPL(ibtrs_iu_usrrx_init_list);
 
 int ibtrs_iu_usrrx_alloc_list(struct ibtrs_sess *sess, size_t max_req_size,
 			      void (*done)(struct ib_cq *cq, struct ib_wc *wc))
