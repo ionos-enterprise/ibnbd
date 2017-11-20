@@ -1274,6 +1274,43 @@ static int post_recv_sess(struct ibtrs_clt_sess *sess)
 	return 0;
 }
 
+static inline struct ibtrs_clt_sess *__get_path(struct ibtrs_clt *clt, int pid)
+{
+	struct ibtrs_clt_sess *sess;
+	int i;
+
+	for (i = pid; i < clt->paths_num; i++) {
+		sess = clt->paths[i];
+		if (unlikely(sess->state != IBTRS_CLT_CONNECTED))
+		    continue;
+
+		return sess;
+	}
+	for (i = 0; i < pid; i++) {
+		sess = clt->paths[i];
+		if (unlikely(sess->state != IBTRS_CLT_CONNECTED))
+			continue;
+
+		return sess;
+	}
+
+	return NULL;
+}
+
+static inline struct ibtrs_clt_sess *
+ibtrs_clt_get_next_path(struct ibtrs_clt *clt)
+{
+	struct ibtrs_clt_sess *sess;
+	int *curr_path;
+
+	curr_path = get_cpu_ptr(clt->curr_path);
+	*curr_path = (*curr_path + 1) % clt->paths_num;
+	sess = __get_path(clt, *curr_path);
+	put_cpu_ptr(clt->curr_path);
+
+	return sess;
+}
+
 static void fail_all_outstanding_reqs(struct ibtrs_clt_sess *sess)
 {
 	struct ibtrs_clt_io_req *req;
@@ -2983,6 +3020,12 @@ static struct ibtrs_clt *alloc_clt(const char *sessname, size_t paths_num,
 	if (unlikely(!clt))
 		return ERR_PTR(-ENOMEM);
 
+	clt->curr_path = alloc_percpu(typeof(*clt->curr_path));
+	if (unlikely(!clt->curr_path)) {
+		kfree(clt);
+		return ERR_PTR(-ENOMEM);
+	}
+
 	uuid_gen(&clt->paths_uuid);
 	clt->paths_num = paths_num;
 	clt->paths_up = MAX_PATHS_NUM;
@@ -2998,6 +3041,7 @@ static struct ibtrs_clt *alloc_clt(const char *sessname, size_t paths_num,
 
 	err = ibtrs_clt_create_sysfs_root_folders(clt);
 	if (unlikely(err)) {
+		free_percpu(clt->curr_path);
 		kfree(clt);
 		return ERR_PTR(err);
 	}
@@ -3009,6 +3053,7 @@ static void free_clt(struct ibtrs_clt *clt)
 {
 	ibtrs_clt_destroy_sysfs_root_folders(clt);
 	free_tags(clt);
+	free_percpu(clt->curr_path);
 	kfree(clt);
 }
 
@@ -3245,29 +3290,31 @@ int ibtrs_clt_rdma_write(struct ibtrs_clt *clt,
 			 size_t data_len, struct scatterlist *sg,
 			 unsigned int sg_len)
 {
-	/* XXX Should be changed */
-	struct ibtrs_clt_sess *sess = clt->paths[0];
 	struct ibtrs_clt_io_req *req;
+	struct ibtrs_clt_sess *sess;
 	struct ibtrs_clt_con *con;
+
+	unsigned retries = clt->paths_num;
 	size_t u_msg_len;
 	int err;
 
 	u_msg_len = kvec_length(vec, nr);
+
+again:
+	ibtrs_clt_state_lock();
+	sess = ibtrs_clt_get_next_path(clt);
+	if (unlikely(!sess)) {
+		ibtrs_err(clt, "No connected paths found\n");
+		err = -ECOMM;
+		goto err;
+	}
 	if (unlikely(u_msg_len > IO_MSG_SIZE)) {
 		ibtrs_wrn_rl(sess, "RDMA-Write failed, user message size"
 			     " is %zu B big, max size is %d B\n", u_msg_len,
 			     IO_MSG_SIZE);
-		return -EMSGSIZE;
+		err = -EMSGSIZE;
+		goto err;
 	}
-
-	ibtrs_clt_state_lock();
-	if (unlikely(sess->state != IBTRS_CLT_CONNECTED)) {
-		ibtrs_clt_state_unlock();
-		ibtrs_err_rl(sess, "RDMA-Write failed, not connected (%s)\n",
-			     ibtrs_clt_state_str(sess->state));
-		return -ECOMM;
-	}
-
 	con = ibtrs_tag_to_clt_con(sess, tag);
 	req = &sess->reqs[tag->mem_id];
 	req->con	= con;
@@ -3289,6 +3336,10 @@ int ibtrs_clt_rdma_write(struct ibtrs_clt *clt,
 	smp_wmb();
 	ibtrs_clt_state_unlock();
 	if (unlikely(err)) {
+		if (retries--) {
+			ibtrs_wrn(sess, "Choose another path\n");
+			goto again;
+		}
 		ibtrs_err_rl(sess, "RDMA-Write failed, failed to transfer scatter"
 			     " gather list, err: %d\n", err);
 		return err;
@@ -3298,6 +3349,11 @@ int ibtrs_clt_rdma_write(struct ibtrs_clt *clt,
 				  &sess->stats.sg_list_total[tag->cpu_id],
 				  sg_len);
 	ibtrs_clt_update_rdma_stats(&sess->stats, u_msg_len + data_len, false);
+
+	return err;
+
+err:
+	ibtrs_clt_state_unlock();
 
 	return err;
 }
@@ -3398,14 +3454,24 @@ int ibtrs_clt_request_rdma_write(struct ibtrs_clt *clt,
 				 struct scatterlist *recv_sg,
 				 unsigned int recv_sg_len)
 {
-	/* XXX Should be changed */
-	struct ibtrs_clt_sess *sess = clt->paths[0];
 	struct ibtrs_clt_io_req *req;
+	struct ibtrs_clt_sess *sess;
 	struct ibtrs_clt_con *con;
+
+	unsigned retries = clt->paths_num;
 	size_t u_msg_len;
 	int err;
 
 	u_msg_len = kvec_length(vec, nr);
+
+again:
+	ibtrs_clt_state_lock();
+	sess = ibtrs_clt_get_next_path(clt);
+	if (unlikely(!sess)) {
+		ibtrs_err(clt, "No connected paths found\n");
+		err = -ECOMM;
+		goto err;
+	}
 	if (unlikely(u_msg_len > IO_MSG_SIZE ||
 		     sizeof(struct ibtrs_msg_req_rdma_write) +
 		     recv_sg_len * sizeof(struct ibtrs_sg_desc) >
@@ -3413,17 +3479,9 @@ int ibtrs_clt_request_rdma_write(struct ibtrs_clt *clt,
 		ibtrs_wrn_rl(sess, "Request-RDMA-Write failed, user message size"
 			     " is %zu B big, max size is %d B\n", u_msg_len,
 			     IO_MSG_SIZE);
-		return -EMSGSIZE;
+		err = -EMSGSIZE;
+		goto err;
 	}
-
-	ibtrs_clt_state_lock();
-	if (unlikely(sess->state != IBTRS_CLT_CONNECTED)) {
-		ibtrs_clt_state_unlock();
-		ibtrs_err_rl(sess, "RDMA-Write failed, not connected (%s)\n",
-			     ibtrs_clt_state_str(sess->state));
-		return -ECOMM;
-	}
-
 	con = ibtrs_tag_to_clt_con(sess, tag);
 	req = &sess->reqs[tag->mem_id];
 	req->con	= con;
@@ -3446,6 +3504,10 @@ int ibtrs_clt_request_rdma_write(struct ibtrs_clt *clt,
 	smp_wmb();
 	ibtrs_clt_state_unlock();
 	if (unlikely(err)) {
+		if (retries--) {
+			ibtrs_wrn(sess, "Choose another path\n");
+			goto again;
+		}
 		ibtrs_err_rl(sess, "Request-RDMA-Write failed, failed to transfer"
 			     " scatter gather list, err: %d\n", err);
 		return err;
@@ -3455,6 +3517,11 @@ int ibtrs_clt_request_rdma_write(struct ibtrs_clt *clt,
 				  &sess->stats.sg_list_total[tag->cpu_id],
 				  recv_sg_len);
 	ibtrs_clt_update_rdma_stats(&sess->stats, u_msg_len + data_len, true);
+
+	return err;
+
+err:
+	ibtrs_clt_state_unlock();
 
 	return err;
 }

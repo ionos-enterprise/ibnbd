@@ -196,6 +196,7 @@ struct ibtrs_clt_sess {
 
 struct ibtrs_clt {
 	struct ibtrs_clt_sess	*paths[MAX_PATHS_NUM];
+	unsigned int __percpu	*curr_path;
 	size_t			paths_num;
 	uuid_t			paths_uuid;
 	int			paths_up;
