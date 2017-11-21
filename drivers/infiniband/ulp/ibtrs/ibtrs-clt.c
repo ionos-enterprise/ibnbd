@@ -378,6 +378,24 @@ void ibtrs_clt_put_tag(struct ibtrs_clt *clt, struct ibtrs_tag *tag)
 EXPORT_SYMBOL(ibtrs_clt_put_tag);
 
 /**
+ * ibtrs_tag_to_clt_con() - returns RDMA connection id by the tag
+ *
+ * Note:
+ *     IO connection starts from 1.
+ *     0 connection is for user messages.
+ */
+static struct ibtrs_clt_con *ibtrs_tag_to_clt_con(struct ibtrs_clt_sess *sess,
+						  struct ibtrs_tag *tag)
+{
+	int id = 0;
+
+	if (likely(tag->con_type == IBTRS_IO_CON))
+		id = (tag->cpu_id % (sess->s.con_num - 1)) + 1;
+
+	return to_clt_con(sess->s.con[id]);
+}
+
+/**
  * ibtrs_destroy_fr_pool() - free the resources owned by a pool
  * @pool: Fast registration pool to be destroyed.
  */
@@ -3221,22 +3239,6 @@ static void ibtrs_clt_update_rdma_stats(struct ibtrs_clt_stats *s,
 	s->rdma_stats[cpu].inflight++;
 }
 
-/**
- * ibtrs_rdma_con_id() - returns RDMA connection id
- *
- * Note:
- *     RDMA connection starts from 1.
- *     0 connection is for user messages.
- */
-static inline int ibtrs_rdma_con_id(struct ibtrs_clt_sess *sess,
-				    struct ibtrs_tag *tag)
-{
-	if (tag->con_type == IBTRS_IO_CON)
-		return (tag->cpu_id % (sess->s.con_num - 1)) + 1;
-	else
-		return 0;
-}
-
 int ibtrs_clt_rdma_write(struct ibtrs_clt *clt,
 			 ibtrs_conf_fn *conf, struct ibtrs_tag *tag,
 			 void *priv, const struct kvec *vec, size_t nr,
@@ -3248,7 +3250,6 @@ int ibtrs_clt_rdma_write(struct ibtrs_clt *clt,
 	struct ibtrs_clt_io_req *req;
 	struct ibtrs_clt_con *con;
 	size_t u_msg_len;
-	int con_id;
 	int err;
 
 	u_msg_len = kvec_length(vec, nr);
@@ -3259,20 +3260,15 @@ int ibtrs_clt_rdma_write(struct ibtrs_clt *clt,
 		return -EMSGSIZE;
 	}
 
-	con_id = ibtrs_rdma_con_id(sess, tag);
-	if (WARN_ON(con_id >= sess->s.con_num))
-		return -EINVAL;
-	con = to_clt_con(sess->s.con[con_id]);
 	ibtrs_clt_state_lock();
 	if (unlikely(sess->state != IBTRS_CLT_CONNECTED)) {
 		ibtrs_clt_state_unlock();
-		ibtrs_err_rl(sess, "RDMA-Write failed, not connected"
-			     " (connection %d state %s)\n",
-			     con_id,
+		ibtrs_err_rl(sess, "RDMA-Write failed, not connected (%s)\n",
 			     ibtrs_clt_state_str(sess->state));
 		return -ECOMM;
 	}
 
+	con = ibtrs_tag_to_clt_con(sess, tag);
 	req = &sess->reqs[tag->mem_id];
 	req->con	= con;
 	req->tag	= tag;
@@ -3407,7 +3403,7 @@ int ibtrs_clt_request_rdma_write(struct ibtrs_clt *clt,
 	struct ibtrs_clt_io_req *req;
 	struct ibtrs_clt_con *con;
 	size_t u_msg_len;
-	int err, con_id;
+	int err;
 
 	u_msg_len = kvec_length(vec, nr);
 	if (unlikely(u_msg_len > IO_MSG_SIZE ||
@@ -3420,20 +3416,15 @@ int ibtrs_clt_request_rdma_write(struct ibtrs_clt *clt,
 		return -EMSGSIZE;
 	}
 
-	con_id = ibtrs_rdma_con_id(sess, tag);
-	if (WARN_ON(con_id >= sess->s.con_num))
-		return -EINVAL;
-	con = to_clt_con(sess->s.con[con_id]);
 	ibtrs_clt_state_lock();
 	if (unlikely(sess->state != IBTRS_CLT_CONNECTED)) {
 		ibtrs_clt_state_unlock();
-		ibtrs_err_rl(sess, "RDMA-Write failed, not connected"
-			     " (connection %d state %s)\n",
-			     con_id,
+		ibtrs_err_rl(sess, "RDMA-Write failed, not connected (%s)\n",
 			     ibtrs_clt_state_str(sess->state));
 		return -ECOMM;
 	}
 
+	con = ibtrs_tag_to_clt_con(sess, tag);
 	req = &sess->reqs[tag->mem_id];
 	req->con	= con;
 	req->tag	= tag;
