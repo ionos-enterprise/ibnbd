@@ -2288,9 +2288,49 @@ static void ibtrs_clt_stop_hb(struct ibtrs_clt_sess *sess)
 	ibtrs_stop_hb(&sess->s);
 }
 
-static void ibtrs_clt_stop_and_destroy_conns(struct ibtrs_clt_sess *sess)
+static void ibtrs_clt_sess_up(struct ibtrs_clt_sess *sess)
 {
 	struct ibtrs_clt *clt = sess->clt;
+	int up;
+
+	/*
+	 * We can fire RECONNECTED event only when all paths were
+	 * connected on ibtrs_clt_open(), then each was disconnected
+	 * and the first one connected again.  That's why this nasty
+	 * game with counter value.
+	 */
+
+	mutex_lock(&clt->paths_ev_mutex);
+	up = ++clt->paths_up;
+	if (up == MAX_PATHS_NUM + clt->paths_num)
+		clt->paths_up = clt->paths_num;
+	else if (up == 1)
+		clt->link_ev(clt->priv, IBTRS_CLT_LINK_EV_RECONNECTED);
+	mutex_unlock(&clt->paths_ev_mutex);
+
+	/* Mark session as established */
+	sess->established = true;
+	sess->reconnect_attempts = 0;
+	sess->stats.reconnects.successful_cnt++;
+}
+
+static void ibtrs_clt_sess_down(struct ibtrs_clt_sess *sess)
+{
+	struct ibtrs_clt *clt = sess->clt;
+
+	if (!sess->established)
+		return;
+
+	sess->established = false;
+	mutex_lock(&clt->paths_ev_mutex);
+	WARN_ON(!clt->paths_up);
+	if (--clt->paths_up == 0)
+		clt->link_ev(clt->priv, IBTRS_CLT_LINK_EV_DISCONNECTED);
+	mutex_unlock(&clt->paths_ev_mutex);
+}
+
+static void ibtrs_clt_stop_and_destroy_conns(struct ibtrs_clt_sess *sess)
+{
 	struct ibtrs_clt_con *con;
 	unsigned cid;
 
@@ -2327,10 +2367,7 @@ static void ibtrs_clt_stop_and_destroy_conns(struct ibtrs_clt_sess *sess)
 	}
 	fail_all_outstanding_reqs(sess);
 	free_sess_io_bufs(sess);
-	if (clt->established) {
-		clt->link_ev(clt->priv, IBTRS_CLT_LINK_EV_DISCONNECTED);
-		clt->established = false;
-	}
+	ibtrs_clt_sess_down(sess);
 	for (cid = 0; cid < sess->s.con_num; cid++) {
 		con = to_clt_con(sess->s.con[cid]);
 		if (!con)
@@ -2861,8 +2898,7 @@ static int init_sess(struct ibtrs_clt_sess *sess)
 		ibtrs_err(sess, "ibtrs_send_sess_info(), err: %d\n", err);
 		goto out;
 	}
-	/* XXX Should be changed */
-	sess->clt->established = true;
+	ibtrs_clt_sess_up(sess);
 out:
 	mutex_unlock(&sess->init_mutex);
 
@@ -2899,10 +2935,6 @@ static void ibtrs_clt_reconnect_work(struct work_struct *work)
 	if (unlikely(err))
 		goto reconnect_again;
 
-	sess->reconnect_attempts = 0;
-	sess->stats.reconnects.successful_cnt++;
-	clt->link_ev(clt->priv, IBTRS_CLT_LINK_EV_RECONNECTED);
-
 	return;
 
 reconnect_again:
@@ -2935,6 +2967,7 @@ static struct ibtrs_clt *alloc_clt(const char *sessname, size_t paths_num,
 
 	uuid_gen(&clt->paths_uuid);
 	clt->paths_num = paths_num;
+	clt->paths_up = MAX_PATHS_NUM;
 	clt->port = port;
 	clt->pdu_sz = pdu_sz;
 	clt->reconnect_delay_sec = reconnect_delay_sec;
@@ -2943,6 +2976,7 @@ static struct ibtrs_clt *alloc_clt(const char *sessname, size_t paths_num,
 	clt->link_ev = link_ev;
 	strlcpy(clt->sessname, sessname, sizeof(clt->sessname));
 	init_waitqueue_head(&clt->tags_wait);
+	mutex_init(&clt->paths_ev_mutex);
 
 	err = ibtrs_clt_create_sysfs_root_folders(clt);
 	if (unlikely(err)) {

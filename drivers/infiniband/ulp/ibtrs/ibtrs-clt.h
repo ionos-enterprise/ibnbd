@@ -175,6 +175,7 @@ struct ibtrs_clt_sess {
 	struct delayed_work	reconnect_dwork;
 	struct work_struct	close_work;
 	unsigned		reconnect_attempts;
+	bool			established;
 	u64			*srv_rdma_addr;
 	u32			srv_rdma_buf_rkey;
 	u32			max_io_size;
@@ -197,7 +198,8 @@ struct ibtrs_clt {
 	struct ibtrs_clt_sess	*paths[MAX_PATHS_NUM];
 	size_t			paths_num;
 	uuid_t			paths_uuid;
-	bool			established;
+	int			paths_up;
+	struct mutex		paths_ev_mutex;
 	char			sessname[NAME_MAX];
 	short			port;
 	unsigned		max_reconnect_attempts;
