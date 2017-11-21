@@ -195,5 +195,6 @@ void ibnbd_destroy_gen_disk(struct ibnbd_clt_dev *dev);
 bool ibnbd_clt_dev_is_open(struct ibnbd_clt_dev *dev);
 bool ibnbd_clt_dev_is_mapped(const char *pathname);
 int open_remote_device(struct ibnbd_clt_dev *dev);
+int ibnbd_clt_resize_disk(struct ibnbd_clt_dev *dev, size_t newsize);
 
 #endif /* IBNBD_CLT_H */

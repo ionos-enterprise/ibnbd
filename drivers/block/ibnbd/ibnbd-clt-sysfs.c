@@ -471,6 +471,39 @@ static struct kobj_attribute ibnbd_clt_unmap_device_attr =
 	__ATTR(unmap_device, 0644, ibnbd_clt_unmap_dev_show,
 	       ibnbd_clt_unmap_dev_store);
 
+static ssize_t ibnbd_clt_resize_dev_show(struct kobject *kobj,
+					 struct kobj_attribute *attr,
+					 char *page)
+{
+	return scnprintf(page, PAGE_SIZE,
+			 "Usage: echo <new size in sectors> > %s\n",
+			 attr->attr.name);
+}
+
+static ssize_t ibnbd_clt_resize_dev_store(struct kobject *kobj,
+					 struct kobj_attribute *attr,
+					 const char *buf, size_t count)
+{
+	int ret;
+	unsigned long sectors;
+	struct ibnbd_clt_dev *dev;
+
+	dev = container_of(kobj, struct ibnbd_clt_dev, kobj);
+
+	ret = kstrtoul(buf, 0, &sectors);
+	if (ret)
+		return ret;
+
+	ret = ibnbd_clt_resize_disk(dev, (size_t) sectors);
+	if (ret)
+		return ret;
+
+	return count;
+}
+static struct kobj_attribute ibnbd_clt_resize_dev_attr =
+	__ATTR(resize, 0644, ibnbd_clt_resize_dev_show,
+	       ibnbd_clt_resize_dev_store);
+
 static ssize_t ibnbd_clt_remap_dev_show(struct kobject *kobj,
 					struct kobj_attribute *attr, char *page)
 {
@@ -548,6 +581,7 @@ static struct kobj_attribute ibnbd_clt_session_attr =
 
 static struct attribute *ibnbd_dev_attrs[] = {
 	&ibnbd_clt_unmap_device_attr.attr,
+	&ibnbd_clt_resize_dev_attr.attr,
 	&ibnbd_clt_remap_device_attr.attr,
 	&ibnbd_clt_mapping_path_attr.attr,
 	&ibnbd_clt_state_attr.attr,

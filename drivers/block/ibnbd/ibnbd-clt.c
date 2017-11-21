@@ -145,7 +145,7 @@ static void ibnbd_clt_set_dev_attr(struct ibnbd_clt_dev *dev,
 	}
 }
 
-static void ibnbd_clt_revalidate_disk(struct ibnbd_clt_dev *dev,
+static int ibnbd_clt_revalidate_disk(struct ibnbd_clt_dev *dev,
 				      size_t new_nsectors)
 {
 	int err = 0;
@@ -161,6 +161,7 @@ static void ibnbd_clt_revalidate_disk(struct ibnbd_clt_dev *dev,
 		ibnbd_err(dev, "Failed to change device size from"
 			  " %zu to %zu, err: %d\n", dev->nsectors,
 			  new_nsectors, err);
+	return err;
 }
 
 static void process_msg_sess_info_rsp(struct ibnbd_clt_session *sess,
@@ -231,6 +232,31 @@ out:
 	ibnbd_clt_put_dev(dev);
 
 	return err;
+}
+
+int ibnbd_clt_resize_disk(struct ibnbd_clt_dev *dev, size_t newsize)
+{
+	int ret = 0;
+
+	if (!ibnbd_clt_get_dev(dev)) {
+		pr_err("Failed to set new device size on"
+		       " session %s, unable to get reference to device"
+		       " (id: %d)", dev->sess->sessname, dev->clt_device_id);
+		return -ENOENT;
+	}
+
+	mutex_lock(&dev->lock);
+	if (dev->dev_state != DEV_STATE_OPEN) {
+		pr_err("Failed to set new size of the device, "
+		       "device is not opened\n");
+		ret = -ENOENT;
+		goto out;
+	}
+	ret = ibnbd_clt_revalidate_disk(dev, newsize);
+out:
+	mutex_unlock(&dev->lock);
+	ibnbd_clt_put_dev(dev);
+	return ret;
 }
 
 static void process_msg_revalidate(struct ibnbd_clt_session *sess,
