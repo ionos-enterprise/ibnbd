@@ -60,40 +60,7 @@
 static struct kobject *ibnbd_srv_kobj;
 static struct kobject *ibnbd_srv_devices_kobj;
 
-static ssize_t ibnbd_srv_revalidate_dev_show(struct kobject *kobj,
-					     struct kobj_attribute *attr,
-					     char *page)
-{
-	return scnprintf(page, PAGE_SIZE,
-			 "Usage: echo 1 > %s\n", attr->attr.name);
-}
-
-static ssize_t ibnbd_srv_revalidate_dev_store(struct kobject *kobj,
-					      struct kobj_attribute *attr,
-					      const char *buf, size_t count)
-{
-	int ret;
-	struct ibnbd_srv_dev *dev = container_of(kobj, struct ibnbd_srv_dev,
-						 dev_kobj);
-
-	if (!sysfs_streq(buf, "1")) {
-		pr_err("%s: invalid value: '%s'\n", attr->attr.name, buf);
-		return -EINVAL;
-	}
-	ret = ibnbd_srv_revalidate_dev(dev);
-	if (ret)
-		return ret;
-
-	return count;
-}
-
-static struct kobj_attribute ibnbd_srv_revalidate_dev_attr =
-	__ATTR(revalidate, 0644,
-	       ibnbd_srv_revalidate_dev_show,
-	       ibnbd_srv_revalidate_dev_store);
-
 static struct attribute *ibnbd_srv_default_dev_attrs[] = {
-	&ibnbd_srv_revalidate_dev_attr.attr,
 	NULL,
 };
 

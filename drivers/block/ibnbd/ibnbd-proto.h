@@ -75,7 +75,6 @@ enum ibnbd_msg_type {
 	IBNBD_MSG_IO,
 	IBNBD_MSG_CLOSE,
 	IBNBD_MSG_CLOSE_RSP,
-	IBNBD_MSG_REVAL,
 	__IBNBD_MSG_MAX
 };
 
@@ -227,18 +226,6 @@ enum ibnbd_io_flags {
 	IBNBD_RW_REQ_WRITE_SAME		= 1 << 5,
 	IBNBD_RW_REQ_FUA		= 1 << 6,
 	IBNBD_RW_REQ_FLUSH		= 1 << 7
-};
-
-/**
- * struct ibnbd_msg_revalidate - notify client about new device size
- * @hdr:		message header
- * @clt_device_id:	device_id on client side
- * @nsectors:		number of sectors
- */
-struct ibnbd_msg_revalidate {
-	struct ibnbd_msg_hdr	hdr;
-	u32			clt_device_id;
-	u64			nsectors;
 };
 
 /**

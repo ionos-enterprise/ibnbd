@@ -107,18 +107,6 @@ static int ibnbd_validate_msg_open_resp(const struct ibnbd_msg_open_rsp *msg,
 	return 0;
 }
 
-static int ibnbd_validate_msg_revalidate(const struct ibnbd_msg_revalidate *msg,
-					 size_t len)
-{
-	if (unlikely(len != sizeof(*msg))) {
-		pr_err("Device resize message with unexpected length received"
-		       " %lu instead of %lu\n", len, sizeof(*msg));
-		return -EINVAL;
-	}
-
-	return 0;
-}
-
 static int ibnbd_validate_msg_open(const struct ibnbd_msg_open *msg,
 				   size_t len)
 {
@@ -187,11 +175,6 @@ int ibnbd_validate_message(const void *data, size_t len)
 		const struct ibnbd_msg_open_rsp *msg = data;
 
 		return ibnbd_validate_msg_open_resp(msg, len);
-	}
-	case IBNBD_MSG_REVAL: {
-		const struct ibnbd_msg_revalidate *msg = data;
-
-		return ibnbd_validate_msg_revalidate(msg, len);
 	}
 	case IBNBD_MSG_OPEN: {
 		const struct ibnbd_msg_open *msg = data;

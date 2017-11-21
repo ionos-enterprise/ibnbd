@@ -259,48 +259,6 @@ out:
 	return ret;
 }
 
-static void process_msg_revalidate(struct ibnbd_clt_session *sess,
-				   struct ibnbd_msg_revalidate *msg)
-{
-	struct ibnbd_clt_dev *dev;
-
-	dev = g_get_dev(msg->clt_device_id);
-	if (IS_ERR(dev)) {
-		pr_err("Received device revalidation message on session %s"
-		       " for non-existent device (id %d)\n", sess->sessname,
-		       msg->clt_device_id);
-		return;
-	}
-
-	if (!ibnbd_clt_get_dev(dev)) {
-		pr_err("Failed to process device revalidation message on"
-		       " session %s, unable to get reference to device"
-		       " (id: %d)", sess->sessname, msg->clt_device_id);
-		return;
-	}
-
-	mutex_lock(&dev->lock);
-
-	if (dev->dev_state == DEV_STATE_UNMAPPED) {
-		ibnbd_err(dev, "Received device revalidation message"
-			  " for unmapped device\n");
-		goto out;
-	}
-
-	if (dev->nsectors != msg->nsectors &&
-	    dev->dev_state == DEV_STATE_OPEN) {
-		ibnbd_clt_revalidate_disk(dev, (size_t)msg->nsectors);
-	} else {
-		ibnbd_info(dev, "Ignoring device revalidate message, "
-			   "current device size is the same as in the "
-			   "revalidate message, %llu sectors\n", msg->nsectors);
-	}
-
-out:
-	mutex_unlock(&dev->lock);
-	ibnbd_clt_put_dev(dev);
-}
-
 static int send_msg_close(struct ibtrs_clt *ibtrs, u32 device_id)
 {
 	struct ibnbd_msg_close msg;
@@ -371,10 +329,6 @@ static void ibnbd_clt_recv(void *priv, const void *msg, size_t len)
 
 		break;
 	}
-	case IBNBD_MSG_REVAL:
-		process_msg_revalidate(sess,
-				       (struct ibnbd_msg_revalidate *)msg);
-		break;
 	default:
 		pr_err("IBNBD message with unknown type %d received on"
 		       " session %s\n", hdr->type, sess->sessname);

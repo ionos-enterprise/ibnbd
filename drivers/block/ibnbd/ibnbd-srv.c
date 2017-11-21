@@ -951,64 +951,6 @@ static void ibnbd_srv_recv(struct ibtrs_srv *ibtrs, void *priv,
 	}
 }
 
-static int ibnbd_srv_revalidate_sess_dev(struct ibnbd_srv_sess_dev *sess_dev)
-{
-	int ret;
-	size_t nsectors;
-	struct ibnbd_msg_revalidate msg;
-	struct kvec vec = {
-		.iov_base = &msg,
-		.iov_len  = sizeof(msg)
-	};
-
-	nsectors = ibnbd_dev_get_capacity(sess_dev->ibnbd_dev);
-
-	msg.hdr.type		= IBNBD_MSG_REVAL;
-	msg.clt_device_id	= sess_dev->clt_device_id;
-	msg.nsectors		= nsectors;
-
-	if (unlikely(sess_dev->sess->state == SRV_SESS_STATE_DISCONNECTED))
-		return -ENODEV;
-
-	if (!sess_dev->is_visible) {
-		ibnbd_info(sess_dev,
-			   "revalidate device failed, wait for sending "
-			   "open reply first\n");
-		return -EAGAIN;
-	}
-
-	ret = ibtrs_srv_send(sess_dev->sess->ibtrs, &vec, 1);
-	if (unlikely(ret)) {
-		ibnbd_err(sess_dev,
-			  "revalidate: Sending new device size"
-			  " to client failed, err: %d\n", ret);
-	} else {
-		ibnbd_info(sess_dev,
-			   "notified client about device size change"
-			   " (old nsectors: %lu, new nsectors: %lu)\n",
-			   sess_dev->nsectors, nsectors);
-		sess_dev->nsectors = nsectors;
-	}
-
-	return ret;
-}
-
-int ibnbd_srv_revalidate_dev(struct ibnbd_srv_dev *dev)
-{
-	struct ibnbd_srv_sess_dev *sess_dev;
-	int ret = 0;
-
-	mutex_lock(&dev->lock);
-	list_for_each_entry(sess_dev, &dev->sess_dev_list, dev_list)
-		ret += ibnbd_srv_revalidate_sess_dev(sess_dev);
-	mutex_unlock(&dev->lock);
-
-	if (ret)
-		return -EIO;
-
-	return 0;
-}
-
 static struct ibtrs_srv_ctx *ibtrs_ctx;
 
 static int __init ibnbd_srv_init_module(void)
