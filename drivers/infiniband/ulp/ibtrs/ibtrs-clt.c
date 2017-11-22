@@ -1127,7 +1127,8 @@ static inline void ibtrs_clt_decrease_inflight(struct ibtrs_clt_stats *s)
 	s->rdma_stats[raw_smp_processor_id()].inflight--;
 }
 
-static void complete_rdma_req(struct ibtrs_clt_io_req *req, int errno)
+static void complete_rdma_req(struct ibtrs_clt_io_req *req,
+			      int errno, bool notify)
 {
 	struct ibtrs_clt_con *con = req->con;
 	struct ibtrs_clt_sess *sess;
@@ -1161,7 +1162,8 @@ static void complete_rdma_req(struct ibtrs_clt_io_req *req, int errno)
 	priv = req->priv;
 	dir = req->dir;
 
-	req->conf(priv, errno);
+	if (notify)
+		req->conf(priv, errno);
 }
 
 static void process_io_rsp(struct ibtrs_clt_sess *sess, u32 msg_id, s16 errno)
@@ -1169,7 +1171,7 @@ static void process_io_rsp(struct ibtrs_clt_sess *sess, u32 msg_id, s16 errno)
 	if (WARN_ON(msg_id >= sess->queue_depth))
 		return;
 
-	complete_rdma_req(&sess->reqs[msg_id], errno);
+	complete_rdma_req(&sess->reqs[msg_id], errno, true);
 }
 
 static void ibtrs_clt_update_wc_stats(struct ibtrs_clt_con *con)
@@ -1274,6 +1276,7 @@ static int post_recv_sess(struct ibtrs_clt_sess *sess)
 	return 0;
 }
 
+
 static inline struct ibtrs_clt_sess *__get_path(struct ibtrs_clt *clt, int pid)
 {
 	struct ibtrs_clt_sess *sess;
@@ -1341,15 +1344,68 @@ ibtrs_clt_get_req(struct ibtrs_clt_sess *sess, ibtrs_conf_fn *conf,
 		  struct scatterlist *sg, size_t sg_cnt,
 		  size_t data_len, int dir)
 {
-	struct ibtrs_clt_io_req *req = &sess->reqs[tag->mem_id];
+	struct ibtrs_clt_io_req *req;
 
-	ibtrs_clt_init_req(req, sess, conf, tag, priv, vec,
-			   usr_len, sg, sg_cnt, data_len, dir);
+	req = &sess->reqs[tag->mem_id];
+	ibtrs_clt_init_req(req, sess, conf, tag, priv, vec, usr_len,
+			   sg, sg_cnt, data_len, dir);
 	return req;
 }
 
-static void fail_all_outstanding_reqs(struct ibtrs_clt_sess *sess)
+static inline struct ibtrs_clt_io_req *
+ibtrs_clt_get_copy_req(struct ibtrs_clt_sess *alive_sess,
+		       struct ibtrs_clt_io_req *fail_req)
 {
+	struct ibtrs_clt_io_req *req;
+	struct kvec vec = {
+		.iov_base = fail_req->iu->buf,
+		.iov_len  = fail_req->usr_len
+	};
+
+	req = &alive_sess->reqs[fail_req->tag->mem_id];
+	ibtrs_clt_init_req(req, alive_sess, fail_req->conf, fail_req->tag,
+			   fail_req->priv, &vec, fail_req->usr_len,
+			   fail_req->sglist, fail_req->sg_cnt,
+			   fail_req->data_len, fail_req->dir);
+	return req;
+}
+
+static int ibtrs_clt_rdma_write_req(struct ibtrs_clt_io_req *req);
+static int ibtrs_clt_request_rdma_write_req(struct ibtrs_clt_io_req *req);
+
+static int ibtrs_clt_failover_req(struct ibtrs_clt *clt,
+				  struct ibtrs_clt_io_req *fail_req)
+{
+	struct ibtrs_clt_sess *alive_sess;
+	struct ibtrs_clt_io_req *req;
+	int err = 0;
+
+	ibtrs_clt_state_lock();
+	alive_sess = ibtrs_clt_get_next_path(clt);
+	if (unlikely(!alive_sess)) {
+		err = -ECONNABORTED;
+		goto out;
+	}
+	req = ibtrs_clt_get_copy_req(alive_sess, fail_req);
+	if (req->dir == DMA_TO_DEVICE)
+		err = ibtrs_clt_rdma_write_req(req);
+	else
+		err = ibtrs_clt_request_rdma_write_req(req);
+	if (unlikely(err))
+		req->in_use = false;
+	/* paired with fail_all_outstanding_reqs() */
+	smp_wmb();
+
+out:
+	ibtrs_clt_state_unlock();
+
+	return err;
+}
+
+static void fail_all_outstanding_reqs(struct ibtrs_clt_sess *sess,
+				      bool failover)
+{
+	struct ibtrs_clt *clt = sess->clt;
 	struct ibtrs_clt_io_req *req;
 	int i;
 
@@ -1358,9 +1414,18 @@ static void fail_all_outstanding_reqs(struct ibtrs_clt_sess *sess)
 	/* paired with ibtrs_clt_[request_]rdma_write(),complete_rdma_req() */
 	smp_rmb();
 	for (i = 0; i < sess->queue_depth; ++i) {
+		bool notify;
+		int err = 0;
+
 		req = &sess->reqs[i];
-		if (req->in_use)
-			complete_rdma_req(req, -ECONNABORTED);
+		if (!req->in_use)
+			continue;
+
+		if (failover)
+			err = ibtrs_clt_failover_req(clt, req);
+
+		notify = (!failover || err);
+		complete_rdma_req(req, -ECONNABORTED, notify);
 	}
 }
 
@@ -2421,7 +2486,8 @@ static void ibtrs_clt_sess_down(struct ibtrs_clt_sess *sess)
 	mutex_unlock(&clt->paths_ev_mutex);
 }
 
-static void ibtrs_clt_stop_and_destroy_conns(struct ibtrs_clt_sess *sess)
+static void ibtrs_clt_stop_and_destroy_conns(struct ibtrs_clt_sess *sess,
+					     bool failover)
 {
 	struct ibtrs_clt_con *con;
 	unsigned cid;
@@ -2457,7 +2523,7 @@ static void ibtrs_clt_stop_and_destroy_conns(struct ibtrs_clt_sess *sess)
 
 		stop_cm(con);
 	}
-	fail_all_outstanding_reqs(sess);
+	fail_all_outstanding_reqs(sess, failover);
 	free_sess_io_bufs(sess);
 	ibtrs_clt_sess_down(sess);
 	for (cid = 0; cid < sess->s.con_num; cid++) {
@@ -2478,7 +2544,7 @@ static void ibtrs_clt_close_work(struct work_struct *work)
 	sess = container_of(work, struct ibtrs_clt_sess, close_work);
 
 	cancel_delayed_work_sync(&sess->reconnect_dwork);
-	ibtrs_clt_stop_and_destroy_conns(sess);
+	ibtrs_clt_stop_and_destroy_conns(sess, false);
 	/*
 	 * Sounds stupid, huh?  No, it is not.  Consider this sequence:
 	 *
@@ -3017,7 +3083,7 @@ static void ibtrs_clt_reconnect_work(struct work_struct *work)
 	sess->reconnect_attempts++;
 
 	/* Stop everything */
-	ibtrs_clt_stop_and_destroy_conns(sess);
+	ibtrs_clt_stop_and_destroy_conns(sess, true);
 	ibtrs_clt_change_state(sess, IBTRS_CLT_CONNECTING);
 
 	err = init_sess(sess);
