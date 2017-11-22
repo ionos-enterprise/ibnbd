@@ -148,7 +148,8 @@ struct ibtrs_clt_io_req {
 	struct scatterlist	*sglist; /* list holding user data */
 	unsigned int		sg_cnt;
 	unsigned int		sg_size;
-	u32			data_len;
+	unsigned int		data_len;
+	unsigned int		usr_len;
 	void			*priv;
 	bool			in_use;
 	struct ibtrs_clt_con	*con;
