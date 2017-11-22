@@ -286,7 +286,7 @@ struct ibtrs_sg_desc {
  */
 struct ibtrs_msg_req_rdma_write {
 	__le16			type;
-	__le16			__padding;
+	__le16			usr_len;
 	__le32			sg_cnt;
 	struct ibtrs_sg_desc    desc[];
 };
@@ -296,6 +296,7 @@ struct ibtrs_msg_req_rdma_write {
  */
 struct ibtrs_msg_rdma_write {
 	__le16			type;
+	__le16			usr_len;
 };
 
 /* ibtrs-iu.c */

@@ -3478,6 +3478,7 @@ static int ibtrs_clt_rdma_write_sg(struct ibtrs_clt_con *con,
 	/* put ibtrs msg after sg and user message */
 	msg = req->iu->buf + u_msg_len;
 	msg->type = cpu_to_le16(IBTRS_MSG_RDMA_WRITE);
+	msg->usr_len = cpu_to_le16(u_msg_len);
 
 	/* ibtrs message on server side will be after user data and message */
 	imm = req->tag->mem_id_mask + data_len + u_msg_len;
@@ -3634,6 +3635,7 @@ static int ibtrs_clt_request_rdma_write_sg(struct ibtrs_clt_con *con,
 	msg = req->iu->buf + u_msg_len;
 	msg->type = cpu_to_le16(IBTRS_MSG_REQ_RDMA_WRITE);
 	msg->sg_cnt = cpu_to_le32(count);
+	msg->usr_len = cpu_to_le16(u_msg_len);
 
 	if (count > fmr_sg_cnt) {
 		ret = ibtrs_fast_reg_map_data(con, msg->desc, req);
