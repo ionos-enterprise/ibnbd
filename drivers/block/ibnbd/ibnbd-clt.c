@@ -609,7 +609,6 @@ static void ibnbd_clt_rdma_ev(void *priv, enum ibtrs_clt_rdma_ev ev, int errno)
 {
 	struct ibnbd_iu *iu = (struct ibnbd_iu *)priv;
 	struct ibnbd_clt_dev *dev = iu->dev;
-	const int flags = iu->msg.rw;
 	struct request *rq;
 
 	iu->status = errno ? BLK_STS_IOERR : BLK_STS_OK;
@@ -639,9 +638,9 @@ static void ibnbd_clt_rdma_ev(void *priv, enum ibtrs_clt_rdma_ev ev, int errno)
 	}
 
 	if (errno)
-		ibnbd_info_rl(dev, "%s I/O failed with err: %d, flags: 0x%x\n",
+		ibnbd_info_rl(dev, "%s I/O failed with err: %d\n",
 			      rq_data_dir(rq) == READ ? "read" : "write",
-			      errno, flags);
+			      errno);
 }
 
 static int send_msg_open(struct ibnbd_clt_dev *dev)
@@ -1096,6 +1095,7 @@ static int ibnbd_client_xfer_request(struct ibnbd_clt_dev *dev,
 {
 	struct ibtrs_clt *ibtrs = dev->sess->ibtrs;
 	struct ibtrs_tag *tag = iu->tag;
+	struct ibnbd_msg_io msg;
 	unsigned int sg_cnt;
 	struct kvec vec;
 	size_t size;
@@ -1103,9 +1103,9 @@ static int ibnbd_client_xfer_request(struct ibnbd_clt_dev *dev,
 
 	iu->rq		= rq;
 	iu->dev		= dev;
-	iu->msg.sector	= blk_rq_pos(rq);
-	iu->msg.bi_size = blk_rq_bytes(rq);
-	iu->msg.rw	= rq_to_ibnbd_flags(rq);
+	msg.sector	= blk_rq_pos(rq);
+	msg.bi_size	= blk_rq_bytes(rq);
+	msg.rw		= rq_to_ibnbd_flags(rq);
 
 	size = blk_rq_bytes(rq);
 	sg_cnt = blk_rq_map_sg(dev->queue, rq, iu->sglist);
@@ -1113,12 +1113,12 @@ static int ibnbd_client_xfer_request(struct ibnbd_clt_dev *dev,
 		/* Do not forget to mark the end */
 		sg_mark_end(&iu->sglist[0]);
 
-	iu->msg.hdr.type	= IBNBD_MSG_IO;
-	iu->msg.device_id	= dev->device_id;
+	msg.hdr.type		= IBNBD_MSG_IO;
+	msg.device_id		= dev->device_id;
 
 	vec = (struct kvec) {
-		.iov_base = &iu->msg,
-		.iov_len  = sizeof(iu->msg)
+		.iov_base = &msg,
+		.iov_len  = sizeof(msg)
 	};
 
 	if (rq_data_dir(rq) == READ)
