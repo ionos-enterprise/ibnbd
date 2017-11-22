@@ -611,6 +611,9 @@ static void ibnbd_clt_rdma_ev(void *priv, enum ibtrs_clt_rdma_ev ev, int errno)
 	struct ibnbd_clt_dev *dev = iu->dev;
 	struct request *rq;
 
+	if (iu->msg_type != IBNBD_MSG_IO)
+		return;
+
 	iu->status = errno ? BLK_STS_IOERR : BLK_STS_OK;
 	rq = iu->rq;
 
@@ -1103,6 +1106,7 @@ static int ibnbd_client_xfer_request(struct ibnbd_clt_dev *dev,
 
 	iu->rq		= rq;
 	iu->dev		= dev;
+	iu->msg_type	= IBNBD_MSG_IO;
 	msg.sector	= blk_rq_pos(rq);
 	msg.bi_size	= blk_rq_bytes(rq);
 	msg.rw		= rq_to_ibnbd_flags(rq);

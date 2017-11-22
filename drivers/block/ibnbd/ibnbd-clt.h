@@ -77,6 +77,7 @@ struct ibnbd_iu {
 	struct request		*rq;
 	struct ibtrs_tag	*tag;
 	struct ibnbd_clt_dev	*dev;
+	enum ibnbd_msg_type	msg_type;
 	blk_status_t		status;
 	struct scatterlist	sglist[BMAX_SEGMENTS];
 };
