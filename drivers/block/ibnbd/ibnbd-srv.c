@@ -170,12 +170,12 @@ ibnbd_get_sess_dev(int dev_id, struct ibnbd_srv_session *srv_sess)
 
 static int process_rdma(struct ibtrs_srv *sess,
 			struct ibnbd_srv_session *srv_sess,
-			struct ibtrs_srv_op *id, void *data, u32 len)
+			struct ibtrs_srv_op *id, void *data, u32 datalen,
+			const void *usr, size_t usrlen)
 {
 	struct ibnbd_io_private *priv;
 	struct ibnbd_srv_sess_dev *sess_dev;
-	struct ibnbd_msg_io *msg;
-	size_t data_len;
+	const struct ibnbd_msg_io *msg;
 	int err;
 	u32 dev_id;
 
@@ -183,9 +183,7 @@ static int process_rdma(struct ibtrs_srv *sess,
 	if (unlikely(!priv))
 		return -ENOMEM;
 
-	data_len = len - sizeof(*msg);
-	/* ibnbd message is after disk data */
-	msg = (struct ibnbd_msg_io *)(data + data_len);
+	msg = (struct ibnbd_msg_io *)(usr);
 
 	dev_id = msg->device_id;
 
@@ -202,7 +200,7 @@ static int process_rdma(struct ibtrs_srv *sess,
 	priv->id = id;
 
 	err = ibnbd_dev_submit_io(sess_dev->ibnbd_dev, msg->sector, data,
-				  data_len, msg->bi_size, msg->rw, priv);
+				  datalen, msg->bi_size, msg->rw, priv);
 	if (unlikely(err)) {
 		ibnbd_err(sess_dev,
 			  "Submitting I/O to device failed, err: %d\n", err);
@@ -386,7 +384,8 @@ static int ibnbd_srv_link_ev(struct ibtrs_srv *ibtrs,
 
 static int ibnbd_srv_rdma_ev(struct ibtrs_srv *ibtrs, void *priv,
 			     struct ibtrs_srv_op *id, enum ibtrs_srv_rdma_ev ev,
-			     void *data, size_t len)
+			     void *data, size_t datalen, const void *usr,
+			     size_t usrlen)
 {
 	struct ibnbd_srv_session *srv_sess = priv;
 
@@ -394,10 +393,12 @@ static int ibnbd_srv_rdma_ev(struct ibtrs_srv *ibtrs, void *priv,
 		     srv_sess->state == SRV_SESS_STATE_DISCONNECTED))
 		return -ENODEV;
 
+
 	switch (ev) {
 	case IBTRS_SRV_RDMA_EV_RECV:
 	case IBTRS_SRV_RDMA_EV_WRITE_REQ:
-		return process_rdma(ibtrs, srv_sess, id, data, len);
+		return process_rdma(ibtrs, srv_sess, id, data, datalen, usr,
+				    usrlen);
 
 	default:
 		pr_warn("Received unexpected RDMA event %d from session %s\n",

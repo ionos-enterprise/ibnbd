@@ -1281,6 +1281,8 @@ static void process_rdma_write_req(struct ibtrs_srv_con *con,
 	struct ibtrs_srv_ctx *ctx = srv->ctx;
 	struct ibtrs_srv_op *id;
 	size_t sg_cnt;
+	size_t data_len;
+	void *data;
 	int ret;
 
 	if (unlikely(sess->state != IBTRS_SRV_CONNECTED)) {
@@ -1307,11 +1309,13 @@ static void process_rdma_write_req(struct ibtrs_srv_con *con,
 		ret = -ENOMEM;
 		goto send_err_msg;
 	}
-
+	data_len = off - req->usr_len;
+	data = sess->rcv_buf_pool->rcv_bufs[buf_id].buf;
 	id->data_dma_addr = sess->rcv_buf_pool->rcv_bufs[buf_id].rdma_addr;
 	ret = ctx->ops.rdma_ev(srv, srv->priv, id,
 			       IBTRS_SRV_RDMA_EV_WRITE_REQ,
-			       sess->rcv_buf_pool->rcv_bufs[buf_id].buf, off);
+			       data, data_len,
+			       data + data_len, req->usr_len);
 
 	if (unlikely(ret)) {
 		ibtrs_err_rl(sess, "Processing RDMA-Write-Req failed, user "
@@ -1340,6 +1344,8 @@ static void process_rdma_write(struct ibtrs_srv_con *con,
 	struct ibtrs_srv *srv = sess->srv;
 	struct ibtrs_srv_ctx *ctx = srv->ctx;
 	struct ibtrs_srv_op *id;
+	size_t data_len;
+	void *data;
 	int ret;
 
 	if (unlikely(sess->state != IBTRS_SRV_CONNECTED)) {
@@ -1354,8 +1360,11 @@ static void process_rdma_write(struct ibtrs_srv_con *con,
 	id->dir    = WRITE;
 	id->msg_id = buf_id;
 
+	data_len = off - req->usr_len;
+	data = sess->rcv_buf_pool->rcv_bufs[buf_id].buf;
+
 	ret = ctx->ops.rdma_ev(srv, srv->priv, id, IBTRS_SRV_RDMA_EV_RECV,
-			       sess->rcv_buf_pool->rcv_bufs[buf_id].buf, off);
+			       data, data_len, data + data_len, req->usr_len);
 	if (unlikely(ret)) {
 		ibtrs_err_rl(sess, "Processing RDMA-Write failed, user module"
 			     " callback reports err: %d\n", ret);
