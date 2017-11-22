@@ -2686,10 +2686,7 @@ static void ibtrs_rdma_error_recovery(struct ibtrs_clt_con *con)
 		/*
 		 * Normal scenario, reconnect if we were successfully connected
 		 */
-		unsigned delay_ms = sess->reconnect_delay_sec * 1000;
-
-		queue_delayed_work(ibtrs_wq, &sess->reconnect_dwork,
-				   msecs_to_jiffies(delay_ms));
+		queue_delayed_work(ibtrs_wq, &sess->reconnect_dwork, 0);
 	} else
 		/*
 		 * Error can happen just on establishing new connection,
