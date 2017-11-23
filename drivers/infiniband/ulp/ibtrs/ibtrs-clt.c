@@ -233,8 +233,8 @@ static inline bool ibtrs_clt_is_connected(const struct ibtrs_clt *clt)
 	bool connected = false;
 	int i;
 
-	for (i = 0; i < clt->paths_num; i++)
-		connected |= ibtrs_clt_sess_is_connected(clt->paths[i]);
+	for (i = 0; i < clt->paths->num; i++)
+		connected |= ibtrs_clt_sess_is_connected(clt->paths->arr[i]);
 
 	return connected;
 }
@@ -1282,15 +1282,15 @@ static inline struct ibtrs_clt_sess *__get_path(struct ibtrs_clt *clt, int pid)
 	struct ibtrs_clt_sess *sess;
 	int i;
 
-	for (i = pid; i < clt->paths_num; i++) {
-		sess = clt->paths[i];
+	for (i = pid; i < clt->paths->num; i++) {
+		sess = clt->paths->arr[i];
 		if (unlikely(sess->state != IBTRS_CLT_CONNECTED))
 		    continue;
 
 		return sess;
 	}
 	for (i = 0; i < pid; i++) {
-		sess = clt->paths[i];
+		sess = clt->paths->arr[i];
 		if (unlikely(sess->state != IBTRS_CLT_CONNECTED))
 			continue;
 
@@ -1307,7 +1307,7 @@ ibtrs_clt_get_next_path(struct ibtrs_clt *clt)
 	int *curr_path;
 
 	curr_path = get_cpu_ptr(clt->curr_path);
-	*curr_path = (*curr_path + 1) % clt->paths_num;
+	*curr_path = (*curr_path + 1) % clt->paths->num;
 	sess = __get_path(clt, *curr_path);
 	put_cpu_ptr(clt->curr_path);
 
@@ -2459,8 +2459,8 @@ static void ibtrs_clt_sess_up(struct ibtrs_clt_sess *sess)
 
 	mutex_lock(&clt->paths_ev_mutex);
 	up = ++clt->paths_up;
-	if (up == MAX_PATHS_NUM + clt->paths_num)
-		clt->paths_up = clt->paths_num;
+	if (up == MAX_PATHS_NUM + clt->paths->num)
+		clt->paths_up = clt->paths->num;
 	else if (up == 1)
 		clt->link_ev(clt->priv, IBTRS_CLT_LINK_EV_RECONNECTED);
 	mutex_unlock(&clt->paths_ev_mutex);
@@ -3127,7 +3127,8 @@ static struct ibtrs_clt *alloc_clt(const char *sessname, size_t paths_num,
 	}
 
 	uuid_gen(&clt->paths_uuid);
-	clt->paths_num = paths_num;
+	clt->paths = &clt->__paths;
+	clt->paths->num = paths_num;
 	clt->paths_up = MAX_PATHS_NUM;
 	clt->port = port;
 	clt->pdu_sz = pdu_sz;
@@ -3185,7 +3186,7 @@ struct ibtrs_clt *ibtrs_clt_open(void *priv, link_clt_ev_fn *link_ev,
 			ibtrs_err(clt, "alloc_sess(), err: %d\n", err);
 			goto close_all_sess;
 		}
-		clt->paths[i] = sess;
+		clt->paths->arr[i] = sess;
 
 		err = init_sess(sess);
 		if (unlikely(err))
@@ -3210,7 +3211,7 @@ close_all_sess:
 	while (i--) {
 		struct ibtrs_clt_sess *sess;
 close_sess:
-		sess = clt->paths[i];
+		sess = clt->paths->arr[i];
 		ibtrs_clt_destroy_sess_files(sess);
 		ibtrs_clt_close_conns(sess, true);
 		free_sess(sess);
@@ -3227,8 +3228,8 @@ void ibtrs_clt_close(struct ibtrs_clt *clt)
 	int i;
 
 	ibtrs_clt_destroy_sysfs_root_files(clt);
-	for (i = 0; i < clt->paths_num; i++) {
-		struct ibtrs_clt_sess *sess = clt->paths[i];
+	for (i = 0; i < clt->paths->num; i++) {
+		struct ibtrs_clt_sess *sess = clt->paths->arr[i];
 
 		ibtrs_clt_destroy_sess_files(sess);
 		ibtrs_clt_close_conns(sess, true);
@@ -3388,7 +3389,7 @@ int ibtrs_clt_rdma_write(struct ibtrs_clt *clt,
 	struct ibtrs_clt_io_req *req;
 	struct ibtrs_clt_sess *sess;
 
-	unsigned retries = clt->paths_num;
+	unsigned retries = clt->paths->num;
 	size_t usr_len;
 	int err;
 
@@ -3533,7 +3534,7 @@ int ibtrs_clt_request_rdma_write(struct ibtrs_clt *clt,
 	struct ibtrs_clt_io_req *req;
 	struct ibtrs_clt_sess *sess;
 
-	unsigned retries = clt->paths_num;
+	unsigned retries = clt->paths->num;
 	size_t usr_len;
 	int err;
 

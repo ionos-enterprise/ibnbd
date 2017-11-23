@@ -195,10 +195,15 @@ struct ibtrs_clt_sess {
 	struct ibtrs_clt_stats  stats;
 };
 
+struct ibtrs_clt_paths {
+	struct ibtrs_clt_sess	*arr[MAX_PATHS_NUM];
+	size_t			num;
+};
+
 struct ibtrs_clt {
-	struct ibtrs_clt_sess	*paths[MAX_PATHS_NUM];
+	struct ibtrs_clt_paths  *paths;
+	struct ibtrs_clt_paths  __paths;
 	unsigned int __percpu	*curr_path;
-	size_t			paths_num;
 	uuid_t			paths_uuid;
 	int			paths_up;
 	struct mutex		paths_ev_mutex;
