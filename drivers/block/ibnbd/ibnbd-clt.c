@@ -164,15 +164,6 @@ static int ibnbd_clt_revalidate_disk(struct ibnbd_clt_dev *dev,
 	return err;
 }
 
-static void process_msg_sess_info_rsp(struct ibnbd_clt_session *sess,
-				      struct ibnbd_msg_sess_info_rsp *msg)
-{
-	sess->ver = min_t(u8, msg->ver, IBNBD_VER_MAJOR);
-	pr_debug("Session %s using protocol version %d (client version: %d,"
-		 " server version: %d)\n", sess->sessname, sess->ver,
-		 IBNBD_VER_MAJOR, msg->ver);
-}
-
 static int process_msg_open_rsp(struct ibnbd_clt_session *sess,
 				struct ibnbd_msg_open_rsp *rsp)
 {
@@ -259,81 +250,9 @@ out:
 	return ret;
 }
 
-static int send_msg_close(struct ibtrs_clt *ibtrs, u32 device_id)
-{
-	struct ibnbd_msg_close msg;
-	struct kvec vec = {
-		.iov_base = &msg,
-		.iov_len  = sizeof(msg)
-	};
-
-	msg.hdr.type	= IBNBD_MSG_CLOSE;
-	msg.device_id	= device_id;
-
-	return ibtrs_clt_send(ibtrs, &vec, 1);
-}
-
 static void ibnbd_clt_recv(void *priv, const void *msg, size_t len)
 {
-	const struct ibnbd_msg_hdr *hdr = msg;
-	struct ibnbd_clt_session *sess = priv;
-
-	if (unlikely(WARN_ON(!hdr) || ibnbd_validate_message(msg, len)))
-		return;
-
-	print_hex_dump_debug("", DUMP_PREFIX_OFFSET, 8, 1, msg, len, true);
-
-	switch (hdr->type) {
-	case IBNBD_MSG_SESS_INFO_RSP: {
-		struct ibnbd_msg_sess_info_rsp *rsp =
-			(struct ibnbd_msg_sess_info_rsp *)msg;
-
-		process_msg_sess_info_rsp(sess, rsp);
-		if (sess->sess_info_compl)
-			complete(sess->sess_info_compl);
-		break;
-	}
-	case IBNBD_MSG_OPEN_RSP: {
-		int err;
-		struct ibnbd_msg_open_rsp *rsp =
-			(struct ibnbd_msg_open_rsp *)msg;
-
-		if (process_msg_open_rsp(sess, rsp) && !rsp->result) {
-			pr_err("Failed to process open response message from"
-			       " server, sending close message for dev id:"
-			       " %u\n", rsp->device_id);
-
-			err = send_msg_close(sess->ibtrs, rsp->device_id);
-			if (err)
-				pr_err("Failed to send close msg for device"
-				       " with id: %u, err: %d\n",
-				       rsp->device_id, err);
-		}
-
-		break;
-	}
-	case IBNBD_MSG_CLOSE_RSP: {
-		struct ibnbd_clt_dev *dev;
-		struct ibnbd_msg_close_rsp *rsp =
-			(struct ibnbd_msg_close_rsp *)msg;
-
-		dev = g_get_dev(rsp->clt_device_id);
-		if (IS_ERR(dev)) {
-			pr_err("Close-Response message received on session %s"
-			       " for unknown device (id: %u)\n", sess->sessname,
-			       rsp->clt_device_id);
-			break;
-		}
-		if (dev->close_compl && dev->dev_state == DEV_STATE_UNMAPPED)
-			complete(dev->close_compl);
-
-		break;
-	}
-	default:
-		pr_err("IBNBD message with unknown type %d received on"
-		       " session %s\n", hdr->type, sess->sessname);
-		break;
-	}
+	return;
 }
 
 static void ibnbd_blk_delay_work(struct work_struct *work)
@@ -605,17 +524,12 @@ static void ibnbd_softirq_done_fn(struct request *rq)
 	}
 }
 
-static void ibnbd_clt_rdma_ev(void *priv, enum ibtrs_clt_rdma_ev ev, int errno)
+static void process_msg_io_conf(struct ibnbd_iu *iu, int errno)
 {
-	struct ibnbd_iu *iu = (struct ibnbd_iu *)priv;
 	struct ibnbd_clt_dev *dev = iu->dev;
-	struct request *rq;
-
-	if (iu->msg_type != IBNBD_MSG_IO)
-		return;
+	struct request *rq = iu->rq;
 
 	iu->status = errno ? BLK_STS_IOERR : BLK_STS_OK;
-	rq = iu->rq;
 
 	switch (dev->queue_mode) {
 	case BLK_MQ:
@@ -646,14 +560,124 @@ static void ibnbd_clt_rdma_ev(void *priv, enum ibtrs_clt_rdma_ev ev, int errno)
 			      errno);
 }
 
-static int send_msg_open(struct ibnbd_clt_dev *dev)
+static int send_msg_close(struct ibnbd_clt_dev *dev, u32 device_id)
 {
-	int err;
-	struct ibnbd_msg_open msg;
+	struct ibnbd_clt_session *sess = dev->sess;
+	struct ibnbd_msg_close msg;
+	struct ibnbd_iu *iu;
 	struct kvec vec = {
 		.iov_base = &msg,
 		.iov_len  = sizeof(msg)
 	};
+
+	iu = ibnbd_get_iu(sess, 0, IBTRS_TAG_WAIT);
+	if (unlikely(!iu)) {
+		return -ENOMEM;
+	}
+
+	iu->msg_type = IBNBD_MSG_CLOSE;
+	iu->buf = NULL;
+	iu->dev = dev;
+
+	sg_mark_end(&iu->sglist[0]);
+
+	msg.hdr.type	= IBNBD_MSG_CLOSE;
+	msg.device_id	= device_id;
+
+	return ibtrs_clt_request_rdma_write(sess->ibtrs, iu->tag, iu, &vec, 1,
+					    0, iu->sglist, 0);
+}
+
+static void ibnbd_clt_rdma_ev(void *priv, enum ibtrs_clt_rdma_ev ev, int errno)
+{
+	struct ibnbd_iu *iu = (struct ibnbd_iu *)priv;
+
+	switch (iu->msg_type) {
+	case IBNBD_MSG_IO:
+		process_msg_io_conf(iu, errno);
+		break;
+	case IBNBD_MSG_CLOSE: {
+		struct ibnbd_clt_dev *dev = iu->dev;
+
+		/* TODO just copy/paste: but why do we check state here? */
+		if (dev->close_compl && dev->dev_state == DEV_STATE_UNMAPPED)
+			complete(dev->close_compl);
+
+		ibnbd_put_iu(dev->sess, iu);
+		break;
+	}
+	case IBNBD_MSG_OPEN: {
+		struct ibnbd_msg_open_rsp *rsp =
+			(struct ibnbd_msg_open_rsp *)iu->buf;
+		struct ibnbd_clt_dev *dev = iu->dev;
+
+		if (errno) {
+			ibnbd_wrn(dev, "Sending open msg failed: %d\n", errno);
+			dev->open_errno = errno;
+			if (dev->open_compl)
+				complete(dev->open_compl);
+			kfree(rsp);
+			ibnbd_put_iu(dev->sess, iu);
+			break;
+		}
+
+		/*
+		 * TODO just copy/paste: but who completes open_compl if
+		 * process_msg_open_rsp fails?
+		 *
+		 * if server thinks its fine, but we fail to process then
+		 * be nice and send a close to server */
+		if (process_msg_open_rsp(dev->sess, rsp) && !rsp->result)
+			send_msg_close(dev, rsp->device_id);
+
+		kfree(rsp);
+		ibnbd_put_iu(dev->sess, iu);
+		break;
+	}
+	case IBNBD_MSG_SESS_INFO: {
+		struct ibnbd_msg_sess_info_rsp *rsp =
+			(struct ibnbd_msg_sess_info_rsp *)iu->buf;
+		struct ibnbd_clt_session *sess = iu->sess;
+
+		sess->ver = min_t(u8, rsp->ver, IBNBD_VER_MAJOR);
+		if (sess->sess_info_compl)
+			complete(sess->sess_info_compl);
+		kfree(rsp);
+		ibnbd_put_iu(sess, iu);
+		break;
+	}
+	default:
+		pr_err("Got conf for unknown msg_type: %d\n", iu->msg_type);
+		break;
+	}
+}
+
+static int send_msg_open(struct ibnbd_clt_dev *dev)
+{
+	struct ibnbd_clt_session *sess = dev->sess;
+	struct ibnbd_msg_open_rsp *rsp;
+	struct ibnbd_msg_open msg;
+	struct ibnbd_iu *iu;
+	struct kvec vec = {
+		.iov_base = &msg,
+		.iov_len  = sizeof(msg)
+	};
+
+	rsp = kzalloc(sizeof(*rsp), GFP_KERNEL);
+	if (unlikely(!rsp))
+		return -ENOMEM;
+
+	iu = ibnbd_get_iu(sess, sizeof(*rsp), IBTRS_TAG_WAIT);
+	if (unlikely(!iu)) {
+		kfree(rsp);
+		return -ENOMEM;
+	}
+
+	iu->msg_type = IBNBD_MSG_OPEN;
+	iu->buf = rsp;
+	iu->dev = dev;
+
+	sg_init_one(iu->sglist, rsp, sizeof(*rsp));
 
 	msg.hdr.type		= IBNBD_MSG_OPEN;
 	msg.clt_device_id	= dev->clt_device_id;
@@ -661,23 +685,41 @@ static int send_msg_open(struct ibnbd_clt_dev *dev)
 	msg.io_mode		= dev->io_mode;
 	strlcpy(msg.dev_name, dev->pathname, sizeof(msg.dev_name));
 
-	err = ibtrs_clt_send(dev->sess->ibtrs, &vec, 1);
-
-	return err;
+	return ibtrs_clt_request_rdma_write(sess->ibtrs, iu->tag, iu, &vec, 1,
+					    sizeof(*rsp), iu->sglist, 1);
 }
 
 static int send_msg_sess_info(struct ibnbd_clt_session *sess)
 {
+	struct ibnbd_msg_sess_info_rsp *rsp;
 	struct ibnbd_msg_sess_info msg;
+	struct ibnbd_iu *iu;
 	struct kvec vec = {
 		.iov_base = &msg,
 		.iov_len  = sizeof(msg)
 	};
 
+	rsp = kzalloc(sizeof(*rsp), GFP_KERNEL);
+	if (unlikely(!rsp))
+		return -ENOMEM;
+
+	iu = ibnbd_get_iu(sess, sizeof(*rsp), IBTRS_TAG_WAIT);
+	if (unlikely(!iu)) {
+		kfree(rsp);
+		return -ENOMEM;
+	}
+
+	iu->msg_type = IBNBD_MSG_SESS_INFO;
+	iu->buf = rsp;
+	iu->sess = sess;
+
+	sg_init_one(iu->sglist, rsp, sizeof(*rsp));
+
 	msg.hdr.type = IBNBD_MSG_SESS_INFO;
 	msg.ver      = IBNBD_VER_MAJOR;
 
-	return ibtrs_clt_send(sess->ibtrs, &vec, 1);
+	return ibtrs_clt_request_rdma_write(sess->ibtrs, iu->tag, iu, &vec, 1,
+					    sizeof(*rsp), iu->sglist, 1);
 }
 
 int open_remote_device(struct ibnbd_clt_dev *dev)
@@ -1783,7 +1825,7 @@ __must_hold(&dev->sess->lock)
 
 	mutex_unlock(&dev->sess->lock);
 	if (prev_state == DEV_STATE_OPEN && dev->sess->ibtrs) {
-		if (send_msg_close(dev->sess->ibtrs, dev->device_id))
+		if (send_msg_close(dev, dev->device_id))
 			complete(dev->close_compl);
 	} else {
 		complete(dev->close_compl);

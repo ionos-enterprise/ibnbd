@@ -74,9 +74,17 @@ enum ibnbd_queue_mode {
 };
 
 struct ibnbd_iu {
-	struct request		*rq;
+	union {
+		struct request *rq; /* for block io */
+		void *buf; /* for user messages */
+	};
 	struct ibtrs_tag	*tag;
-	struct ibnbd_clt_dev	*dev;
+	union {
+		/* use to send msg associated with a dev */
+		struct ibnbd_clt_dev *dev;
+		/* use to send msg associated with a sess */
+		struct ibnbd_clt_session *sess;
+	};
 	enum ibnbd_msg_type	msg_type;
 	blk_status_t		status;
 	struct scatterlist	sglist[BMAX_SEGMENTS];
