@@ -103,19 +103,6 @@ static int ibnbd_clt_get_dev(struct ibnbd_clt_dev *dev)
 	return atomic_inc_not_zero(&dev->refcount);
 }
 
-static struct ibnbd_clt_dev *g_get_dev(int dev_id)
-{
-	struct ibnbd_clt_dev *dev;
-
-	read_lock(&g_index_lock);
-	dev = idr_find(&g_index_idr, dev_id);
-	if (!dev)
-		dev = ERR_PTR(-ENXIO);
-	read_unlock(&g_index_lock);
-
-	return dev;
-}
-
 static void ibnbd_clt_set_dev_attr(struct ibnbd_clt_dev *dev,
 				   const struct ibnbd_msg_open_rsp *rsp)
 {
@@ -164,24 +151,16 @@ static int ibnbd_clt_revalidate_disk(struct ibnbd_clt_dev *dev,
 	return err;
 }
 
-static int process_msg_open_rsp(struct ibnbd_clt_session *sess,
+static int process_msg_open_rsp(struct ibnbd_clt_dev *dev,
 				struct ibnbd_msg_open_rsp *rsp)
 {
-	struct ibnbd_clt_dev *dev;
+	struct ibnbd_clt_session *sess = dev->sess;
 	int err = 0;
-
-	dev = g_get_dev(rsp->clt_device_id);
-	if (IS_ERR(dev)) {
-		pr_err("Open-Response message received on session %s"
-		       " for unknown device (id: %d)\n", sess->sessname,
-		       rsp->clt_device_id);
-		return -ENOENT;
-	}
 
 	if (!ibnbd_clt_get_dev(dev)) {
 		pr_err("Failed to process Open-Response message on session"
-		       " %s, unable to get reference to device (id: %d)",
-		       sess->sessname, rsp->clt_device_id);
+		       " %s, unable to get reference to device",
+		       sess->sessname);
 		return -ENOENT;
 	}
 
@@ -627,7 +606,7 @@ static void ibnbd_clt_rdma_ev(void *priv, enum ibtrs_clt_rdma_ev ev, int errno)
 		 *
 		 * if server thinks its fine, but we fail to process then
 		 * be nice and send a close to server */
-		if (process_msg_open_rsp(dev->sess, rsp) && !rsp->result)
+		if (process_msg_open_rsp(dev, rsp) && !rsp->result)
 			send_msg_close(dev, rsp->device_id);
 
 		kfree(rsp);
@@ -680,7 +659,6 @@ static int send_msg_open(struct ibnbd_clt_dev *dev)
 	sg_init_one(iu->sglist, rsp, sizeof(*rsp));
 
 	msg.hdr.type		= IBNBD_MSG_OPEN;
-	msg.clt_device_id	= dev->clt_device_id;
 	msg.access_mode		= dev->access_mode;
 	msg.io_mode		= dev->io_mode;
 	strlcpy(msg.dev_name, dev->pathname, sizeof(msg.dev_name));

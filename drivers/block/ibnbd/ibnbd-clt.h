@@ -144,6 +144,7 @@ struct ibnbd_clt_dev {
 	struct ibnbd_queue	*hw_queues;
 	struct delayed_work	rq_delay_work;
 	u32			device_id;
+	/* local Idr index - used to track minor number allocations. */
 	u32			clt_device_id;
 	struct completion	*open_compl;	/* completion for open msg */
 	int			open_errno;
@@ -152,7 +153,6 @@ struct ibnbd_clt_dev {
 	enum ibnbd_queue_mode	queue_mode;
 	enum ibnbd_io_mode	io_mode; /* user requested */
 	enum ibnbd_io_mode	remote_io_mode; /* server really used */
-	/* local Idr index - used to track minor number allocations. */
 	char			pathname[NAME_MAX];
 	enum ibnbd_access_mode	access_mode;
 	bool			read_only;

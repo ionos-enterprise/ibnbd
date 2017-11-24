@@ -389,13 +389,10 @@ static int process_msg_close(struct ibtrs_srv *ibtrs,
 {
 	const struct ibnbd_msg_close *close_msg = usr;
 	struct ibnbd_srv_sess_dev *sess_dev;
-	u32 dev_id = close_msg->device_id;
 
-	sess_dev = ibnbd_get_sess_dev(dev_id, srv_sess);
+	sess_dev = ibnbd_get_sess_dev(close_msg->device_id, srv_sess);
 	if (unlikely(IS_ERR(sess_dev))) {
-		/* TODO send a positive response here after we get rid of
-		 * clt_device_id */
-		return -EINVAL;
+		return 0;
 	}
 	ibnbd_srv_destroy_dev_session_sysfs(sess_dev);
 	ibnbd_put_sess_dev(sess_dev);
@@ -615,22 +612,13 @@ ibnbd_srv_get_or_create_srv_dev(struct ibnbd_dev *ibnbd_dev,
 	return dev;
 }
 
-static inline void
-ibnbd_srv_fill_msg_open_rsp_header(struct ibnbd_msg_open_rsp *rsp,
-				   u32 clt_device_id)
-{
-	rsp->hdr.type		= IBNBD_MSG_OPEN_RSP;
-	rsp->clt_device_id	= clt_device_id;
-}
-
 static void ibnbd_srv_fill_msg_open_rsp(struct ibnbd_msg_open_rsp *rsp,
-					u32 device_id, u32 clt_device_id,
-					size_t nsectors,
+					u32 device_id, size_t nsectors,
 					const struct ibnbd_dev *ibnbd_dev)
 {
 	struct block_device *bdev;
 
-	ibnbd_srv_fill_msg_open_rsp_header(rsp, clt_device_id);
+	rsp->hdr.type			= IBNBD_MSG_OPEN_RSP;
 
 	rsp->result			= 0;
 	rsp->device_id			= device_id;
@@ -686,7 +674,6 @@ ibnbd_srv_create_set_sess_dev(struct ibnbd_srv_session *srv_sess,
 	sdev->sess		= srv_sess;
 	sdev->dev		= srv_dev;
 	sdev->open_flags	= open_flags;
-	sdev->clt_device_id	= open_msg->clt_device_id;
 
 	return sdev;
 }
@@ -853,7 +840,6 @@ static int process_msg_open(struct ibtrs_srv *ibtrs,
 	srv_sess_dev->nsectors = ibnbd_dev_get_capacity(ibnbd_dev);
 
 	ibnbd_srv_fill_msg_open_rsp(rsp, srv_sess_dev->device_id,
-				    open_msg->clt_device_id,
 				    srv_sess_dev->nsectors, ibnbd_dev);
 
 	srv_sess_dev->is_visible = true;

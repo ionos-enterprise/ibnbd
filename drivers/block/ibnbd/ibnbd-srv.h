@@ -100,7 +100,6 @@ struct ibnbd_srv_sess_dev {
 	struct completion		*sysfs_release_compl;
 
 	u32                             device_id;
-	u32                             clt_device_id;
 	fmode_t                         open_flags;
 	struct kref			kref;
 	struct completion               *destroy_comp;

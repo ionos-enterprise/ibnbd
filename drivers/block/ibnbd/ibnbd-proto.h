@@ -134,7 +134,6 @@ struct ibnbd_msg_sess_info_rsp {
 /**
  * struct ibnbd_msg_open - request to open a remote device.
  * @hdr:		message header
- * @clt_device_id:	device_id on client side to identify the device
  * @access_mode:	the mode to open remote device, valid values see:
  *			enum ibnbd_access_mode
  * @io_mode:		Open volume on server as block device or as file
@@ -142,7 +141,6 @@ struct ibnbd_msg_sess_info_rsp {
  */
 struct ibnbd_msg_open {
 	struct ibnbd_msg_hdr hdr;
-	u32		clt_device_id;
 	u8		access_mode;
 	u8		io_mode;
 	s8		dev_name[NAME_MAX];
@@ -163,7 +161,7 @@ struct ibnbd_msg_close {
  * struct ibnbd_msg_open_rsp - response message to IBNBD_MSG_OPEN
  * @hdr:		message header
  * @result:		0 on success or negative error code on failure
- * @clt_device_id:	device_id on client side
+ * @nsectors:		number of sectors
  * @device_id:		device_id on server side to identify the device
  * @queue_flags:	queue_flags of the device on server side
  * @max_hw_sectors:	max hardware sectors in the usual 512b unit
@@ -174,7 +172,6 @@ struct ibnbd_msg_close {
  * @physical_block_size: physical block size device supports
  * @logical_block_size: logical block size device supports
  * @max_segments:	max segments hardware support in one transfer
- * @nsectors:		number of sectors
  * @secure_discard:	supports secure discard
  * @rotation:		is a rotational disc?
  * @io_mode:		io_mode device is opened.
@@ -182,19 +179,17 @@ struct ibnbd_msg_close {
 struct ibnbd_msg_open_rsp {
 	struct ibnbd_msg_hdr	hdr;
 	s32			result;
-	u32			clt_device_id;
+	u64			nsectors;
 	u32			device_id;
 	u32			max_hw_sectors;
 	u32			max_write_same_sectors;
 	u32			max_discard_sectors;
-	u32			__reserved;
 	u32			discard_granularity;
 	u32			discard_alignment;
 	u16			physical_block_size;
 	u16			logical_block_size;
 	u16			max_segments;
 	u16			secure_discard;
-	u64			nsectors;
 	u8			rotational;
 	u8			io_mode;
 	u8			__padding[6];
