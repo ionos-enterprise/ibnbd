@@ -1098,16 +1098,13 @@ static void ibtrs_srv_info_rsp_done(struct ib_cq *cq, struct ib_wc *wc)
 	if (unlikely(wc->status != IB_WC_SUCCESS)) {
 		ibtrs_err(sess, "Sess info response send failed: %s\n",
 			  ib_wc_status_msg(wc->status));
-		close_sess(sess);
-		return;
+		goto close_sess;
 	}
 	WARN_ON(wc->opcode != IB_WC_SEND);
 
 	err = ibtrs_srv_create_sess_files(sess);
 	if (unlikely(err))
-		/* Consider as not a fatal error */
-		ibtrs_err(sess,
-			  "ibtrs_srv_create_sess_files(): err %d\n", err);
+		goto close_sess;
 
 	ibtrs_srv_change_state(sess, IBTRS_SRV_CONNECTED);
 	ibtrs_srv_start_hb(sess);
@@ -1120,6 +1117,11 @@ static void ibtrs_srv_info_rsp_done(struct ib_cq *cq, struct ib_wc *wc)
 	 * listener with proper event when info response is successfully sent.
 	 */
 	ctx->ops.sess_ev(sess, IBTRS_SRV_SESS_EV_CONNECTED, sess->priv);
+
+	return;
+
+close_sess:
+       close_sess(sess);
 }
 
 static int post_recv_sess(struct ibtrs_srv_sess *sess);
