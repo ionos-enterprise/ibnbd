@@ -160,16 +160,6 @@ struct ibnbd_msg_close {
 };
 
 /**
- * struct ibnbd_msg_close_rsp - response to a close device message.
- * @hdr:	message header
- * @clt_device_id:	device_id on client side
- */
-struct ibnbd_msg_close_rsp {
-	struct ibnbd_msg_hdr hdr;
-	u32		clt_device_id;
-};
-
-/**
  * struct ibnbd_msg_open_rsp - response message to IBNBD_MSG_OPEN
  * @hdr:		message header
  * @result:		0 on success or negative error code on failure

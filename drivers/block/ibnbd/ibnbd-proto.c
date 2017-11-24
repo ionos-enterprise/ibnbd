@@ -144,18 +144,6 @@ static int ibnbd_validate_msg_close(const struct ibnbd_msg_close *msg, size_t
 	return 0;
 }
 
-static int ibnbd_validate_msg_close_rsp(const struct ibnbd_msg_close_rsp *msg,
-					size_t len)
-{
-	if (unlikely(len != sizeof(*msg))) {
-		pr_err("Close_rsp msg received with unexpected length %lu"
-		       " instead of %lu\n", len, sizeof(*msg));
-		return -EINVAL;
-	}
-
-	return 0;
-}
-
 int ibnbd_validate_message(const void *data, size_t len)
 {
 	const struct ibnbd_msg_hdr *hdr = data;
@@ -185,11 +173,6 @@ int ibnbd_validate_message(const void *data, size_t len)
 		const struct ibnbd_msg_close *msg = data;
 
 		return ibnbd_validate_msg_close(msg, len);
-	}
-	case IBNBD_MSG_CLOSE_RSP: {
-		const struct ibnbd_msg_close_rsp *msg = data;
-
-		return ibnbd_validate_msg_close_rsp(msg, len);
 	}
 	default:
 		pr_err("Ignoring received message with unknown type %d\n",
