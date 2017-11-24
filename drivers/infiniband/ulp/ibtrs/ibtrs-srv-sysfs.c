@@ -131,10 +131,6 @@ STAT_ATTR(struct ibtrs_srv_sess, ibtrs_srv_rdma,
 	  ibtrs_srv_stats_rdma_to_str,
 	  ibtrs_srv_reset_rdma_stats);
 
-STAT_ATTR(struct ibtrs_srv_sess, ibtrs_srv_user_ib_messages,
-	  ibtrs_srv_stats_user_ib_msgs_to_str,
-	  ibtrs_srv_reset_user_ib_msgs_stats);
-
 STAT_ATTR(struct ibtrs_srv_sess, ibtrs_srv_wc_completion,
 	  ibtrs_srv_stats_wc_completion_to_str,
 	  ibtrs_srv_reset_wc_completion_stats);
@@ -145,7 +141,6 @@ STAT_ATTR(struct ibtrs_srv_sess, ibtrs_srv_reset_all,
 
 static struct attribute *ibtrs_srv_stats_attrs[] = {
 	&ibtrs_srv_rdma_attr.attr,
-	&ibtrs_srv_user_ib_messages_attr.attr,
 	&ibtrs_srv_wc_completion_attr.attr,
 	&ibtrs_srv_reset_all_attr.attr,
 	NULL,

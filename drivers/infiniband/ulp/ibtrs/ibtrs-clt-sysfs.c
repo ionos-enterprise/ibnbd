@@ -202,10 +202,6 @@ STAT_ATTR(struct ibtrs_clt_sess, rdma_lat,
 	  ibtrs_clt_stats_rdma_lat_distr_to_str,
 	  ibtrs_clt_reset_rdma_lat_distr_stats);
 
-STAT_ATTR(struct ibtrs_clt_sess, user_ib_messages,
-	  ibtrs_clt_stats_user_ib_msgs_to_str,
-	  ibtrs_clt_reset_user_ib_msgs_stats);
-
 STAT_ATTR(struct ibtrs_clt_sess, wc_completion,
 	  ibtrs_clt_stats_wc_completion_to_str,
 	  ibtrs_clt_reset_wc_comp_stats);
@@ -223,7 +219,6 @@ static struct attribute *ibtrs_clt_stats_attrs[] = {
 	&cpu_migration_attr.attr,
 	&reconnects_attr.attr,
 	&rdma_lat_attr.attr,
-	&user_ib_messages_attr.attr,
 	&wc_completion_attr.attr,
 	&rdma_attr.attr,
 	&reset_all_attr.attr,

@@ -229,11 +229,6 @@ out:
 	return ret;
 }
 
-static void ibnbd_clt_recv(void *priv, const void *msg, size_t len)
-{
-	return;
-}
-
 static void ibnbd_blk_delay_work(struct work_struct *work)
 {
 	struct ibnbd_clt_dev *dev;
@@ -984,7 +979,6 @@ ibnbd_create_session(const char *sessname,
 	sess->state = CLT_SESS_STATE_DISCONNECTED;
 
 	ops.priv    = sess;
-	ops.recv    = ibnbd_clt_recv;
 	ops.rdma_ev = ibnbd_clt_rdma_ev;
 	ops.link_ev = ibnbd_clt_link_ev;
 

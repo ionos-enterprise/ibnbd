@@ -241,7 +241,7 @@ static inline bool ibtrs_clt_is_connected(const struct ibtrs_clt *clt)
 
 static inline bool clt_ops_are_valid(const struct ibtrs_clt_ops *ops)
 {
-	return ops && ops->rdma_ev && ops->link_ev && ops->recv;
+	return ops && ops->rdma_ev && ops->link_ev;
 }
 
 /**
@@ -1159,104 +1159,6 @@ static void process_io_rsp(struct ibtrs_clt_sess *sess, u32 msg_id, s16 errno)
 	complete_rdma_req(&sess->reqs[msg_id], errno);
 }
 
-static void ibtrs_clt_hb_and_ack_done(struct ib_cq *cq, struct ib_wc *wc)
-{
-	struct ibtrs_clt_con *con = cq->cq_context;
-	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
-
-	if (unlikely(wc->status != IB_WC_SUCCESS)) {
-		ibtrs_err(sess, "Failed ACK: %s\n",
-			  ib_wc_status_msg(wc->status));
-		ibtrs_rdma_error_recovery(con);
-	}
-}
-
-static struct ib_cqe hb_and_ack_cqe = {
-	.done = ibtrs_clt_hb_and_ack_done
-};
-
-static int ibtrs_send_usr_ack(struct ibtrs_clt_con *con)
-{
-	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
-	int err;
-
-	ibtrs_clt_state_lock();
-	if (unlikely(sess->state != IBTRS_CLT_CONNECTED)) {
-		ibtrs_clt_state_unlock();
-		ibtrs_info(sess, "Sending user msg ack failed, disconnected."
-			   " Session state is %s\n",
-			   ibtrs_clt_state_str(sess->state));
-		return -ECOMM;
-	}
-
-	err = ibtrs_post_rdma_write_imm_empty(&con->c, &hb_and_ack_cqe,
-					      IBTRS_ACK_IMM,
-					      IB_SEND_SIGNALED);
-	ibtrs_clt_state_unlock();
-	if (unlikely(err)) {
-		ibtrs_err_rl(sess, "Sending user msg ack failed, err: %d\n",
-			     err);
-		return err;
-	}
-
-	return 0;
-}
-
-static void msg_worker(struct work_struct *work)
-{
-	struct ibtrs_clt_sess *sess;
-	struct ibtrs_msg_user *msg;
-	struct ibtrs_clt_con *con;
-	struct ibtrs_clt *clt;
-	struct msg_work *w;
-	size_t len;
-
-	w = container_of(work, struct msg_work, work);
-	con = w->con;
-	msg = w->msg;
-	kfree(w);
-
-	len = le16_to_cpu(msg->psize);
-	sess = to_clt_sess(con->c.sess);
-	clt = sess->clt;
-
-	sess->stats.user_ib_msgs.recv_msg_cnt++;
-	sess->stats.user_ib_msgs.recv_size += len;
-
-	clt->ops.recv(clt->ops.priv, msg->payl, len);
-	kfree(msg);
-}
-
-static int ibtrs_schedule_msg(struct ibtrs_clt_con *con,
-			      struct ibtrs_msg_user *msg)
-{
-	struct msg_work *w;
-	size_t len;
-
-	len = le16_to_cpu(msg->psize) + sizeof(*msg);
-
-	/*
-	 * FIXME: that is ugly, and better way is to notify API client
-	 *        calling cb directly.  We should not care about contexts.
-	 */
-
-	w = kmalloc(sizeof(*w), GFP_ATOMIC);
-	if (unlikely(!w))
-		return -ENOMEM;
-
-	w->con = con;
-	w->msg = kmalloc(len, GFP_ATOMIC);
-	if (unlikely(!w->msg)) {
-		kfree(w);
-		return -ENOMEM;
-	}
-	memcpy(w->msg, msg, len);
-	INIT_WORK(&w->work, msg_worker);
-	queue_work(ibtrs_wq, &w->work);
-
-	return 0;
-}
-
 static void ibtrs_clt_update_wc_stats(struct ibtrs_clt_con *con)
 {
 	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
@@ -1286,8 +1188,6 @@ static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 	u32 imm, msg_id;
 	int err;
 
-	WARN_ON(!con->c.cid);
-
 	if (unlikely(wc->status != IB_WC_SUCCESS)) {
 		if (wc->status != IB_WC_WR_FLUSH_ERR) {
 			ibtrs_err(sess, "RDMA failed: %s\n",
@@ -1301,12 +1201,12 @@ static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 	switch (wc->opcode) {
 	case IB_WC_RDMA_WRITE:
 		/*
-		 * post_send() RDMA write completions of IO reqs (read/write)
+		 * post_send() RDMA write completions of IO reqs (read/write) and hb
 		 */
 		break;
 	case IB_WC_RECV_RDMA_WITH_IMM:
 		/*
-		 * post_recv() RDMA write completions of IO reqs (read/write)
+		 * post_recv() RDMA write completions of IO reqs (read/write) and hb
 		 */
 		if (WARN_ON(wc->wr_cqe != &io_comp_cqe))
 			return;
@@ -1316,7 +1216,12 @@ static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 			ibtrs_rdma_error_recovery(con);
 			break;
 		}
+
 		imm = be32_to_cpu(wc->ex.imm_data);
+		if (imm == IBTRS_HB_IMM) {
+			WARN_ON(con->c.cid);
+			break;
+		}
 		msg_id = imm >> 16;
 		err = (imm << 16) >> 16;
 		process_io_rsp(sess, msg_id, err);
@@ -1325,150 +1230,6 @@ static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 		WARN(1, "Unknown wc->opcode %d", wc->opcode);
 		return;
 	}
-}
-
-static void ibtrs_clt_usr_send_done(struct ib_cq *cq, struct ib_wc *wc)
-{
-	struct ibtrs_clt_con *con = cq->cq_context;
-	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
-	struct ibtrs_iu *iu;
-
-	iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
-	ibtrs_iu_usrtx_return(&sess->s, iu);
-
-	if (unlikely(wc->status != IB_WC_SUCCESS)) {
-		ibtrs_err(sess, "User message send failed: %s\n",
-			  ib_wc_status_msg(wc->status));
-		ibtrs_rdma_error_recovery(con);
-		return;
-	}
-	WARN_ON(wc->opcode != IB_WC_SEND);
-
-	ibtrs_clt_update_wc_stats(con);
-}
-
-static int process_usr(struct ibtrs_clt_con *con, struct ib_wc *wc)
-{
-	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
-	struct ibtrs_msg_user *msg;
-	int err = -EMSGSIZE;
-	struct ibtrs_iu *iu;
-	unsigned type;
-
-	if (unlikely(wc->byte_len < sizeof(*msg))) {
-		ibtrs_err(sess, "Malformed user message: size %d\n",
-			  wc->byte_len);
-		goto out;
-	}
-	iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
-	msg = (struct ibtrs_msg_user *)iu->buf;
-	type = le16_to_cpu(msg->type);
-
-	switch (type) {
-	case IBTRS_MSG_USER:
-		err = ibtrs_schedule_msg(con, msg);
-		if (unlikely(err)) {
-			ibtrs_err(sess, "ibtrs_schedule_msg(), err: %d\n", err);
-			goto out;
-		}
-		err = ibtrs_iu_post_recv(&con->c, iu);
-		if (unlikely(err)) {
-			ibtrs_err(sess, "ibtrs_iu_post_recv(), err: %d\n", err);
-			goto out;
-		}
-		err = ibtrs_send_usr_ack(con);
-		if (unlikely(err)) {
-			ibtrs_err(sess, "ibtrs_send_usr_ack(), err: %d\n",
-				  err);
-			goto out;
-		}
-		break;
-	default:
-		ibtrs_err(sess, "Received message of unknown type: 0x%02x\n",
-			  type);
-		goto out;
-	}
-
-out:
-	return err;
-}
-
-static int process_usr_ack(struct ibtrs_clt_con *con, struct ib_wc *wc)
-{
-	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
-	struct ibtrs_iu *iu;
-	int err;
-
-	iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
-	ibtrs_iu_usrtx_put(&sess->s);
-
-	err = ibtrs_iu_post_recv(&con->c, iu);
-	if (unlikely(err))
-		ibtrs_err(sess, "ibtrs_iu_post_recv(), err: %d\n", err);
-
-	return err;
-}
-
-static int process_hb(struct ibtrs_clt_con *con, struct ib_wc *wc)
-{
-	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
-	struct ibtrs_iu *iu;
-	int err;
-
-	iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
-	err = ibtrs_iu_post_recv(&con->c, iu);
-	if (unlikely(err))
-		ibtrs_err(sess, "ibtrs_iu_post_recv(), err: %d\n", err);
-
-	return err;
-}
-
-static void ibtrs_clt_usr_recv_done(struct ib_cq *cq, struct ib_wc *wc)
-{
-	struct ibtrs_clt_con *con = cq->cq_context;
-	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
-	u32 imm;
-	int err;
-
-	WARN_ON(con->c.cid);
-
-	if (unlikely(wc->status != IB_WC_SUCCESS)) {
-		if (wc->status != IB_WC_WR_FLUSH_ERR) {
-			ibtrs_err(sess,
-				  "User message or user ACK recv failed: %s\n",
-				  ib_wc_status_msg(wc->status));
-			goto err;
-		}
-		return;
-	}
-	ibtrs_clt_update_wc_stats(con);
-
-	switch (wc->opcode) {
-	case IB_WC_RECV:
-		err = process_usr(con, wc);
-		break;
-	case IB_WC_RECV_RDMA_WITH_IMM:
-		imm = be32_to_cpu(wc->ex.imm_data);
-		if (imm == IBTRS_ACK_IMM)
-			err = process_usr_ack(con, wc);
-		else if (imm == IBTRS_HB_IMM)
-			err = process_hb(con, wc);
-		else {
-			WARN_ONCE(1, "Unknown imm: %d", imm);
-			err = 0;
-		}
-		break;
-	default:
-		ibtrs_err(sess, "Unknown opcode: 0x%02x\n", wc->opcode);
-		goto err;
-	}
-	if (unlikely(err))
-		goto err;
-
-	return;
-
-err:
-	ibtrs_rdma_error_recovery(con);
 }
 
 static int post_recv_io(struct ibtrs_clt_con *con)
@@ -1485,37 +1246,14 @@ static int post_recv_io(struct ibtrs_clt_con *con)
 	return 0;
 }
 
-static int post_recv_usr(struct ibtrs_clt_con *con)
-{
-	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
-	struct ibtrs_iu *iu;
-	int err, i;
-
-	for (i = 0; i < USR_CON_BUF_SIZE; i++) {
-		iu = sess->s.usrrx_ring[i];
-		err = ibtrs_iu_post_recv(&con->c, iu);
-		if (unlikely(err))
-			return err;
-	}
-
-	return 0;
-}
-
-static int post_recv(struct ibtrs_clt_con *con)
-{
-	if (con->c.cid == 0)
-		return post_recv_usr(con);
-	return post_recv_io(con);
-}
-
 static int post_recv_sess(struct ibtrs_clt_sess *sess)
 {
 	int err, cid;
 
 	for (cid = 0; cid < sess->s.con_num; cid++) {
-		err = post_recv(to_clt_con(sess->s.con[cid]));
+		err = post_recv_io(to_clt_con(sess->s.con[cid]));
 		if (unlikely(err)) {
-			ibtrs_err(sess, "post_recv(), err: %d\n", err);
+			ibtrs_err(sess, "post_recv_io(), err: %d\n", err);
 			return err;
 		}
 	}
@@ -1798,27 +1536,6 @@ int ibtrs_clt_stats_reconnects_to_str(struct ibtrs_clt_stats *stats, char *buf,
 			 stats->reconnects.fail_cnt);
 }
 
-int ibtrs_clt_reset_user_ib_msgs_stats(struct ibtrs_clt_stats *stats, bool enable)
-{
-	if (enable) {
-		memset(&stats->user_ib_msgs, 0,
-		       sizeof(stats->user_ib_msgs));
-		return 0;
-	}
-
-	return -EINVAL;
-}
-
-int ibtrs_clt_stats_user_ib_msgs_to_str(struct ibtrs_clt_stats *stats, char *buf,
-					size_t len)
-{
-	return scnprintf(buf, len, "%u %llu %u %llu\n",
-			 stats->user_ib_msgs.recv_msg_cnt,
-			 stats->user_ib_msgs.recv_size,
-			 stats->user_ib_msgs.sent_msg_cnt,
-			 stats->user_ib_msgs.sent_size);
-}
-
 static u32 ibtrs_clt_stats_get_avg_wc_cnt(struct ibtrs_clt_stats *stats)
 {
 	int i;
@@ -2084,7 +1801,6 @@ int ibtrs_clt_reset_all_stats(struct ibtrs_clt_stats *s, bool enable)
 		ibtrs_clt_reset_rdma_lat_distr_stats(s, enable);
 		ibtrs_clt_reset_sg_list_distr_stats(s, enable);
 		ibtrs_clt_reset_cpu_migr_stats(s, enable);
-		ibtrs_clt_reset_user_ib_msgs_stats(s, enable);
 		ibtrs_clt_reset_reconnects_stat(s, enable);
 		ibtrs_clt_reset_wc_comp_stats(s, enable);
 
@@ -2325,8 +2041,6 @@ static struct ibtrs_clt_sess *alloc_sess(struct ibtrs_clt *clt,
 	sess->state = IBTRS_CLT_CONNECTING;
 	INIT_WORK(&sess->close_work, ibtrs_clt_close_work);
 	INIT_DELAYED_WORK(&sess->reconnect_dwork, ibtrs_clt_reconnect_work);
-	ibtrs_iu_usrtx_init_list(&sess->s);
-	ibtrs_iu_usrrx_init_list(&sess->s);
 
 	err = ibtrs_clt_init_stats(&sess->stats);
 	if (unlikely(err)) {
@@ -2395,9 +2109,8 @@ static int create_con_cq_qp(struct ibtrs_clt_con *con)
 	 */
 
 	if (con->c.cid == 0) {
-		cq_size	      = USR_CON_BUF_SIZE + 1;
-		wr_queue_size = USR_CON_BUF_SIZE + 1;
-
+		cq_size = SERVICE_CON_QUEUE_DEPTH;
+		wr_queue_size = SERVICE_CON_QUEUE_DEPTH;
 		/* We must be the first here */
 		if (WARN_ON(sess->s.ib_dev))
 			return -EINVAL;
@@ -2429,7 +2142,6 @@ static int create_con_cq_qp(struct ibtrs_clt_con *con)
 
 		/* Shared between connections */
 		sess->s.ib_dev_ref++;
-
 		cq_size = sess->queue_depth;
 		num_wr = DIV_ROUND_UP(sess->max_pages_per_mr, sess->max_sge);
 		wr_queue_size = sess->s.ib_dev->attrs.max_qp_wr - 1;
@@ -2558,41 +2270,6 @@ errr:
 	return err;
 }
 
-static int alloc_sess_all_bufs(struct ibtrs_clt_sess *sess)
-{
-	int err;
-
-	err = alloc_sess_io_bufs(sess);
-	if (unlikely(err))
-		return err;
-
-	err = ibtrs_iu_usrrx_alloc_list(&sess->s, sess->max_req_size,
-					ibtrs_clt_usr_recv_done);
-	if (unlikely(err))
-		goto free_io_bufs;
-
-	err = ibtrs_iu_usrtx_alloc_list(&sess->s, sess->max_req_size,
-					ibtrs_clt_usr_send_done);
-	if (unlikely(err))
-		goto free_rx_bufs;
-
-	return 0;
-
-free_rx_bufs:
-	ibtrs_iu_usrrx_free_list(&sess->s);
-free_io_bufs:
-	free_sess_io_bufs(sess);
-
-	return err;
-}
-
-static void free_sess_all_bufs(struct ibtrs_clt_sess *sess)
-{
-	ibtrs_iu_usrtx_free_list(&sess->s);
-	ibtrs_iu_usrrx_free_list(&sess->s);
-	free_sess_io_bufs(sess);
-}
-
 static void ibtrs_clt_hb_err_handler(struct ibtrs_con *c, int err)
 {
 	struct ibtrs_clt_con *con;
@@ -2606,7 +2283,7 @@ static void ibtrs_clt_start_hb(struct ibtrs_clt_sess *sess)
 {
 	struct ibtrs_clt_con *usr_con = to_clt_con(sess->s.con[0]);
 
-	ibtrs_start_hb(&usr_con->c, &hb_and_ack_cqe,
+	ibtrs_start_hb(&usr_con->c, &io_comp_cqe,
 		       IBTRS_HB_TIMEOUT_MS,
 		       ibtrs_clt_hb_err_handler);
 }
@@ -2654,7 +2331,7 @@ static void ibtrs_clt_stop_and_destroy_conns(struct ibtrs_clt_sess *sess)
 		stop_cm(con);
 	}
 	fail_all_outstanding_reqs(sess);
-	free_sess_all_bufs(sess);
+	free_sess_io_bufs(sess);
 	if (clt->established) {
 		clt->ops.link_ev(clt->ops.priv,
 				 IBTRS_CLT_LINK_EV_DISCONNECTED, 0);
@@ -2728,7 +2405,7 @@ static int init_conns(struct ibtrs_clt_sess *sess)
 		}
 	}
 	/* Allocate all session related buffers */
-	err = alloc_sess_all_bufs(sess);
+	err = alloc_sess_io_bufs(sess);
 	if (unlikely(err))
 		goto destroy;
 
@@ -3759,65 +3436,6 @@ int ibtrs_clt_request_rdma_write(struct ibtrs_clt *clt,
 	return err;
 }
 EXPORT_SYMBOL(ibtrs_clt_request_rdma_write);
-
-int ibtrs_clt_send(struct ibtrs_clt *clt, const struct kvec *vec, size_t nr)
-{
-	/* XXX Should be changed */
-	struct ibtrs_clt_sess *sess = clt->paths[0];
-	struct ibtrs_clt_con *usr_con = to_clt_con(sess->s.con[0]);
-	struct ibtrs_msg_user *msg;
-	struct ibtrs_iu *iu;
-	size_t len;
-	int err;
-
-	len = kvec_length(vec, nr);
-	if (unlikely(len > sess->max_req_size - sizeof(*msg))) {
-		ibtrs_err(sess, "Message size is too long: %zu\n", len);
-		return -EMSGSIZE;
-	}
-	iu = ibtrs_iu_usrtx_get(&sess->s);
-	if (unlikely(!iu)) {
-		/* We are in disconnecting state, just return */
-		ibtrs_err_rl(sess, "Sending user message failed, disconnecting");
-		return -ECOMM;
-	}
-	ibtrs_clt_state_lock();
-	if (unlikely(sess->state != IBTRS_CLT_CONNECTED)) {
-		ibtrs_clt_state_unlock();
-		ibtrs_err_rl(sess, "Sending user message failed, not connected."
-			     " Session state is %s\n",
-			     ibtrs_clt_state_str(sess->state));
-		err = -ECOMM;
-		goto err_post_send;
-	}
-
-	msg = iu->buf;
-	msg->type = cpu_to_le16(IBTRS_MSG_USER);
-	msg->psize = cpu_to_le16(len);
-	copy_from_kvec(msg->payl, vec, len);
-
-	len += sizeof(*msg);
-
-	err = ibtrs_iu_post_send(&usr_con->c, iu, len);
-	ibtrs_clt_state_unlock();
-	if (unlikely(err)) {
-		ibtrs_err_rl(sess, "Sending user message failed, posting work"
-			     " request failed, err: %d\n", err);
-		goto err_post_send;
-	}
-
-	sess->stats.user_ib_msgs.sent_msg_cnt++;
-	sess->stats.user_ib_msgs.sent_size += len;
-
-	return 0;
-
-err_post_send:
-	ibtrs_iu_usrtx_return(&sess->s, iu);
-	ibtrs_iu_usrtx_put(&sess->s);
-
-	return err;
-}
-EXPORT_SYMBOL(ibtrs_clt_send);
 
 int ibtrs_clt_query(struct ibtrs_clt *clt, struct ibtrs_attrs *attr)
 {

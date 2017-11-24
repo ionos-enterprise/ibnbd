@@ -115,16 +115,8 @@ struct ibtrs_srv_stats_rdma_stats {
 	atomic64_t	inflight_total;
 };
 
-struct ibtrs_srv_stats_user_ib_msgs {
-	atomic64_t recv_msg_cnt;
-	atomic64_t sent_msg_cnt;
-	atomic64_t recv_size;
-	atomic64_t sent_size;
-};
-
 struct ibtrs_srv_stats {
 	struct ibtrs_srv_stats_rdma_stats	rdma_stats;
-	struct ibtrs_srv_stats_user_ib_msgs	user_ib_msgs;
 	atomic_t				apm_cnt;
 	struct ibtrs_stats_wc_comp		wc_comp;
 };
@@ -200,9 +192,6 @@ const char *ibtrs_srv_get_sess_hca_name(struct ibtrs_srv_sess *sess);
 int ibtrs_srv_reset_rdma_stats(struct ibtrs_srv_stats *stats, bool enable);
 ssize_t ibtrs_srv_stats_rdma_to_str(struct ibtrs_srv_stats *stats,
 				    char *page, size_t len);
-int ibtrs_srv_reset_user_ib_msgs_stats(struct ibtrs_srv_stats *stats, bool enable);
-int ibtrs_srv_stats_user_ib_msgs_to_str(struct ibtrs_srv_stats *stats, char *buf,
-					size_t len);
 int ibtrs_srv_reset_wc_completion_stats(struct ibtrs_srv_stats *stats,
 					bool enable);
 int ibtrs_srv_stats_wc_completion_to_str(struct ibtrs_srv_stats *stats, char *buf,

@@ -869,12 +869,6 @@ reject:
 	return ret;
 }
 
-static void ibnbd_srv_recv(struct ibtrs_srv *ibtrs, void *priv,
-			   const void *msg, size_t len)
-{
-	return;
-}
-
 static struct ibtrs_srv_ctx *ibtrs_ctx;
 
 static int __init ibnbd_srv_init_module(void)
@@ -882,7 +876,6 @@ static int __init ibnbd_srv_init_module(void)
 	struct ibtrs_srv_ops ibtrs_ops;
 	int err;
 
-	ibtrs_ops.recv    = ibnbd_srv_recv;
 	ibtrs_ops.rdma_ev = ibnbd_srv_rdma_ev;
 	ibtrs_ops.link_ev = ibnbd_srv_link_ev;
 

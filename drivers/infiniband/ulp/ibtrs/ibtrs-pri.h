@@ -56,8 +56,7 @@
 			 __stringify(IBTRS_VER_MINOR)
 
 enum {
-	USRTX_CNT = 64,
-	USR_CON_BUF_SIZE = USRTX_CNT * 2, /* double bufs for ACK's */
+	SERVICE_CON_QUEUE_DEPTH = 512,
 
 	MIN_RTR_CNT = 1,
 	MAX_RTR_CNT = 7,
@@ -121,12 +120,6 @@ struct ibtrs_sess {
 	unsigned int		recon_cnt;
 	struct ibtrs_ib_dev	*ib_dev;
 	int			ib_dev_ref;
-	struct ibtrs_iu         **usrrx_ring;
-	bool			usrtx_freed;
-	spinlock_t		usrtx_lock;
-	struct completion	usrtx_comp;
-	atomic_t		usrtx_cnt;
-	struct list_head	usrtx_iu_list;
 	struct ibtrs_con	*hb_con;
 	struct ib_cqe		*hb_cqe;
 	ibtrs_hb_handler_t	*hb_err_handler;
@@ -313,20 +306,6 @@ struct ibtrs_iu *ibtrs_iu_alloc(u32 tag, size_t size, gfp_t t,
 				void (*done)(struct ib_cq *cq, struct ib_wc *wc));
 void ibtrs_iu_free(struct ibtrs_iu *iu, enum dma_data_direction dir,
 		   struct ib_device *dev);
-
-void ibtrs_iu_usrtx_init_list(struct ibtrs_sess *sess);
-int ibtrs_iu_usrtx_alloc_list(struct ibtrs_sess *sess, unsigned max_req_size,
-			      void (*done)(struct ib_cq *cq, struct ib_wc *wc));
-void ibtrs_iu_usrtx_free_list(struct ibtrs_sess *sess);
-struct ibtrs_iu *ibtrs_iu_usrtx_get(struct ibtrs_sess *sess);
-void ibtrs_iu_usrtx_return(struct ibtrs_sess *sess, struct ibtrs_iu *iu);
-void ibtrs_iu_usrtx_put(struct ibtrs_sess *sess);
-
-void ibtrs_iu_usrrx_init_list(struct ibtrs_sess *sess);
-int ibtrs_iu_usrrx_alloc_list(struct ibtrs_sess *sess, size_t max_req_size,
-			      void (*done)(struct ib_cq *cq, struct ib_wc *wc));
-void ibtrs_iu_usrrx_free_list(struct ibtrs_sess *sess);
-
 /* ibtrs.c */
 
 int ibtrs_iu_post_recv(struct ibtrs_con *con, struct ibtrs_iu *iu);

@@ -122,13 +122,6 @@ struct ibtrs_clt_stats_rdma_lat_entry {
 #define MAX_LOG_LATENCY	16
 #define MIN_LOG_LATENCY	0
 
-struct ibtrs_clt_stats_user_ib_msgs {
-	u32 recv_msg_cnt;
-	u32 sent_msg_cnt;
-	u64 recv_size;
-	u64 sent_size;
-};
-
 struct ibtrs_clt_stats {
 	struct ibtrs_clt_stats_cpu_migration	cpu_migr;
 	struct ibtrs_clt_stats_rdma_stats	*rdma_stats;
@@ -138,7 +131,6 @@ struct ibtrs_clt_stats {
 	struct ibtrs_clt_stats_reconnects	reconnects;
 	struct ibtrs_clt_stats_rdma_lat_entry	**rdma_lat_distr;
 	struct ibtrs_clt_stats_rdma_lat_entry	*rdma_lat_max;
-	struct ibtrs_clt_stats_user_ib_msgs	user_ib_msgs;
 	struct ibtrs_clt_stats_wc_comp		*wc_comp;
 };
 
@@ -253,9 +245,6 @@ int ibtrs_clt_stats_migration_cnt_to_str(struct ibtrs_clt_stats *stats, char *bu
 int ibtrs_clt_reset_reconnects_stat(struct ibtrs_clt_stats *stats, bool enable);
 int ibtrs_clt_stats_reconnects_to_str(struct ibtrs_clt_stats *stats, char *buf,
 				      size_t len);
-int ibtrs_clt_reset_user_ib_msgs_stats(struct ibtrs_clt_stats *stats, bool enable);
-int ibtrs_clt_stats_user_ib_msgs_to_str(struct ibtrs_clt_stats *stats, char *buf,
-					size_t len);
 int ibtrs_clt_reset_wc_comp_stats(struct ibtrs_clt_stats *stats, bool enable);
 int ibtrs_clt_stats_wc_completion_to_str(struct ibtrs_clt_stats *stats, char *buf,
 					 size_t len);
