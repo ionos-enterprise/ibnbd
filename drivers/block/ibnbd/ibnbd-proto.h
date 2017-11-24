@@ -238,7 +238,6 @@ struct ibnbd_msg_io {
 #pragma GCC diagnostic pop
 #endif
 
-int ibnbd_validate_message(const void *data, size_t len);
 const char *ibnbd_io_mode_str(enum ibnbd_io_mode mode);
 const char *ibnbd_access_mode_str(enum ibnbd_access_mode mode);
 
