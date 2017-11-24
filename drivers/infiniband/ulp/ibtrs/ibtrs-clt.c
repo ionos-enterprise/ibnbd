@@ -3609,7 +3609,7 @@ static int ibtrs_clt_request_rdma_write_sg(struct ibtrs_clt_con *con,
 	struct ibtrs_msg_req_rdma_write *msg;
 	struct ibtrs_ib_dev *ibdev;
 	struct scatterlist *sg;
-	int count, i, ret;
+	int count = 0, i, ret;
 	u32 imm, buf_id;
 
 	const size_t tsize = sizeof(*msg) + data_len + u_msg_len;
@@ -3622,10 +3622,14 @@ static int ibtrs_clt_request_rdma_write_sg(struct ibtrs_clt_con *con,
 			  sess->chunk_size);
 		return -EMSGSIZE;
 	}
-	count = ib_dma_map_sg(ibdev->dev, req->sglist, req->sg_cnt, req->dir);
-	if (unlikely(!count)) {
-		ibtrs_wrn(sess, "Request-RDMA-Write failed, dma map failed\n");
-		return -EINVAL;
+
+	if (req->sg_cnt) {
+		count = ib_dma_map_sg(ibdev->dev, req->sglist, req->sg_cnt,
+				      req->dir);
+		if (unlikely(!count)) {
+			ibtrs_wrn(sess, "Request-RDMA-Write failed, dma map failed\n");
+			return -EINVAL;
+		}
 	}
 
 	req->data_len = data_len;

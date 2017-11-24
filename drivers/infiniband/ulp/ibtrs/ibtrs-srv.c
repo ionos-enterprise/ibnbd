@@ -589,7 +589,7 @@ int ibtrs_srv_resp_rdma(struct ibtrs_srv_op *id, int status)
 			     ibtrs_srv_state_str(sess->state));
 		return -ECOMM;
 	}
-	if (status || id->dir == WRITE) {
+	if (status || id->dir == WRITE || !id->req->sg_cnt) {
 		err = send_io_resp_imm(con, id->msg_id, status);
 		if (unlikely(err)) {
 			ibtrs_err_rl(sess,
@@ -1296,18 +1296,22 @@ static void process_rdma_write_req(struct ibtrs_srv_con *con,
 	id = sess->ops_ids[buf_id];
 	kfree(id->tx_wr);
 	kfree(id->tx_sg);
+	id->tx_wr	= NULL;
+	id->tx_sg	= NULL;
 	id->con		= con;
 	id->dir		= READ;
 	id->msg_id	= buf_id;
 	id->req		= req;
-	id->tx_wr	= kcalloc(sg_cnt, sizeof(*id->tx_wr), GFP_KERNEL);
-	id->tx_sg	= kcalloc(sg_cnt, sizeof(*id->tx_sg), GFP_KERNEL);
-	if (!id->tx_wr || !id->tx_sg) {
-		ibtrs_err_rl(sess, "Processing RDMA-Write-Req failed, work request "
-			     "or scatter gather allocation failed for msg_id %d\n",
-			     buf_id);
-		ret = -ENOMEM;
-		goto send_err_msg;
+	if (sg_cnt) {
+		id->tx_wr	= kcalloc(sg_cnt, sizeof(*id->tx_wr), GFP_KERNEL);
+		id->tx_sg	= kcalloc(sg_cnt, sizeof(*id->tx_sg), GFP_KERNEL);
+		if (!id->tx_wr || !id->tx_sg) {
+			ibtrs_err_rl(sess, "Processing RDMA-Write-Req failed, work request "
+				     "or scatter gather allocation failed for msg_id %d\n",
+				     buf_id);
+			ret = -ENOMEM;
+			goto send_err_msg;
+		}
 	}
 	data_len = off - req->usr_len;
 	data = sess->rcv_buf_pool->rcv_bufs[buf_id].buf;
