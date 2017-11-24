@@ -1088,7 +1088,6 @@ static void ibtrs_srv_info_rsp_done(struct ib_cq *cq, struct ib_wc *wc)
 {
 	struct ibtrs_srv_con *con = cq->cq_context;
 	struct ibtrs_srv_sess *sess = to_srv_sess(con->c.sess);
-	struct ibtrs_srv_ctx *ctx = sess->ctx;
 	struct ibtrs_iu *iu;
 	int err;
 
@@ -1110,14 +1109,6 @@ static void ibtrs_srv_info_rsp_done(struct ib_cq *cq, struct ib_wc *wc)
 	ibtrs_srv_start_hb(sess);
 	ibtrs_srv_update_wc_stats(con);
 
-	/*
-	 * We do not account number of established connections at the current
-	 * moment, we rely on the client, which should send info request when
-	 * all connections are successfully established.  Thus, simply notify
-	 * listener with proper event when info response is successfully sent.
-	 */
-	ctx->ops.sess_ev(sess, IBTRS_SRV_SESS_EV_CONNECTED, sess->priv);
-
 	return;
 
 close_sess:
@@ -1130,6 +1121,7 @@ static int process_info_req(struct ibtrs_srv_con *con,
 			    struct ibtrs_msg_info_req *msg)
 {
 	struct ibtrs_srv_sess *sess = to_srv_sess(con->c.sess);
+	struct ibtrs_srv_ctx *ctx = sess->ctx;
 	struct ibtrs_msg_info_rsp *rsp;
 	struct ibtrs_iu *tx_iu;
 	size_t tx_sz;
@@ -1159,6 +1151,15 @@ static int process_info_req(struct ibtrs_srv_con *con,
 		addr = sess->rcv_buf_pool->rcv_bufs[i].rdma_addr;
 		rsp->addr[i] = cpu_to_le64(addr);
 	}
+
+	/*
+	 * We do not account number of established connections at the current
+	 * moment, we rely on the client, which should send info request when
+	 * all connections are successfully established.  Thus, simply notify
+	 * listener with a proper event.
+	 */
+	ctx->ops.sess_ev(sess, IBTRS_SRV_SESS_EV_CONNECTED, NULL);
+
 	/* Send info response */
 	err = ibtrs_iu_post_send(&con->c, tx_iu, tx_sz);
 	if (unlikely(err)) {
