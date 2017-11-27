@@ -422,12 +422,13 @@ static inline void ibnbd_requeue_all_if_idle(struct ibnbd_clt_session *sess)
 	} while (atomic_read(&sess->busy) == 0 && requeued);
 }
 
-static struct ibtrs_tag *ibnbd_get_tag(struct ibnbd_clt_session *sess, int cpu,
+static struct ibtrs_tag *ibnbd_get_tag(struct ibnbd_clt_session *sess,
+				       enum ibtrs_clt_con_type con_type,
 				       size_t tag_bytes, int wait)
 {
 	struct ibtrs_tag *tag;
 
-	tag = ibtrs_clt_get_tag(sess->ibtrs, cpu, tag_bytes,
+	tag = ibtrs_clt_get_tag(sess->ibtrs, con_type, tag_bytes,
 				wait ? IBTRS_TAG_WAIT : IBTRS_TAG_NOWAIT);
 	if (likely(tag))
 		/* We have a subtle rare case here, when all tags can be
@@ -452,12 +453,13 @@ static void ibnbd_put_tag(struct ibnbd_clt_session *sess, struct ibtrs_tag *tag)
 }
 
 static struct ibnbd_iu *ibnbd_get_iu(struct ibnbd_clt_session *sess,
-				     size_t tag_bytes, int wait)
+				     size_t tag_bytes, int wait,
+				     enum ibtrs_clt_con_type con_type)
 {
 	struct ibnbd_iu *iu;
 	struct ibtrs_tag *tag;
 
-	tag = ibnbd_get_tag(sess, -1, tag_bytes,
+	tag = ibnbd_get_tag(sess, con_type, tag_bytes,
 			    wait ? IBTRS_TAG_WAIT : IBTRS_TAG_NOWAIT);
 	if (unlikely(!tag))
 		return NULL;
@@ -557,7 +559,7 @@ static int send_msg_close(struct ibnbd_clt_dev *dev, u32 device_id)
 		.iov_len  = sizeof(msg)
 	};
 
-	iu = ibnbd_get_iu(sess, 0, IBTRS_TAG_WAIT);
+	iu = ibnbd_get_iu(sess, 0, IBTRS_TAG_WAIT, IBTRS_USR_CON);
 	if (unlikely(!iu)) {
 		return -ENOMEM;
 	}
@@ -633,7 +635,7 @@ static int send_msg_open(struct ibnbd_clt_dev *dev)
 	if (unlikely(!rsp))
 		return -ENOMEM;
 
-	iu = ibnbd_get_iu(sess, sizeof(*rsp), IBTRS_TAG_WAIT);
+	iu = ibnbd_get_iu(sess, sizeof(*rsp), IBTRS_TAG_WAIT, IBTRS_USR_CON);
 	if (unlikely(!iu)) {
 		kfree(rsp);
 		return -ENOMEM;
@@ -667,7 +669,7 @@ static int send_msg_sess_info(struct ibnbd_clt_session *sess)
 	if (unlikely(!rsp))
 		return -ENOMEM;
 
-	iu = ibnbd_get_iu(sess, sizeof(*rsp), IBTRS_TAG_WAIT);
+	iu = ibnbd_get_iu(sess, sizeof(*rsp), IBTRS_TAG_WAIT, IBTRS_USR_CON);
 	if (unlikely(!iu)) {
 		kfree(rsp);
 		return -ENOMEM;
@@ -1232,7 +1234,7 @@ static blk_status_t ibnbd_queue_rq(struct blk_mq_hw_ctx *hctx,
 	if (unlikely(!ibnbd_clt_dev_is_open(dev)))
 		return BLK_STS_IOERR;
 
-	iu->tag = ibnbd_get_tag(dev->sess, hctx->next_cpu, blk_rq_bytes(rq),
+	iu->tag = ibnbd_get_tag(dev->sess, IBTRS_IO_CON, blk_rq_bytes(rq),
 				IBTRS_TAG_NOWAIT);
 	if (unlikely(!iu->tag)) {
 		ibnbd_clt_dev_kick_mq_queue(dev, hctx, IBNBD_DELAY_IFBUSY);
@@ -1305,7 +1307,8 @@ static int ibnbd_rq_prep_fn(struct request_queue *q, struct request *rq)
 	struct ibnbd_clt_dev *dev = q->queuedata;
 	struct ibnbd_iu *iu;
 
-	iu = ibnbd_get_iu(dev->sess, blk_rq_bytes(rq), IBTRS_TAG_NOWAIT);
+	iu = ibnbd_get_iu(dev->sess, blk_rq_bytes(rq), IBTRS_TAG_NOWAIT,
+			  IBTRS_IO_CON);
 	if (likely(iu)) {
 		rq->special = iu;
 		rq->rq_flags |= RQF_DONTPREP;

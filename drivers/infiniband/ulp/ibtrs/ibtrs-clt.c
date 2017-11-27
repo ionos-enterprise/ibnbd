@@ -302,7 +302,7 @@ struct ibtrs_map_state {
 };
 
 static inline struct ibtrs_tag *__ibtrs_get_tag(struct ibtrs_clt *clt,
-						int cpu_id)
+					enum ibtrs_clt_con_type con_type)
 {
 	size_t max_depth = clt->queue_depth;
 	struct ibtrs_tag *tag;
@@ -321,7 +321,8 @@ static inline struct ibtrs_tag *__ibtrs_get_tag(struct ibtrs_clt *clt,
 
 	tag = GET_TAG(clt, bit);
 	WARN_ON(tag->mem_id != bit);
-	tag->cpu_id = (cpu_id != -1 ? cpu_id : cpu);
+	tag->cpu_id = cpu;
+	tag->con_type = con_type;
 
 	return tag;
 }
@@ -332,7 +333,8 @@ static inline void __ibtrs_put_tag(struct ibtrs_clt *clt,
 	clear_bit_unlock(tag->mem_id, clt->tags_map);
 }
 
-struct ibtrs_tag *ibtrs_clt_get_tag(struct ibtrs_clt *clt, int cpu_id,
+struct ibtrs_tag *ibtrs_clt_get_tag(struct ibtrs_clt *clt,
+				    enum ibtrs_clt_con_type con_type,
 				    size_t nr_bytes, int can_wait)
 {
 	struct ibtrs_tag *tag;
@@ -341,13 +343,13 @@ struct ibtrs_tag *ibtrs_clt_get_tag(struct ibtrs_clt *clt, int cpu_id,
 	/* Is not used for now */
 	(void)nr_bytes;
 
-	tag = __ibtrs_get_tag(clt, cpu_id);
+	tag = __ibtrs_get_tag(clt, con_type);
 	if (likely(tag) || !can_wait)
 		return tag;
 
 	do {
 		prepare_to_wait(&clt->tags_wait, &wait, TASK_UNINTERRUPTIBLE);
-		tag = __ibtrs_get_tag(clt, cpu_id);
+		tag = __ibtrs_get_tag(clt, con_type);
 		if (likely(tag))
 			break;
 
@@ -3195,7 +3197,10 @@ static void ibtrs_clt_update_rdma_stats(struct ibtrs_clt_stats *s,
 static inline int ibtrs_rdma_con_id(struct ibtrs_clt_sess *sess,
 				    struct ibtrs_tag *tag)
 {
-	return (tag->cpu_id % (sess->s.con_num - 1)) + 1;
+	if (tag->con_type == IBTRS_IO_CON)
+		return (tag->cpu_id % (sess->s.con_num - 1)) + 1;
+	else
+		return 0;
 }
 
 int ibtrs_clt_rdma_write(struct ibtrs_clt *clt,
