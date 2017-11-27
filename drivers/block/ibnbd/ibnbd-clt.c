@@ -498,8 +498,9 @@ static void ibnbd_softirq_done_fn(struct request *rq)
 	}
 }
 
-static void process_msg_io_conf(struct ibnbd_iu *iu, int errno)
+static void msg_io_conf(void *priv, int errno)
 {
+	struct ibnbd_iu *iu = (struct ibnbd_iu *)priv;
 	struct ibnbd_clt_dev *dev = iu->dev;
 	struct request *rq = iu->rq;
 
@@ -534,6 +535,18 @@ static void process_msg_io_conf(struct ibnbd_iu *iu, int errno)
 			      errno);
 }
 
+static void msg_close_conf(void *priv, int errno)
+{
+	struct ibnbd_iu *iu = (struct ibnbd_iu *)priv;
+	struct ibnbd_clt_dev *dev = iu->dev;
+
+	/* TODO just copy/paste: but why do we check state here? */
+	if (dev->close_compl && dev->dev_state == DEV_STATE_UNMAPPED)
+		complete(dev->close_compl);
+
+	ibnbd_put_iu(dev->sess, iu);
+}
+
 static int send_msg_close(struct ibnbd_clt_dev *dev, u32 device_id)
 {
 	struct ibnbd_clt_session *sess = dev->sess;
@@ -549,7 +562,6 @@ static int send_msg_close(struct ibnbd_clt_dev *dev, u32 device_id)
 		return -ENOMEM;
 	}
 
-	iu->msg_type = IBNBD_MSG_CLOSE;
 	iu->buf = NULL;
 	iu->dev = dev;
 
@@ -558,72 +570,52 @@ static int send_msg_close(struct ibnbd_clt_dev *dev, u32 device_id)
 	msg.hdr.type	= IBNBD_MSG_CLOSE;
 	msg.device_id	= device_id;
 
-	return ibtrs_clt_request(READ, sess->ibtrs, iu->tag, iu, &vec, 1, 0,
-				 iu->sglist, 0);
+	return ibtrs_clt_request(WRITE, msg_close_conf, sess->ibtrs, iu->tag,
+				 iu, &vec, 1, 0, iu->sglist, 0);
 }
 
-static void ibnbd_clt_rdma_ev(void *priv, enum ibtrs_clt_rdma_ev ev, int errno)
+static void msg_open_conf(void *priv, int errno)
 {
 	struct ibnbd_iu *iu = (struct ibnbd_iu *)priv;
+	struct ibnbd_msg_open_rsp *rsp =
+		(struct ibnbd_msg_open_rsp *)iu->buf;
+	struct ibnbd_clt_dev *dev = iu->dev;
 
-	switch (iu->msg_type) {
-	case IBNBD_MSG_IO:
-		process_msg_io_conf(iu, errno);
-		break;
-	case IBNBD_MSG_CLOSE: {
-		struct ibnbd_clt_dev *dev = iu->dev;
-
-		/* TODO just copy/paste: but why do we check state here? */
-		if (dev->close_compl && dev->dev_state == DEV_STATE_UNMAPPED)
-			complete(dev->close_compl);
-
-		ibnbd_put_iu(dev->sess, iu);
-		break;
-	}
-	case IBNBD_MSG_OPEN: {
-		struct ibnbd_msg_open_rsp *rsp =
-			(struct ibnbd_msg_open_rsp *)iu->buf;
-		struct ibnbd_clt_dev *dev = iu->dev;
-
-		if (errno) {
-			ibnbd_wrn(dev, "Sending open msg failed: %d\n", errno);
-			dev->open_errno = errno;
-			if (dev->open_compl)
-				complete(dev->open_compl);
-			kfree(rsp);
-			ibnbd_put_iu(dev->sess, iu);
-			break;
-		}
-
-		/*
-		 * TODO just copy/paste: but who completes open_compl if
-		 * process_msg_open_rsp fails?
-		 *
-		 * if server thinks its fine, but we fail to process then
-		 * be nice and send a close to server */
-		if (process_msg_open_rsp(dev, rsp) && !rsp->result)
-			send_msg_close(dev, rsp->device_id);
-
+	if (errno) {
+		ibnbd_wrn(dev, "Sending open msg failed: %d\n", errno);
+		dev->open_errno = errno;
+		if (dev->open_compl)
+			complete(dev->open_compl);
 		kfree(rsp);
 		ibnbd_put_iu(dev->sess, iu);
-		break;
+		return;
 	}
-	case IBNBD_MSG_SESS_INFO: {
-		struct ibnbd_msg_sess_info_rsp *rsp =
-			(struct ibnbd_msg_sess_info_rsp *)iu->buf;
-		struct ibnbd_clt_session *sess = iu->sess;
 
-		sess->ver = min_t(u8, rsp->ver, IBNBD_VER_MAJOR);
-		if (sess->sess_info_compl)
-			complete(sess->sess_info_compl);
-		kfree(rsp);
-		ibnbd_put_iu(sess, iu);
-		break;
-	}
-	default:
-		pr_err("Got conf for unknown msg_type: %d\n", iu->msg_type);
-		break;
-	}
+	/*
+	 * TODO just copy/paste: but who completes open_compl if
+	 * process_msg_open_rsp fails?
+	 *
+	 * if server thinks its fine, but we fail to process then
+	 * be nice and send a close to server */
+	if (process_msg_open_rsp(dev, rsp) && !rsp->result)
+		send_msg_close(dev, rsp->device_id);
+
+	kfree(rsp);
+	ibnbd_put_iu(dev->sess, iu);
+}
+
+static void msg_sess_info_conf(void *priv, int errno)
+{
+	struct ibnbd_iu *iu = (struct ibnbd_iu *)priv;
+	struct ibnbd_msg_sess_info_rsp *rsp =
+		(struct ibnbd_msg_sess_info_rsp *)iu->buf;
+	struct ibnbd_clt_session *sess = iu->sess;
+
+	sess->ver = min_t(u8, rsp->ver, IBNBD_VER_MAJOR);
+	if (sess->sess_info_compl)
+		complete(sess->sess_info_compl);
+	kfree(rsp);
+	ibnbd_put_iu(sess, iu);
 }
 
 static int send_msg_open(struct ibnbd_clt_dev *dev)
@@ -647,7 +639,6 @@ static int send_msg_open(struct ibnbd_clt_dev *dev)
 		return -ENOMEM;
 	}
 
-	iu->msg_type = IBNBD_MSG_OPEN;
 	iu->buf = rsp;
 	iu->dev = dev;
 
@@ -658,8 +649,8 @@ static int send_msg_open(struct ibnbd_clt_dev *dev)
 	msg.io_mode		= dev->io_mode;
 	strlcpy(msg.dev_name, dev->pathname, sizeof(msg.dev_name));
 
-	return ibtrs_clt_request(READ, sess->ibtrs, iu->tag, iu, &vec, 1,
-				 sizeof(*rsp), iu->sglist, 1);
+	return ibtrs_clt_request(READ, msg_open_conf, sess->ibtrs, iu->tag,
+				 iu, &vec, 1, sizeof(*rsp), iu->sglist, 1);
 }
 
 static int send_msg_sess_info(struct ibnbd_clt_session *sess)
@@ -682,7 +673,6 @@ static int send_msg_sess_info(struct ibnbd_clt_session *sess)
 		return -ENOMEM;
 	}
 
-	iu->msg_type = IBNBD_MSG_SESS_INFO;
 	iu->buf = rsp;
 	iu->sess = sess;
 
@@ -691,8 +681,8 @@ static int send_msg_sess_info(struct ibnbd_clt_session *sess)
 	msg.hdr.type = IBNBD_MSG_SESS_INFO;
 	msg.ver      = IBNBD_VER_MAJOR;
 
-	return ibtrs_clt_request(READ, sess->ibtrs, iu->tag, iu, &vec, 1,
-				 sizeof(*rsp), iu->sglist, 1);
+	return ibtrs_clt_request(READ, msg_sess_info_conf, sess->ibtrs, iu->tag,
+				 iu, &vec, 1, sizeof(*rsp), iu->sglist, 1);
 }
 
 int open_remote_device(struct ibnbd_clt_dev *dev)
@@ -979,7 +969,6 @@ ibnbd_create_session(const char *sessname,
 	sess->state = CLT_SESS_STATE_DISCONNECTED;
 
 	ops.priv    = sess;
-	ops.rdma_ev = ibnbd_clt_rdma_ev;
 	ops.link_ev = ibnbd_clt_link_ev;
 
 	sess->ibtrs = ibtrs_clt_open(&ops, sessname, paths, path_cnt, IBTRS_PORT,
@@ -1120,7 +1109,6 @@ static int ibnbd_client_xfer_request(struct ibnbd_clt_dev *dev,
 
 	iu->rq		= rq;
 	iu->dev		= dev;
-	iu->msg_type	= IBNBD_MSG_IO;
 	msg.sector	= blk_rq_pos(rq);
 	msg.bi_size	= blk_rq_bytes(rq);
 	msg.rw		= rq_to_ibnbd_flags(rq);
@@ -1139,8 +1127,8 @@ static int ibnbd_client_xfer_request(struct ibnbd_clt_dev *dev,
 		.iov_len  = sizeof(msg)
 	};
 
-	err = ibtrs_clt_request(rq_data_dir(rq), ibtrs, tag, iu, &vec, 1,
-				size, iu->sglist, sg_cnt);
+	err = ibtrs_clt_request(rq_data_dir(rq), msg_io_conf, ibtrs, tag,
+				iu, &vec, 1, size, iu->sglist, sg_cnt);
 	if (unlikely(err)) {
 		ibnbd_err_rl(dev, "IBTRS failed to transfer IO, err: %d\n",
 			     err);

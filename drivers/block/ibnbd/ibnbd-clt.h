@@ -85,7 +85,6 @@ struct ibnbd_iu {
 		/* use to send msg associated with a sess */
 		struct ibnbd_clt_session *sess;
 	};
-	enum ibnbd_msg_type	msg_type;
 	blk_status_t		status;
 	struct scatterlist	sglist[BMAX_SEGMENTS];
 };

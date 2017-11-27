@@ -160,6 +160,7 @@ struct ibtrs_clt_io_req {
 	struct ibtrs_tag	*tag;
 	u16			nmdesc;
 	enum dma_data_direction dir;
+	ibtrs_conf_fn		*conf;
 	unsigned long		start_time;
 };
 

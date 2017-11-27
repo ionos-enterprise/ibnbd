@@ -241,7 +241,7 @@ static inline bool ibtrs_clt_is_connected(const struct ibtrs_clt *clt)
 
 static inline bool clt_ops_are_valid(const struct ibtrs_clt_ops *ops)
 {
-	return ops && ops->rdma_ev && ops->link_ev;
+	return ops && ops->link_ev;
 }
 
 /**
@@ -1146,9 +1146,7 @@ static void complete_rdma_req(struct ibtrs_clt_io_req *req, int errno)
 	priv = req->priv;
 	dir = req->dir;
 
-	clt->ops.rdma_ev(priv, dir == DMA_FROM_DEVICE ?
-			 IBTRS_CLT_RDMA_EV_RDMA_REQUEST_WRITE_COMPL :
-			 IBTRS_CLT_RDMA_EV_RDMA_WRITE_COMPL, errno);
+	req->conf(priv, errno);
 }
 
 static void process_io_rsp(struct ibtrs_clt_sess *sess, u32 msg_id, s16 errno)
@@ -3208,7 +3206,8 @@ static inline int ibtrs_rdma_con_id(struct ibtrs_clt_sess *sess,
 	return (tag->cpu_id % (sess->s.con_num - 1)) + 1;
 }
 
-int ibtrs_clt_rdma_write(struct ibtrs_clt *clt, struct ibtrs_tag *tag,
+int ibtrs_clt_rdma_write(struct ibtrs_clt *clt,
+			 ibtrs_conf_fn *conf, struct ibtrs_tag *tag,
 			 void *priv, const struct kvec *vec, size_t nr,
 			 size_t data_len, struct scatterlist *sg,
 			 unsigned int sg_len)
@@ -3254,6 +3253,7 @@ int ibtrs_clt_rdma_write(struct ibtrs_clt *clt, struct ibtrs_tag *tag,
 	req->sg_cnt	= sg_len;
 	req->priv	= priv;
 	req->dir        = DMA_TO_DEVICE;
+	req->conf	= conf;
 
 	err = ibtrs_clt_rdma_write_sg(con, req, vec, u_msg_len, data_len);
 	if (unlikely(err))
@@ -3364,6 +3364,7 @@ static int ibtrs_clt_request_rdma_write_sg(struct ibtrs_clt_con *con,
 }
 
 int ibtrs_clt_request_rdma_write(struct ibtrs_clt *clt,
+				 ibtrs_conf_fn *conf,
 				 struct ibtrs_tag *tag, void *priv,
 				 const struct kvec *vec, size_t nr,
 				 size_t data_len,
@@ -3413,6 +3414,7 @@ int ibtrs_clt_request_rdma_write(struct ibtrs_clt *clt,
 	req->sg_cnt	= recv_sg_len;
 	req->priv	= priv;
 	req->dir        = DMA_FROM_DEVICE;
+	req->conf	= conf;
 
 	err = ibtrs_clt_request_rdma_write_sg(con, req, vec,
 					      u_msg_len, data_len);
@@ -3435,16 +3437,17 @@ int ibtrs_clt_request_rdma_write(struct ibtrs_clt *clt,
 	return err;
 }
 
-int ibtrs_clt_request(int dir, struct ibtrs_clt *clt, struct ibtrs_tag *tag,
-		      void *priv, const struct kvec *vec, size_t nr,
-		      size_t len, struct scatterlist *sg, unsigned int sg_len)
+int ibtrs_clt_request(int dir, ibtrs_conf_fn *conf, struct ibtrs_clt *clt,
+		      struct ibtrs_tag *tag, void *priv, const struct kvec *vec,
+		      size_t nr, size_t len, struct scatterlist *sg,
+		      unsigned int sg_len)
 {
 	if (dir == READ)
-		return ibtrs_clt_request_rdma_write(clt, tag, priv, vec, nr,
-						    len, sg, sg_len);
+		return ibtrs_clt_request_rdma_write(clt, conf, tag, priv, vec,
+						    nr, len, sg, sg_len);
 	else
-		return ibtrs_clt_rdma_write(clt, tag, priv, vec, nr, len, sg,
-					    sg_len);
+		return ibtrs_clt_rdma_write(clt, conf, tag, priv, vec, nr, len,
+					    sg, sg_len);
 }
 EXPORT_SYMBOL(ibtrs_clt_request);
 
