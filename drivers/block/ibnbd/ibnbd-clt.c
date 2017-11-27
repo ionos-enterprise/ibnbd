@@ -809,7 +809,7 @@ static int ibnbd_schedule_reopen(struct ibnbd_clt_session *sess)
 	return 0;
 }
 
-static void ibnbd_clt_link_ev(void *priv, enum ibtrs_clt_link_ev ev, int errno)
+static void ibnbd_clt_link_ev(void *priv, enum ibtrs_clt_link_ev ev)
 {
 	struct ibnbd_clt_session *sess = priv;
 	struct ibtrs_attrs attrs;

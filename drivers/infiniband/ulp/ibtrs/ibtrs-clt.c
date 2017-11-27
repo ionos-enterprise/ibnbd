@@ -2332,7 +2332,7 @@ static void ibtrs_clt_stop_and_destroy_conns(struct ibtrs_clt_sess *sess)
 	free_sess_io_bufs(sess);
 	if (clt->established) {
 		clt->ops.link_ev(clt->ops.priv,
-				 IBTRS_CLT_LINK_EV_DISCONNECTED, 0);
+				 IBTRS_CLT_LINK_EV_DISCONNECTED);
 		clt->established = false;
 	}
 	for (cid = 0; cid < sess->s.con_num; cid++) {
@@ -2905,7 +2905,7 @@ static void ibtrs_clt_reconnect_work(struct work_struct *work)
 
 	sess->reconnect_attempts = 0;
 	sess->stats.reconnects.successful_cnt++;
-	clt->ops.link_ev(clt->ops.priv, IBTRS_CLT_LINK_EV_RECONNECTED, 0);
+	clt->ops.link_ev(clt->ops.priv, IBTRS_CLT_LINK_EV_RECONNECTED);
 
 	return;
 
