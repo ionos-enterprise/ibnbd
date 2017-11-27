@@ -3274,7 +3274,6 @@ int ibtrs_clt_rdma_write(struct ibtrs_clt *clt, struct ibtrs_tag *tag,
 
 	return err;
 }
-EXPORT_SYMBOL(ibtrs_clt_rdma_write);
 
 static int ibtrs_clt_request_rdma_write_sg(struct ibtrs_clt_con *con,
 					   struct ibtrs_clt_io_req *req,
@@ -3435,7 +3434,19 @@ int ibtrs_clt_request_rdma_write(struct ibtrs_clt *clt,
 
 	return err;
 }
-EXPORT_SYMBOL(ibtrs_clt_request_rdma_write);
+
+int ibtrs_clt_request(int dir, struct ibtrs_clt *clt, struct ibtrs_tag *tag,
+		      void *priv, const struct kvec *vec, size_t nr,
+		      size_t len, struct scatterlist *sg, unsigned int sg_len)
+{
+	if (dir == READ)
+		return ibtrs_clt_request_rdma_write(clt, tag, priv, vec, nr,
+						    len, sg, sg_len);
+	else
+		return ibtrs_clt_rdma_write(clt, tag, priv, vec, nr, len, sg,
+					    sg_len);
+}
+EXPORT_SYMBOL(ibtrs_clt_request);
 
 int ibtrs_clt_query(struct ibtrs_clt *clt, struct ibtrs_attrs *attr)
 {

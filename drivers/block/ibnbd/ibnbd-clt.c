@@ -558,8 +558,8 @@ static int send_msg_close(struct ibnbd_clt_dev *dev, u32 device_id)
 	msg.hdr.type	= IBNBD_MSG_CLOSE;
 	msg.device_id	= device_id;
 
-	return ibtrs_clt_request_rdma_write(sess->ibtrs, iu->tag, iu, &vec, 1,
-					    0, iu->sglist, 0);
+	return ibtrs_clt_request(READ, sess->ibtrs, iu->tag, iu, &vec, 1, 0,
+				 iu->sglist, 0);
 }
 
 static void ibnbd_clt_rdma_ev(void *priv, enum ibtrs_clt_rdma_ev ev, int errno)
@@ -658,8 +658,8 @@ static int send_msg_open(struct ibnbd_clt_dev *dev)
 	msg.io_mode		= dev->io_mode;
 	strlcpy(msg.dev_name, dev->pathname, sizeof(msg.dev_name));
 
-	return ibtrs_clt_request_rdma_write(sess->ibtrs, iu->tag, iu, &vec, 1,
-					    sizeof(*rsp), iu->sglist, 1);
+	return ibtrs_clt_request(READ, sess->ibtrs, iu->tag, iu, &vec, 1,
+				 sizeof(*rsp), iu->sglist, 1);
 }
 
 static int send_msg_sess_info(struct ibnbd_clt_session *sess)
@@ -691,8 +691,8 @@ static int send_msg_sess_info(struct ibnbd_clt_session *sess)
 	msg.hdr.type = IBNBD_MSG_SESS_INFO;
 	msg.ver      = IBNBD_VER_MAJOR;
 
-	return ibtrs_clt_request_rdma_write(sess->ibtrs, iu->tag, iu, &vec, 1,
-					    sizeof(*rsp), iu->sglist, 1);
+	return ibtrs_clt_request(READ, sess->ibtrs, iu->tag, iu, &vec, 1,
+				 sizeof(*rsp), iu->sglist, 1);
 }
 
 int open_remote_device(struct ibnbd_clt_dev *dev)
@@ -1139,12 +1139,8 @@ static int ibnbd_client_xfer_request(struct ibnbd_clt_dev *dev,
 		.iov_len  = sizeof(msg)
 	};
 
-	if (rq_data_dir(rq) == READ)
-		err = ibtrs_clt_request_rdma_write(ibtrs, tag, iu, &vec, 1,
-						   size, iu->sglist, sg_cnt);
-	else
-		err = ibtrs_clt_rdma_write(ibtrs, tag, iu, &vec, 1, size,
-					   iu->sglist, sg_cnt);
+	err = ibtrs_clt_request(rq_data_dir(rq), ibtrs, tag, iu, &vec, 1,
+				size, iu->sglist, sg_cnt);
 	if (unlikely(err)) {
 		ibnbd_err_rl(dev, "IBTRS failed to transfer IO, err: %d\n",
 			     err);
