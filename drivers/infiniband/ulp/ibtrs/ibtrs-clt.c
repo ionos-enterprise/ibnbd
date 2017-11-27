@@ -3175,6 +3175,9 @@ out:
 		ibtrs_iu_free(tx_iu, DMA_TO_DEVICE, sess->s.ib_dev->dev);
 	if (rx_iu)
 		ibtrs_iu_free(rx_iu, DMA_FROM_DEVICE, sess->s.ib_dev->dev);
+	if (unlikely(err))
+		/* If we've never taken async path because of malloc problems */
+		ibtrs_clt_change_state(sess, IBTRS_CLT_CONNECTING_ERR);
 
 	return err;
 }
