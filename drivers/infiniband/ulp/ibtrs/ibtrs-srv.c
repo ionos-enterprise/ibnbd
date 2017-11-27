@@ -1172,7 +1172,7 @@ static void process_rdma_write_req(struct ibtrs_srv_con *con,
 	data = sess->rcv_buf_pool->rcv_bufs[buf_id].buf;
 	id->data_dma_addr = sess->rcv_buf_pool->rcv_bufs[buf_id].rdma_addr;
 	ret = ctx->ops.rdma_ev(srv, srv->priv, id,
-			       IBTRS_SRV_RDMA_EV_WRITE_REQ,
+			       READ,
 			       data, data_len,
 			       data + data_len, req->usr_len);
 
@@ -1222,7 +1222,7 @@ static void process_rdma_write(struct ibtrs_srv_con *con,
 	data_len = off - req->usr_len;
 	data = sess->rcv_buf_pool->rcv_bufs[buf_id].buf;
 
-	ret = ctx->ops.rdma_ev(srv, srv->priv, id, IBTRS_SRV_RDMA_EV_RECV,
+	ret = ctx->ops.rdma_ev(srv, srv->priv, id, WRITE,
 			       data, data_len, data + data_len, req->usr_len);
 	if (unlikely(ret)) {
 		ibtrs_err_rl(sess, "Processing RDMA-Write failed, user module"

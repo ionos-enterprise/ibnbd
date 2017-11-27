@@ -412,7 +412,7 @@ static int process_msg_sess_info(struct ibtrs_srv *ibtrs,
 				 void *data, size_t datalen);
 
 static int ibnbd_srv_rdma_ev(struct ibtrs_srv *ibtrs, void *priv,
-			     struct ibtrs_srv_op *id, enum ibtrs_srv_rdma_ev ev,
+			     struct ibtrs_srv_op *id, int dir,
 			     void *data, size_t datalen, const void *usr,
 			     size_t usrlen)
 {
@@ -440,8 +440,8 @@ static int ibnbd_srv_rdma_ev(struct ibtrs_srv *ibtrs, void *priv,
 					    data, datalen);
 		break;
 	default:
-		pr_warn("Received unexpected message type %d with event %d from"
-			"session %s\n", hdr->type, ev, srv_sess->sessname);
+		pr_warn("Received unexpected message type %d with dir %d from"
+			"session %s\n", hdr->type, dir, srv_sess->sessname);
 		return -EINVAL;
 	}
 
