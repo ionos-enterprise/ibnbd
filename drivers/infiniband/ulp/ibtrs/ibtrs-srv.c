@@ -423,11 +423,6 @@ int ibtrs_srv_reset_all_stats(struct ibtrs_srv_stats *stats, bool enable)
 	return -EINVAL;
 }
 
-static inline bool srv_ops_are_valid(const struct ibtrs_srv_ops *ops)
-{
-	return ops && ops->link_ev && ops->rdma_ev;
-}
-
 static void free_id(struct ibtrs_srv_op *id)
 {
 	if (!id)
@@ -1021,7 +1016,7 @@ static int process_info_req(struct ibtrs_srv_con *con,
 	 * all connections are successfully established.  Thus, simply notify
 	 * listener with a proper event.
 	 */
-	ctx->ops.link_ev(srv, IBTRS_SRV_LINK_EV_CONNECTED, NULL);
+	ctx->link_ev(srv, IBTRS_SRV_LINK_EV_CONNECTED, NULL);
 
 	/* Send info response */
 	err = ibtrs_iu_post_send(&con->c, tx_iu, tx_sz);
@@ -1171,9 +1166,7 @@ static void process_rdma_write_req(struct ibtrs_srv_con *con,
 	data_len = off - req->usr_len;
 	data = sess->rcv_buf_pool->rcv_bufs[buf_id].buf;
 	id->data_dma_addr = sess->rcv_buf_pool->rcv_bufs[buf_id].rdma_addr;
-	ret = ctx->ops.rdma_ev(srv, srv->priv, id,
-			       READ,
-			       data, data_len,
+	ret = ctx->rdma_ev(srv, srv->priv, id, READ, data, data_len,
 			       data + data_len, req->usr_len);
 
 	if (unlikely(ret)) {
@@ -1222,8 +1215,8 @@ static void process_rdma_write(struct ibtrs_srv_con *con,
 	data_len = off - req->usr_len;
 	data = sess->rcv_buf_pool->rcv_bufs[buf_id].buf;
 
-	ret = ctx->ops.rdma_ev(srv, srv->priv, id, WRITE,
-			       data, data_len, data + data_len, req->usr_len);
+	ret = ctx->rdma_ev(srv, srv->priv, id, WRITE, data, data_len,
+			   data + data_len, req->usr_len);
 	if (unlikely(ret)) {
 		ibtrs_err_rl(sess, "Processing RDMA-Write failed, user module"
 			     " callback reports err: %d\n", ret);
@@ -1500,8 +1493,7 @@ static void ibtrs_srv_close_work(struct work_struct *work)
 		ib_drain_qp(con->c.qp);
 	}
 	if (sess->was_connected)
-		ctx->ops.link_ev(srv, IBTRS_SRV_LINK_EV_DISCONNECTED,
-				 srv->priv);
+		ctx->link_ev(srv, IBTRS_SRV_LINK_EV_DISCONNECTED, srv->priv);
 
 	release_cont_bufs(sess);
 	free_sess_tx_bufs(sess);
@@ -1972,7 +1964,8 @@ free_cm_ip:
 	return ret;
 }
 
-static struct ibtrs_srv_ctx *alloc_srv_ctx(const struct ibtrs_srv_ops *ops)
+static struct ibtrs_srv_ctx *alloc_srv_ctx(rdma_ev_fn *rdma_ev,
+					   link_ev_fn *link_ev)
 {
 	struct ibtrs_srv_ctx *ctx;
 
@@ -1980,7 +1973,8 @@ static struct ibtrs_srv_ctx *alloc_srv_ctx(const struct ibtrs_srv_ops *ops)
 	if (!ctx)
 		return NULL;
 
-	ctx->ops = *ops;
+	ctx->rdma_ev = rdma_ev;
+	ctx->link_ev = link_ev;
 	mutex_init(&ctx->srv_mutex);
 	INIT_LIST_HEAD(&ctx->srv_list);
 
@@ -1993,18 +1987,13 @@ static void free_srv_ctx(struct ibtrs_srv_ctx *ctx)
 	kfree(ctx);
 }
 
-struct ibtrs_srv_ctx *ibtrs_srv_open(const struct ibtrs_srv_ops *ops,
+struct ibtrs_srv_ctx *ibtrs_srv_open(rdma_ev_fn *rdma_ev, link_ev_fn *link_ev,
 				     unsigned int port)
 {
 	struct ibtrs_srv_ctx *ctx;
 	int err;
 
-	if (unlikely(!srv_ops_are_valid(ops))) {
-		pr_err("Registration failed, user module supploed invalid ops"
-		       " parameter\n");
-		return ERR_PTR(-EINVAL);
-	}
-	ctx = alloc_srv_ctx(ops);
+	ctx = alloc_srv_ctx(rdma_ev, link_ev);
 	if (unlikely(!ctx))
 		return ERR_PTR(-ENOMEM);
 

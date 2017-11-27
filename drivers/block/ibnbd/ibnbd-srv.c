@@ -873,16 +873,13 @@ static struct ibtrs_srv_ctx *ibtrs_ctx;
 
 static int __init ibnbd_srv_init_module(void)
 {
-	struct ibtrs_srv_ops ibtrs_ops;
 	int err;
-
-	ibtrs_ops.rdma_ev = ibnbd_srv_rdma_ev;
-	ibtrs_ops.link_ev = ibnbd_srv_link_ev;
 
 	pr_info("Loading module %s, version %s\n",
 		KBUILD_MODNAME, IBNBD_VER_STRING);
 
-	ibtrs_ctx = ibtrs_srv_open(&ibtrs_ops, IBTRS_PORT);
+	ibtrs_ctx = ibtrs_srv_open(ibnbd_srv_rdma_ev, ibnbd_srv_link_ev,
+				   IBTRS_PORT);
 	if (unlikely(IS_ERR(ibtrs_ctx))) {
 		err = PTR_ERR(ibtrs_ctx);
 		pr_err("ibtrs_srv_open(), err: %d\n", err);

@@ -173,7 +173,8 @@ struct ibtrs_srv {
 };
 
 struct ibtrs_srv_ctx {
-	struct ibtrs_srv_ops ops;
+	rdma_ev_fn *rdma_ev;
+	link_ev_fn *link_ev;
 	struct rdma_cm_id *cm_id_ip;
 	struct rdma_cm_id *cm_id_ib;
 	struct mutex srv_mutex;
