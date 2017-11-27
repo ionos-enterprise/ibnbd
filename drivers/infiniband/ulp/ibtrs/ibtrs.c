@@ -403,13 +403,13 @@ void ibtrs_stop_hb(struct ibtrs_sess *sess)
 }
 EXPORT_SYMBOL_GPL(ibtrs_stop_hb);
 
-static int ibtrs_str_ipv4_to_sockaddr(const char *addr, short port,
-				      struct sockaddr *dst)
+static int ibtrs_str_ipv4_to_sockaddr(const char *addr, size_t len,
+				      short port, struct sockaddr *dst)
 {
 	struct sockaddr_in *dst_sin = (struct sockaddr_in *)dst;
 	int ret;
 
-	ret = in4_pton(addr, strlen(addr), (u8 *)&dst_sin->sin_addr.s_addr,
+	ret = in4_pton(addr, len, (u8 *)&dst_sin->sin_addr.s_addr,
 		       '\0', NULL);
 	if (ret == 0)
 		return -EINVAL;
@@ -420,14 +420,13 @@ static int ibtrs_str_ipv4_to_sockaddr(const char *addr, short port,
 	return 0;
 }
 
-static int ibtrs_str_ipv6_to_sockaddr(const char *addr, short port,
-				      struct sockaddr *dst)
+static int ibtrs_str_ipv6_to_sockaddr(const char *addr, size_t len,
+				      short port, struct sockaddr *dst)
 {
 	struct sockaddr_in6 *dst_sin6 = (struct sockaddr_in6 *)dst;
 	int ret;
 
-	ret = in6_pton(addr, strlen(addr),
-		       dst_sin6->sin6_addr.s6_addr,
+	ret = in6_pton(addr, len, dst_sin6->sin6_addr.s6_addr,
 		       '\0', NULL);
 	if (ret != 1)
 		return -EINVAL;
@@ -438,8 +437,8 @@ static int ibtrs_str_ipv6_to_sockaddr(const char *addr, short port,
 	return 0;
 }
 
-static int ibtrs_str_gid_to_sockaddr(const char *addr, short port,
-				     struct sockaddr *dst)
+static int ibtrs_str_gid_to_sockaddr(const char *addr, size_t len,
+				     short port, struct sockaddr *dst)
 {
 	struct sockaddr_ib *dst_ib = (struct sockaddr_ib *)dst;
 	int ret;
@@ -447,8 +446,7 @@ static int ibtrs_str_gid_to_sockaddr(const char *addr, short port,
 	/* We can use some of the I6 functions since GID is a valid
 	 * IPv6 address format
 	 */
-	ret = in6_pton(addr, strlen(addr),
-		       dst_ib->sib_addr.sib_raw, '\0', NULL);
+	ret = in6_pton(addr, len, dst_ib->sib_addr.sib_raw, '\0', NULL);
 	if (ret == 0)
 		return -EINVAL;
 
@@ -470,18 +468,21 @@ static int ibtrs_str_gid_to_sockaddr(const char *addr, short port,
  *              - "ip:192.168.1.1"
  *              - "ip:fe80::200:5aee:feaa:20a2"
  *              - "gid:fe80::200:5aee:feaa:20a2"
+ * @len         String address length
  * @port	Destination port
  * @dst		Destination sockaddr structure
  *
  * Returns 0 if conversion successfull. Non-zero on error.
  */
-static int ibtrs_str_to_sockaddr(const char *addr, short port, struct sockaddr *dst)
+static int ibtrs_str_to_sockaddr(const char *addr, size_t len,
+				 short port, struct sockaddr *dst)
 {
 	if (strncmp(addr, "gid:", 4) == 0) {
-		return ibtrs_str_gid_to_sockaddr(addr + 4, port, dst);
+		return ibtrs_str_gid_to_sockaddr(addr + 4, len - 4, port, dst);
 	} else if (strncmp(addr, "ip:", 3) == 0) {
-		if (ibtrs_str_ipv4_to_sockaddr(addr + 3, port, dst))
-			return ibtrs_str_ipv6_to_sockaddr(addr + 3, port, dst);
+		if (ibtrs_str_ipv4_to_sockaddr(addr + 3, len - 3, port, dst))
+			return ibtrs_str_ipv6_to_sockaddr(addr + 3, len - 3,
+							  port, dst);
 		else
 			return 0;
 	}
@@ -491,31 +492,20 @@ static int ibtrs_str_to_sockaddr(const char *addr, short port, struct sockaddr *
 int ibtrs_addr_to_sockaddr(const char *str, short port,
 			   struct sockaddr **src, struct sockaddr **dst)
 {
+	const char *d;
 	int ret;
-	char *d, *buf;
 
-	buf = kstrdup(str, GFP_KERNEL);
-	if (unlikely(!buf))
-		return -ENOMEM;
-
-	d = strchr(buf, ',');
+	d = strchr(str, ',');
 	if (d) {
-		*d = 0;
-
-		if (ibtrs_str_to_sockaddr(buf, port, *src)) {
-			kfree(buf);
+		if (ibtrs_str_to_sockaddr(str, d - str, port, *src))
 			return -EINVAL;
-		}
-
 		d++;
 	} else {
 		*src = NULL;
-		d = buf;
+		d = str;
 	}
+	ret = ibtrs_str_to_sockaddr(d, strlen(d), port, *dst);
 
-	ret = ibtrs_str_to_sockaddr(d, port, *dst);
-
-	kfree(buf);
 	return ret;
 }
 EXPORT_SYMBOL_GPL(ibtrs_addr_to_sockaddr);
