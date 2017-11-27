@@ -490,21 +490,21 @@ static int ibtrs_str_to_sockaddr(const char *addr, size_t len,
 }
 
 int ibtrs_addr_to_sockaddr(const char *str, short port,
-			   struct sockaddr **src, struct sockaddr **dst)
+			   struct ibtrs_addr *addr)
 {
 	const char *d;
 	int ret;
 
 	d = strchr(str, ',');
 	if (d) {
-		if (ibtrs_str_to_sockaddr(str, d - str, port, *src))
+		if (ibtrs_str_to_sockaddr(str, d - str, port, addr->src))
 			return -EINVAL;
 		d++;
 	} else {
-		*src = NULL;
+		addr->src = NULL;
 		d = str;
 	}
-	ret = ibtrs_str_to_sockaddr(d, strlen(d), port, *dst);
+	ret = ibtrs_str_to_sockaddr(d, strlen(d), port, addr->dst);
 
 	return ret;
 }
