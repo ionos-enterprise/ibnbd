@@ -210,7 +210,8 @@ struct ibtrs_clt {
 	size_t			max_io_size;
 	wait_queue_head_t	tags_wait;
 	size_t			pdu_sz;
-	struct ibtrs_clt_ops	ops;
+	void			*priv;
+	link_clt_ev_fn		*link_ev;
 	struct kobject		kobj;
 	struct kobject		kobj_paths;
 };

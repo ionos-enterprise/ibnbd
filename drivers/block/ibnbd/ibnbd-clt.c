@@ -909,7 +909,6 @@ ibnbd_create_session(const char *sessname,
 		     const struct ibtrs_addr *paths, size_t path_cnt)
 {
 	struct ibnbd_clt_session *sess;
-	struct ibtrs_clt_ops ops;
 	struct ibtrs_attrs attrs;
 	int err;
 	int cpu;
@@ -968,10 +967,8 @@ ibnbd_create_session(const char *sessname,
 	kref_init(&sess->refcount);
 	sess->state = CLT_SESS_STATE_DISCONNECTED;
 
-	ops.priv    = sess;
-	ops.link_ev = ibnbd_clt_link_ev;
-
-	sess->ibtrs = ibtrs_clt_open(&ops, sessname, paths, path_cnt, IBTRS_PORT,
+	sess->ibtrs = ibtrs_clt_open(sess, ibnbd_clt_link_ev, sessname, paths,
+				     path_cnt, IBTRS_PORT,
 				     sizeof(struct ibnbd_iu),
 				     RECONNECT_DELAY, BMAX_SEGMENTS,
 				     MAX_RECONNECTS);

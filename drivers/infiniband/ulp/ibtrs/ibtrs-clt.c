@@ -239,11 +239,6 @@ static inline bool ibtrs_clt_is_connected(const struct ibtrs_clt *clt)
 	return connected;
 }
 
-static inline bool clt_ops_are_valid(const struct ibtrs_clt_ops *ops)
-{
-	return ops && ops->link_ev;
-}
-
 /**
  * struct ibtrs_fr_desc - fast registration work request arguments
  * @entry: Entry in ibtrs_fr_pool.free_list.
@@ -2331,8 +2326,7 @@ static void ibtrs_clt_stop_and_destroy_conns(struct ibtrs_clt_sess *sess)
 	fail_all_outstanding_reqs(sess);
 	free_sess_io_bufs(sess);
 	if (clt->established) {
-		clt->ops.link_ev(clt->ops.priv,
-				 IBTRS_CLT_LINK_EV_DISCONNECTED);
+		clt->link_ev(clt->priv, IBTRS_CLT_LINK_EV_DISCONNECTED);
 		clt->established = false;
 	}
 	for (cid = 0; cid < sess->s.con_num; cid++) {
@@ -2905,7 +2899,7 @@ static void ibtrs_clt_reconnect_work(struct work_struct *work)
 
 	sess->reconnect_attempts = 0;
 	sess->stats.reconnects.successful_cnt++;
-	clt->ops.link_ev(clt->ops.priv, IBTRS_CLT_LINK_EV_RECONNECTED);
+	clt->link_ev(clt->priv, IBTRS_CLT_LINK_EV_RECONNECTED);
 
 	return;
 
@@ -2920,7 +2914,7 @@ reconnect_again:
 
 static struct ibtrs_clt *alloc_clt(const char *sessname, size_t paths_num,
 				   short port, size_t pdu_sz,
-				   const struct ibtrs_clt_ops *ops,
+				   void *priv, link_clt_ev_fn *link_ev,
 				   unsigned reconnect_delay_sec,
 				   unsigned max_reconnect_attempts)
 {
@@ -2928,9 +2922,6 @@ static struct ibtrs_clt *alloc_clt(const char *sessname, size_t paths_num,
 	int err;
 
 	if (unlikely(!paths_num || paths_num > MAX_PATHS_NUM))
-		return ERR_PTR(-EINVAL);
-
-	if (unlikely(!clt_ops_are_valid(ops)))
 		return ERR_PTR(-EINVAL);
 
 	if (unlikely(strlen(sessname) >= sizeof(clt->sessname)))
@@ -2946,7 +2937,8 @@ static struct ibtrs_clt *alloc_clt(const char *sessname, size_t paths_num,
 	clt->pdu_sz = pdu_sz;
 	clt->reconnect_delay_sec = reconnect_delay_sec;
 	clt->max_reconnect_attempts = max_reconnect_attempts;
-	clt->ops = *ops;
+	clt->priv = priv;
+	clt->link_ev = link_ev;
 	strlcpy(clt->sessname, sessname, sizeof(clt->sessname));
 	init_waitqueue_head(&clt->tags_wait);
 
@@ -2966,7 +2958,7 @@ static void free_clt(struct ibtrs_clt *clt)
 	kfree(clt);
 }
 
-struct ibtrs_clt *ibtrs_clt_open(const struct ibtrs_clt_ops *ops,
+struct ibtrs_clt *ibtrs_clt_open(void *priv, link_clt_ev_fn *link_ev,
 				 const char *sessname,
 				 const struct ibtrs_addr *paths,
 				 size_t paths_num,
@@ -2978,7 +2970,7 @@ struct ibtrs_clt *ibtrs_clt_open(const struct ibtrs_clt_ops *ops,
 	struct ibtrs_clt *clt;
 	int err, i;
 
-	clt = alloc_clt(sessname, paths_num, port, pdu_sz, ops,
+	clt = alloc_clt(sessname, paths_num, port, pdu_sz, priv, link_ev,
 			reconnect_delay_sec, max_reconnect_attempts);
 	if (unlikely(IS_ERR(clt))) {
 		err = PTR_ERR(clt);
