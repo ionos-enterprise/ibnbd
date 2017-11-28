@@ -2590,11 +2590,16 @@ static void ibtrs_clt_add_path_to_arr(struct ibtrs_clt_sess *sess)
 static void ibtrs_clt_close_work(struct work_struct *work)
 {
 	struct ibtrs_clt_sess *sess;
+	/*
+	 * Always try to do a failover, if only single path remains,
+	 * all requests will be completed with error.
+	 */
+	bool failover = true;
 
 	sess = container_of(work, struct ibtrs_clt_sess, close_work);
 
 	cancel_delayed_work_sync(&sess->reconnect_dwork);
-	ibtrs_clt_stop_and_destroy_conns(sess, false);
+	ibtrs_clt_stop_and_destroy_conns(sess, failover);
 	/*
 	 * Sounds stupid, huh?  No, it is not.  Consider this sequence:
 	 *
