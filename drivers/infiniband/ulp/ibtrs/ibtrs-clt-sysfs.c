@@ -120,7 +120,8 @@ static struct kobj_attribute ibtrs_clt_state_attr =
 	__ATTR(state, 0444, ibtrs_clt_state_show, NULL);
 
 static ssize_t ibtrs_clt_reconnect_show(struct kobject *kobj,
-					struct kobj_attribute *attr, char *page)
+					struct kobj_attribute *attr,
+					char *page)
 {
 	return scnprintf(page, PAGE_SIZE, "Usage: echo 1 > %s\n",
 			 attr->attr.name);
@@ -135,7 +136,8 @@ static ssize_t ibtrs_clt_reconnect_store(struct kobject *kobj,
 
 	sess = container_of(kobj, struct ibtrs_clt_sess, kobj);
 	if (!sysfs_streq(buf, "1")) {
-		ibtrs_err(sess, "%s: unknown value: '%s'\n", attr->attr.name, buf);
+		ibtrs_err(sess, "%s: unknown value: '%s'\n",
+			  attr->attr.name, buf);
 		return -EINVAL;
 	}
 
@@ -288,13 +290,11 @@ int ibtrs_clt_create_sess_files(struct ibtrs_clt_sess *sess)
 	}
 	err = ibtrs_clt_create_stats_files(&sess->kobj, &sess->kobj_stats);
 	if (unlikely(err)) {
-		goto remove_group;
+		goto put_kobj;
 	}
 
 	return 0;
 
-remove_group:
-	sysfs_remove_group(&sess->kobj, &ibtrs_clt_sess_attr_group);
 put_kobj:
 	kobject_del(&sess->kobj);
 	kobject_put(&sess->kobj);
