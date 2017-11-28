@@ -57,6 +57,7 @@ enum ibtrs_clt_state {
 	IBTRS_CLT_CONNECTED,
 	IBTRS_CLT_CLOSING,
 	IBTRS_CLT_CLOSED,
+	IBTRS_CLT_DEAD,
 };
 
 static inline const char *ibtrs_clt_state_str(enum ibtrs_clt_state state)
@@ -74,6 +75,8 @@ static inline const char *ibtrs_clt_state_str(enum ibtrs_clt_state state)
 		return "IBTRS_CLT_CLOSING";
 	case IBTRS_CLT_CLOSED:
 		return "IBTRS_CLT_CLOSED";
+	case IBTRS_CLT_DEAD:
+		return "IBTRS_CLT_DEAD";
 	default:
 		return "UNKNOWN";
 	}

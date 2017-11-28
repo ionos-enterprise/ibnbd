@@ -2089,6 +2089,15 @@ static bool __ibtrs_clt_change_state(struct ibtrs_clt_sess *sess,
 			break;
 		}
 		break;
+	case IBTRS_CLT_DEAD:
+		switch (old_state) {
+		case IBTRS_CLT_CLOSED:
+			changed = true;
+			/* FALLTHRU */
+		default:
+			break;
+		}
+		break;
 	default:
 		break;
 	}
