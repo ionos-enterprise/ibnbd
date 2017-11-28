@@ -200,8 +200,14 @@ struct ibtrs_clt_paths {
 	size_t			num;
 };
 
-struct ibtrs_clt {
+struct ibtrs_clt_paths_it {
 	struct ibtrs_clt_paths  *paths;
+	struct ibtrs_clt_sess   *sess;
+	int                     i;
+};
+
+struct ibtrs_clt {
+	struct ibtrs_clt_paths  __rcu *paths;
 	struct ibtrs_clt_paths  __paths;
 	unsigned int __percpu	*curr_path;
 	uuid_t			paths_uuid;
@@ -223,6 +229,28 @@ struct ibtrs_clt {
 	struct kobject		kobj;
 	struct kobject		kobj_paths;
 };
+
+#define init_paths_it(it, clt) ({		\
+	it.paths = rcu_dereference(clt->paths); \
+	it.i = 0;				\
+	it.sess = NULL;				\
+})
+
+/*  this part '% it.paths->num' is used to shut up compiler */
+#define path_it_get(it) \
+	(it.i < it.paths->num ? it.paths->arr[it.i % it.paths->num] : NULL)
+
+#define foreach_path(it, clt)						\
+	for (it.paths = rcu_dereference(clt->paths), it.i = 0,		\
+		     it.sess = path_it_get(it);				\
+	     it.i < it.paths->num;					\
+	     it.i++, it.sess = path_it_get(it))				\
+
+#define __foreach_path_from_to(it, from, to)				\
+	for (it.i = from, it.sess = path_it_get(it);			\
+	     it.i < to;							\
+	     it.i++, it.sess = path_it_get(it))				\
+
 
 /* See ibtrs-log.h */
 #define TYPES_TO_SESSNAME(obj)						\
