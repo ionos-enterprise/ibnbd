@@ -220,6 +220,7 @@ struct ibtrs_clt {
 	short			port;
 	unsigned		max_reconnect_attempts;
 	unsigned		reconnect_delay_sec;
+	unsigned		max_segments;
 	void			*tags;
 	unsigned long		*tags_map;
 	size_t			user_queue_depth;

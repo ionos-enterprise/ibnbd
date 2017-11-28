@@ -3143,6 +3143,7 @@ reconnect_again:
 static struct ibtrs_clt *alloc_clt(const char *sessname, size_t paths_num,
 				   short port, size_t pdu_sz,
 				   void *priv, link_clt_ev_fn *link_ev,
+				   unsigned max_segments,
 				   unsigned reconnect_delay_sec,
 				   unsigned max_reconnect_attempts)
 {
@@ -3172,6 +3173,7 @@ static struct ibtrs_clt *alloc_clt(const char *sessname, size_t paths_num,
 	clt->paths_up = MAX_PATHS_NUM;
 	clt->port = port;
 	clt->pdu_sz = pdu_sz;
+	clt->max_segments = max_segments;
 	clt->reconnect_delay_sec = reconnect_delay_sec;
 	clt->max_reconnect_attempts = max_reconnect_attempts;
 	clt->priv = priv;
@@ -3212,7 +3214,8 @@ struct ibtrs_clt *ibtrs_clt_open(void *priv, link_clt_ev_fn *link_ev,
 	int err, i;
 
 	clt = alloc_clt(sessname, paths_num, port, pdu_sz, priv, link_ev,
-			reconnect_delay_sec, max_reconnect_attempts);
+			max_segments, reconnect_delay_sec,
+			max_reconnect_attempts);
 	if (unlikely(IS_ERR(clt))) {
 		err = PTR_ERR(clt);
 		goto out;
