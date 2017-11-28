@@ -355,10 +355,14 @@ int ibtrs_clt_create_sysfs_root_files(struct ibtrs_clt *clt)
 
 void ibtrs_clt_destroy_sysfs_root_folders(struct ibtrs_clt *clt)
 {
-	kobject_del(&clt->kobj_paths);
-	kobject_put(&clt->kobj_paths);
-	kobject_del(&clt->kobj);
-	kobject_put(&clt->kobj);
+	if (clt->kobj_paths.state_in_sysfs) {
+		kobject_del(&clt->kobj_paths);
+		kobject_put(&clt->kobj_paths);
+	}
+	if (clt->kobj.state_in_sysfs) {
+		kobject_del(&clt->kobj);
+		kobject_put(&clt->kobj);
+	}
 }
 
 void ibtrs_clt_destroy_sysfs_root_files(struct ibtrs_clt *clt)
