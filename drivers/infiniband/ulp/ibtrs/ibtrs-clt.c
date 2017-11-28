@@ -2535,6 +2535,47 @@ static void ibtrs_clt_stop_and_destroy_conns(struct ibtrs_clt_sess *sess,
 	}
 }
 
+static __maybe_unused void ibtrs_clt_remove_path_from_arr(struct ibtrs_clt_sess *sess)
+{
+	struct ibtrs_clt *clt = sess->clt;
+	int i, j;
+
+	mutex_lock(&clt->paths_mutex);
+	/* Copy paths except dying one */
+	for (i = 0, j = 0; i < clt->paths->num; i++) {
+		if (clt->paths->arr[i] == sess)
+			continue;
+		clt->paths_shadow->arr[j++] = clt->paths->arr[i];
+	}
+	/* WTF?  We could not find session in an array */
+	WARN_ON(j != clt->paths->num - 1);
+
+	clt->paths_shadow->num = j;
+	/* Exchange pointers, xchg implies memory barrier */
+	clt->paths_shadow = xchg(&clt->paths, clt->paths_shadow);
+	mutex_unlock(&clt->paths_mutex);
+
+	/* Make sure everybody observe path removal */
+	synchronize_rcu();
+}
+
+static __maybe_unused void ibtrs_clt_add_path_to_arr(struct ibtrs_clt_sess *sess)
+{
+	struct ibtrs_clt *clt = sess->clt;
+	int num;
+
+	mutex_lock(&clt->paths_mutex);
+	/* Copy all paths */
+	*clt->paths_shadow = *clt->paths;
+	num = clt->paths_shadow->num;
+	clt->paths_shadow->arr[num] = sess;
+	clt->paths_shadow->num++;
+	WARN_ON(clt->paths_shadow->num > MAX_PATHS_NUM);
+	/* Exchange pointers, xchg implies memory barrier */
+	clt->paths_shadow = xchg(&clt->paths, clt->paths_shadow);
+	mutex_unlock(&clt->paths_mutex);
+}
+
 static void ibtrs_clt_close_work(struct work_struct *work)
 {
 	struct ibtrs_clt_sess *sess;
@@ -3126,6 +3167,7 @@ static struct ibtrs_clt *alloc_clt(const char *sessname, size_t paths_num,
 
 	uuid_gen(&clt->paths_uuid);
 	clt->paths = &clt->__paths;
+	clt->paths_shadow = &clt->__paths_shadow;
 	clt->paths->num = paths_num;
 	clt->paths_up = MAX_PATHS_NUM;
 	clt->port = port;
@@ -3137,6 +3179,7 @@ static struct ibtrs_clt *alloc_clt(const char *sessname, size_t paths_num,
 	strlcpy(clt->sessname, sessname, sizeof(clt->sessname));
 	init_waitqueue_head(&clt->tags_wait);
 	mutex_init(&clt->paths_ev_mutex);
+	mutex_init(&clt->paths_mutex);
 
 	err = ibtrs_clt_create_sysfs_root_folders(clt);
 	if (unlikely(err)) {

@@ -208,10 +208,13 @@ struct ibtrs_clt_paths_it {
 
 struct ibtrs_clt {
 	struct ibtrs_clt_paths  __rcu *paths;
+	struct ibtrs_clt_paths  *paths_shadow;
 	struct ibtrs_clt_paths  __paths;
+	struct ibtrs_clt_paths  __paths_shadow;
 	unsigned int __percpu	*curr_path;
 	uuid_t			paths_uuid;
 	int			paths_up;
+	struct mutex		paths_mutex;
 	struct mutex		paths_ev_mutex;
 	char			sessname[NAME_MAX];
 	short			port;
