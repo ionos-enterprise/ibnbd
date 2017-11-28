@@ -140,13 +140,10 @@ static ssize_t ibtrs_clt_reconnect_store(struct kobject *kobj,
 			  attr->attr.name, buf);
 		return -EINVAL;
 	}
-
-	ret = ibtrs_clt_reconnect(sess);
-	if (ret) {
-		ibtrs_err(sess, "%s: failed to reconnect session, err: %d\n",
-			  attr->attr.name, ret);
+	ret = ibtrs_clt_reconnect_from_sysfs(sess);
+	if (unlikely(ret))
 		return ret;
-	}
+
 	return count;
 }
 

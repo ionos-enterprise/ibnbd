@@ -3308,7 +3308,7 @@ void ibtrs_clt_close(struct ibtrs_clt *clt)
 }
 EXPORT_SYMBOL(ibtrs_clt_close);
 
-int ibtrs_clt_reconnect(struct ibtrs_clt_sess *sess)
+int ibtrs_clt_reconnect_from_sysfs(struct ibtrs_clt_sess *sess)
 {
 	if (ibtrs_clt_change_state(sess, IBTRS_CLT_RECONNECTING)) {
 		sess->reconnect_attempts = 0;

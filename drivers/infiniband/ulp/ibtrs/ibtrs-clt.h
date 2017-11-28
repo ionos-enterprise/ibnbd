@@ -269,11 +269,7 @@ struct ibtrs_clt {
 #define TAG_SIZE(clt) (sizeof(struct ibtrs_tag) + (clt)->pdu_sz)
 #define GET_TAG(clt, idx) ((clt)->tags + TAG_SIZE(clt) * idx)
 
-/**
- * ibtrs_clt_reconnect() - Reconnect the session
- * @sess: Session handler
- */
-int ibtrs_clt_reconnect(struct ibtrs_clt_sess *sess);
+int ibtrs_clt_reconnect_from_sysfs(struct ibtrs_clt_sess *sess);
 int ibtrs_clt_disconnect_from_sysfs(struct ibtrs_clt_sess *sess);
 int ibtrs_clt_create_path_from_sysfs(struct ibtrs_clt *clt,
 				     struct ibtrs_addr *addr);
