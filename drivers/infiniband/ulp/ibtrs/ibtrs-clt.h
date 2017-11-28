@@ -178,6 +178,7 @@ struct ibtrs_clt_sess {
 	struct ib_fmr_pool	*fmr_pool;
 	struct delayed_work	reconnect_dwork;
 	struct work_struct	close_work;
+	struct work_struct	free_from_sysfs_work;
 	unsigned		reconnect_attempts;
 	bool			established;
 	u64			*srv_rdma_addr;
@@ -214,6 +215,7 @@ struct ibtrs_clt {
 	struct ibtrs_clt_paths  *paths_shadow;
 	struct ibtrs_clt_paths  __paths;
 	struct ibtrs_clt_paths  __paths_shadow;
+	bool			opened;
 	unsigned int __percpu	*curr_path;
 	uuid_t			paths_uuid;
 	int			paths_up;
@@ -274,6 +276,7 @@ struct ibtrs_clt {
 int ibtrs_clt_reconnect(struct ibtrs_clt_sess *sess);
 int ibtrs_clt_create_path_from_sysfs(struct ibtrs_clt *clt,
 				     struct ibtrs_addr *addr);
+int ibtrs_clt_remove_path_from_sysfs(struct ibtrs_clt_sess *sess);
 
 void ibtrs_clt_set_max_reconnect_attempts(struct ibtrs_clt *clt, int value);
 int ibtrs_clt_get_max_reconnect_attempts(const struct ibtrs_clt *clt);

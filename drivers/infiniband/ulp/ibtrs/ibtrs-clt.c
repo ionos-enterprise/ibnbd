@@ -2158,6 +2158,7 @@ static enum ibtrs_clt_state ibtrs_clt_state(struct ibtrs_clt_sess *sess)
 
 static void ibtrs_clt_reconnect_work(struct work_struct *work);
 static void ibtrs_clt_close_work(struct work_struct *work);
+static void ibtrs_clt_free_from_sysfs_work(struct work_struct *work);
 
 static struct ibtrs_clt_sess *alloc_sess(struct ibtrs_clt *clt,
 					 const struct ibtrs_addr *path,
@@ -2194,6 +2195,7 @@ static struct ibtrs_clt_sess *alloc_sess(struct ibtrs_clt *clt,
 	init_waitqueue_head(&sess->state_wq);
 	sess->state = IBTRS_CLT_CONNECTING;
 	INIT_WORK(&sess->close_work, ibtrs_clt_close_work);
+	INIT_WORK(&sess->free_from_sysfs_work, ibtrs_clt_free_from_sysfs_work);
 	INIT_DELAYED_WORK(&sess->reconnect_dwork, ibtrs_clt_reconnect_work);
 
 	err = ibtrs_clt_init_stats(&sess->stats);
@@ -3258,6 +3260,13 @@ struct ibtrs_clt *ibtrs_clt_open(void *priv, link_clt_ev_fn *link_ev,
 	if (unlikely(err))
 		goto close_all_sess;
 
+	/*
+	 * There is a race if someone decides to completely remove just
+	 * newly created path using sysfs entry.  To avoid the race we
+	 * use simple 'opened' flag, see ibtrs_clt_remove_path_from_sysfs().
+	 */
+	clt->opened = true;
+
 	return clt;
 
 close_all_sess:
@@ -3284,6 +3293,9 @@ void ibtrs_clt_close(struct ibtrs_clt *clt)
 	ibtrs_clt_destroy_sysfs_root_files(clt);
 	ibtrs_clt_destroy_sysfs_root_folders(clt);
 
+	/* Wait for possible free works scheduled from sysfs */
+	flush_workqueue(ibtrs_wq);
+
 	/* Now it is save just iterate over all remaining paths */
 	foreach_path(it, clt) {
 		if (!it.sess)
@@ -3305,6 +3317,54 @@ int ibtrs_clt_reconnect(struct ibtrs_clt_sess *sess)
 	}
 
 	return -EBUSY;
+}
+
+static void ibtrs_clt_free_from_sysfs_work(struct work_struct *work)
+{
+	struct ibtrs_clt_sess *sess;
+
+	sess = container_of(work, struct ibtrs_clt_sess, free_from_sysfs_work);
+	ibtrs_clt_destroy_sess_files(sess);
+	ibtrs_clt_remove_path_from_arr(sess);
+	free_sess(sess);
+}
+
+int ibtrs_clt_remove_path_from_sysfs(struct ibtrs_clt_sess *sess)
+{
+	struct ibtrs_clt *clt = sess->clt;
+	enum ibtrs_clt_state old_state;
+	bool changed;
+
+	/*
+	 * That can happen only when userspace tries to remove path
+	 * very early, when ibtrs_clt_open() is not yet finished.
+	 */
+	if (unlikely(!clt->opened))
+		return -EBUSY;
+
+	/*
+	 * Continue stopping path till state was changed to DEAD or
+	 * state was observed as DEAD:
+	 * 1. State was changed to DEAD - we were fast and nobody
+	 *    invoked ibtrs_clt_reconnect(), which can again start
+	 *    reconnecting.
+	 * 2. State was observed as DEAD - we have someone in parallel
+	 *    removing the path.
+	 */
+	do {
+		ibtrs_clt_close_conns(sess, true);
+	} while (!(changed = ibtrs_clt_change_state_get_old(
+			   sess, IBTRS_CLT_DEAD, &old_state)) &&
+		   old_state != IBTRS_CLT_DEAD);
+
+	/*
+	 * If state was successfully changed to DEAD, schedule free work,
+	 * since we are not able to destroy sysfs files from sysfs call.
+	 */
+	if (likely(changed))
+		queue_work(ibtrs_wq, &sess->free_from_sysfs_work);
+
+	return 0;
 }
 
 void ibtrs_clt_set_max_reconnect_attempts(struct ibtrs_clt *clt, int value)
