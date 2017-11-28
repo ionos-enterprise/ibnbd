@@ -2535,7 +2535,7 @@ static void ibtrs_clt_stop_and_destroy_conns(struct ibtrs_clt_sess *sess,
 	}
 }
 
-static __maybe_unused void ibtrs_clt_remove_path_from_arr(struct ibtrs_clt_sess *sess)
+static void ibtrs_clt_remove_path_from_arr(struct ibtrs_clt_sess *sess)
 {
 	struct ibtrs_clt *clt = sess->clt;
 	int i, j;
@@ -2559,7 +2559,7 @@ static __maybe_unused void ibtrs_clt_remove_path_from_arr(struct ibtrs_clt_sess 
 	synchronize_rcu();
 }
 
-static __maybe_unused void ibtrs_clt_add_path_to_arr(struct ibtrs_clt_sess *sess)
+static void ibtrs_clt_add_path_to_arr(struct ibtrs_clt_sess *sess)
 {
 	struct ibtrs_clt *clt = sess->clt;
 	int num;
@@ -3664,6 +3664,38 @@ int ibtrs_clt_query(struct ibtrs_clt *clt, struct ibtrs_attrs *attr)
 	return 0;
 }
 EXPORT_SYMBOL(ibtrs_clt_query);
+
+int ibtrs_clt_create_path_from_sysfs(struct ibtrs_clt *clt,
+				     struct ibtrs_addr *addr)
+{
+	struct ibtrs_clt_sess *sess;
+	int err;
+
+	sess = alloc_sess(clt, addr, CONS_PER_SESSION,
+			  clt->max_segments);
+	if (unlikely(IS_ERR(sess)))
+		return PTR_ERR(sess);
+
+	err = init_sess(sess);
+	if (unlikely(err))
+		goto close_sess;
+
+	ibtrs_clt_add_path_to_arr(sess);
+
+	err = ibtrs_clt_create_sess_files(sess);
+	if (unlikely(err))
+		goto remove_path;
+
+	return 0;
+
+remove_path:
+	ibtrs_clt_remove_path_from_arr(sess);
+close_sess:
+	ibtrs_clt_close_conns(sess, true);
+	free_sess(sess);
+
+	return err;
+}
 
 static int check_module_params(void)
 {
