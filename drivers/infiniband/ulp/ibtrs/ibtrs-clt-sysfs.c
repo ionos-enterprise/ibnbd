@@ -151,6 +151,70 @@ static struct kobj_attribute ibtrs_clt_reconnect_attr =
 	__ATTR(reconnect, 0644, ibtrs_clt_reconnect_show,
 	       ibtrs_clt_reconnect_store);
 
+static ssize_t ibtrs_clt_disconnect_show(struct kobject *kobj,
+					 struct kobj_attribute *attr,
+					 char *page)
+{
+	return scnprintf(page, PAGE_SIZE, "Usage: echo 1 > %s\n",
+			 attr->attr.name);
+}
+
+static ssize_t ibtrs_clt_disconnect_store(struct kobject *kobj,
+					 struct kobj_attribute *attr,
+					 const char *buf, size_t count)
+{
+	struct ibtrs_clt_sess *sess;
+	int ret;
+
+	sess = container_of(kobj, struct ibtrs_clt_sess, kobj);
+	if (!sysfs_streq(buf, "1")) {
+		ibtrs_err(sess, "%s: unknown value: '%s'\n",
+			  attr->attr.name, buf);
+		return -EINVAL;
+	}
+	ret = ibtrs_clt_disconnect_from_sysfs(sess);
+	if (unlikely(ret))
+		return ret;
+
+	return count;
+}
+
+static struct kobj_attribute ibtrs_clt_disconnect_attr =
+	__ATTR(disconnect, 0644, ibtrs_clt_disconnect_show,
+	       ibtrs_clt_disconnect_store);
+
+static ssize_t ibtrs_clt_remove_path_show(struct kobject *kobj,
+					  struct kobj_attribute *attr,
+					  char *page)
+{
+	return scnprintf(page, PAGE_SIZE, "Usage: echo 1 > %s\n",
+			 attr->attr.name);
+}
+
+static ssize_t ibtrs_clt_remove_path_store(struct kobject *kobj,
+					   struct kobj_attribute *attr,
+					   const char *buf, size_t count)
+{
+	struct ibtrs_clt_sess *sess;
+	int ret;
+
+	sess = container_of(kobj, struct ibtrs_clt_sess, kobj);
+	if (!sysfs_streq(buf, "1")) {
+		ibtrs_err(sess, "%s: unknown value: '%s'\n",
+			  attr->attr.name, buf);
+		return -EINVAL;
+	}
+	ret = ibtrs_clt_remove_path_from_sysfs(sess);
+	if (unlikely(ret))
+		return ret;
+
+	return count;
+}
+
+static struct kobj_attribute ibtrs_clt_remove_path_attr =
+	__ATTR(remove_path, 0644, ibtrs_clt_remove_path_show,
+	       ibtrs_clt_remove_path_store);
+
 static ssize_t ibtrs_clt_add_path_show(struct kobject *kobj,
 				       struct kobj_attribute *attr, char *page)
 {
@@ -170,15 +234,19 @@ static ssize_t ibtrs_clt_add_path_store(struct kobject *kobj,
 		.dst = (struct sockaddr *)&dstaddr
 	};
 	struct ibtrs_clt *clt;
-	int ret;
+	int err;
 
 	clt = container_of(kobj, struct ibtrs_clt, kobj);
 
-	ret = ibtrs_addr_to_sockaddr(buf, clt->port, &addr);
-	if (unlikely(ret))
+	err = ibtrs_addr_to_sockaddr(buf, clt->port, &addr);
+	if (unlikely(err))
 		return -EINVAL;
 
-	return 0;
+	err = ibtrs_clt_create_path_from_sysfs(clt, &addr);
+	if (unlikely(err))
+		return err;
+
+	return count;
 }
 
 static struct kobj_attribute ibtrs_clt_add_path_attr =
@@ -259,6 +327,8 @@ err:
 static struct attribute *ibtrs_clt_sess_attrs[] = {
 	&ibtrs_clt_state_attr.attr,
 	&ibtrs_clt_reconnect_attr.attr,
+	&ibtrs_clt_disconnect_attr.attr,
+	&ibtrs_clt_remove_path_attr.attr,
 	NULL,
 };
 
