@@ -3319,6 +3319,13 @@ int ibtrs_clt_reconnect(struct ibtrs_clt_sess *sess)
 	return -EBUSY;
 }
 
+int ibtrs_clt_disconnect_from_sysfs(struct ibtrs_clt_sess *sess)
+{
+	ibtrs_clt_close_conns(sess, true);
+
+	return 0;
+}
+
 static void ibtrs_clt_free_from_sysfs_work(struct work_struct *work)
 {
 	struct ibtrs_clt_sess *sess;

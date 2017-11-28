@@ -274,6 +274,7 @@ struct ibtrs_clt {
  * @sess: Session handler
  */
 int ibtrs_clt_reconnect(struct ibtrs_clt_sess *sess);
+int ibtrs_clt_disconnect_from_sysfs(struct ibtrs_clt_sess *sess);
 int ibtrs_clt_create_path_from_sysfs(struct ibtrs_clt *clt,
 				     struct ibtrs_addr *addr);
 int ibtrs_clt_remove_path_from_sysfs(struct ibtrs_clt_sess *sess);
