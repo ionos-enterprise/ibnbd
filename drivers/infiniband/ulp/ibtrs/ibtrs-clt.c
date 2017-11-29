@@ -2908,7 +2908,7 @@ static void ibtrs_clt_reconnect_work(struct work_struct *work)
 reconnect_again:
 	if (ibtrs_clt_change_state(sess, IBTRS_CLT_RECONNECTING)) {
 		sess->stats.reconnects.fail_cnt++;
-		delay_ms = sess->reconnect_delay_sec * 1000;
+		delay_ms = clt->reconnect_delay_sec * 1000;
 		queue_delayed_work(ibtrs_wq, &sess->reconnect_dwork,
 				   msecs_to_jiffies(delay_ms));
 	}

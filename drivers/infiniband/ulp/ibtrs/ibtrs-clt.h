@@ -175,7 +175,6 @@ struct ibtrs_clt_sess {
 	struct delayed_work	reconnect_dwork;
 	struct work_struct	close_work;
 	unsigned		reconnect_attempts;
-	unsigned		reconnect_delay_sec;
 	u64			*srv_rdma_addr;
 	u32			srv_rdma_buf_rkey;
 	u32			max_io_size;
