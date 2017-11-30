@@ -46,7 +46,6 @@
 #define pr_fmt(fmt) KBUILD_MODNAME " L" __stringify(__LINE__) ": " fmt
 
 #include <linux/module.h>
-#include <linux/debugfs.h>
 #include <rdma/rdma_cm.h>
 
 #include "ibtrs-pri.h"
@@ -206,9 +205,6 @@ module_param_cb(cq_affinity_list, &cq_affinity_list_ops,
 		&cq_affinity_list_kparam_str, 0644);
 MODULE_PARM_DESC(cq_affinity_list, "Sets the list of cpus to use as cq vectors."
 		 "(default: use all possible CPUs)");
-
-static struct dentry *ibtrs_srv_debugfs_dir;
-static struct dentry *mempool_debugfs_dir;
 
 static struct workqueue_struct *ibtrs_wq;
 
@@ -2099,74 +2095,6 @@ static int check_module_params(void)
 	return 0;
 }
 
-static int ibtrs_srv_create_debugfs_files(void)
-{
-	int ret = 0;
-	struct dentry *file;
-
-	ibtrs_srv_debugfs_dir = debugfs_create_dir("ibtrs_server", NULL);
-	if (IS_ERR_OR_NULL(ibtrs_srv_debugfs_dir)) {
-		ibtrs_srv_debugfs_dir = NULL;
-		ret = PTR_ERR(ibtrs_srv_debugfs_dir);
-		if (ret == -ENODEV)
-			pr_warn("Debugfs not enabled in kernel\n");
-		else
-			pr_warn("Failed to create top-level debugfs directory,"
-				" err: %d\n", ret);
-		goto out;
-	}
-
-	mempool_debugfs_dir = debugfs_create_dir("mempool",
-						 ibtrs_srv_debugfs_dir);
-	if (IS_ERR_OR_NULL(mempool_debugfs_dir)) {
-		ret = PTR_ERR(mempool_debugfs_dir);
-		pr_warn("Failed to create mempool debugfs directory,"
-			" err: %d\n", ret);
-		goto out_remove;
-	}
-
-	file = debugfs_create_u32("nr_free_buf_pool", 0444,
-				  mempool_debugfs_dir, &nr_free_buf_pool);
-	if (IS_ERR_OR_NULL(file)) {
-		pr_warn("Failed to create mempool \"nr_free_buf_pool\""
-			" debugfs file\n");
-		ret = -EINVAL;
-		goto out_remove;
-	}
-
-	file = debugfs_create_u32("nr_total_buf_pool", 0444,
-				  mempool_debugfs_dir, &nr_total_buf_pool);
-	if (IS_ERR_OR_NULL(file)) {
-		pr_warn("Failed to create mempool \"nr_total_buf_pool\""
-			" debugfs file\n");
-		ret = -EINVAL;
-		goto out_remove;
-	}
-
-	file = debugfs_create_u32("nr_active_sessions", 0444,
-				  mempool_debugfs_dir, &nr_active_sessions);
-	if (IS_ERR_OR_NULL(file)) {
-		pr_warn("Failed to create mempool \"nr_active_sessions\""
-			" debugfs file\n");
-		ret = -EINVAL;
-		goto out_remove;
-	}
-
-	goto out;
-
-out_remove:
-	debugfs_remove_recursive(ibtrs_srv_debugfs_dir);
-	ibtrs_srv_debugfs_dir = NULL;
-	mempool_debugfs_dir = NULL;
-out:
-	return ret;
-}
-
-static void ibtrs_srv_destroy_debugfs_files(void)
-{
-	debugfs_remove_recursive(ibtrs_srv_debugfs_dir);
-}
-
 static void ibtrs_srv_free_buf_pool(void)
 {
 	struct ibtrs_rcv_buf_pool *pool, *pool_next;
@@ -2228,11 +2156,6 @@ static int __init ibtrs_server_init(void)
 		       " err: %d\n", err);
 		goto out_ibtrs_wq;
 	}
-	err = ibtrs_srv_create_debugfs_files();
-	if (err)
-		pr_warn("Unable to create debugfs files, err: %d."
-			" Continuing without debugfs\n", err);
-
 	ibtrs_srv_alloc_buf_pool();
 
 	return 0;
@@ -2244,7 +2167,6 @@ out_ibtrs_wq:
 
 static void __exit ibtrs_server_exit(void)
 {
-	ibtrs_srv_destroy_debugfs_files();
 	ibtrs_srv_destroy_sysfs_module_files();
 	destroy_workqueue(ibtrs_wq);
 	ibtrs_srv_free_buf_pool();
