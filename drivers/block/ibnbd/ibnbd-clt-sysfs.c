@@ -164,7 +164,7 @@ static int ibnbd_clt_parse_map_options(const char *buf,
 				goto out;
 			}
 
-			ret = ibtrs_addr_to_sockaddr(p, IBTRS_PORT,
+			ret = ibtrs_addr_to_sockaddr(p, strlen(p), IBTRS_PORT,
 						     &paths[p_cnt]);
 			if (ret) {
 				pr_err("Can't parse path %s: %d\n", p, ret);

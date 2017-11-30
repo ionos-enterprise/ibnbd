@@ -490,7 +490,7 @@ static int ibtrs_str_to_sockaddr(const char *addr, size_t len,
 	return -EPROTONOSUPPORT;
 }
 
-int ibtrs_addr_to_sockaddr(const char *str, short port,
+int ibtrs_addr_to_sockaddr(const char *str, size_t len, short port,
 			   struct ibtrs_addr *addr)
 {
 	const char *d;
@@ -500,12 +500,13 @@ int ibtrs_addr_to_sockaddr(const char *str, short port,
 	if (d) {
 		if (ibtrs_str_to_sockaddr(str, d - str, port, addr->src))
 			return -EINVAL;
-		d++;
-	} else {
+		d += 1;
+		len -= d - str;
+		str  = d;
+
+	} else
 		addr->src = NULL;
-		d = str;
-	}
-	ret = ibtrs_str_to_sockaddr(d, strlen(d), port, addr->dst);
+	ret = ibtrs_str_to_sockaddr(str, len, port, addr->dst);
 
 	return ret;
 }

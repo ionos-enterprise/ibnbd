@@ -234,11 +234,17 @@ static ssize_t ibtrs_clt_add_path_store(struct kobject *kobj,
 		.dst = (struct sockaddr *)&dstaddr
 	};
 	struct ibtrs_clt *clt;
+	const char *nl;
+	size_t len;
 	int err;
 
 	clt = container_of(kobj, struct ibtrs_clt, kobj);
 
-	err = ibtrs_addr_to_sockaddr(buf, clt->port, &addr);
+	if ((nl = strchr(buf, '\n')))
+		len = nl - buf;
+	else
+		len = count;
+	err = ibtrs_addr_to_sockaddr(buf, len, clt->port, &addr);
 	if (unlikely(err))
 		return -EINVAL;
 
