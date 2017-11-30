@@ -168,6 +168,7 @@ struct ibtrs_srv {
 	struct list_head	ctx_list;
 	void			*priv;
 	size_t			queue_depth;
+	struct page		**chunks;
 	struct kobject		kobj;
 	struct kobject		kobj_paths;
 };

@@ -1376,6 +1376,7 @@ static struct ibtrs_srv *__alloc_srv(struct ibtrs_srv_ctx *ctx,
 				     const uuid_t *paths_uuid)
 {
 	struct ibtrs_srv *srv;
+	int i;
 
 	srv = kzalloc(sizeof(*srv), GFP_KERNEL);
 	if  (unlikely(!srv))
@@ -1387,14 +1388,41 @@ static struct ibtrs_srv *__alloc_srv(struct ibtrs_srv_ctx *ctx,
 	srv->queue_depth = sess_queue_depth;
 	srv->ctx = ctx;
 
+	srv->chunks = kcalloc(srv->queue_depth, sizeof(*srv->chunks),
+			      GFP_KERNEL);
+	if (unlikely(!srv->chunks))
+		goto err_free_srv;
+
+	for (i = 0; i < srv->queue_depth; i++) {
+		srv->chunks[i] = mempool_alloc(chunk_pool, GFP_KERNEL);
+		if (unlikely(!srv->chunks[i])) {
+			pr_err("mempool_alloc() failed\n");
+			goto err_free_chunks;
+		}
+	}
 	list_add(&srv->ctx_list, &ctx->srv_list);
 
 	return srv;
+
+err_free_chunks:
+	while (i--)
+		mempool_free(srv->chunks[i], chunk_pool);
+	kfree(srv->chunks);
+
+err_free_srv:
+	kfree(srv);
+
+	return NULL;
 }
 
 static void free_srv(struct ibtrs_srv *srv)
 {
+	int i;
+
 	WARN_ON(refcount_read(&srv->refcount));
+	for (i = 0; i < srv->queue_depth; i++)
+		mempool_free(srv->chunks[i], chunk_pool);
+	kfree(srv->chunks);
 	kfree(srv);
 }
 
