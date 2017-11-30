@@ -46,6 +46,7 @@
 #define pr_fmt(fmt) KBUILD_MODNAME " L" __stringify(__LINE__) ": " fmt
 
 #include <linux/module.h>
+#include <linux/mempool.h>
 #include <rdma/rdma_cm.h>
 
 #include "ibtrs-pri.h"
@@ -118,6 +119,10 @@ MODULE_PARM_DESC(pool_size_hi_wm,
 		 " (in number of sessions). Newly allocated buffers will be"
 		 " added to the pool until pool_size_hi_wm is reached."
 		 " (default: " __stringify(DEFAULT_POOL_SIZE_HI_WM) ")");
+
+/* We guarantee to serve 10 paths at least */
+#define CHUNK_POOL_SIZE (DEFAULT_SESS_QUEUE_DEPTH * 10)
+static mempool_t *chunk_pool;
 
 static int retry_count = 7;
 
@@ -2145,10 +2150,16 @@ static int __init ibtrs_server_init(void)
 		       " err: %d\n", err);
 		return err;
 	}
+	chunk_pool = mempool_create_page_pool(CHUNK_POOL_SIZE,
+					      get_order(rcv_buf_size));
+	if (unlikely(!chunk_pool)) {
+		pr_err("Failed preallocate pool of chunks\n");
+		return -ENOMEM;
+	}
 	ibtrs_wq = alloc_workqueue("ibtrs_server_wq", WQ_MEM_RECLAIM, 0);
 	if (!ibtrs_wq) {
 		pr_err("Failed to load module, alloc ibtrs_server_wq failed\n");
-		return -ENOMEM;
+		goto out_chunk_pool;
 	}
 	err = ibtrs_srv_create_sysfs_module_files();
 	if (err) {
@@ -2162,6 +2173,9 @@ static int __init ibtrs_server_init(void)
 
 out_ibtrs_wq:
 	destroy_workqueue(ibtrs_wq);
+out_chunk_pool:
+	mempool_destroy(chunk_pool);
+
 	return err;
 }
 
@@ -2170,6 +2184,7 @@ static void __exit ibtrs_server_exit(void)
 	ibtrs_srv_destroy_sysfs_module_files();
 	destroy_workqueue(ibtrs_wq);
 	ibtrs_srv_free_buf_pool();
+	mempool_destroy(chunk_pool);
 }
 
 module_init(ibtrs_server_init);
