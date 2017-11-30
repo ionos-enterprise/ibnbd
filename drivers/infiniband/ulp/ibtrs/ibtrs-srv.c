@@ -434,10 +434,11 @@ static void free_id(struct ibtrs_srv_op *id)
 
 static void free_sess_tx_bufs(struct ibtrs_srv_sess *sess)
 {
+	struct ibtrs_srv *srv = sess->srv;
 	int i;
 
 	if (sess->ops_ids) {
-		for (i = 0; i < sess->queue_depth; i++)
+		for (i = 0; i < srv->queue_depth; i++)
 			free_id(sess->ops_ids[i]);
 		kfree(sess->ops_ids);
 		sess->ops_ids = NULL;
@@ -453,6 +454,7 @@ static struct ib_cqe io_comp_cqe = {
 static int rdma_write_sg(struct ibtrs_srv_op *id)
 {
 	struct ibtrs_srv_sess *sess = to_srv_sess(id->con->c.sess);
+	struct ibtrs_srv *srv = sess->srv;
 	struct ib_rdma_wr *wr = NULL;
 	struct ib_send_wr *bad_wr;
 	enum ib_send_flags flags;
@@ -500,7 +502,7 @@ static int rdma_write_sg(struct ibtrs_srv_op *id)
 	 * From time to time we have to post signalled sends,
 	 * or send queue will fill up and only QP reset can help.
 	 */
-	flags = atomic_inc_return(&id->con->wr_cnt) % sess->queue_depth ?
+	flags = atomic_inc_return(&id->con->wr_cnt) % srv->queue_depth ?
 			0 : IB_SEND_SIGNALED;
 
 	wr->wr.wr_cqe = &io_comp_cqe;
@@ -521,6 +523,7 @@ static int rdma_write_sg(struct ibtrs_srv_op *id)
 static int send_io_resp_imm(struct ibtrs_srv_con *con, int msg_id, s16 errno)
 {
 	struct ibtrs_srv_sess *sess = to_srv_sess(con->c.sess);
+	struct ibtrs_srv *srv = sess->srv;
 	enum ib_send_flags flags;
 	u32 imm;
 	int err;
@@ -529,7 +532,7 @@ static int send_io_resp_imm(struct ibtrs_srv_con *con, int msg_id, s16 errno)
 	 * From time to time we have to post signalled sends,
 	 * or send queue will fill up and only QP reset can help.
 	 */
-	flags = atomic_inc_return(&con->wr_cnt) % sess->queue_depth ?
+	flags = atomic_inc_return(&con->wr_cnt) % srv->queue_depth ?
 			0 : IB_SEND_SIGNALED;
 	imm = (msg_id << 16) | (u16)errno;
 	err = ibtrs_post_rdma_write_imm_empty(&con->c, &io_comp_cqe,
@@ -839,6 +842,7 @@ static void release_cont_bufs(struct ibtrs_srv_sess *sess)
 
 static int setup_cont_bufs(struct ibtrs_srv_sess *sess)
 {
+	struct ibtrs_srv *srv = sess->srv;
 	struct ibtrs_rcv_buf *buf;
 	int i, err;
 
@@ -847,9 +851,7 @@ static int setup_cont_bufs(struct ibtrs_srv_sess *sess)
 		ibtrs_err(sess, "Failed to allocate receive buffers for session\n");
 		return -ENOMEM;
 	}
-
-	pr_debug("Mapping %d buffers for RDMA\n", sess->queue_depth);
-	for (i = 0; i < sess->queue_depth; i++) {
+	for (i = 0; i < srv->queue_depth; i++) {
 		buf = &sess->rcv_buf_pool->rcv_bufs[i];
 
 		buf->rdma_addr = ib_dma_map_single(sess->s.ib_dev->dev,
@@ -857,19 +859,19 @@ static int setup_cont_bufs(struct ibtrs_srv_sess *sess)
 						   DMA_BIDIRECTIONAL);
 		if (unlikely(ib_dma_mapping_error(sess->s.ib_dev->dev,
 						  buf->rdma_addr))) {
-			pr_err("Registering RDMA buf failed,"
-			       " DMA mapping failed\n");
+			ibtrs_err(sess, "Registering RDMA buf failed,"
+				  " DMA mapping failed\n");
 			err = -EIO;
 			goto err_map;
 		}
 	}
 
-	sess->off_len = 31 - ilog2(sess->queue_depth - 1);
+	sess->off_len = 31 - ilog2(srv->queue_depth - 1);
 	sess->off_mask = (1 << sess->off_len) - 1;
 
-	ibtrs_info(sess, "Allocated %d %dKB RDMA receive buffers, %dKB in total\n",
-		   sess->queue_depth, rcv_buf_size >> 10,
-		   sess->queue_depth * rcv_buf_size >> 10);
+	ibtrs_info(sess, "Allocated %ld %dKB RDMA receive buffers, %ldKB in total\n",
+		   srv->queue_depth, rcv_buf_size >> 10,
+		   srv->queue_depth * rcv_buf_size >> 10);
 
 	return 0;
 
@@ -884,16 +886,17 @@ err_map:
 
 static int alloc_sess_tx_bufs(struct ibtrs_srv_sess *sess)
 {
+	struct ibtrs_srv *srv = sess->srv;
 	struct ibtrs_srv_op *id;
 	int i;
 
-	sess->ops_ids = kcalloc(sess->queue_depth, sizeof(*sess->ops_ids),
+	sess->ops_ids = kcalloc(srv->queue_depth, sizeof(*sess->ops_ids),
 				GFP_KERNEL);
 	if (unlikely(!sess->ops_ids)) {
 		ibtrs_err(sess, "Allocation failed\n");
 		goto err;
 	}
-	for (i = 0; i < sess->queue_depth; ++i) {
+	for (i = 0; i < srv->queue_depth; ++i) {
 		id = kzalloc(sizeof(*id), GFP_KERNEL);
 		if (unlikely(!id)) {
 			ibtrs_err(sess, "Allocation failed\n");
@@ -994,7 +997,7 @@ static int process_info_req(struct ibtrs_srv_con *con,
 	memcpy(sess->s.sessname, msg->sessname, sizeof(sess->s.sessname));
 
 	tx_sz  = sizeof(struct ibtrs_msg_info_rsp);
-	tx_sz += sizeof(u64) * sess->queue_depth;
+	tx_sz += sizeof(u64) * srv->queue_depth;
 	tx_iu = ibtrs_iu_alloc(0, tx_sz, GFP_KERNEL, sess->s.ib_dev->dev,
 			       DMA_TO_DEVICE, ibtrs_srv_info_rsp_done);
 	if (unlikely(!tx_iu)) {
@@ -1004,8 +1007,8 @@ static int process_info_req(struct ibtrs_srv_con *con,
 
 	rsp = tx_iu->buf;
 	rsp->type = cpu_to_le16(IBTRS_MSG_INFO_RSP);
-	rsp->addr_num = cpu_to_le16(sess->queue_depth);
-	for (i = 0; i < sess->queue_depth; i++) {
+	rsp->addr_num = cpu_to_le16(srv->queue_depth);
+	for (i = 0; i < srv->queue_depth; i++) {
 		addr = sess->rcv_buf_pool->rcv_bufs[i].rdma_addr;
 		rsp->addr[i] = cpu_to_le64(addr);
 	}
@@ -1096,9 +1099,10 @@ static int post_recv_info_req(struct ibtrs_srv_con *con)
 static int post_recv_io(struct ibtrs_srv_con *con)
 {
 	struct ibtrs_srv_sess *sess = to_srv_sess(con->c.sess);
+	struct ibtrs_srv *srv = sess->srv;
 	int i, err;
 
-	for (i = 0; i < sess->queue_depth; i++) {
+	for (i = 0; i < srv->queue_depth; i++) {
 		err = ibtrs_post_recv_empty(&con->c, &io_comp_cqe);
 		if (unlikely(err))
 			return err;
@@ -1267,6 +1271,7 @@ static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 {
 	struct ibtrs_srv_con *con = cq->cq_context;
 	struct ibtrs_srv_sess *sess = to_srv_sess(con->c.sess);
+	struct ibtrs_srv *srv = sess->srv;
 	u32 imm, msg_id, off;
 	void *buf;
 	int err;
@@ -1308,7 +1313,7 @@ static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 		msg_id = imm >> sess->off_len;
 		off = imm & sess->off_mask;
 
-		if (unlikely(msg_id > sess->queue_depth ||
+		if (unlikely(msg_id > srv->queue_depth ||
 			     off > rcv_buf_size)) {
 			ibtrs_err(sess, "Processing I/O failed, contiguous "
 				  "buf addr is out of reserved area\n");
@@ -1346,10 +1351,7 @@ EXPORT_SYMBOL(ibtrs_srv_get_sess_sockaddr);
 
 int ibtrs_srv_get_queue_depth(struct ibtrs_srv *srv)
 {
-	/* XXX Should be changed */
-	struct ibtrs_srv_sess *sess = srv->paths[0];
-
-	return sess->queue_depth;
+	return srv->queue_depth;
 }
 EXPORT_SYMBOL(ibtrs_srv_get_queue_depth);
 
@@ -1381,6 +1383,7 @@ static struct ibtrs_srv *__alloc_srv(struct ibtrs_srv_ctx *ctx,
 	refcount_set(&srv->refcount, 1);
 	mutex_init(&srv->paths_mutex);
 	uuid_copy(&srv->paths_uuid, paths_uuid);
+	srv->queue_depth = sess_queue_depth;
 	srv->ctx = ctx;
 
 	list_add(&srv->ctx_list, &ctx->srv_list);
@@ -1521,6 +1524,7 @@ static void ibtrs_srv_close_work(struct work_struct *work)
 static int ibtrs_rdma_do_accept(struct ibtrs_srv_sess *sess,
 				struct rdma_cm_id *cm_id)
 {
+	struct ibtrs_srv *srv = sess->srv;
 	struct ibtrs_msg_conn_rsp msg;
 	struct rdma_conn_param param;
 	int err;
@@ -1535,7 +1539,7 @@ static int ibtrs_rdma_do_accept(struct ibtrs_srv_sess *sess,
 	msg.magic = cpu_to_le16(IBTRS_MAGIC);
 	msg.version = cpu_to_le16(IBTRS_VERSION);
 	msg.errno = 0;
-	msg.queue_depth = cpu_to_le16(sess->queue_depth);
+	msg.queue_depth = cpu_to_le16(srv->queue_depth);
 	msg.rkey = cpu_to_le32(sess->s.ib_dev->rkey);
 	msg.max_io_size = cpu_to_le32(max_io_size);
 	msg.max_req_size = cpu_to_le32(MAX_REQ_SIZE);
@@ -1586,8 +1590,10 @@ static int create_con(struct ibtrs_srv_sess *sess,
 		      struct rdma_cm_id *cm_id,
 		      unsigned cid)
 {
-	u16 cq_size, wr_queue_size;
+	struct ibtrs_srv *srv = sess->srv;
 	struct ibtrs_srv_con *con;
+
+	u16 cq_size, wr_queue_size;
 	int err, cq_vector;
 
 	con = kzalloc(sizeof(*con), GFP_KERNEL);
@@ -1606,7 +1612,7 @@ static int create_con(struct ibtrs_srv_sess *sess,
 		cq_size       = SERVICE_CON_QUEUE_DEPTH;
 		wr_queue_size = SERVICE_CON_QUEUE_DEPTH;
 	} else {
-		cq_size       = sess->queue_depth;
+		cq_size       = srv->queue_depth;
 		wr_queue_size = sess->s.ib_dev->attrs.max_qp_wr - 1;
 	}
 
@@ -1667,7 +1673,6 @@ static struct ibtrs_srv_sess *__alloc_sess(struct ibtrs_srv *srv,
 	sess->state = IBTRS_SRV_CONNECTING;
 	sess->srv = srv;
 	sess->cur_cq_vector = -1;
-	sess->queue_depth = sess_queue_depth;
 	sess->s.dst_addr = cm_id->route.addr.dst_addr;
 	sess->s.con_num = con_num;
 	sess->s.recon_cnt = recon_cnt;

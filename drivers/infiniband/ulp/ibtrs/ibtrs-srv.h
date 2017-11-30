@@ -153,7 +153,6 @@ struct ibtrs_srv_sess {
 	u32			off_mask; /* mask to get offset in client buf
 					   * out of the imm field
 					   */
-	u16			queue_depth;
 	struct kobject		kobj;
 	struct kobject		kobj_stats;
 	struct ibtrs_srv_stats	stats;
@@ -168,6 +167,7 @@ struct ibtrs_srv {
 	struct ibtrs_srv_ctx	*ctx;
 	struct list_head	ctx_list;
 	void			*priv;
+	size_t			queue_depth;
 	struct kobject		kobj;
 	struct kobject		kobj_paths;
 };
