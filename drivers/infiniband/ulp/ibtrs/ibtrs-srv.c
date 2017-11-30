@@ -103,23 +103,6 @@ MODULE_PARM_DESC(sess_queue_depth,
 		 " per session. Maximum: " __stringify(MAX_SESS_QUEUE_DEPTH)
 		 " (default: " __stringify(DEFAULT_SESS_QUEUE_DEPTH) ")");
 
-#define DEFAULT_INIT_POOL_SIZE 10
-static int init_pool_size = DEFAULT_INIT_POOL_SIZE;
-module_param_named(init_pool_size, init_pool_size, int, 0444);
-MODULE_PARM_DESC(init_pool_size,
-		 "Maximum size of the RDMA buffers pool to pre-allocate on"
-		 " module load, in number of sessions. (default: "
-		 __stringify(DEFAULT_INIT_POOL_SIZE) ")");
-
-#define DEFAULT_POOL_SIZE_HI_WM 100
-static int pool_size_hi_wm = DEFAULT_POOL_SIZE_HI_WM;
-module_param_named(pool_size_hi_wm, pool_size_hi_wm, int, 0444);
-MODULE_PARM_DESC(pool_size_hi_wm,
-		 "High watermark value for the size of RDMA buffers pool"
-		 " (in number of sessions). Newly allocated buffers will be"
-		 " added to the pool until pool_size_hi_wm is reached."
-		 " (default: " __stringify(DEFAULT_POOL_SIZE_HI_WM) ")");
-
 /* We guarantee to serve 10 paths at least */
 #define CHUNK_POOL_SIZE (DEFAULT_SESS_QUEUE_DEPTH * 10)
 static mempool_t *chunk_pool;
@@ -212,12 +195,6 @@ MODULE_PARM_DESC(cq_affinity_list, "Sets the list of cpus to use as cq vectors."
 		 "(default: use all possible CPUs)");
 
 static struct workqueue_struct *ibtrs_wq;
-
-static DEFINE_MUTEX(buf_pool_mutex);
-static LIST_HEAD(free_buf_pool_list);
-static int nr_free_buf_pool;
-static int nr_total_buf_pool;
-static int nr_active_sessions;
 
 static void close_sess(struct ibtrs_srv_sess *sess);
 
@@ -592,298 +569,6 @@ void ibtrs_srv_set_sess_priv(struct ibtrs_srv *srv, void *priv)
 	srv->priv = priv;
 }
 EXPORT_SYMBOL(ibtrs_srv_set_sess_priv);
-
-static struct ibtrs_rcv_buf_pool *alloc_rcv_buf_pool(void)
-{
-	struct ibtrs_rcv_buf_pool *pool;
-	struct page *cont_pages = NULL;
-	struct ibtrs_mem_chunk *mem_chunk;
-	int alloced_bufs = 0;
-	int rcv_buf_order = get_order(rcv_buf_size);
-	int max_order, alloc_order;
-	unsigned int alloced_size;
-
-	pool = kzalloc(sizeof(*pool), GFP_KERNEL);
-	if (!pool) {
-		pr_err("Failed to allocate memory for buffer pool struct\n");
-		return NULL;
-	}
-
-	pool->rcv_bufs = kcalloc(sess_queue_depth, sizeof(*pool->rcv_bufs),
-				 GFP_KERNEL);
-	if (!pool->rcv_bufs) {
-		pr_err("Failed to allocate array for receive buffers\n");
-		kfree(pool);
-		return NULL;
-	}
-	INIT_LIST_HEAD(&pool->chunk_list);
-
-	while (alloced_bufs < sess_queue_depth) {
-		mem_chunk = kzalloc(sizeof(*mem_chunk), GFP_KERNEL);
-		if (!mem_chunk) {
-			pr_err("Failed to allocate memory for memory chunk"
-			       " struct\n");
-			goto alloc_fail;
-		}
-
-		max_order = min(MAX_ORDER - 1,
-				get_order((sess_queue_depth - alloced_bufs) *
-					  rcv_buf_size));
-		for (alloc_order = max_order; alloc_order > rcv_buf_order;
-		     alloc_order--) {
-			cont_pages = alloc_pages(__GFP_NORETRY | __GFP_NOWARN |
-						 __GFP_ZERO, alloc_order);
-			if (cont_pages) {
-				pr_debug("Allocated order %d pages\n", alloc_order);
-				break;
-			}
-			pr_debug("Failed to allocate order %d pages\n", alloc_order);
-		}
-
-		if (cont_pages) {
-			void *recv_buf_start;
-
-			mem_chunk->order = alloc_order;
-			mem_chunk->addr = page_address(cont_pages);
-			list_add_tail(&mem_chunk->list, &pool->chunk_list);
-			alloced_size = (1 << alloc_order) * PAGE_SIZE;
-
-			pr_debug("Memory chunk size: %d, address: %p\n",
-				 alloced_size, mem_chunk->addr);
-
-			recv_buf_start = mem_chunk->addr;
-			while (alloced_size > rcv_buf_size &&
-			       alloced_bufs < sess_queue_depth) {
-				pool->rcv_bufs[alloced_bufs].buf =
-					recv_buf_start;
-				alloced_bufs++;
-				recv_buf_start += rcv_buf_size;
-				alloced_size -= rcv_buf_size;
-			}
-		} else {
-			/* if allocation of pages to fit multiple rcv_buf's
-			 * failed we fall back to alloc'ing exact number of
-			 * pages
-			 */
-			gfp_t gfp_mask = (GFP_KERNEL | __GFP_RETRY_MAYFAIL |
-					  __GFP_ZERO);
-			void *addr = alloc_pages_exact(rcv_buf_size, gfp_mask);
-
-			if (!addr) {
-				pr_err("Failed to allocate memory for "
-				       " receive buffer (size %dB)\n",
-				       rcv_buf_size);
-				goto alloc_fail;
-			}
-
-			pr_debug("Alloced pages exact at %p for rcv_bufs[%d]\n",
-				 addr, alloced_bufs);
-
-			mem_chunk->addr = addr;
-			mem_chunk->order = IBTRS_MEM_CHUNK_NOORDER;
-			list_add_tail(&mem_chunk->list, &pool->chunk_list);
-
-			pool->rcv_bufs[alloced_bufs].buf = addr;
-			alloced_bufs++;
-		}
-	}
-
-	return pool;
-
-alloc_fail:
-	if (!list_empty(&pool->chunk_list)) {
-		struct ibtrs_mem_chunk *tmp;
-
-		list_for_each_entry_safe(mem_chunk, tmp, &pool->chunk_list,
-					 list) {
-			if (mem_chunk->order != IBTRS_MEM_CHUNK_NOORDER)
-				free_pages((unsigned long)mem_chunk->addr,
-					   mem_chunk->order);
-			else
-				free_pages_exact(mem_chunk->addr, rcv_buf_size);
-			list_del(&mem_chunk->list);
-			kfree(mem_chunk);
-		}
-	}
-	kfree(pool->rcv_bufs);
-	kfree(pool);
-	return NULL;
-}
-
-static struct ibtrs_rcv_buf_pool *__get_pool_from_list(void)
-{
-	struct ibtrs_rcv_buf_pool *pool = NULL;
-
-	if (!list_empty(&free_buf_pool_list)) {
-		pr_debug("Getting buf pool from pre-allocated list\n");
-		pool = list_first_entry(&free_buf_pool_list,
-					struct ibtrs_rcv_buf_pool, list);
-		list_del(&pool->list);
-		nr_free_buf_pool--;
-	}
-
-	return pool;
-}
-
-static void __put_pool_on_list(struct ibtrs_rcv_buf_pool *pool)
-{
-	list_add(&pool->list, &free_buf_pool_list);
-	nr_free_buf_pool++;
-	pr_debug("Put buf pool back to the free list (nr_free_buf_pool: %d)\n",
-		 nr_free_buf_pool);
-}
-
-static struct ibtrs_rcv_buf_pool *get_alloc_rcv_buf_pool(void)
-{
-	struct ibtrs_rcv_buf_pool *pool = NULL;
-
-	mutex_lock(&buf_pool_mutex);
-	if (nr_active_sessions >= pool_size_hi_wm) {
-		WARN_ON(nr_free_buf_pool || !list_empty(&free_buf_pool_list));
-		pr_debug("current nr_active_sessions (%d), pool_size_hi_wm (%d),"
-			 ", allocating.\n", nr_active_sessions, pool_size_hi_wm);
-		pool = alloc_rcv_buf_pool();
-	} else if (nr_total_buf_pool < pool_size_hi_wm) {
-		/* try to allocate new pool while used+free is less then
-		 * watermark
-		 */
-		pr_debug("nr_total_buf_pool (%d) smaller than pool_size_hi_wm (%d)"
-			 ", trying to allocate.\n", nr_total_buf_pool,
-			 pool_size_hi_wm);
-		pool = alloc_rcv_buf_pool();
-		if (pool)
-			nr_total_buf_pool++;
-		else
-			pool = __get_pool_from_list();
-	} else if (nr_total_buf_pool == pool_size_hi_wm) {
-		/* pool size has already reached watermark, check if there are
-		 * free pools on the list
-		 */
-		if (nr_free_buf_pool) {
-			pool = __get_pool_from_list();
-			WARN_ON(!pool);
-			pr_debug("Got pool from free list (nr_free_buf_pool: %d)\n",
-				 nr_free_buf_pool);
-		} else {
-			/* all pools are already being used */
-			pr_debug("No free pool on the list\n");
-			WARN_ON((nr_active_sessions != nr_total_buf_pool) ||
-				nr_free_buf_pool);
-			pool = alloc_rcv_buf_pool();
-		}
-	} else {
-		/* all possibilities should be covered */
-		WARN_ON(1);
-	}
-
-	if (pool)
-		nr_active_sessions++;
-
-	mutex_unlock(&buf_pool_mutex);
-
-	return pool;
-}
-
-static void free_recv_buf_pool(struct ibtrs_rcv_buf_pool *pool)
-{
-	struct ibtrs_mem_chunk *mem_chunk, *tmp;
-
-	pr_debug("Freeing memory chunks for %d receive buffers\n", sess_queue_depth);
-
-	list_for_each_entry_safe(mem_chunk, tmp, &pool->chunk_list, list) {
-		if (mem_chunk->order != IBTRS_MEM_CHUNK_NOORDER)
-			free_pages((unsigned long)mem_chunk->addr,
-				   mem_chunk->order);
-		else
-			free_pages_exact(mem_chunk->addr, rcv_buf_size);
-		list_del(&mem_chunk->list);
-		kfree(mem_chunk);
-	}
-
-	kfree(pool->rcv_bufs);
-	kfree(pool);
-}
-
-static void put_rcv_buf_pool(struct ibtrs_rcv_buf_pool *pool)
-{
-	mutex_lock(&buf_pool_mutex);
-	nr_active_sessions--;
-	if (nr_active_sessions >= pool_size_hi_wm) {
-		mutex_unlock(&buf_pool_mutex);
-		pr_debug("Freeing buf pool"
-			 " (nr_active_sessions: %d, pool_size_hi_wm: %d)\n",
-			 nr_active_sessions, pool_size_hi_wm);
-		free_recv_buf_pool(pool);
-	} else {
-		__put_pool_on_list(pool);
-		mutex_unlock(&buf_pool_mutex);
-	}
-}
-
-static void unreg_cont_bufs(struct ibtrs_srv_sess *sess)
-{
-	struct ibtrs_rcv_buf *buf;
-	int i;
-
-	pr_debug("Unregistering %d RDMA buffers\n", sess_queue_depth);
-	for (i = 0; i < sess_queue_depth; i++) {
-		buf = &sess->rcv_buf_pool->rcv_bufs[i];
-
-		ib_dma_unmap_single(sess->s.ib_dev->dev, buf->rdma_addr,
-				    rcv_buf_size, DMA_BIDIRECTIONAL);
-	}
-}
-
-static void release_cont_bufs(struct ibtrs_srv_sess *sess)
-{
-	unreg_cont_bufs(sess);
-	put_rcv_buf_pool(sess->rcv_buf_pool);
-	sess->rcv_buf_pool = NULL;
-}
-
-static int setup_cont_bufs(struct ibtrs_srv_sess *sess)
-{
-	struct ibtrs_srv *srv = sess->srv;
-	struct ibtrs_rcv_buf *buf;
-	int i, err;
-
-	sess->rcv_buf_pool = get_alloc_rcv_buf_pool();
-	if (unlikely(!sess->rcv_buf_pool)) {
-		ibtrs_err(sess, "Failed to allocate receive buffers for session\n");
-		return -ENOMEM;
-	}
-	for (i = 0; i < srv->queue_depth; i++) {
-		buf = &sess->rcv_buf_pool->rcv_bufs[i];
-
-		buf->rdma_addr = ib_dma_map_single(sess->s.ib_dev->dev,
-						   buf->buf, rcv_buf_size,
-						   DMA_BIDIRECTIONAL);
-		if (unlikely(ib_dma_mapping_error(sess->s.ib_dev->dev,
-						  buf->rdma_addr))) {
-			ibtrs_err(sess, "Registering RDMA buf failed,"
-				  " DMA mapping failed\n");
-			err = -EIO;
-			goto err_map;
-		}
-	}
-
-	sess->off_len = 31 - ilog2(srv->queue_depth - 1);
-	sess->off_mask = (1 << sess->off_len) - 1;
-
-	ibtrs_info(sess, "Allocated %ld %dKB RDMA receive buffers, %ldKB in total\n",
-		   srv->queue_depth, rcv_buf_size >> 10,
-		   srv->queue_depth * rcv_buf_size >> 10);
-
-	return 0;
-
-err_map:
-	while (i--) {
-		buf = &sess->rcv_buf_pool->rcv_bufs[i];
-		ib_dma_unmap_single(sess->s.ib_dev->dev, buf->rdma_addr,
-				    rcv_buf_size, DMA_BIDIRECTIONAL);
-	}
-	return err;
-}
 
 static void unmap_cont_bufs(struct ibtrs_srv_sess *sess)
 {
@@ -2156,48 +1841,7 @@ static int check_module_params(void)
 		return -EINVAL;
 	}
 
-	if (init_pool_size < 0) {
-		pr_err("Invalid 'init_pool_size' parameter value."
-		       " Value must be positive.\n");
-		return -EINVAL;
-	}
-
-	if (pool_size_hi_wm < init_pool_size) {
-		pr_err("Invalid 'pool_size_hi_wm' parameter value. Value must"
-		       " be iqual or higher than 'init_pool_size'.\n");
-		return -EINVAL;
-	}
-
 	return 0;
-}
-
-static void ibtrs_srv_free_buf_pool(void)
-{
-	struct ibtrs_rcv_buf_pool *pool, *pool_next;
-
-	list_for_each_entry_safe(pool, pool_next, &free_buf_pool_list, list) {
-		list_del(&pool->list);
-		nr_free_buf_pool--;
-		free_recv_buf_pool(pool);
-	}
-}
-
-static void ibtrs_srv_alloc_buf_pool(void)
-{
-	struct ibtrs_rcv_buf_pool *pool;
-	int i;
-
-	for (i = 0; i < init_pool_size; i++) {
-		pool = alloc_rcv_buf_pool();
-		if (!pool) {
-			pr_warn("Failed to allocate initial RDMA buffer pool"
-				" #%d\n", i + 1);
-			break;
-		}
-		list_add(&pool->list, &free_buf_pool_list);
-		nr_free_buf_pool++;
-		nr_total_buf_pool++;
-	}
 }
 
 static int __init ibtrs_server_init(void)
@@ -2209,11 +1853,9 @@ static int __init ibtrs_server_init(void)
 
 	pr_info("Loading module %s, version: %s "
 		"(retry_count: %d, cq_affinity_list: %s, "
-		"max_io_size: %d, sess_queue_depth: %d, "
-		"init_pool_size: %d, pool_size_hi_wm: %d)\n",
+		"max_io_size: %d, sess_queue_depth: %d)\n",
 		KBUILD_MODNAME, IBTRS_VER_STRING, retry_count,
-		cq_affinity_list, max_io_size, sess_queue_depth,
-		init_pool_size, pool_size_hi_wm);
+		cq_affinity_list, max_io_size, sess_queue_depth);
 
 	err = check_module_params();
 	if (err) {
@@ -2238,7 +1880,6 @@ static int __init ibtrs_server_init(void)
 		       " err: %d\n", err);
 		goto out_ibtrs_wq;
 	}
-	ibtrs_srv_alloc_buf_pool();
 
 	return 0;
 
@@ -2254,7 +1895,6 @@ static void __exit ibtrs_server_exit(void)
 {
 	ibtrs_srv_destroy_sysfs_module_files();
 	destroy_workqueue(ibtrs_wq);
-	ibtrs_srv_free_buf_pool();
 	mempool_destroy(chunk_pool);
 }
 

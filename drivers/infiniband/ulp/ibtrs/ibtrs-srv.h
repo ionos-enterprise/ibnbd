@@ -74,32 +74,6 @@ static inline const char *ibtrs_srv_state_str(enum ibtrs_srv_state state)
 	}
 }
 
-/*
- * Describes the rdma buffer managed by client and used for his rdma writes
- * Rdma info has to be sent in OPEN_RESP message to the client.
- */
-struct ibtrs_rcv_buf {
-	dma_addr_t	rdma_addr;
-	void		*buf;
-};
-
-/* to indicate that memory chunk was not allocated from a N-order contiguous
- * pages area
- */
-#define IBTRS_MEM_CHUNK_NOORDER -1
-
-struct ibtrs_mem_chunk {
-	struct list_head	list;
-	int			order;
-	void			*addr;
-};
-
-struct ibtrs_rcv_buf_pool {
-	struct list_head	list;
-	struct list_head	chunk_list;
-	struct ibtrs_rcv_buf	*rcv_bufs;
-};
-
 struct ibtrs_stats_wc_comp {
 	atomic64_t	calls;
 	atomic64_t	total_wc_cnt;
@@ -144,7 +118,6 @@ struct ibtrs_srv_sess {
 	spinlock_t		state_lock;
 	int			cur_cq_vector;
 	struct ibtrs_srv_op	**ops_ids;
-	struct ibtrs_rcv_buf_pool *rcv_buf_pool;
 	dma_addr_t		*rdma_addr;
 	bool			was_connected;
 	u8			off_len; /* number of bits for offset in
