@@ -1344,14 +1344,14 @@ ibtrs_srv_get_sess_sockaddr(struct ibtrs_srv *srv)
 }
 EXPORT_SYMBOL(ibtrs_srv_get_sess_sockaddr);
 
-int ibtrs_srv_get_sess_qdepth(struct ibtrs_srv *srv)
+int ibtrs_srv_get_queue_depth(struct ibtrs_srv *srv)
 {
 	/* XXX Should be changed */
 	struct ibtrs_srv_sess *sess = srv->paths[0];
 
 	return sess->queue_depth;
 }
-EXPORT_SYMBOL(ibtrs_srv_get_sess_qdepth);
+EXPORT_SYMBOL(ibtrs_srv_get_queue_depth);
 
 static int find_next_bit_ring(int cur)
 {

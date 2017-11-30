@@ -324,7 +324,7 @@ static int create_sess(struct ibtrs_srv *ibtrs)
 		       sessname);
 		return -ENOMEM;
 	}
-	srv_sess->queue_depth = ibtrs_srv_get_sess_qdepth(ibtrs);
+	srv_sess->queue_depth = ibtrs_srv_get_queue_depth(ibtrs);
 	srv_sess->sess_bio_set = bioset_create(srv_sess->queue_depth, 0,
 					       BIOSET_NEED_BVECS);
 	if (!srv_sess->sess_bio_set) {
@@ -344,7 +344,7 @@ static int create_sess(struct ibtrs_srv *ibtrs)
 	mutex_unlock(&sess_lock);
 
 	srv_sess->ibtrs = ibtrs;
-	srv_sess->queue_depth = ibtrs_srv_get_sess_qdepth(ibtrs);
+	srv_sess->queue_depth = ibtrs_srv_get_queue_depth(ibtrs);
 	strlcpy(srv_sess->sessname, sessname, sizeof(srv_sess->sessname));
 
 
