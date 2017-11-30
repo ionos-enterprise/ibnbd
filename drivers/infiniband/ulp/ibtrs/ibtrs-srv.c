@@ -885,6 +885,45 @@ err_map:
 	return err;
 }
 
+static void unmap_cont_bufs(struct ibtrs_srv_sess *sess)
+{
+	struct ibtrs_srv *srv = sess->srv;
+	int i;
+
+	for (i = 0; i < srv->queue_depth; i++)
+		ib_dma_unmap_page(sess->s.ib_dev->dev, sess->rdma_addr[i],
+				  rcv_buf_size, DMA_BIDIRECTIONAL);
+}
+
+static int map_cont_bufs(struct ibtrs_srv_sess *sess)
+{
+	struct ibtrs_srv *srv = sess->srv;
+	dma_addr_t addr;
+	int i, err;
+
+	for (i = 0; i < srv->queue_depth; i++) {
+		addr = ib_dma_map_page(sess->s.ib_dev->dev, srv->chunks[i],
+				       0, rcv_buf_size, DMA_BIDIRECTIONAL);
+		if (unlikely(ib_dma_mapping_error(sess->s.ib_dev->dev, addr))) {
+			ibtrs_err(sess, "ib_dma_map_page() failed\n");
+			err = -EIO;
+			goto err_map;
+		}
+		sess->rdma_addr[i] = addr;
+	}
+	sess->off_len = 31 - ilog2(srv->queue_depth - 1);
+	sess->off_mask = (1 << sess->off_len) - 1;
+
+	return 0;
+
+err_map:
+	while (i--)
+		ib_dma_unmap_page(sess->s.ib_dev->dev, sess->rdma_addr[i],
+				  rcv_buf_size, DMA_BIDIRECTIONAL);
+
+	return err;
+}
+
 static int alloc_sess_tx_bufs(struct ibtrs_srv_sess *sess)
 {
 	struct ibtrs_srv *srv = sess->srv;
@@ -988,7 +1027,6 @@ static int process_info_req(struct ibtrs_srv_con *con,
 	struct ibtrs_iu *tx_iu;
 	size_t tx_sz;
 	int i, err;
-	u64 addr;
 
 	err = post_recv_sess(sess);
 	if (unlikely(err)) {
@@ -1009,10 +1047,8 @@ static int process_info_req(struct ibtrs_srv_con *con,
 	rsp = tx_iu->buf;
 	rsp->type = cpu_to_le16(IBTRS_MSG_INFO_RSP);
 	rsp->addr_num = cpu_to_le16(srv->queue_depth);
-	for (i = 0; i < srv->queue_depth; i++) {
-		addr = sess->rcv_buf_pool->rcv_bufs[i].rdma_addr;
-		rsp->addr[i] = cpu_to_le64(addr);
-	}
+	for (i = 0; i < srv->queue_depth; i++)
+		rsp->addr[i] = cpu_to_le64(sess->rdma_addr[i]);
 
 	/*
 	 * We do not account number of established connections at the current
@@ -1169,8 +1205,8 @@ static void process_rdma_write_req(struct ibtrs_srv_con *con,
 		}
 	}
 	data_len = off - req->usr_len;
-	data = sess->rcv_buf_pool->rcv_bufs[buf_id].buf;
-	id->data_dma_addr = sess->rcv_buf_pool->rcv_bufs[buf_id].rdma_addr;
+	data = page_address(srv->chunks[buf_id]);
+	id->data_dma_addr = sess->rdma_addr[buf_id];
 	ret = ctx->rdma_ev(srv, srv->priv, id, READ, data, data_len,
 			       data + data_len, req->usr_len);
 
@@ -1218,8 +1254,7 @@ static void process_rdma_write(struct ibtrs_srv_con *con,
 	id->msg_id = buf_id;
 
 	data_len = off - req->usr_len;
-	data = sess->rcv_buf_pool->rcv_bufs[buf_id].buf;
-
+	data = page_address(srv->chunks[buf_id]);
 	ret = ctx->rdma_ev(srv, srv->priv, id, WRITE, data, data_len,
 			   data + data_len, req->usr_len);
 	if (unlikely(ret)) {
@@ -1274,7 +1309,7 @@ static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 	struct ibtrs_srv_sess *sess = to_srv_sess(con->c.sess);
 	struct ibtrs_srv *srv = sess->srv;
 	u32 imm, msg_id, off;
-	void *buf;
+	void *data;
 	int err;
 
 	if (unlikely(wc->status != IB_WC_SUCCESS)) {
@@ -1321,8 +1356,8 @@ static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 			close_sess(sess);
 			return;
 		}
-		buf = sess->rcv_buf_pool->rcv_bufs[msg_id].buf + off;
-		process_io_req(con, buf, msg_id, off);
+		data = page_address(srv->chunks[msg_id]) + off;
+		process_io_req(con, data, msg_id, off);
 		break;
 	default:
 		ibtrs_wrn(sess, "Unexpected WC type: %s\n",
@@ -1527,7 +1562,7 @@ static void ibtrs_srv_close_work(struct work_struct *work)
 	if (sess->was_connected)
 		ctx->link_ev(srv, IBTRS_SRV_LINK_EV_DISCONNECTED, srv->priv);
 
-	release_cont_bufs(sess);
+	unmap_cont_bufs(sess);
 	free_sess_tx_bufs(sess);
 
 	for (i = 0; i < sess->s.con_num; i++) {
@@ -1721,20 +1756,20 @@ static struct ibtrs_srv_sess *__alloc_sess(struct ibtrs_srv *srv,
 		ibtrs_wrn(sess, "Failed to alloc ibtrs_device\n");
 		goto err_free_con;
 	}
-	err = setup_cont_bufs(sess);
+	err = map_cont_bufs(sess);
 	if (unlikely(err))
 		goto err_put_dev;
 
 	err = alloc_sess_tx_bufs(sess);
 	if (unlikely(err))
-		goto err_release_bufs;
+		goto err_unmap_bufs;
 
 	__add_path_to_srv(srv, sess);
 
 	return sess;
 
-err_release_bufs:
-	release_cont_bufs(sess);
+err_unmap_bufs:
+	unmap_cont_bufs(sess);
 err_put_dev:
 	ibtrs_ib_dev_put(sess->s.ib_dev);
 err_free_con:
