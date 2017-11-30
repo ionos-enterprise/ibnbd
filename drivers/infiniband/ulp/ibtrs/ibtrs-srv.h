@@ -145,6 +145,7 @@ struct ibtrs_srv_sess {
 	int			cur_cq_vector;
 	struct ibtrs_srv_op	**ops_ids;
 	struct ibtrs_rcv_buf_pool *rcv_buf_pool;
+	dma_addr_t		*rdma_addr;
 	bool			was_connected;
 	u8			off_len; /* number of bits for offset in
 					  * one client buffer.

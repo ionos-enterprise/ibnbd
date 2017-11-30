@@ -1546,6 +1546,7 @@ static void ibtrs_srv_close_work(struct work_struct *work)
 	sess->srv = NULL;
 	ibtrs_srv_change_state(sess, IBTRS_SRV_CLOSED);
 
+	kfree(sess->rdma_addr);
 	kfree(sess->s.con);
 	kfree(sess);
 }
@@ -1695,9 +1696,14 @@ static struct ibtrs_srv_sess *__alloc_sess(struct ibtrs_srv *srv,
 	if (unlikely(!sess))
 		goto err;
 
+	sess->rdma_addr = kcalloc(srv->queue_depth, sizeof(*sess->rdma_addr),
+				  GFP_KERNEL);
+	if (unlikely(!sess->rdma_addr))
+		goto err_free_sess;
+
 	sess->s.con = kcalloc(con_num, sizeof(*sess->s.con), GFP_KERNEL);
 	if (unlikely(!sess->s.con))
-		goto err_free_sess;
+		goto err_free_rdma_addr;
 
 	sess->state = IBTRS_SRV_CONNECTING;
 	sess->srv = srv;
@@ -1733,6 +1739,8 @@ err_put_dev:
 	ibtrs_ib_dev_put(sess->s.ib_dev);
 err_free_con:
 	kfree(sess->s.con);
+err_free_rdma_addr:
+	kfree(sess->rdma_addr);
 err_free_sess:
 	kfree(sess);
 
