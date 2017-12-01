@@ -415,6 +415,7 @@ static void ibtrs_srv_free_ops_ids(struct ibtrs_srv_sess *sess)
 	struct ibtrs_srv *srv = sess->srv;
 	int i;
 
+	WARN_ON(atomic_read(&sess->ids_inflight));
 	if (sess->ops_ids) {
 		for (i = 0; i < srv->queue_depth; i++)
 			free_id(sess->ops_ids[i]);
@@ -443,11 +444,30 @@ static int ibtrs_srv_alloc_ops_ids(struct ibtrs_srv_sess *sess)
 		}
 		sess->ops_ids[i] = id;
 	}
+	init_waitqueue_head(&sess->ids_waitq);
+	atomic_set(&sess->ids_inflight, 0);
+
 	return 0;
 
 err:
 	ibtrs_srv_free_ops_ids(sess);
 	return -ENOMEM;
+}
+
+static void ibtrs_srv_get_ops_ids(struct ibtrs_srv_sess *sess)
+{
+	atomic_inc(&sess->ids_inflight);
+}
+
+static void ibtrs_srv_put_ops_ids(struct ibtrs_srv_sess *sess)
+{
+	if (atomic_dec_and_test(&sess->ids_inflight))
+		wake_up(&sess->ids_waitq);
+}
+
+static void ibtrs_srv_wait_ops_ids(struct ibtrs_srv_sess *sess)
+{
+	wait_event(sess->ids_waitq, !atomic_read(&sess->ids_inflight));
 }
 
 static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc);
@@ -586,6 +606,7 @@ int ibtrs_srv_resp_rdma(struct ibtrs_srv_op *id, int status)
 		}
 	}
 	ibtrs_srv_stats_dec_inflight(sess);
+	ibtrs_srv_put_ops_ids(sess);
 
 	return err;
 }
@@ -899,6 +920,7 @@ static void process_rdma_write_req(struct ibtrs_srv_con *con,
 		return;
 	}
 	sg_cnt = le32_to_cpu(req->sg_cnt);
+	ibtrs_srv_get_ops_ids(sess);
 	ibtrs_srv_update_rdma_stats(&sess->stats, off, true);
 	id = sess->ops_ids[buf_id];
 	kfree(id->tx_wr);
@@ -944,6 +966,7 @@ send_err_msg:
 		close_sess(sess);
 	}
 	ibtrs_srv_stats_dec_inflight(sess);
+	ibtrs_srv_put_ops_ids(sess);
 }
 
 static void process_rdma_write(struct ibtrs_srv_con *con,
@@ -965,6 +988,7 @@ static void process_rdma_write(struct ibtrs_srv_con *con,
 			     ibtrs_srv_state_str(sess->state));
 		return;
 	}
+	ibtrs_srv_get_ops_ids(sess);
 	ibtrs_srv_update_rdma_stats(&sess->stats, off, false);
 	id = sess->ops_ids[buf_id];
 	id->con    = con;
@@ -993,6 +1017,7 @@ send_err_msg:
 		close_sess(sess);
 	}
 	ibtrs_srv_stats_dec_inflight(sess);
+	ibtrs_srv_put_ops_ids(sess);
 }
 
 static void process_io_req(struct ibtrs_srv_con *con, void *msg,
@@ -1278,6 +1303,8 @@ static void ibtrs_srv_close_work(struct work_struct *work)
 		rdma_disconnect(con->c.cm_id);
 		ib_drain_qp(con->c.qp);
 	}
+	/* Wait for all inflights */
+	ibtrs_srv_wait_ops_ids(sess);
 
 	/* Notify upper layer if we are the last path */
 	ibtrs_srv_sess_down(sess);

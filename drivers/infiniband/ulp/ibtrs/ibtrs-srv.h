@@ -118,6 +118,8 @@ struct ibtrs_srv_sess {
 	spinlock_t		state_lock;
 	int			cur_cq_vector;
 	struct ibtrs_srv_op	**ops_ids;
+	atomic_t		ids_inflight;
+	wait_queue_head_t	ids_waitq;
 	dma_addr_t		*rdma_addr;
 	bool			established;
 	u8			off_len; /* number of bits for offset in
