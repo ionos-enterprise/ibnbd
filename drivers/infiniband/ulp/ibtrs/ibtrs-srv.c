@@ -410,7 +410,7 @@ static void free_id(struct ibtrs_srv_op *id)
 	kfree(id);
 }
 
-static void free_sess_tx_bufs(struct ibtrs_srv_sess *sess)
+static void ibtrs_srv_free_ops_ids(struct ibtrs_srv_sess *sess)
 {
 	struct ibtrs_srv *srv = sess->srv;
 	int i;
@@ -421,6 +421,33 @@ static void free_sess_tx_bufs(struct ibtrs_srv_sess *sess)
 		kfree(sess->ops_ids);
 		sess->ops_ids = NULL;
 	}
+}
+
+static int ibtrs_srv_alloc_ops_ids(struct ibtrs_srv_sess *sess)
+{
+	struct ibtrs_srv *srv = sess->srv;
+	struct ibtrs_srv_op *id;
+	int i;
+
+	sess->ops_ids = kcalloc(srv->queue_depth, sizeof(*sess->ops_ids),
+				GFP_KERNEL);
+	if (unlikely(!sess->ops_ids)) {
+		ibtrs_err(sess, "Allocation failed\n");
+		goto err;
+	}
+	for (i = 0; i < srv->queue_depth; ++i) {
+		id = kzalloc(sizeof(*id), GFP_KERNEL);
+		if (unlikely(!id)) {
+			ibtrs_err(sess, "Allocation failed\n");
+			goto err;
+		}
+		sess->ops_ids[i] = id;
+	}
+	return 0;
+
+err:
+	ibtrs_srv_free_ops_ids(sess);
+	return -ENOMEM;
 }
 
 static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc);
@@ -607,33 +634,6 @@ err_map:
 				  rcv_buf_size, DMA_BIDIRECTIONAL);
 
 	return err;
-}
-
-static int alloc_sess_tx_bufs(struct ibtrs_srv_sess *sess)
-{
-	struct ibtrs_srv *srv = sess->srv;
-	struct ibtrs_srv_op *id;
-	int i;
-
-	sess->ops_ids = kcalloc(srv->queue_depth, sizeof(*sess->ops_ids),
-				GFP_KERNEL);
-	if (unlikely(!sess->ops_ids)) {
-		ibtrs_err(sess, "Allocation failed\n");
-		goto err;
-	}
-	for (i = 0; i < srv->queue_depth; ++i) {
-		id = kzalloc(sizeof(*id), GFP_KERNEL);
-		if (unlikely(!id)) {
-			ibtrs_err(sess, "Allocation failed\n");
-			goto err;
-		}
-		sess->ops_ids[i] = id;
-	}
-	return 0;
-
-err:
-	free_sess_tx_bufs(sess);
-	return -ENOMEM;
 }
 
 static void ibtrs_srv_hb_err_handler(struct ibtrs_con *c, int err)
@@ -1280,7 +1280,7 @@ static void ibtrs_srv_close_work(struct work_struct *work)
 	ibtrs_srv_sess_down(sess);
 
 	unmap_cont_bufs(sess);
-	free_sess_tx_bufs(sess);
+	ibtrs_srv_free_ops_ids(sess);
 
 	for (i = 0; i < sess->s.con_num; i++) {
 		con = to_srv_con(sess->s.con[i]);
@@ -1477,7 +1477,7 @@ static struct ibtrs_srv_sess *__alloc_sess(struct ibtrs_srv *srv,
 	if (unlikely(err))
 		goto err_put_dev;
 
-	err = alloc_sess_tx_bufs(sess);
+	err = ibtrs_srv_alloc_ops_ids(sess);
 	if (unlikely(err))
 		goto err_unmap_bufs;
 
