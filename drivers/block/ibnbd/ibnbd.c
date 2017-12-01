@@ -54,7 +54,7 @@ u32 ibnbd_to_bio_flags(u32 flags)
 		return result;
 
 	if (flags & IBNBD_RW_REQ_WRITE)
-		result |= WRITE;
+		result |= REQ_OP_WRITE;
 
 	if (flags & IBNBD_RW_REQ_SYNC)
 		result |= REQ_SYNC;
