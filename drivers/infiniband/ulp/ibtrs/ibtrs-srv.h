@@ -119,7 +119,7 @@ struct ibtrs_srv_sess {
 	int			cur_cq_vector;
 	struct ibtrs_srv_op	**ops_ids;
 	dma_addr_t		*rdma_addr;
-	bool			was_connected;
+	bool			established;
 	u8			off_len; /* number of bits for offset in
 					  * one client buffer.
 					  * 32 - ilog2(sess->queue_depth)
@@ -134,6 +134,8 @@ struct ibtrs_srv_sess {
 
 struct ibtrs_srv {
 	struct ibtrs_srv_sess	*paths[MAX_PATHS_NUM];
+	int			paths_up;
+	struct mutex		paths_ev_mutex;
 	size_t			paths_num;
 	struct mutex		paths_mutex;
 	uuid_t			paths_uuid;

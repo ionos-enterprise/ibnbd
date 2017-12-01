@@ -700,6 +700,38 @@ close_sess:
        close_sess(sess);
 }
 
+static void ibtrs_srv_sess_up(struct ibtrs_srv_sess *sess)
+{
+	struct ibtrs_srv *srv = sess->srv;
+	struct ibtrs_srv_ctx *ctx = srv->ctx;
+	int up;
+
+	mutex_lock(&srv->paths_ev_mutex);
+	up = ++srv->paths_up;
+	if (up == 1)
+		ctx->link_ev(srv, IBTRS_SRV_LINK_EV_CONNECTED, NULL);
+	mutex_unlock(&srv->paths_ev_mutex);
+
+	/* Mark session as established */
+	sess->established = true;
+}
+
+static void ibtrs_srv_sess_down(struct ibtrs_srv_sess *sess)
+{
+	struct ibtrs_srv *srv = sess->srv;
+	struct ibtrs_srv_ctx *ctx = srv->ctx;
+
+	if (!sess->established)
+		return;
+
+	sess->established = false;
+	mutex_lock(&srv->paths_ev_mutex);
+	WARN_ON(!srv->paths_up);
+	if (--srv->paths_up == 0)
+		ctx->link_ev(srv, IBTRS_SRV_LINK_EV_DISCONNECTED, srv->priv);
+	mutex_unlock(&srv->paths_ev_mutex);
+}
+
 static int post_recv_sess(struct ibtrs_srv_sess *sess);
 
 static int process_info_req(struct ibtrs_srv_con *con,
@@ -707,7 +739,6 @@ static int process_info_req(struct ibtrs_srv_con *con,
 {
 	struct ibtrs_srv_sess *sess = to_srv_sess(con->c.sess);
 	struct ibtrs_srv *srv = sess->srv;
-	struct ibtrs_srv_ctx *ctx = srv->ctx;
 	struct ibtrs_msg_info_rsp *rsp;
 	struct ibtrs_iu *tx_iu;
 	size_t tx_sz;
@@ -739,9 +770,9 @@ static int process_info_req(struct ibtrs_srv_con *con,
 	 * We do not account number of established connections at the current
 	 * moment, we rely on the client, which should send info request when
 	 * all connections are successfully established.  Thus, simply notify
-	 * listener with a proper event.
+	 * listener with a proper event if we are the first path.
 	 */
-	ctx->link_ev(srv, IBTRS_SRV_LINK_EV_CONNECTED, NULL);
+	ibtrs_srv_sess_up(sess);
 
 	/* Send info response */
 	err = ibtrs_iu_post_send(&con->c, tx_iu, tx_sz);
@@ -1244,8 +1275,9 @@ static void ibtrs_srv_close_work(struct work_struct *work)
 		rdma_disconnect(con->c.cm_id);
 		ib_drain_qp(con->c.qp);
 	}
-	if (sess->was_connected)
-		ctx->link_ev(srv, IBTRS_SRV_LINK_EV_DISCONNECTED, srv->priv);
+
+	/* Notify upper layer if we are the last path */
+	ibtrs_srv_sess_down(sess);
 
 	unmap_cont_bufs(sess);
 	free_sess_tx_bufs(sess);
@@ -1780,10 +1812,8 @@ static void close_sess(struct ibtrs_srv_sess *sess)
 	enum ibtrs_srv_state old_state;
 
 	if (ibtrs_srv_change_state_get_old(sess, IBTRS_SRV_CLOSING,
-					   &old_state)) {
-		sess->was_connected = (old_state == IBTRS_SRV_CONNECTED);
+					   &old_state))
 		queue_work(ibtrs_wq, &sess->close_work);
-	}
 	WARN_ON(sess->state != IBTRS_SRV_CLOSING);
 }
 
