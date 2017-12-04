@@ -615,8 +615,6 @@ static void ibnbd_srv_fill_msg_open_rsp(struct ibnbd_msg_open_rsp *rsp,
 					u32 device_id, size_t nsectors,
 					const struct ibnbd_dev *ibnbd_dev)
 {
-	struct block_device *bdev;
-
 	rsp->hdr.type			= IBNBD_MSG_OPEN_RSP;
 
 	rsp->result			= 0;
@@ -638,8 +636,7 @@ static void ibnbd_srv_fill_msg_open_rsp(struct ibnbd_msg_open_rsp *rsp,
 	rsp->discard_alignment	= ibnbd_dev_get_discard_alignment(ibnbd_dev);
 	rsp->secure_discard	= ibnbd_dev_get_secure_discard(ibnbd_dev);
 
-	bdev = ibnbd_dev_get_bdev(ibnbd_dev);
-	rsp->rotational	= !blk_queue_nonrot(bdev_get_queue(bdev));
+	rsp->rotational	= !blk_queue_nonrot(bdev_get_queue(ibnbd_dev->bdev));
 	rsp->io_mode	= ibnbd_dev->mode;
 
 	pr_debug("nsectors = %llu, logical_block_size = %d, "
@@ -809,8 +806,7 @@ static int process_msg_open(struct ibtrs_srv *ibtrs,
 	 */
 	mutex_lock(&srv_dev->lock);
 	if (!srv_dev->dev_kobj.state_in_sysfs) {
-		ret = ibnbd_srv_create_dev_sysfs(srv_dev,
-						 ibnbd_dev_get_bdev(ibnbd_dev),
+		ret = ibnbd_srv_create_dev_sysfs(srv_dev, ibnbd_dev->bdev,
 						 ibnbd_dev->name);
 		if (ret) {
 			mutex_unlock(&srv_dev->lock);

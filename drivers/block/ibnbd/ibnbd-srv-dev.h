@@ -153,14 +153,6 @@ static inline int ibnbd_dev_get_discard_alignment(const struct ibnbd_dev *dev)
 	return 0;
 }
 
-
-static inline struct block_device *
-ibnbd_dev_get_bdev(const struct ibnbd_dev *dev)
-{
-	return dev->bdev;
-}
-
-
 /**
  * ibnbd_dev_submit_io() - Submit an I/O to the disk
  * @dev:	device to that the I/O is submitted
