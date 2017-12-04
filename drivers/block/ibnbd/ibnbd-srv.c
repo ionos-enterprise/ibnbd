@@ -251,8 +251,7 @@ static void ibnbd_put_srv_dev(struct ibnbd_srv_dev *dev)
 	kref_put(&dev->kref, destroy_device_cb);
 }
 
-static void ibnbd_destroy_sess_dev(struct ibnbd_srv_sess_dev *sess_dev,
-				   bool locked)
+static void ibnbd_destroy_sess_dev(struct ibnbd_srv_sess_dev *sess_dev)
 {
 	struct completion dc;
 
@@ -266,12 +265,7 @@ static void ibnbd_destroy_sess_dev(struct ibnbd_srv_sess_dev *sess_dev,
 	wait_for_completion(&dc);
 
 	ibnbd_dev_close(sess_dev->ibnbd_dev);
-	if (!locked)
-		mutex_lock(&sess_dev->sess->lock);
 	list_del(&sess_dev->sess_list);
-	if (!locked)
-		mutex_unlock(&sess_dev->sess->lock);
-
 	mutex_lock(&sess_dev->dev->lock);
 	list_del(&sess_dev->dev_list);
 	if (sess_dev->open_flags & FMODE_WRITE)
@@ -297,7 +291,7 @@ static void destroy_sess(struct ibnbd_srv_session *srv_sess)
 	list_for_each_entry_safe(sess_dev, tmp, &srv_sess->sess_dev_list,
 				 sess_list) {
 		ibnbd_srv_destroy_dev_session_sysfs(sess_dev);
-		ibnbd_destroy_sess_dev(sess_dev, true);
+		ibnbd_destroy_sess_dev(sess_dev);
 	}
 	mutex_unlock(&srv_sess->lock);
 
@@ -394,10 +388,12 @@ static int process_msg_close(struct ibtrs_srv *ibtrs,
 	if (unlikely(IS_ERR(sess_dev))) {
 		return 0;
 	}
+
 	ibnbd_srv_destroy_dev_session_sysfs(sess_dev);
 	ibnbd_put_sess_dev(sess_dev);
-	ibnbd_destroy_sess_dev(sess_dev, false);
-
+	mutex_lock(&srv_sess->lock);
+	ibnbd_destroy_sess_dev(sess_dev);
+	mutex_unlock(&srv_sess->lock);
 	return 0;
 }
 
@@ -745,6 +741,7 @@ static int process_msg_open(struct ibtrs_srv *ibtrs,
 	if (open_msg->access_mode != IBNBD_ACCESS_RO)
 		open_flags |= FMODE_WRITE;
 
+	mutex_lock(&srv_sess->lock);
 	if ((strlen(dev_search_path) + strlen(open_msg->dev_name))
 	    >= PATH_MAX) {
 		pr_err("Opening device for session %s failed, device path too"
@@ -769,6 +766,7 @@ static int process_msg_open(struct ibtrs_srv *ibtrs,
 		io_mode = IBNBD_FILEIO;
 	else
 		io_mode = def_io_mode;
+
 
 	ibnbd_dev = ibnbd_dev_open(full_path, open_flags, io_mode,
 				   srv_sess->sess_bio_set, ibnbd_endio);
@@ -829,9 +827,7 @@ static int process_msg_open(struct ibtrs_srv *ibtrs,
 	list_add(&srv_sess_dev->dev_list, &srv_dev->sess_dev_list);
 	mutex_unlock(&srv_dev->lock);
 
-	mutex_lock(&srv_sess->lock);
 	list_add(&srv_sess_dev->sess_list, &srv_sess->sess_dev_list);
-	mutex_unlock(&srv_sess->lock);
 
 	ibnbd_srv_fill_msg_open_rsp(rsp, srv_sess_dev);
 
@@ -840,6 +836,7 @@ static int process_msg_open(struct ibtrs_srv *ibtrs,
 		   srv_dev->id, ibnbd_io_mode_str(io_mode));
 
 	kfree(full_path);
+	mutex_unlock(&srv_sess->lock);
 	return 0;
 
 free_srv_sess_dev:
@@ -859,6 +856,7 @@ ibnbd_dev_close:
 free_path:
 	kfree(full_path);
 reject:
+	mutex_unlock(&srv_sess->lock);
 	return ret;
 }
 
