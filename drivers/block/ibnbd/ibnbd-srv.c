@@ -719,6 +719,27 @@ static int process_msg_sess_info(struct ibtrs_srv *ibtrs,
 	return 0;
 }
 
+/**
+ * find_srv_sess_dev() - a dev is already opened by this name
+ *
+ * Return struct ibnbd_srv_sess_dev if srv_sess already opened the dev_name
+ * NULL if the session didn't open the device yet.
+ */
+static struct ibnbd_srv_sess_dev *
+find_srv_sess_dev(struct ibnbd_srv_session *srv_sess, const char *dev_name)
+{
+	struct ibnbd_srv_sess_dev *sess_dev;
+
+	if (list_empty(&srv_sess->sess_dev_list))
+		return NULL;
+
+	list_for_each_entry(sess_dev, &srv_sess->sess_dev_list, sess_list)
+		if (!strcmp(sess_dev->pathname, dev_name))
+			return sess_dev;
+
+	return NULL;
+}
+
 static int process_msg_open(struct ibtrs_srv *ibtrs,
 			     struct ibnbd_srv_session *srv_sess,
 			     const void *msg, size_t len,
@@ -742,6 +763,11 @@ static int process_msg_open(struct ibtrs_srv *ibtrs,
 		open_flags |= FMODE_WRITE;
 
 	mutex_lock(&srv_sess->lock);
+
+	srv_sess_dev = find_srv_sess_dev(srv_sess, open_msg->dev_name);
+	if (srv_sess_dev)
+		goto fill_response;
+
 	if ((strlen(dev_search_path) + strlen(open_msg->dev_name))
 	    >= PATH_MAX) {
 		pr_err("Opening device for session %s failed, device path too"
@@ -766,7 +792,6 @@ static int process_msg_open(struct ibtrs_srv *ibtrs,
 		io_mode = IBNBD_FILEIO;
 	else
 		io_mode = def_io_mode;
-
 
 	ibnbd_dev = ibnbd_dev_open(full_path, open_flags, io_mode,
 				   srv_sess->sess_bio_set, ibnbd_endio);
@@ -829,13 +854,14 @@ static int process_msg_open(struct ibtrs_srv *ibtrs,
 
 	list_add(&srv_sess_dev->sess_list, &srv_sess->sess_dev_list);
 
-	ibnbd_srv_fill_msg_open_rsp(rsp, srv_sess_dev);
-
 	srv_sess_dev->is_visible = true;
 	ibnbd_info(srv_sess_dev, "Opened device '%s' in %s mode\n",
 		   srv_dev->id, ibnbd_io_mode_str(io_mode));
 
 	kfree(full_path);
+
+fill_response:
+	ibnbd_srv_fill_msg_open_rsp(rsp, srv_sess_dev);
 	mutex_unlock(&srv_sess->lock);
 	return 0;
 
