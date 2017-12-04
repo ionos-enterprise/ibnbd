@@ -592,9 +592,8 @@ ibnbd_srv_get_or_create_srv_dev(struct ibnbd_dev *ibnbd_dev,
 {
 	int ret;
 	struct ibnbd_srv_dev *new_dev, *dev;
-	const char *dev_name = ibnbd_dev_get_name(ibnbd_dev);
 
-	new_dev = ibnbd_srv_init_srv_dev(dev_name, io_mode);
+	new_dev = ibnbd_srv_init_srv_dev(ibnbd_dev->name, io_mode);
 	if (IS_ERR(new_dev))
 		return new_dev;
 
@@ -812,7 +811,7 @@ static int process_msg_open(struct ibtrs_srv *ibtrs,
 	if (!srv_dev->dev_kobj.state_in_sysfs) {
 		ret = ibnbd_srv_create_dev_sysfs(srv_dev,
 						 ibnbd_dev_get_bdev(ibnbd_dev),
-						 ibnbd_dev_get_name(ibnbd_dev));
+						 ibnbd_dev->name);
 		if (ret) {
 			mutex_unlock(&srv_dev->lock);
 			ibnbd_err(srv_sess_dev, "Opening device failed, failed to"

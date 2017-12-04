@@ -154,15 +154,6 @@ static inline int ibnbd_dev_get_discard_alignment(const struct ibnbd_dev *dev)
 }
 
 
-/**
- * ibnbd_dev_get_name() - Return the device name
- * returns:	Device name up to %BDEVNAME_SIZE% long
- */
-static inline const char *ibnbd_dev_get_name(const struct ibnbd_dev *dev)
-{
-	return dev->name;
-}
-
 static inline struct block_device *
 ibnbd_dev_get_bdev(const struct ibnbd_dev *dev)
 {
