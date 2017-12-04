@@ -90,11 +90,6 @@ struct ibnbd_dev *ibnbd_dev_open(const char *path, fmode_t flags,
  */
 void ibnbd_dev_close(struct ibnbd_dev *dev);
 
-static inline size_t ibnbd_dev_get_capacity(const struct ibnbd_dev *dev)
-{
-	return get_capacity(dev->bdev->bd_disk);
-}
-
 static inline int ibnbd_dev_get_logical_bsize(const struct ibnbd_dev *dev)
 {
 	return bdev_logical_block_size(dev->bdev);

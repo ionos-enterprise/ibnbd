@@ -612,14 +612,15 @@ ibnbd_srv_get_or_create_srv_dev(struct ibnbd_dev *ibnbd_dev,
 }
 
 static void ibnbd_srv_fill_msg_open_rsp(struct ibnbd_msg_open_rsp *rsp,
-					u32 device_id, size_t nsectors,
-					const struct ibnbd_dev *ibnbd_dev)
+					struct ibnbd_srv_sess_dev *sess_dev)
 {
+	struct ibnbd_dev *ibnbd_dev = sess_dev->ibnbd_dev;
+
 	rsp->hdr.type			= IBNBD_MSG_OPEN_RSP;
 
 	rsp->result			= 0;
-	rsp->device_id			= device_id;
-	rsp->nsectors			= nsectors;
+	rsp->device_id			= sess_dev->device_id;
+	rsp->nsectors			= get_capacity(ibnbd_dev->bdev->bd_disk);
 	rsp->logical_block_size		=
 		ibnbd_dev_get_logical_bsize(ibnbd_dev);
 	rsp->physical_block_size	= ibnbd_dev_get_phys_bsize(ibnbd_dev);
@@ -832,10 +833,7 @@ static int process_msg_open(struct ibtrs_srv *ibtrs,
 	list_add(&srv_sess_dev->sess_list, &srv_sess->sess_dev_list);
 	mutex_unlock(&srv_sess->lock);
 
-	srv_sess_dev->nsectors = ibnbd_dev_get_capacity(ibnbd_dev);
-
-	ibnbd_srv_fill_msg_open_rsp(rsp, srv_sess_dev->device_id,
-				    srv_sess_dev->nsectors, ibnbd_dev);
+	ibnbd_srv_fill_msg_open_rsp(rsp, srv_sess_dev);
 
 	srv_sess_dev->is_visible = true;
 	ibnbd_info(srv_sess_dev, "Opened device '%s' in %s mode\n",

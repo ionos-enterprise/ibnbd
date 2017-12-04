@@ -104,7 +104,6 @@ struct ibnbd_srv_sess_dev {
 	struct kref			kref;
 	struct completion               *destroy_comp;
 	char				pathname[NAME_MAX];
-	size_t				nsectors;
 	bool                            is_visible;
 };
 
