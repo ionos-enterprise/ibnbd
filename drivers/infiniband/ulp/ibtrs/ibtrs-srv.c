@@ -561,7 +561,8 @@ int ibtrs_srv_resp_rdma(struct ibtrs_srv_op *id, int status)
 		ibtrs_err_rl(sess, "Sending I/O response failed, "
 			     " session is disconnected, sess state %s\n",
 			     ibtrs_srv_state_str(sess->state));
-		return -ECOMM;
+		err = -ECOMM;
+		goto out;
 	}
 	if (status || id->dir == WRITE || !id->req->sg_cnt) {
 		err = send_io_resp_imm(con, id->msg_id, status);
@@ -580,6 +581,7 @@ int ibtrs_srv_resp_rdma(struct ibtrs_srv_op *id, int status)
 			close_sess(sess);
 		}
 	}
+out:
 	ibtrs_srv_put_ops_ids(sess);
 
 	return err;
