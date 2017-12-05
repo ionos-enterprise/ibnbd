@@ -84,9 +84,6 @@ struct ibtrs_srv_stats_rdma_stats {
 	atomic64_t	size_total_read;
 	atomic64_t	cnt_write;
 	atomic64_t	size_total_write;
-
-	atomic_t	inflight;
-	atomic64_t	inflight_total;
 };
 
 struct ibtrs_srv_stats {

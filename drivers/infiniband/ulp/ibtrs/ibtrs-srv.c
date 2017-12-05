@@ -309,8 +309,6 @@ const char *ibtrs_srv_get_sess_hca_name(struct ibtrs_srv_sess *sess)
 static void ibtrs_srv_update_rdma_stats(struct ibtrs_srv_stats *s,
 					size_t size, bool read)
 {
-	int inflight;
-
 	if (read) {
 		atomic64_inc(&s->rdma_stats.cnt_read);
 		atomic64_add(size, &s->rdma_stats.size_total_read);
@@ -318,14 +316,6 @@ static void ibtrs_srv_update_rdma_stats(struct ibtrs_srv_stats *s,
 		atomic64_inc(&s->rdma_stats.cnt_write);
 		atomic64_add(size, &s->rdma_stats.size_total_write);
 	}
-
-	inflight = atomic_inc_return(&s->rdma_stats.inflight);
-	atomic64_add(inflight, &s->rdma_stats.inflight_total);
-}
-
-static void ibtrs_srv_stats_dec_inflight(struct ibtrs_srv_sess *sess)
-{
-	atomic_dec_return(&sess->stats.rdma_stats.inflight);
 }
 
 int ibtrs_srv_reset_rdma_stats(struct ibtrs_srv_stats *stats, bool enable)
@@ -333,15 +323,7 @@ int ibtrs_srv_reset_rdma_stats(struct ibtrs_srv_stats *stats, bool enable)
 	if (enable) {
 		struct ibtrs_srv_stats_rdma_stats *r = &stats->rdma_stats;
 
-		/*
-		 * TODO: inflight is used for flow control
-		 * we can't memset the whole structure, so reset each member
-		 */
-		atomic64_set(&r->cnt_read, 0);
-		atomic64_set(&r->size_total_read, 0);
-		atomic64_set(&r->cnt_write, 0);
-		atomic64_set(&r->size_total_write, 0);
-		atomic64_set(&r->inflight_total, 0);
+		memset(r, 0, sizeof(*r));
 		return 0;
 	}
 
@@ -352,18 +334,16 @@ ssize_t ibtrs_srv_stats_rdma_to_str(struct ibtrs_srv_stats *stats,
 				    char *page, size_t len)
 {
 	struct ibtrs_srv_stats_rdma_stats *r = &stats->rdma_stats;
+	struct ibtrs_srv_sess *sess;
 
-	return scnprintf(page, len, "%ld %ld %ld %ld %u %ld\n",
+	sess = container_of(stats, typeof(*sess), stats);
+
+	return scnprintf(page, len, "%ld %ld %ld %ld %u\n",
 			 atomic64_read(&r->cnt_read),
 			 atomic64_read(&r->size_total_read),
 			 atomic64_read(&r->cnt_write),
 			 atomic64_read(&r->size_total_write),
-			 atomic_read(&r->inflight),
-			 (atomic64_read(&r->cnt_read) +
-			  atomic64_read(&r->cnt_write)) ?
-			 atomic64_read(&r->inflight_total) /
-			 (atomic64_read(&r->cnt_read) +
-			  atomic64_read(&r->cnt_write)) : 0);
+			 atomic_read(&sess->ids_inflight));
 }
 
 int ibtrs_srv_reset_wc_completion_stats(struct ibtrs_srv_stats *stats, bool enable)
@@ -605,7 +585,6 @@ int ibtrs_srv_resp_rdma(struct ibtrs_srv_op *id, int status)
 			close_sess(sess);
 		}
 	}
-	ibtrs_srv_stats_dec_inflight(sess);
 	ibtrs_srv_put_ops_ids(sess);
 
 	return err;
@@ -965,7 +944,6 @@ send_err_msg:
 			     " failed, msg_id %d, err: %d\n", buf_id, ret);
 		close_sess(sess);
 	}
-	ibtrs_srv_stats_dec_inflight(sess);
 	ibtrs_srv_put_ops_ids(sess);
 }
 
@@ -1016,7 +994,6 @@ send_err_msg:
 			     buf_id, ret);
 		close_sess(sess);
 	}
-	ibtrs_srv_stats_dec_inflight(sess);
 	ibtrs_srv_put_ops_ids(sess);
 }
 
