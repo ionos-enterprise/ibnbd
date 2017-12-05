@@ -127,22 +127,22 @@ static struct attribute_group ibtrs_srv_sess_attr_group = {
 	.attrs = ibtrs_srv_sess_attrs,
 };
 
-STAT_ATTR(struct ibtrs_srv_sess, ibtrs_srv_rdma,
+STAT_ATTR(struct ibtrs_srv_sess, rdma,
 	  ibtrs_srv_stats_rdma_to_str,
 	  ibtrs_srv_reset_rdma_stats);
 
-STAT_ATTR(struct ibtrs_srv_sess, ibtrs_srv_wc_completion,
+STAT_ATTR(struct ibtrs_srv_sess, wc_completion,
 	  ibtrs_srv_stats_wc_completion_to_str,
 	  ibtrs_srv_reset_wc_completion_stats);
 
-STAT_ATTR(struct ibtrs_srv_sess, ibtrs_srv_reset_all,
+STAT_ATTR(struct ibtrs_srv_sess, reset_all,
 	  ibtrs_srv_reset_all_help,
 	  ibtrs_srv_reset_all_stats);
 
 static struct attribute *ibtrs_srv_stats_attrs[] = {
-	&ibtrs_srv_rdma_attr.attr,
-	&ibtrs_srv_wc_completion_attr.attr,
-	&ibtrs_srv_reset_all_attr.attr,
+	&rdma_attr.attr,
+	&wc_completion_attr.attr,
+	&reset_all_attr.attr,
 	NULL,
 };
 
