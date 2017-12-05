@@ -554,7 +554,7 @@ int ibtrs_srv_resp_rdma(struct ibtrs_srv_op *id, int status)
 	struct ibtrs_srv_sess *sess = to_srv_sess(con->c.sess);
 	int err;
 
-	if (unlikely(!id))
+	if (WARN_ON(!id))
 		return -EINVAL;
 
 	if (unlikely(sess->state != IBTRS_SRV_CONNECTED)) {
@@ -564,22 +564,13 @@ int ibtrs_srv_resp_rdma(struct ibtrs_srv_op *id, int status)
 		err = -ECOMM;
 		goto out;
 	}
-	if (status || id->dir == WRITE || !id->req->sg_cnt) {
+	if (status || id->dir == WRITE || !id->req->sg_cnt)
 		err = send_io_resp_imm(con, id->msg_id, status);
-		if (unlikely(err)) {
-			ibtrs_err_rl(sess,
-				     "Sending imm msg failed, err: %d\n",
-				     err);
-			close_sess(sess);
-		}
-	} else {
+	else
 		err = rdma_write_sg(id);
-		if (unlikely(err)) {
-			ibtrs_err_rl(sess,
-				     "Sending I/O read response failed, err: %d\n",
-				     err);
-			close_sess(sess);
-		}
+	if (unlikely(err)) {
+		ibtrs_err_rl(sess, "IO response failed: %d\n", err);
+		close_sess(sess);
 	}
 out:
 	ibtrs_srv_put_ops_ids(sess);
