@@ -80,10 +80,10 @@ struct ibtrs_stats_wc_comp {
 };
 
 struct ibtrs_srv_stats_rdma_stats {
-	atomic64_t	cnt_read;
-	atomic64_t	size_total_read;
-	atomic64_t	cnt_write;
-	atomic64_t	size_total_write;
+	struct {
+		atomic64_t	cnt;
+		atomic64_t	size_total;
+	} dir[2];
 };
 
 struct ibtrs_srv_stats {

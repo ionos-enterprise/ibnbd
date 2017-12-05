@@ -307,15 +307,10 @@ const char *ibtrs_srv_get_sess_hca_name(struct ibtrs_srv_sess *sess)
 }
 
 static void ibtrs_srv_update_rdma_stats(struct ibtrs_srv_stats *s,
-					size_t size, bool read)
+					size_t size, int d)
 {
-	if (read) {
-		atomic64_inc(&s->rdma_stats.cnt_read);
-		atomic64_add(size, &s->rdma_stats.size_total_read);
-	} else {
-		atomic64_inc(&s->rdma_stats.cnt_write);
-		atomic64_add(size, &s->rdma_stats.size_total_write);
-	}
+	atomic64_inc(&s->rdma_stats.dir[d].cnt);
+	atomic64_add(size, &s->rdma_stats.dir[d].size_total);
 }
 
 int ibtrs_srv_reset_rdma_stats(struct ibtrs_srv_stats *stats, bool enable)
@@ -339,10 +334,10 @@ ssize_t ibtrs_srv_stats_rdma_to_str(struct ibtrs_srv_stats *stats,
 	sess = container_of(stats, typeof(*sess), stats);
 
 	return scnprintf(page, len, "%ld %ld %ld %ld %u\n",
-			 atomic64_read(&r->cnt_read),
-			 atomic64_read(&r->size_total_read),
-			 atomic64_read(&r->cnt_write),
-			 atomic64_read(&r->size_total_write),
+			 atomic64_read(&r->dir[READ].cnt),
+			 atomic64_read(&r->dir[READ].size_total),
+			 atomic64_read(&r->dir[WRITE].cnt),
+			 atomic64_read(&r->dir[WRITE].size_total),
 			 atomic_read(&sess->ids_inflight));
 }
 
@@ -900,7 +895,7 @@ static void process_rdma_write_req(struct ibtrs_srv_con *con,
 	}
 	sg_cnt = le32_to_cpu(req->sg_cnt);
 	ibtrs_srv_get_ops_ids(sess);
-	ibtrs_srv_update_rdma_stats(&sess->stats, off, true);
+	ibtrs_srv_update_rdma_stats(&sess->stats, off, READ);
 	id = sess->ops_ids[buf_id];
 	kfree(id->tx_wr);
 	kfree(id->tx_sg);
@@ -967,7 +962,7 @@ static void process_rdma_write(struct ibtrs_srv_con *con,
 		return;
 	}
 	ibtrs_srv_get_ops_ids(sess);
-	ibtrs_srv_update_rdma_stats(&sess->stats, off, false);
+	ibtrs_srv_update_rdma_stats(&sess->stats, off, WRITE);
 	id = sess->ops_ids[buf_id];
 	id->con    = con;
 	id->dir    = WRITE;
