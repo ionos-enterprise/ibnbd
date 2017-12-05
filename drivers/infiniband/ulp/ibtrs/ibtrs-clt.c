@@ -3418,23 +3418,18 @@ static int ibtrs_clt_rdma_write_desc(struct ibtrs_clt_con *con,
 				     struct ibtrs_msg_rdma_write *msg)
 {
 	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
-	struct ibtrs_ib_dev *ibdev = sess->s.ib_dev;
 	struct ibtrs_sg_desc *desc;
 	int ret;
 
 	desc = kmalloc_array(sess->max_pages_per_mr, sizeof(*desc), GFP_ATOMIC);
-	if (unlikely(!desc)) {
-		ib_dma_unmap_sg(ibdev->dev, req->sglist,
-				req->sg_cnt, req->dir);
+	if (unlikely(!desc))
 		return -ENOMEM;
-	}
+
 	ret = ibtrs_fast_reg_map_data(con, desc, req);
 	if (unlikely(ret < 0)) {
 		ibtrs_err_rl(sess,
 			     "RDMA-Write failed, fast reg. data mapping"
 			     " failed, err: %d\n", ret);
-		ib_dma_unmap_sg(ibdev->dev, req->sglist,
-				req->sg_cnt, req->dir);
 		kfree(desc);
 		return ret;
 	}
@@ -3444,8 +3439,6 @@ static int ibtrs_clt_rdma_write_desc(struct ibtrs_clt_con *con,
 		ibtrs_err(sess, "RDMA-Write failed, posting work"
 			  " request failed, err: %d\n", ret);
 		ibtrs_unmap_fast_reg_data(con, req);
-		ib_dma_unmap_sg(ibdev->dev, req->sglist,
-				req->sg_cnt, req->dir);
 	}
 	kfree(desc);
 	return ret;
@@ -3456,10 +3449,9 @@ static int ibtrs_clt_rdma_write_req(struct ibtrs_clt_io_req *req)
 	struct ibtrs_clt_con *con = req->con;
 	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
 	struct ibtrs_msg_rdma_write *msg;
-	int count = 0;
-	u32 imm;
-	int ret;
-	int buf_id;
+
+	int ret, count = 0;
+	u32 imm, buf_id;
 	u64 buf;
 
 	const size_t tsize = sizeof(*msg) + req->data_len + req->usr_len;
@@ -3489,15 +3481,14 @@ static int ibtrs_clt_rdma_write_req(struct ibtrs_clt_io_req *req)
 
 	buf = sess->srv_rdma_addr[buf_id];
 	if (count > fmr_sg_cnt)
-		return ibtrs_clt_rdma_write_desc(req->con, req, buf,
-						 req->usr_len, imm, msg);
-
-	ret = ibtrs_post_send_rdma_more(req->con, req, buf,
+		ret = ibtrs_clt_rdma_write_desc(req->con, req, buf,
+						req->usr_len, imm, msg);
+	else
+		ret = ibtrs_post_send_rdma_more(req->con, req, buf,
 					req->usr_len + sizeof(*msg), imm);
 	if (unlikely(ret)) {
-		ibtrs_err(sess, "RDMA-Write failed, posting work"
-			  " request failed, err: %d\n", ret);
-		if (count)
+		ibtrs_err(sess, "RDMA-Write failed: %d\n", ret);
+		if (req->sg_cnt)
 			ib_dma_unmap_sg(sess->s.ib_dev->dev, req->sglist,
 					req->sg_cnt, req->dir);
 	}
@@ -3589,7 +3580,8 @@ static int ibtrs_clt_request_rdma_write_req(struct ibtrs_clt_io_req *req)
 	struct ibtrs_msg_req_rdma_write *msg;
 	struct ibtrs_ib_dev *ibdev;
 	struct scatterlist *sg;
-	int count = 0, i, ret;
+
+	int i, ret, count = 0;
 	u32 imm, buf_id;
 
 	const size_t tsize = sizeof(*msg) + req->data_len + req->usr_len;
