@@ -3412,6 +3412,32 @@ static inline void ibtrs_clt_record_sg_distr(u64 *stat, u64 *total,
 	(*total)++;
 }
 
+static inline void ibtrs_clt_update_rdma_stats(struct ibtrs_clt_stats *s,
+					       size_t size, int d)
+{
+	int cpu = raw_smp_processor_id();
+
+	s->rdma_stats[cpu].dir[d].cnt++;
+	s->rdma_stats[cpu].dir[d].size_total += size;
+	s->rdma_stats[cpu].inflight++;
+}
+
+static inline void ibtrs_clt_update_all_stats(struct ibtrs_clt_io_req *req,
+					      int dir)
+{
+	struct ibtrs_clt_con *con = req->con;
+	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
+	struct ibtrs_clt_stats *stats = &sess->stats;
+	struct ibtrs_tag *tag = req->tag;
+	unsigned int len;
+
+	ibtrs_clt_record_sg_distr(stats->sg_list_distr[tag->cpu_id],
+				  &stats->sg_list_total[tag->cpu_id],
+				  req->sg_cnt);
+	len = req->usr_len + req->data_len;
+	ibtrs_clt_update_rdma_stats(stats, len, dir);
+}
+
 static int ibtrs_clt_rdma_write_desc(struct ibtrs_clt_con *con,
 				     struct ibtrs_clt_io_req *req, u64 buf,
 				     size_t u_msg_len, u32 imm,
@@ -3478,8 +3504,14 @@ static int ibtrs_clt_rdma_write_req(struct ibtrs_clt_io_req *req)
 	imm = req->tag->mem_id_mask + req->data_len + req->usr_len;
 	buf_id = req->tag->mem_id;
 	req->sg_size = tsize;
-
 	buf = sess->srv_rdma_addr[buf_id];
+
+	/*
+	 * Update stats now, after request is successfully sent it is not
+	 * safe anymore to touch it.
+	 */
+	ibtrs_clt_update_all_stats(req, WRITE);
+
 	if (count > fmr_sg_cnt)
 		ret = ibtrs_clt_rdma_write_desc(req->con, req, buf,
 						req->usr_len, imm, msg);
@@ -3488,21 +3520,13 @@ static int ibtrs_clt_rdma_write_req(struct ibtrs_clt_io_req *req)
 					req->usr_len + sizeof(*msg), imm);
 	if (unlikely(ret)) {
 		ibtrs_err(sess, "RDMA-Write failed: %d\n", ret);
+		ibtrs_clt_decrease_inflight(&sess->stats);
 		if (req->sg_cnt)
 			ib_dma_unmap_sg(sess->s.ib_dev->dev, req->sglist,
 					req->sg_cnt, req->dir);
 	}
+
 	return ret;
-}
-
-static void ibtrs_clt_update_rdma_stats(struct ibtrs_clt_stats *s,
-					size_t size, int d)
-{
-	int cpu = raw_smp_processor_id();
-
-	s->rdma_stats[cpu].dir[d].cnt++;
-	s->rdma_stats[cpu].dir[d].size_total += size;
-	s->rdma_stats[cpu].inflight++;
 }
 
 int ibtrs_clt_rdma_write(struct ibtrs_clt *clt,
@@ -3552,12 +3576,6 @@ again:
 			     " gather list, err: %d\n", err);
 		return err;
 	}
-
-	ibtrs_clt_record_sg_distr(sess->stats.sg_list_distr[tag->cpu_id],
-				  &sess->stats.sg_list_total[tag->cpu_id],
-				  sg_cnt);
-	ibtrs_clt_update_rdma_stats(&sess->stats, req->usr_len + req->data_len,
-				    WRITE);
 
 	return err;
 
@@ -3634,18 +3652,25 @@ static int ibtrs_clt_request_rdma_write_req(struct ibtrs_clt_io_req *req)
 	req->sg_size  = sizeof(*msg);
 	req->sg_size += le32_to_cpu(msg->sg_cnt) * sizeof(struct ibtrs_sg_desc);
 	req->sg_size += req->usr_len;
+
+	/*
+	 * Update stats now, after request is successfully sent it is not
+	 * safe anymore to touch it.
+	 */
+	ibtrs_clt_update_all_stats(req, READ);
+
 	ret = ibtrs_post_send_rdma(req->con, req, sess->srv_rdma_addr[buf_id],
 				   req->data_len, imm);
 	if (unlikely(ret)) {
-		ibtrs_err(sess, "Request-RDMA-Write failed,"
-			  " posting work request failed, err: %d\n", ret);
-
+		ibtrs_err(sess, "Request-RDMA-Write failed: %d\n", ret);
+		ibtrs_clt_decrease_inflight(&sess->stats);
 		if (unlikely(count > fmr_sg_cnt))
 			ibtrs_unmap_fast_reg_data(req->con, req);
 		if (req->sg_cnt)
 			ib_dma_unmap_sg(ibdev->dev, req->sglist,
 					req->sg_cnt, req->dir);
 	}
+
 	return ret;
 }
 
@@ -3701,12 +3726,6 @@ again:
 			     " scatter gather list, err: %d\n", err);
 		return err;
 	}
-
-	ibtrs_clt_record_sg_distr(sess->stats.sg_list_distr[tag->cpu_id],
-				  &sess->stats.sg_list_total[tag->cpu_id],
-				  sg_cnt);
-	ibtrs_clt_update_rdma_stats(&sess->stats, req->usr_len + req->data_len,
-				    READ);
 
 	return err;
 
