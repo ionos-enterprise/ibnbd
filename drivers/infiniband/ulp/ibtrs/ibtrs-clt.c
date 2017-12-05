@@ -3496,18 +3496,12 @@ static int ibtrs_clt_rdma_write_req(struct ibtrs_clt_io_req *req)
 }
 
 static void ibtrs_clt_update_rdma_stats(struct ibtrs_clt_stats *s,
-					size_t size, bool read)
+					size_t size, int d)
 {
 	int cpu = raw_smp_processor_id();
 
-	if (read) {
-		s->rdma_stats[cpu].cnt_read++;
-		s->rdma_stats[cpu].size_total_read += size;
-	} else {
-		s->rdma_stats[cpu].cnt_write++;
-		s->rdma_stats[cpu].size_total_write += size;
-	}
-
+	s->rdma_stats[cpu].dir[d].cnt++;
+	s->rdma_stats[cpu].dir[d].size_total += size;
 	s->rdma_stats[cpu].inflight++;
 }
 
@@ -3563,7 +3557,7 @@ again:
 				  &sess->stats.sg_list_total[tag->cpu_id],
 				  sg_cnt);
 	ibtrs_clt_update_rdma_stats(&sess->stats, req->usr_len + req->data_len,
-				    false);
+				    WRITE);
 
 	return err;
 
@@ -3712,7 +3706,7 @@ again:
 				  &sess->stats.sg_list_total[tag->cpu_id],
 				  sg_cnt);
 	ibtrs_clt_update_rdma_stats(&sess->stats, req->usr_len + req->data_len,
-				    true);
+				    READ);
 
 	return err;
 
@@ -3806,16 +3800,17 @@ ssize_t ibtrs_clt_stats_rdma_to_str(struct ibtrs_clt_stats *stats,
 	memset(&s, 0, sizeof(s));
 
 	for (i = 0; i < num_online_cpus(); i++) {
-		s.cnt_read		+= r[i].cnt_read;
-		s.size_total_read	+= r[i].size_total_read;
-		s.cnt_write		+= r[i].cnt_write;
-		s.size_total_write	+= r[i].size_total_write;
+		s.dir[READ].cnt		+= r[i].dir[READ].cnt;
+		s.dir[READ].size_total	+= r[i].dir[READ].size_total;
+		s.dir[WRITE].cnt	+= r[i].dir[WRITE].cnt;
+		s.dir[WRITE].size_total	+= r[i].dir[WRITE].size_total;
 		s.inflight		+= r[i].inflight;
 	}
 
 	return scnprintf(page, len, "%llu %llu %llu %llu %u\n",
-			 s.cnt_read, s.size_total_read, s.cnt_write,
-			 s.size_total_write, s.inflight);
+			 s.dir[READ].cnt, s.dir[READ].size_total,
+			 s.dir[WRITE].cnt, s.dir[WRITE].size_total,
+			 s.inflight);
 }
 
 int ibtrs_clt_stats_sg_list_distr_to_str(struct ibtrs_clt_stats *stats, char *buf,

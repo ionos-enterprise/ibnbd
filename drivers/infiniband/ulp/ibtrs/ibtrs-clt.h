@@ -104,10 +104,10 @@ struct ibtrs_clt_stats_cpu_migration {
 };
 
 struct ibtrs_clt_stats_rdma_stats {
-	u64 cnt_read;
-	u64 size_total_read;
-	u64 cnt_write;
-	u64 size_total_write;
+	struct {
+		u64 cnt;
+		u64 size_total;
+	} dir[2];
 
 	u16 inflight;
 };
