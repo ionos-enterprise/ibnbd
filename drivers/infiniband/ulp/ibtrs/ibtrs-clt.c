@@ -3640,11 +3640,11 @@ static int ibtrs_clt_request_rdma_write_req(struct ibtrs_clt_io_req *req)
 		ibtrs_err(sess, "Request-RDMA-Write failed,"
 			  " posting work request failed, err: %d\n", ret);
 
-		if (unlikely(count > fmr_sg_cnt)) {
+		if (unlikely(count > fmr_sg_cnt))
 			ibtrs_unmap_fast_reg_data(req->con, req);
+		if (req->sg_cnt)
 			ib_dma_unmap_sg(ibdev->dev, req->sglist,
 					req->sg_cnt, req->dir);
-		}
 	}
 	return ret;
 }
