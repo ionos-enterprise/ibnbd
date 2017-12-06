@@ -1182,7 +1182,7 @@ static void process_io_rsp(struct ibtrs_clt_sess *sess, u32 msg_id, s16 errno)
 static void ibtrs_clt_update_wc_stats(struct ibtrs_clt_con *con)
 {
 	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
-	unsigned cpu = con->cpu;
+	unsigned cpu = raw_smp_processor_id();
 
 	if (unlikely(con->cpu != cpu)) {
 		pr_debug_ratelimited("WC processing is migrated from CPU %d to "
