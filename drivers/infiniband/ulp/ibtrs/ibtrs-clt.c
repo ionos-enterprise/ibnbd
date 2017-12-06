@@ -1363,6 +1363,11 @@ ibtrs_clt_get_copy_req(struct ibtrs_clt_sess *alive_sess,
 	return req;
 }
 
+static void ibtrs_clt_inc_failover_cnt(struct ibtrs_clt_stats *s)
+{
+	s->rdma_stats[raw_smp_processor_id()].failover_cnt++;
+}
+
 static int ibtrs_clt_rdma_write_req(struct ibtrs_clt_io_req *req);
 static int ibtrs_clt_request_rdma_write_req(struct ibtrs_clt_io_req *req);
 
@@ -1384,7 +1389,9 @@ static int ibtrs_clt_failover_req(struct ibtrs_clt *clt,
 		err = ibtrs_clt_rdma_write_req(req);
 	else
 		err = ibtrs_clt_request_rdma_write_req(req);
-	if (unlikely(err))
+	if (likely(!err))
+		ibtrs_clt_inc_failover_cnt(&alive_sess->stats);
+	else
 		req->in_use = false;
 	/* paired with fail_all_outstanding_reqs() */
 	smp_wmb();
@@ -3823,13 +3830,14 @@ ssize_t ibtrs_clt_stats_rdma_to_str(struct ibtrs_clt_stats *stats,
 		s.dir[READ].size_total	+= r[i].dir[READ].size_total;
 		s.dir[WRITE].cnt	+= r[i].dir[WRITE].cnt;
 		s.dir[WRITE].size_total	+= r[i].dir[WRITE].size_total;
+		s.failover_cnt		+= r[i].failover_cnt;
 		s.inflight		+= r[i].inflight;
 	}
 
-	return scnprintf(page, len, "%llu %llu %llu %llu %u\n",
+	return scnprintf(page, len, "%llu %llu %llu %llu %llu %u\n",
 			 s.dir[READ].cnt, s.dir[READ].size_total,
 			 s.dir[WRITE].cnt, s.dir[WRITE].size_total,
-			 s.inflight);
+			 s.failover_cnt, s.inflight);
 }
 
 int ibtrs_clt_stats_sg_list_distr_to_str(struct ibtrs_clt_stats *stats, char *buf,

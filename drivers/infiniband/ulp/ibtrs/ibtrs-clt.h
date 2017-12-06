@@ -109,6 +109,7 @@ struct ibtrs_clt_stats_rdma_stats {
 		u64 size_total;
 	} dir[2];
 
+	u64 failover_cnt;
 	u16 inflight;
 };
 
