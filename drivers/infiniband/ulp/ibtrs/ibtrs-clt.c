@@ -2571,10 +2571,16 @@ static void ibtrs_clt_remove_path_from_arr(struct ibtrs_clt_sess *sess)
 	clt->paths_shadow->num = j;
 	/* Exchange pointers, xchg implies memory barrier */
 	clt->paths_shadow = xchg(&clt->paths, clt->paths_shadow);
-	mutex_unlock(&clt->paths_mutex);
 
-	/* Make sure everybody observe path removal */
+	/*
+	 * Make sure everybody observe path removal.
+	 *
+	 * It is important to synchronize_rcu() under lock to be sure,
+	 * that sequential add/remove path calls will not let IO path
+	 * observe parially updated shadow pointer.
+	 */
 	synchronize_rcu();
+	mutex_unlock(&clt->paths_mutex);
 }
 
 static void ibtrs_clt_add_path_to_arr(struct ibtrs_clt_sess *sess)
@@ -2591,6 +2597,12 @@ static void ibtrs_clt_add_path_to_arr(struct ibtrs_clt_sess *sess)
 	WARN_ON(clt->paths_shadow->num > MAX_PATHS_NUM);
 	/* Exchange pointers, xchg implies memory barrier */
 	clt->paths_shadow = xchg(&clt->paths, clt->paths_shadow);
+	/*
+	 * It is important to synchronize_rcu() under lock to be sure,
+	 * that sequential add/remove path calls will not let IO path
+	 * observe parially updated shadow pointer.
+	 */
+	synchronize_rcu();
 	mutex_unlock(&clt->paths_mutex);
 }
 
