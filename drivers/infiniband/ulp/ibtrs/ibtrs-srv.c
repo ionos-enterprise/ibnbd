@@ -548,20 +548,19 @@ static int send_io_resp_imm(struct ibtrs_srv_con *con, int msg_id, s16 errno)
  *
  * Context: any
  */
-int ibtrs_srv_resp_rdma(struct ibtrs_srv_op *id, int status)
+void ibtrs_srv_resp_rdma(struct ibtrs_srv_op *id, int status)
 {
 	struct ibtrs_srv_con *con = id->con;
 	struct ibtrs_srv_sess *sess = to_srv_sess(con->c.sess);
 	int err;
 
 	if (WARN_ON(!id))
-		return -EINVAL;
+		return;
 
 	if (unlikely(sess->state != IBTRS_SRV_CONNECTED)) {
 		ibtrs_err_rl(sess, "Sending I/O response failed, "
 			     " session is disconnected, sess state %s\n",
 			     ibtrs_srv_state_str(sess->state));
-		err = -ECOMM;
 		goto out;
 	}
 	if (status || id->dir == WRITE || !id->req->sg_cnt)
@@ -575,7 +574,7 @@ int ibtrs_srv_resp_rdma(struct ibtrs_srv_op *id, int status)
 out:
 	ibtrs_srv_put_ops_ids(sess);
 
-	return err;
+	return;
 }
 EXPORT_SYMBOL(ibtrs_srv_resp_rdma);
 

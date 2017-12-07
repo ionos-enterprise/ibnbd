@@ -136,16 +136,12 @@ static inline void ibnbd_put_sess_dev(struct ibnbd_srv_sess_dev *sess_dev)
 
 static void ibnbd_endio(void *priv, int error)
 {
-	int ret;
 	struct ibnbd_io_private *ibnbd_priv = priv;
 	struct ibnbd_srv_sess_dev *sess_dev = ibnbd_priv->sess_dev;
 
 	ibnbd_put_sess_dev(sess_dev);
 
-	ret = ibtrs_srv_resp_rdma(ibnbd_priv->id, error);
-	if (unlikely(ret))
-		ibnbd_err_rl(sess_dev, "Sending I/O response failed, err: %d\n",
-			     ret);
+	ibtrs_srv_resp_rdma(ibnbd_priv->id, error);
 
 	kfree(priv);
 }
@@ -441,7 +437,8 @@ static int ibnbd_srv_rdma_ev(struct ibtrs_srv *ibtrs, void *priv,
 		return -EINVAL;
 	}
 
-	return ibtrs_srv_resp_rdma(id, ret);
+	ibtrs_srv_resp_rdma(id, ret);
+	return 0;
 }
 
 static struct ibnbd_srv_sess_dev
