@@ -1368,8 +1368,8 @@ static void ibtrs_clt_inc_failover_cnt(struct ibtrs_clt_stats *s)
 	s->rdma_stats[raw_smp_processor_id()].failover_cnt++;
 }
 
-static int ibtrs_clt_rdma_write_req(struct ibtrs_clt_io_req *req);
-static int ibtrs_clt_request_rdma_write_req(struct ibtrs_clt_io_req *req);
+static int ibtrs_clt_write_req(struct ibtrs_clt_io_req *req);
+static int ibtrs_clt_read_req(struct ibtrs_clt_io_req *req);
 
 static int ibtrs_clt_failover_req(struct ibtrs_clt *clt,
 				  struct ibtrs_clt_io_req *fail_req)
@@ -1386,9 +1386,9 @@ static int ibtrs_clt_failover_req(struct ibtrs_clt *clt,
 	}
 	req = ibtrs_clt_get_copy_req(alive_sess, fail_req);
 	if (req->dir == DMA_TO_DEVICE)
-		err = ibtrs_clt_rdma_write_req(req);
+		err = ibtrs_clt_write_req(req);
 	else
-		err = ibtrs_clt_request_rdma_write_req(req);
+		err = ibtrs_clt_read_req(req);
 	if (likely(!err))
 		ibtrs_clt_inc_failover_cnt(&alive_sess->stats);
 	else
@@ -3490,7 +3490,7 @@ static int ibtrs_clt_rdma_write_desc(struct ibtrs_clt_con *con,
 	return ret;
 }
 
-static int ibtrs_clt_rdma_write_req(struct ibtrs_clt_io_req *req)
+static int ibtrs_clt_write_req(struct ibtrs_clt_io_req *req)
 {
 	struct ibtrs_clt_con *con = req->con;
 	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
@@ -3549,11 +3549,10 @@ static int ibtrs_clt_rdma_write_req(struct ibtrs_clt_io_req *req)
 	return ret;
 }
 
-int ibtrs_clt_rdma_write(struct ibtrs_clt *clt,
-			 ibtrs_conf_fn *conf, struct ibtrs_tag *tag,
-			 void *priv, const struct kvec *vec, size_t nr,
-			 size_t data_len, struct scatterlist *sg,
-			 unsigned int sg_cnt)
+int ibtrs_clt_write(struct ibtrs_clt *clt, ibtrs_conf_fn *conf,
+		    struct ibtrs_tag *tag, void *priv, const struct kvec *vec,
+		    size_t nr, size_t data_len, struct scatterlist *sg,
+		    unsigned int sg_cnt)
 {
 	struct ibtrs_clt_io_req *req;
 	struct ibtrs_clt_sess *sess;
@@ -3581,7 +3580,7 @@ again:
 	}
 	req = ibtrs_clt_get_req(sess, conf, tag, priv, vec, usr_len,
 				sg, sg_cnt, data_len, DMA_TO_DEVICE);
-	err = ibtrs_clt_rdma_write_req(req);
+	err = ibtrs_clt_write_req(req);
 	if (unlikely(err))
 	    req->in_use = false;
 	/* paired with fail_all_outstanding_reqs() */
@@ -3605,7 +3604,7 @@ err:
 	return err;
 }
 
-static int ibtrs_clt_request_rdma_write_req(struct ibtrs_clt_io_req *req)
+static int ibtrs_clt_read_req(struct ibtrs_clt_io_req *req)
 {
 	struct ibtrs_clt_con *con = req->con;
 	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
@@ -3694,13 +3693,10 @@ static int ibtrs_clt_request_rdma_write_req(struct ibtrs_clt_io_req *req)
 	return ret;
 }
 
-int ibtrs_clt_request_rdma_write(struct ibtrs_clt *clt,
-				 ibtrs_conf_fn *conf,
-				 struct ibtrs_tag *tag, void *priv,
-				 const struct kvec *vec, size_t nr,
-				 size_t data_len,
-				 struct scatterlist *sg,
-				 unsigned int sg_cnt)
+int ibtrs_clt_read(struct ibtrs_clt *clt, ibtrs_conf_fn *conf,
+		   struct ibtrs_tag *tag, void *priv, const struct kvec *vec,
+		   size_t nr, size_t data_len, struct scatterlist *sg,
+		   unsigned int sg_cnt)
 {
 	struct ibtrs_clt_io_req *req;
 	struct ibtrs_clt_sess *sess;
@@ -3731,7 +3727,7 @@ again:
 	}
 	req = ibtrs_clt_get_req(sess, conf, tag, priv, vec, usr_len,
 				sg, sg_cnt, data_len, DMA_FROM_DEVICE);
-	err = ibtrs_clt_request_rdma_write_req(req);
+	err = ibtrs_clt_read_req(req);
 	if (unlikely(err))
 		req->in_use = false;
 	/* paired with fail_all_outstanding_reqs() */
@@ -3761,11 +3757,11 @@ int ibtrs_clt_request(int dir, ibtrs_conf_fn *conf, struct ibtrs_clt *clt,
 		      unsigned int sg_len)
 {
 	if (dir == READ)
-		return ibtrs_clt_request_rdma_write(clt, conf, tag, priv, vec,
-						    nr, len, sg, sg_len);
+		return ibtrs_clt_read(clt, conf, tag, priv, vec, nr, len, sg,
+				      sg_len);
 	else
-		return ibtrs_clt_rdma_write(clt, conf, tag, priv, vec, nr, len,
-					    sg, sg_len);
+		return ibtrs_clt_write(clt, conf, tag, priv, vec, nr, len, sg,
+				       sg_len);
 }
 EXPORT_SYMBOL(ibtrs_clt_request);
 
