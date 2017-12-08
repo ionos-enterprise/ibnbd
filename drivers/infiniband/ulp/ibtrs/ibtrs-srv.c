@@ -636,7 +636,8 @@ static void ibtrs_srv_start_hb(struct ibtrs_srv_sess *sess)
 
 	ibtrs_start_hb(&usr_con->c, &io_comp_cqe,
 		       IBTRS_HB_TIMEOUT_MS,
-		       ibtrs_srv_hb_err_handler);
+		       ibtrs_srv_hb_err_handler,
+		       ibtrs_wq);
 }
 
 static void ibtrs_srv_stop_hb(struct ibtrs_srv_sess *sess)

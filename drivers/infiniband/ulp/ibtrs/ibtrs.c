@@ -358,8 +358,8 @@ EXPORT_SYMBOL_GPL(ibtrs_cq_qp_destroy);
 
 static void schedule_hb(struct ibtrs_sess *sess)
 {
-	schedule_delayed_work(&sess->hb_dwork,
-			      msecs_to_jiffies(sess->hb_timeout_ms));
+	queue_delayed_work(sess->hb_wq, &sess->hb_dwork,
+			   msecs_to_jiffies(sess->hb_timeout_ms));
 }
 
 static void hb_work(struct work_struct *work)
@@ -381,7 +381,8 @@ static void hb_work(struct work_struct *work)
 }
 
 void ibtrs_start_hb(struct ibtrs_con *con, struct ib_cqe *cqe,
-		    unsigned timeout_ms, ibtrs_hb_handler_t *err_handler)
+		    unsigned timeout_ms, ibtrs_hb_handler_t *err_handler,
+		    struct workqueue_struct *wq)
 {
 	struct ibtrs_sess *sess = con->sess;
 
@@ -389,6 +390,7 @@ void ibtrs_start_hb(struct ibtrs_con *con, struct ib_cqe *cqe,
 	sess->hb_cqe = cqe;
 	sess->hb_timeout_ms = timeout_ms;
 	sess->hb_err_handler = err_handler;
+	sess->hb_wq = wq;
 	INIT_DELAYED_WORK(&sess->hb_dwork, hb_work);
 	schedule_hb(sess);
 }

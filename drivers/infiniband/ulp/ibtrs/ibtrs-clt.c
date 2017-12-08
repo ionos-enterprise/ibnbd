@@ -2448,7 +2448,8 @@ static void ibtrs_clt_start_hb(struct ibtrs_clt_sess *sess)
 
 	ibtrs_start_hb(&usr_con->c, &io_comp_cqe,
 		       IBTRS_HB_TIMEOUT_MS,
-		       ibtrs_clt_hb_err_handler);
+		       ibtrs_clt_hb_err_handler,
+		       ibtrs_wq);
 }
 
 static void ibtrs_clt_stop_hb(struct ibtrs_clt_sess *sess)

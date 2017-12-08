@@ -123,6 +123,7 @@ struct ibtrs_sess {
 	struct ibtrs_con	*hb_con;
 	struct ib_cqe		*hb_cqe;
 	ibtrs_hb_handler_t	*hb_err_handler;
+	struct workqueue_struct *hb_wq;
 	struct delayed_work	hb_dwork;
 	unsigned		hb_timeout_ms;
 };
@@ -331,7 +332,8 @@ int ibtrs_cq_qp_create(struct ibtrs_sess *ibtrs_sess, struct ibtrs_con *con,
 void ibtrs_cq_qp_destroy(struct ibtrs_con *con);
 
 void ibtrs_start_hb(struct ibtrs_con *con, struct ib_cqe *cqe,
-		    unsigned timeout_ms, ibtrs_hb_handler_t *err_handler);
+		    unsigned timeout_ms, ibtrs_hb_handler_t *err_handler,
+		    struct workqueue_struct *wq);
 void ibtrs_stop_hb(struct ibtrs_sess *sess);
 
 #define XX(a) case (a): return #a
