@@ -11,4 +11,4 @@ obj-$(CONFIG_BLK_DEV_IBNBD)        += ibnbd-core.o
 obj-$(CONFIG_BLK_DEV_IBNBD_CLIENT) += ibnbd-client.o
 obj-$(CONFIG_BLK_DEV_IBNBD_SERVER) += ibnbd-server.o
 
-include $(srctree)/$(src)/compat/compat.mk
+include $(src)/compat/compat.mk
