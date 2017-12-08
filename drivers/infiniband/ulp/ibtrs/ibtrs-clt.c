@@ -3557,7 +3557,6 @@ int ibtrs_clt_write(struct ibtrs_clt *clt, ibtrs_conf_fn *conf,
 	struct ibtrs_clt_io_req *req;
 	struct ibtrs_clt_sess *sess;
 
-	unsigned retries = MAX_PATHS_NUM;
 	size_t usr_len;
 	int err;
 
@@ -3587,16 +3586,11 @@ again:
 	smp_wmb();
 	ibtrs_clt_state_unlock();
 	if (unlikely(err)) {
-		if (retries--) {
-			ibtrs_wrn(sess, "Choose another path\n");
-			goto again;
-		}
-		ibtrs_err_rl(sess, "RDMA-Write failed, failed to transfer scatter"
-			     " gather list, err: %d\n", err);
-		return err;
+		ibtrs_wrn(sess, "Write failed, choose another path\n");
+		goto again;
 	}
 
-	return err;
+	return 0;
 
 err:
 	ibtrs_clt_state_unlock();
@@ -3701,7 +3695,6 @@ int ibtrs_clt_read(struct ibtrs_clt *clt, ibtrs_conf_fn *conf,
 	struct ibtrs_clt_io_req *req;
 	struct ibtrs_clt_sess *sess;
 
-	unsigned retries = MAX_PATHS_NUM;
 	size_t usr_len;
 	int err;
 
@@ -3734,16 +3727,11 @@ again:
 	smp_wmb();
 	ibtrs_clt_state_unlock();
 	if (unlikely(err)) {
-		if (retries--) {
-			ibtrs_wrn(sess, "Choose another path\n");
-			goto again;
-		}
-		ibtrs_err_rl(sess, "Request-RDMA-Write failed, failed to transfer"
-			     " scatter gather list, err: %d\n", err);
-		return err;
+		ibtrs_wrn(sess, "Read failed, choose another path\n");
+		goto again;
 	}
 
-	return err;
+	return 0;
 
 err:
 	ibtrs_clt_state_unlock();
