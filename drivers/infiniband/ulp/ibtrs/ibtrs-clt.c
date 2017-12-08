@@ -1376,13 +1376,14 @@ static int ibtrs_clt_failover_req(struct ibtrs_clt *clt,
 {
 	struct ibtrs_clt_sess *alive_sess;
 	struct ibtrs_clt_io_req *req;
-	int err = 0;
+	int err;
 
+again:
 	ibtrs_clt_state_lock();
 	alive_sess = ibtrs_clt_get_next_path(clt);
 	if (unlikely(!alive_sess)) {
 		err = -ECONNABORTED;
-		goto out;
+		goto err;
 	}
 	req = ibtrs_clt_get_copy_req(alive_sess, fail_req);
 	if (req->dir == DMA_TO_DEVICE)
@@ -1395,8 +1396,15 @@ static int ibtrs_clt_failover_req(struct ibtrs_clt *clt,
 		req->in_use = false;
 	/* paired with fail_all_outstanding_reqs() */
 	smp_wmb();
+	ibtrs_clt_state_unlock();
+	if (unlikely(err)) {
+		ibtrs_wrn(alive_sess, "Failover failed, choose another path\n");
+		goto again;
+	}
 
-out:
+	return 0;
+
+err:
 	ibtrs_clt_state_unlock();
 
 	return err;
