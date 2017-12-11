@@ -3778,7 +3778,15 @@ int ibtrs_clt_create_path_from_sysfs(struct ibtrs_clt *clt,
 				     struct ibtrs_addr *addr)
 {
 	struct ibtrs_clt_sess *sess;
+	struct sockaddr *path_dst;
 	int err;
+	int i;
+
+	for (i = 0; i < clt->paths->num; i++) {
+		path_dst = (struct sockaddr *)&clt->paths->arr[i]->s.dst_addr;
+		if (!sockaddr_cmp(path_dst, addr->dst))
+			return -EEXIST;
+	}
 
 	sess = alloc_sess(clt, addr, CONS_PER_SESSION,
 			  clt->max_segments);

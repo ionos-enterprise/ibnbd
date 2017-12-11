@@ -352,6 +352,27 @@ static inline const char *ib_wc_opcode_str(enum ib_wc_opcode opcode)
 	}
 }
 
+static inline int sockaddr_cmp(const struct sockaddr *a,
+			       const struct sockaddr *b)
+{
+	switch (a->sa_family) {
+	case AF_IB:
+		return memcmp(&((struct sockaddr_ib *)a)->sib_addr,
+			      &((struct sockaddr_ib *)b)->sib_addr,
+			      sizeof(struct ib_addr));
+	case AF_INET:
+		return memcmp(&((struct sockaddr_in *)a)->sin_addr,
+			      &((struct sockaddr_in *)b)->sin_addr,
+			      sizeof(struct in_addr));
+	case AF_INET6:
+		return memcmp(&((struct sockaddr_in6 *)a)->sin6_addr,
+			      &((struct sockaddr_in6 *)b)->sin6_addr,
+			      sizeof(struct in6_addr));
+	default:
+		return -ENOENT;
+	}
+}
+
 static inline void sockaddr_to_str(const struct sockaddr *addr,
 				   char *buf, size_t len)
 {
