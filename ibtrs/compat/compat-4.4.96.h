@@ -742,6 +742,23 @@ static inline void backport_ib_dma_unmap_single(struct backport_ib_device *dev,
 				   size, direction);
 }
 
+static inline u64 backport_ib_dma_map_page(struct backport_ib_device *dev,
+					   struct page *page,
+					   unsigned long offset, size_t size,
+					   enum dma_data_direction direction)
+{
+	return ib_dma_map_page((struct ib_device *)dev, page,
+			       offset, size, direction);
+}
+
+static inline void backport_ib_dma_unmap_page(struct backport_ib_device *dev,
+					      u64 addr, size_t size,
+					      enum dma_data_direction direction)
+{
+	return ib_dma_unmap_page((struct ib_device *)dev, addr,
+				 size, direction);
+}
+
 static inline int backport_ib_dma_map_sg(struct backport_ib_device *dev,
 					 struct scatterlist *sg, int nents,
 					 enum dma_data_direction direction)
@@ -994,6 +1011,8 @@ typedef uuid_be uuid_t;
 #define ib_update_fast_reg_key backport_ib_update_fast_reg_key
 #define ib_dma_mapping_error backport_ib_dma_mapping_error
 #define ib_dma_map_single backport_ib_dma_map_single
+#define ib_dma_unmap_page backport_ib_dma_unmap_page
+#define ib_dma_map_page backport_ib_dma_map_page
 #define ib_dma_unmap_single backport_ib_dma_unmap_single
 #define ib_dma_map_sg backport_ib_dma_map_sg
 #define ib_dma_unmap_sg backport_ib_dma_unmap_sg
