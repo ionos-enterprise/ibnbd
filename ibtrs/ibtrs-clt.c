@@ -1691,7 +1691,7 @@ int ibtrs_clt_reset_reconnects_stat(struct ibtrs_clt_stats *stats, bool enable)
 int ibtrs_clt_stats_reconnects_to_str(struct ibtrs_clt_stats *stats, char *buf,
 				      size_t len)
 {
-	return scnprintf(buf, len, "%u %u\n",
+	return scnprintf(buf, len, "%d %d\n",
 			 stats->reconnects.successful_cnt,
 			 stats->reconnects.fail_cnt);
 }
@@ -1993,6 +1993,12 @@ static int ibtrs_clt_init_stats(struct ibtrs_clt_stats *stats)
 	err = ibtrs_clt_init_rdma_stats(stats);
 	if (unlikely(err))
 		goto err_wc_comp;
+
+	/*
+	 * successfull_cnt will be set to 0 after session
+	 * is established for the first time
+	 */
+	stats->reconnects.successful_cnt = -1;
 
 	return 0;
 

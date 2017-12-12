@@ -89,8 +89,8 @@ enum ibtrs_fast_reg {
 };
 
 struct ibtrs_clt_stats_reconnects {
-	u32 successful_cnt;
-	u32 fail_cnt;
+	int successful_cnt;
+	int fail_cnt;
 };
 
 struct ibtrs_clt_stats_wc_comp {
