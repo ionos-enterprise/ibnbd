@@ -500,7 +500,7 @@ int ibtrs_addr_to_sockaddr(const char *str, size_t len, short port,
 
 	d = strchr(str, ',');
 	if (d) {
-		if (ibtrs_str_to_sockaddr(str, d - str, port, addr->src))
+		if (ibtrs_str_to_sockaddr(str, d - str, 0, addr->src))
 			return -EINVAL;
 		d += 1;
 		len -= d - str;
