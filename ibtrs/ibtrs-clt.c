@@ -3806,21 +3806,25 @@ int ibtrs_clt_create_path_from_sysfs(struct ibtrs_clt *clt,
 	if (unlikely(IS_ERR(sess)))
 		return PTR_ERR(sess);
 
+	/*
+	 * It is totally safe to add path in CONNECTING state: comming
+	 * IO will never grab it.  Also it is very important to add
+	 * path before init, since init fires LINK_CONNECTED event.
+	 */
+	ibtrs_clt_add_path_to_arr(sess);
+
 	err = init_sess(sess);
 	if (unlikely(err))
 		goto close_sess;
 
-	ibtrs_clt_add_path_to_arr(sess);
-
 	err = ibtrs_clt_create_sess_files(sess);
 	if (unlikely(err))
-		goto remove_path;
+		goto close_sess;
 
 	return 0;
 
-remove_path:
-	ibtrs_clt_remove_path_from_arr(sess);
 close_sess:
+	ibtrs_clt_remove_path_from_arr(sess);
 	ibtrs_clt_close_conns(sess, true);
 	free_sess(sess);
 
