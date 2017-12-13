@@ -1726,7 +1726,7 @@ static int ibtrs_srv_rdma_init(struct ibtrs_srv_ctx *ctx, unsigned port)
 		.sib_pkey	= cpu_to_be16(0xffff),
 	};
 	struct rdma_cm_id *cm_ip, *cm_ib;
-	int ret = 0;
+	int ret;
 
 	/*
 	 * We accept both IPoIB and IB connections, so we need to keep
@@ -1736,17 +1736,19 @@ static int ibtrs_srv_rdma_init(struct ibtrs_srv_ctx *ctx, unsigned port)
 	 */
 
 	cm_ip = ibtrs_srv_cm_init(ctx, (struct sockaddr *)&sin, RDMA_PS_TCP);
-	if (unlikely((IS_ERR(cm_ip))))
+	if (unlikely(IS_ERR(cm_ip)))
 	    return PTR_ERR(cm_ip);
 
 	cm_ib = ibtrs_srv_cm_init(ctx, (struct sockaddr *)&sib, RDMA_PS_IB);
-	if (unlikely((IS_ERR(cm_ib))))
+	if (unlikely(IS_ERR(cm_ib))) {
+		ret = PTR_ERR(cm_ib);
 		goto free_cm_ip;
+	}
 
 	ctx->cm_id_ip = cm_ip;
 	ctx->cm_id_ib = cm_ib;
 
-	return ret;
+	return 0;
 
 free_cm_ip:
 	rdma_destroy_id(cm_ip);
