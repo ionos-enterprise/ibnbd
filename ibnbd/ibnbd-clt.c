@@ -759,62 +759,47 @@ out:
 	return err;
 }
 
-static void reopen_worker(struct work_struct *work)
+static void ibnbd_clt_sess_reopen(struct ibnbd_clt_session *sess)
 {
-	struct ibnbd_work *w;
-	struct ibnbd_clt_session *sess;
 	struct ibnbd_clt_dev *dev;
+	struct ibtrs_attrs attrs;
 	int err;
 
-	w = container_of(work, struct ibnbd_work, work);
-	sess = w->sess;
-	kfree(w);
+	if (WARN_ON(!ibnbd_clt_get_sess(sess)))
+		return;
 
 	mutex_lock(&sess->lock);
 	if (sess->state == CLT_SESS_STATE_DESTROYED) {
-		mutex_unlock(&sess->lock);
-		return;
+		/*
+		 * This may happen if the session started to be closed
+		 * before the reconnect event arrived. In this case, we
+		 * just return and the session will be closed later
+		 */
+		goto out;
 	}
+
+	sess->state = CLT_SESS_STATE_READY;
+
+	memset(&attrs, 0, sizeof(attrs));
+	ibtrs_clt_query(sess->ibtrs, &attrs);
+	sess->max_io_size = attrs.max_io_size;
+
 	err = update_sess_info(sess);
 	if (unlikely(err))
 		goto out;
+
 	list_for_each_entry(dev, &sess->devs_list, list) {
 		ibnbd_info(dev, "session reconnected, remapping device\n");
 		open_remote_device(dev);
 	}
 out:
 	mutex_unlock(&sess->lock);
-
 	ibnbd_clt_put_sess(sess);
-}
-
-static int ibnbd_schedule_reopen(struct ibnbd_clt_session *sess)
-{
-	struct ibnbd_work *w;
-
-	w = kmalloc(sizeof(*w), GFP_KERNEL);
-	if (!w) {
-		pr_err("Failed to allocate memory to schedule reopen of"
-		       " devices on session %s\n", sess->sessname);
-		return -ENOMEM;
-	}
-
-	if (WARN_ON(!ibnbd_clt_get_sess(sess))) {
-		kfree(w);
-		return -ENOENT;
-	}
-
-	w->sess = sess;
-	INIT_WORK(&w->work, reopen_worker);
-	schedule_work(&w->work);
-
-	return 0;
 }
 
 static void ibnbd_clt_link_ev(void *priv, enum ibtrs_clt_link_ev ev)
 {
 	struct ibnbd_clt_session *sess = priv;
-	struct ibtrs_attrs attrs;
 
 	switch (ev) {
 	case IBTRS_CLT_LINK_EV_DISCONNECTED:
@@ -830,22 +815,7 @@ static void ibnbd_clt_link_ev(void *priv, enum ibtrs_clt_link_ev ev)
 		mutex_unlock(&sess->lock);
 		break;
 	case IBTRS_CLT_LINK_EV_RECONNECTED:
-		mutex_lock(&sess->lock);
-		if (sess->state == CLT_SESS_STATE_DESTROYED) {
-			/* This may happen if the session started to be closed
-			 * before the reconnect event arrived. In this case, we
-			 * just return and the session will be closed later
-			 */
-			mutex_unlock(&sess->lock);
-			return;
-		}
-		sess->state = CLT_SESS_STATE_READY;
-
-		mutex_unlock(&sess->lock);
-		memset(&attrs, 0, sizeof(attrs));
-		ibtrs_clt_query(sess->ibtrs, &attrs);
-		sess->max_io_size = attrs.max_io_size;
-		ibnbd_schedule_reopen(sess);
+		ibnbd_clt_sess_reopen(sess);
 		break;
 	default:
 		pr_err("Unknown session event received (%d), session: %s\n",
