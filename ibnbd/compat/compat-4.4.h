@@ -114,8 +114,14 @@ static inline int blk_status_to_errno(blk_status_t status)
 {
 	int idx = (__force int)status;
 
-	if (WARN_ON_ONCE(idx >= ARRAY_SIZE(blk_errors)))
-		return -EIO;
+	if (idx >= ARRAY_SIZE(blk_errors)) {
+		/*
+		 * Negative errno will be propagated to unsigned
+		 * of ARRAY_SIZE and be always greater than array
+		 * size, so here we have normal errno, so return it.
+		 */
+		return idx;
+	}
 	return blk_errors[idx].errno;
 }
 
