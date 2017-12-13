@@ -68,6 +68,7 @@ static ssize_t ibtrs_srv_disconnect_store(struct kobject *kobj,
 					  const char *buf, size_t count)
 {
 	struct ibtrs_srv_sess *sess;
+	char str[MAXHOSTNAMELEN];
 
 	sess = container_of(kobj, struct ibtrs_srv_sess, kobj);
 	if (!sysfs_streq(buf, "1")) {
@@ -75,7 +76,9 @@ static ssize_t ibtrs_srv_disconnect_store(struct kobject *kobj,
 		return -EINVAL;
 	}
 
-	ibtrs_info(sess, "%s: Session disconnect requested\n", attr->attr.name);
+	sockaddr_to_str((struct sockaddr *)&sess->s.dst_addr, str, sizeof(str));
+
+	ibtrs_info(sess, "disconnect for path %s requested\n", str);
 	ibtrs_srv_queue_close(sess);
 
 	return count;
