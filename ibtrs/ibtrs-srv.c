@@ -1128,6 +1128,7 @@ static struct ibtrs_srv *__alloc_srv(struct ibtrs_srv_ctx *ctx,
 
 	refcount_set(&srv->refcount, 1);
 	mutex_init(&srv->paths_mutex);
+	mutex_init(&srv->paths_ev_mutex);
 	uuid_copy(&srv->paths_uuid, paths_uuid);
 	srv->queue_depth = sess_queue_depth;
 	srv->ctx = ctx;
