@@ -1292,6 +1292,13 @@ ibtrs_clt_get_next_path(struct ibtrs_clt *clt)
 
 	init_paths_it(it, clt);
 
+	/*
+	 * This can happen if the user ignored our
+	 * DISCONNECTED event
+	 */
+	if (unlikely(!it.paths->num))
+		return NULL;
+
 	path_id = this_cpu_ptr(clt->curr_path);
 	*path_id = (*path_id + 1) % it.paths->num;
 
