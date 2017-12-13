@@ -1064,6 +1064,17 @@ static const struct block_device_operations ibnbd_client_ops = {
 	.getgeo		= ibnbd_client_getgeo
 };
 
+static size_t ibnbd_clt_get_sg_size(struct scatterlist *sglist, u32 len)
+{
+       struct scatterlist *sg;
+       size_t tsize = 0;
+       int i;
+
+       for_each_sg(sglist, sg, len, i)
+               tsize += sg->length;
+       return tsize;
+}
+
 static int ibnbd_client_xfer_request(struct ibnbd_clt_dev *dev,
 				     struct request *rq,
 				     struct ibnbd_iu *iu)
@@ -1082,7 +1093,6 @@ static int ibnbd_client_xfer_request(struct ibnbd_clt_dev *dev,
 	msg.bi_size	= blk_rq_bytes(rq);
 	msg.rw		= rq_to_ibnbd_flags(rq);
 
-	size = blk_rq_bytes(rq);
 	sg_cnt = blk_rq_map_sg(dev->queue, rq, iu->sglist);
 	if (sg_cnt == 0)
 		/* Do not forget to mark the end */
@@ -1096,6 +1106,7 @@ static int ibnbd_client_xfer_request(struct ibnbd_clt_dev *dev,
 		.iov_len  = sizeof(msg)
 	};
 
+	size = ibnbd_clt_get_sg_size(iu->sglist, sg_cnt);
 	err = ibtrs_clt_request(rq_data_dir(rq), msg_io_conf, ibtrs, tag,
 				iu, &vec, 1, size, iu->sglist, sg_cnt);
 	if (unlikely(err)) {
