@@ -1,10 +1,14 @@
 KDIR ?= $(srctree)
 LIN_VER := $(shell V=linux/version.h; G=. ; \
         [ -f $(KDIR)/include/$${V} ] || G=generated/uapi ;\
-        grep LINUX_VERSION_CODE $(KDIR)/include/$${G}/linux/version.h | \
-	awk '{printf "%d.%d.%d", and(rshift($$3,16),0xff), and(rshift($$3,8),0xff), and($$3, 0xff)}')
+        a=$$(grep LINUX_VERSION_CODE $(KDIR)/include/$${G}/linux/version.h | cut -f3 -d' '); \
+	printf "%d.%d.%d" $$((a>>16)) $$(((a>>8) & 0xff)) $$((a & 0xff)))
 
 dir := $(src)/compat
+
+ifeq ($(LIN_VER),0.0.0)
+$(error Failed to read linux/version.h and extract version)
+endif
 
 ifeq ($(LIN_VER), 4.4.73)
 ccflags-y := -include $(dir)/compat-4.4.h
