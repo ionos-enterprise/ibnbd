@@ -17,7 +17,7 @@ obj-m += ibnbd/
 # Normal Makefile, redirect to kbuild
 else
 
-KDIR ?= /usr/src/linux
+KDIR ?= /lib/modules/`uname -r`/build
 
 #
 # ¯\(°_o)/¯ I dunno how to unite these two in one line
