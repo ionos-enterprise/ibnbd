@@ -10,9 +10,28 @@ typedef int blk_status_t;
 #define bi_status bi_error
 #define bi_opf bi_rw
 #define bio_set_dev(bio, bdev) ((bio)->bi_bdev = bdev)
-#define req_op(rq) ((rq)->cmd_flags)
 #define rq_flags cmd_flags
 
+#define op_is_flush(op) ((op) & REQ_FUA)
+#define op_is_sync(op) rw_is_sync(op)
+
+static inline int req_op(struct request *rq)
+{
+	if (rq->cmd_flags & REQ_WRITE_SAME)
+		return REQ_WRITE_SAME;
+	else if (rq->cmd_flags & REQ_DISCARD)
+		return REQ_DISCARD;
+	else if (rq->cmd_flags & REQ_FLUSH)
+		return REQ_FLUSH;
+	else if (rq->cmd_flags & REQ_SECURE)
+		return REQ_SECURE;
+	else if (rq->cmd_flags & REQ_WRITE)
+		return REQ_WRITE;
+	else
+		return READ;
+}
+
+#define REQ_OP_READ         READ
 #define REQ_OP_WRITE        REQ_WRITE
 #define REQ_OP_WRITE_SAME   REQ_WRITE_SAME
 #define REQ_OP_FLUSH        REQ_FLUSH
