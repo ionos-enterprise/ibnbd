@@ -7,12 +7,18 @@ LIN_VER := $(shell V=linux/version.h; G=. ; \
 dir := $(src)/compat
 
 ifeq ($(LIN_VER),0.0.0)
-$(error Failed to read linux/version.h and extract version)
+    $(error Failed to read linux/version.h and extract version)
+else ifeq ($(LIN_VER), 4.4.73)
+    do_compat := 1
+else ifeq ($(LIN_VER), 4.4.96)
+    do_compat := 1
 endif
 
-ifeq ($(LIN_VER), 4.4.73)
-ccflags-y := -include $(dir)/compat-4.4.73.h -I$(dir)/include
-obj-m += compat/4.4.73/
-else ifeq ($(LIN_VER), 4.4.96)
-ccflags-y := -include $(dir)/compat-4.4.96.h -I$(dir)/include
+ifdef do_compat
+    $(info - IBTRS with compat support for $(LIN_VER) kernel)
+    ccflags-y := -include $(dir)/compat-$(LIN_VER).h -I$(dir)/include
+
+    ifeq ($(LIN_VER), 4.4.73)
+        obj-m += compat/4.4.73/
+    endif
 endif

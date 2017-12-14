@@ -7,11 +7,14 @@ LIN_VER := $(shell V=linux/version.h; G=. ; \
 dir := $(src)/compat
 
 ifeq ($(LIN_VER),0.0.0)
-$(error Failed to read linux/version.h and extract version)
+    $(error Failed to read linux/version.h and extract version)
+else ifeq ($(LIN_VER), 4.4.73)
+    do_compat := 1
+else ifeq ($(LIN_VER), 4.4.96)
+    do_compat := 1
 endif
 
-ifeq ($(LIN_VER), 4.4.73)
-ccflags-y := -include $(dir)/compat-4.4.h
-else ifeq ($(LIN_VER), 4.4.96)
-ccflags-y := -include $(dir)/compat-4.4.h
+ifdef do_compat
+    $(info - IBNBD with compat support for $(LIN_VER) kernel)
+    ccflags-y := -include $(dir)/compat-4.4.h
 endif
