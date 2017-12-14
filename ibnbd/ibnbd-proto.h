@@ -195,23 +195,67 @@ struct ibnbd_msg_open_rsp {
 	u8			__padding[6];
 };
 
+#define IBNBD_OP_BITS  8
+#define IBNBD_OP_MASK  ((1 << IBNBD_OP_BITS) - 1)
+
 /**
  * enum ibnbd_io_flags - IBNBD request types from rq_flag_bits
- * @IBNBD_RW_REQ_WRITE:	bit not set = read, bit set = write
- * @IBNBD_RW_REQ_SYNC:	request is sync
- * @IBNBD_RW_REQ_DISCARD: request to discard sectors
- * @IBNBD_RW_REQ_SECURE: secure discard request
- * @IBNBD_RW_REQ_WRITE_SAME: write same block many times
+ * @IBNBD_OP_READ:	     read sectors from the device
+ * @IBNBD_OP_WRITE:	     write sectors to the device
+ * @IBNBD_OP_FLUSH:	     flush the volatile write cache
+ * @IBNBD_OP_DISCARD:        discard sectors
+ * @IBNBD_OP_SECURE_ERASE:   securely erase sectors
+ * @IBNBD_OP_WRITE_SAME:     write the same sectors many times
+
+ * @IBNBD_F_SYNC:	     request is sync (sync write or read)
+ * @IBNBD_F_FUA:             forced unit access
  */
 enum ibnbd_io_flags {
-	IBNBD_RW_REQ_WRITE		= 1 << 1,
-	IBNBD_RW_REQ_SYNC		= 1 << 2,
-	IBNBD_RW_REQ_DISCARD		= 1 << 3,
-	IBNBD_RW_REQ_SECURE		= 1 << 4,
-	IBNBD_RW_REQ_WRITE_SAME		= 1 << 5,
-	IBNBD_RW_REQ_FUA		= 1 << 6,
-	IBNBD_RW_REQ_FLUSH		= 1 << 7
+
+	/* Operations */
+
+	IBNBD_OP_READ		= 0,
+	IBNBD_OP_WRITE		= 1,
+	IBNBD_OP_FLUSH		= 2,
+	IBNBD_OP_DISCARD	= 3,
+	IBNBD_OP_SECURE_ERASE	= 4,
+	IBNBD_OP_WRITE_SAME	= 5,
+
+	IBNBD_OP_LAST,
+
+	/* Flags */
+
+	IBNBD_F_SYNC  = 1<<(IBNBD_OP_BITS + 0),
+	IBNBD_F_FUA   = 1<<(IBNBD_OP_BITS + 1),
+
+	IBNBD_F_ALL   = (IBNBD_F_SYNC | IBNBD_F_FUA)
+
 };
+
+static inline u32 ibnbd_op(u32 flags)
+{
+	return (flags & IBNBD_OP_MASK);
+}
+
+static inline u32 ibnbd_flags(u32 flags)
+{
+	return (flags & ~IBNBD_OP_MASK);
+}
+
+static inline bool ibnbd_flags_supported(u32 flags)
+{
+	u32 op;
+
+	op = ibnbd_op(flags);
+	flags = ibnbd_flags(flags);
+
+	if (op >= IBNBD_OP_LAST)
+		return false;
+	if (flags & ~IBNBD_F_ALL)
+		return false;
+
+	return true;
+}
 
 /**
  * struct ibnbd_msg_io - message for I/O read/write

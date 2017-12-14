@@ -46,64 +46,81 @@
 #include "ibnbd.h"
 #include "ibnbd-proto.h"
 
-u32 ibnbd_to_bio_flags(u32 flags)
+u32 ibnbd_to_bio_flags(u32 ibnbd_flags)
 {
-	u32 result = 0;
+	u32 bio_flags;
 
-	if (flags == 0)
-		return result;
+	switch (ibnbd_op(ibnbd_flags)) {
+	case IBNBD_OP_READ:
+		bio_flags = REQ_OP_READ;
+		break;
+	case IBNBD_OP_WRITE:
+		bio_flags = REQ_OP_WRITE;
+		break;
+	case IBNBD_OP_FLUSH:
+		bio_flags = REQ_OP_FLUSH | REQ_PREFLUSH;
+		break;
+	case IBNBD_OP_DISCARD:
+		bio_flags = REQ_OP_DISCARD;
+		break;
+	case IBNBD_OP_SECURE_ERASE:
+		bio_flags = REQ_OP_SECURE_ERASE;
+		break;
+	case IBNBD_OP_WRITE_SAME:
+		bio_flags = REQ_OP_WRITE_SAME;
+		break;
+	default:
+		WARN(1, "Unknown IBNBD type: %d (flags %d)\n",
+		     ibnbd_op(ibnbd_flags), ibnbd_flags);
+		bio_flags = 0;
+	}
 
-	if (flags & IBNBD_RW_REQ_WRITE)
-		result |= REQ_OP_WRITE;
+	if (ibnbd_flags & IBNBD_F_SYNC)
+		bio_flags |= REQ_SYNC;
 
-	if (flags & IBNBD_RW_REQ_SYNC)
-		result |= REQ_SYNC;
+	if (ibnbd_flags & IBNBD_F_FUA)
+		bio_flags |= REQ_FUA;
 
-	if (flags & IBNBD_RW_REQ_DISCARD)
-		result |= REQ_OP_DISCARD;
-
-	if (flags & IBNBD_RW_REQ_SECURE)
-		result |= REQ_OP_SECURE_ERASE;
-
-	if (flags & IBNBD_RW_REQ_WRITE_SAME)
-		result |= REQ_OP_WRITE_SAME;
-
-	if (flags & IBNBD_RW_REQ_FUA)
-		result |= REQ_FUA;
-
-	if (flags & IBNBD_RW_REQ_FLUSH)
-		result |= REQ_OP_FLUSH | REQ_PREFLUSH;
-
-	return result;
+	return bio_flags;
 }
 EXPORT_SYMBOL_GPL(ibnbd_to_bio_flags);
 
 u32 rq_to_ibnbd_flags(struct request *rq)
 {
-	u32 result = 0;
+	u32 ibnbd_flags;
 
-	if (req_op(rq) == REQ_OP_WRITE)
-		result |= IBNBD_RW_REQ_WRITE;
+	switch (req_op(rq)) {
+	case REQ_OP_READ:
+		ibnbd_flags = IBNBD_OP_READ;
+		break;
+	case REQ_OP_WRITE:
+		ibnbd_flags = IBNBD_OP_WRITE;
+		break;
+	case REQ_OP_DISCARD:
+		ibnbd_flags = IBNBD_OP_DISCARD;
+		break;
+	case REQ_OP_SECURE_ERASE:
+		ibnbd_flags = IBNBD_OP_SECURE_ERASE;
+		break;
+	case REQ_OP_WRITE_SAME:
+		ibnbd_flags = IBNBD_OP_WRITE_SAME;
+		break;
+	case REQ_OP_FLUSH:
+		ibnbd_flags = IBNBD_OP_FLUSH;
+		break;
+	default:
+		WARN(1, "Unknown request type %d (flags %llu)\n",
+		     req_op(rq), (unsigned long long)rq->cmd_flags);
+		ibnbd_flags = 0;
+	}
 
-	if (rq_is_sync(rq))
-		result |= IBNBD_RW_REQ_SYNC;
+	if (op_is_sync((rq->cmd_flags)))
+		ibnbd_flags |= IBNBD_F_SYNC;
 
-	if (req_op(rq) == REQ_OP_DISCARD)
-		result |= IBNBD_RW_REQ_DISCARD;
+	if (op_is_flush(rq->cmd_flags))
+		ibnbd_flags |= IBNBD_F_FUA;
 
-	if (req_op(rq) == REQ_OP_SECURE_ERASE)
-		result |= IBNBD_RW_REQ_SECURE;
-
-	if (req_op(rq) == REQ_OP_WRITE_SAME)
-		result |= IBNBD_RW_REQ_WRITE_SAME;
-
-	if (rq->cmd_flags & REQ_FUA)
-		result |= IBNBD_RW_REQ_FUA;
-
-	if (req_op(rq) == REQ_OP_FLUSH)
-		result |= IBNBD_RW_REQ_FLUSH;
-
-	return result;
+	return ibnbd_flags;
 }
 EXPORT_SYMBOL_GPL(rq_to_ibnbd_flags);
 

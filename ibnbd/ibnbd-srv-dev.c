@@ -333,13 +333,13 @@ static void ibnbd_dev_file_submit_io_worker(struct work_struct *w)
 	f = dev_work->dev->file;
 	len = dev_work->bi_size;
 
-	if (dev_work->flags & IBNBD_RW_REQ_FLUSH) {
+	if (ibnbd_op(dev_work->flags) == IBNBD_OP_FLUSH) {
 		ret = ibnbd_dev_file_handle_flush(dev_work, off);
 		if (unlikely(ret))
 			goto out;
 	}
 
-	if (dev_work->flags & IBNBD_RW_REQ_WRITE_SAME) {
+	if (ibnbd_op(dev_work->flags) == IBNBD_OP_WRITE_SAME) {
 		ret = ibnbd_dev_file_handle_write_same(dev_work);
 		if (unlikely(ret))
 			goto out;
@@ -349,7 +349,7 @@ static void ibnbd_dev_file_submit_io_worker(struct work_struct *w)
 	if (dev_work->bi_size) {
 		loff_t off_tmp = off;
 
-		if (dev_work->flags & IBNBD_RW_REQ_WRITE) {
+		if (ibnbd_op(dev_work->flags) == IBNBD_OP_WRITE) {
 			ret = kernel_write(f, dev_work->data, dev_work->bi_size,
 					   &off_tmp);
 		}
@@ -368,22 +368,11 @@ static void ibnbd_dev_file_submit_io_worker(struct work_struct *w)
 		}
 	}
 
-	if (dev_work->flags & IBNBD_RW_REQ_FUA)
+	if (dev_work->flags & IBNBD_F_FUA)
 		ret = ibnbd_dev_file_handle_fua(dev_work, off);
 out:
 	dev_work->dev->io_cb(dev_work->priv, ret);
 	kfree(dev_work);
-}
-
-static inline bool ibnbd_dev_file_io_flags_supported(enum ibnbd_io_flags flags)
-{
-	flags &= ~IBNBD_RW_REQ_WRITE;
-	flags &= ~IBNBD_RW_REQ_SYNC;
-	flags &= ~IBNBD_RW_REQ_FUA;
-	flags &= ~IBNBD_RW_REQ_FLUSH;
-	flags &= ~IBNBD_RW_REQ_WRITE_SAME;
-
-	return (!flags);
 }
 
 static int ibnbd_dev_file_submit_io(struct ibnbd_dev *dev, sector_t sector,
@@ -392,7 +381,7 @@ static int ibnbd_dev_file_submit_io(struct ibnbd_dev *dev, sector_t sector,
 {
 	struct ibnbd_dev_file_io_work *w;
 
-	if (!ibnbd_dev_file_io_flags_supported(flags)) {
+	if (!ibnbd_flags_supported(flags)) {
 		pr_info_ratelimited("Unsupported I/O flags: 0x%x on device "
 				    "%s\n", flags, dev->name);
 		return -ENOTSUPP;
