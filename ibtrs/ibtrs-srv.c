@@ -1344,7 +1344,8 @@ static int ibtrs_rdma_do_reject(struct rdma_cm_id *cm_id, int errno)
 	if (err)
 		pr_err("rdma_reject(), err: %d\n", err);
 
-	return err;
+	/* Bounce errno back */
+	return errno;
 }
 
 static struct ibtrs_srv_sess *
