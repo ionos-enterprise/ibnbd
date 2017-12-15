@@ -2399,7 +2399,7 @@ static int create_cm(struct ibtrs_clt_con *con)
 			       RDMA_PS_IB : RDMA_PS_TCP, IB_QPT_RC);
 	if (unlikely(IS_ERR(cm_id))) {
 		err = PTR_ERR(cm_id);
-		ibtrs_wrn(sess, "Failed to create CM ID, err: %d\n", err);
+		ibtrs_err(sess, "Failed to create CM ID, err: %d\n", err);
 
 		return err;
 	}
@@ -2408,17 +2408,15 @@ static int create_cm(struct ibtrs_clt_con *con)
 	/* allow the port to be reused */
 	err = rdma_set_reuseaddr(cm_id, 1);
 	if (err != 0) {
-		ibtrs_wrn(sess, "set address reuse failed, err: %d\n", err);
-		return err;
+		ibtrs_err(sess, "Set address reuse failed, err: %d\n", err);
+		goto destroy_cm;
 	}
 	err = rdma_resolve_addr(cm_id, (struct sockaddr *)&sess->s.src_addr,
 				(struct sockaddr *)&sess->s.dst_addr,
 				IBTRS_CONNECT_TIMEOUT_MS);
 	if (unlikely(err)) {
 		ibtrs_err(sess, "Failed to resolve address, err: %d\n", err);
-		rdma_destroy_id(cm_id);
-
-		return err;
+		goto destroy_cm;
 	}
 	/*
 	 * Combine connection status and session events. This is needed
@@ -2450,6 +2448,7 @@ errr:
 	stop_cm(con);
 	/* Is safe to call destroy if cq_qp is not inited */
 	destroy_con_cq_qp(con);
+destroy_cm:
 	destroy_cm(con);
 
 	return err;
