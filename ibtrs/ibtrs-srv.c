@@ -1586,13 +1586,27 @@ static int ibtrs_rdma_connect(struct rdma_cm_id *cm_id,
 		}
 	}
 	err = create_con(sess, cm_id, cid);
-	if (unlikely(err))
-		goto close_and_reject_w_err;
-
+	if (unlikely(err)) {
+		(void)ibtrs_rdma_do_reject(cm_id, err);
+		/*
+		 * Since session has other connections we follow normal way
+		 * thru worqueue, but still return an error to tell cma.c
+		 * to call rdma_destroy_id() for current connection.
+		 */
+		goto close_and_return_err;
+	}
 	err = ibtrs_rdma_do_accept(sess, cm_id);
-	if (unlikely(err))
-		goto close_and_reject_w_err;
-
+	if (unlikely(err)) {
+		(void)ibtrs_rdma_do_reject(cm_id, err);
+		/*
+		 * Since current connection was successfully added to the
+		 * session we follow normal way thru workqueue to close the
+		 * session, thus return 0 to tell cma.c we call
+		 * rdma_destroy_id() ourselves.
+		 */
+		err = 0;
+		goto close_and_return_err;
+	}
 	mutex_unlock(&srv->paths_mutex);
 
 	return 0;
@@ -1606,10 +1620,11 @@ reject_w_econnreset:
 reject_w_ebusy:
 	return ibtrs_rdma_do_reject(cm_id, -EBUSY);
 
-close_and_reject_w_err:
+close_and_return_err:
 	close_sess(sess);
 	mutex_unlock(&srv->paths_mutex);
-	goto reject_w_err;
+
+	return err;
 }
 
 static int ibtrs_srv_rdma_cm_handler(struct rdma_cm_id *cm_id,
