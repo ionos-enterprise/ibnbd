@@ -2382,6 +2382,7 @@ static void stop_cm(struct ibtrs_clt_con *con)
 static void destroy_cm(struct ibtrs_clt_con *con)
 {
 	rdma_destroy_id(con->c.cm_id);
+	con->c.cm_id = NULL;
 }
 
 static int ibtrs_clt_rdma_cm_handler(struct rdma_cm_id *cm_id,

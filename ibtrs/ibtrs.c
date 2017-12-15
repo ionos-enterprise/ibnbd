@@ -349,10 +349,14 @@ EXPORT_SYMBOL_GPL(ibtrs_cq_qp_create);
 
 void ibtrs_cq_qp_destroy(struct ibtrs_con *con)
 {
-	if (con->cm_id->qp)
+	if (con->qp) {
 		rdma_destroy_qp(con->cm_id);
-	if (con->cq)
+		con->qp = NULL;
+	}
+	if (con->cq) {
 		ib_free_cq(con->cq);
+		con->cq = NULL;
+	}
 }
 EXPORT_SYMBOL_GPL(ibtrs_cq_qp_destroy);
 
