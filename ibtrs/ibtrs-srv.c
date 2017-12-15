@@ -634,7 +634,8 @@ static void ibtrs_srv_start_hb(struct ibtrs_srv_sess *sess)
 	struct ibtrs_srv_con *usr_con = to_srv_con(sess->s.con[0]);
 
 	ibtrs_start_hb(&usr_con->c, &io_comp_cqe,
-		       IBTRS_HB_TIMEOUT_MS,
+		       IBTRS_HB_INTERVAL_MS,
+		       IBTRS_HB_MISSED_MAX,
 		       ibtrs_srv_hb_err_handler,
 		       ibtrs_wq);
 }
@@ -1053,8 +1054,16 @@ static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 			break;
 		}
 		imm = be32_to_cpu(wc->ex.imm_data);
-		if (imm == IBTRS_HB_IMM)
+		if (imm == IBTRS_HB_IMM) {
+			WARN_ON(con->c.cid);
+			ibtrs_send_hb_ack(&sess->s);
 			break;
+		} else if (imm == IBTRS_HB_ACK_IMM) {
+			WARN_ON(con->c.cid);
+			sess->s.hb_missed_cnt = 0;
+			break;
+		}
+
 		msg_id = imm >> sess->off_len;
 		off = imm & sess->off_mask;
 

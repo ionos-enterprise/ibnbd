@@ -81,10 +81,11 @@ enum {
 	IO_MSG_SIZE = 512,
 	IB_IMM_SIZE_BITS = 32,
 
-	IBTRS_ACK_IMM = UINT_MAX,
+	IBTRS_HB_ACK_IMM = UINT_MAX,
 	IBTRS_HB_IMM  = UINT_MAX - 1,
 
-	IBTRS_HB_TIMEOUT_MS = 5000,
+	IBTRS_HB_INTERVAL_MS = 5000,
+	IBTRS_HB_MISSED_MAX = 5,
 
 	IBTRS_MAGIC = 0x1BBD,
 	IBTRS_VERSION = (IBTRS_VER_MAJOR << 8) | IBTRS_VER_MINOR,
@@ -125,7 +126,9 @@ struct ibtrs_sess {
 	ibtrs_hb_handler_t	*hb_err_handler;
 	struct workqueue_struct *hb_wq;
 	struct delayed_work	hb_dwork;
-	unsigned		hb_timeout_ms;
+	unsigned		hb_interval_ms;
+	unsigned		hb_missed_cnt;
+	unsigned		hb_missed_max;
 };
 
 struct ibtrs_iu {
@@ -332,8 +335,10 @@ int ibtrs_cq_qp_create(struct ibtrs_sess *ibtrs_sess, struct ibtrs_con *con,
 void ibtrs_cq_qp_destroy(struct ibtrs_con *con);
 
 void ibtrs_start_hb(struct ibtrs_con *con, struct ib_cqe *cqe,
-		    unsigned timeout_ms, ibtrs_hb_handler_t *err_handler,
+		    unsigned interval_ms, unsigned missed_max,
+		    ibtrs_hb_handler_t *err_handler,
 		    struct workqueue_struct *wq);
+void ibtrs_send_hb_ack(struct ibtrs_sess *sess);
 void ibtrs_stop_hb(struct ibtrs_sess *sess);
 
 #define XX(a) case (a): return #a

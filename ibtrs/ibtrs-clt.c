@@ -1240,6 +1240,11 @@ static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 		imm = be32_to_cpu(wc->ex.imm_data);
 		if (imm == IBTRS_HB_IMM) {
 			WARN_ON(con->c.cid);
+			ibtrs_send_hb_ack(&sess->s);
+			break;
+		} else if (imm == IBTRS_HB_ACK_IMM) {
+			WARN_ON(con->c.cid);
+			sess->s.hb_missed_cnt = 0;
 			break;
 		}
 		msg_id = imm >> 16;
@@ -2468,7 +2473,8 @@ static void ibtrs_clt_start_hb(struct ibtrs_clt_sess *sess)
 	struct ibtrs_clt_con *usr_con = to_clt_con(sess->s.con[0]);
 
 	ibtrs_start_hb(&usr_con->c, &io_comp_cqe,
-		       IBTRS_HB_TIMEOUT_MS,
+		       IBTRS_HB_INTERVAL_MS,
+		       IBTRS_HB_MISSED_MAX,
 		       ibtrs_clt_hb_err_handler,
 		       ibtrs_wq);
 }
