@@ -1398,10 +1398,11 @@ static int create_con(struct ibtrs_srv_sess *sess,
 
 	if (con->c.cid == 0) {
 		cq_size       = SERVICE_CON_QUEUE_DEPTH;
-		wr_queue_size = SERVICE_CON_QUEUE_DEPTH;
+		/* + 2 for drain and heartbeat */
+		wr_queue_size = SERVICE_CON_QUEUE_DEPTH + 2;
 	} else {
 		cq_size       = srv->queue_depth;
-		wr_queue_size = sess->s.ib_dev->attrs.max_qp_wr - 1;
+		wr_queue_size = sess->s.ib_dev->attrs.max_qp_wr;
 	}
 
 	cq_vector = ibtrs_srv_get_next_cq_vector(sess);

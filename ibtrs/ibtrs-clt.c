@@ -2299,7 +2299,8 @@ static int create_con_cq_qp(struct ibtrs_clt_con *con)
 
 	if (con->c.cid == 0) {
 		cq_size = SERVICE_CON_QUEUE_DEPTH;
-		wr_queue_size = SERVICE_CON_QUEUE_DEPTH;
+		/* + 2 for drain and heartbeat */
+		wr_queue_size = SERVICE_CON_QUEUE_DEPTH + 2;
 		/* We must be the first here */
 		if (WARN_ON(sess->s.ib_dev))
 			return -EINVAL;
@@ -2333,10 +2334,10 @@ static int create_con_cq_qp(struct ibtrs_clt_con *con)
 		sess->s.ib_dev_ref++;
 		cq_size = sess->queue_depth;
 		num_wr = DIV_ROUND_UP(sess->max_pages_per_mr, sess->max_sge);
-		wr_queue_size = sess->s.ib_dev->attrs.max_qp_wr - 1;
+		wr_queue_size = sess->s.ib_dev->attrs.max_qp_wr;
 		wr_queue_size = min_t(int, wr_queue_size,
 				      sess->queue_depth * num_wr *
-				      (use_fr ? 3 : 2));
+				      (use_fr ? 3 : 2) + 1);
 	}
 	cq_vector = con->cpu % sess->s.ib_dev->dev->num_comp_vectors;
 	err = ibtrs_cq_qp_create(&sess->s, &con->c, sess->max_sge,
