@@ -1082,13 +1082,10 @@ static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 int ibtrs_srv_get_sess_name(struct ibtrs_srv *srv, char *sessname, size_t len)
 {
 	struct ibtrs_srv_sess *sess;
-	int i, err = -ENOTCONN;
+	int err = -ENOTCONN;
 
 	mutex_lock(&srv->paths_mutex);
-	for (i = 0; i < srv->paths_num; i++) {
-		sess = srv->paths[i];
-		if (!sess)
-			continue;
+	list_for_each_entry(sess, &srv->paths_list, s.entry) {
 		if (sess->state != IBTRS_SRV_CONNECTED)
 			continue;
 		memcpy(sessname, sess->s.sessname,
@@ -1135,6 +1132,7 @@ static struct ibtrs_srv *__alloc_srv(struct ibtrs_srv_ctx *ctx,
 		return NULL;
 
 	refcount_set(&srv->refcount, 1);
+	INIT_LIST_HEAD(&srv->paths_list);
 	mutex_init(&srv->paths_mutex);
 	mutex_init(&srv->paths_ev_mutex);
 	uuid_copy(&srv->paths_uuid, paths_uuid);
@@ -1223,37 +1221,23 @@ static void put_srv(struct ibtrs_srv *srv)
 static void __add_path_to_srv(struct ibtrs_srv *srv,
 			      struct ibtrs_srv_sess *sess)
 {
-	int i;
-
-	for (i = 0; i < MAX_PATHS_NUM; i++) {
-		if (!srv->paths[i]) {
-			srv->paths[i] = sess;
-			srv->paths_num++;
-			break;
-		}
-	}
-	WARN_ON(i >= MAX_PATHS_NUM);
+	list_add_tail(&sess->s.entry, &srv->paths_list);
+	srv->paths_num++;
+	WARN_ON(srv->paths_num >= MAX_PATHS_NUM);
 }
 
 static void del_path_from_srv(struct ibtrs_srv_sess *sess)
 {
 	struct ibtrs_srv* srv = sess->srv;
-	int i;
 
 	if (WARN_ON(!srv))
 		return;
 
 	mutex_lock(&srv->paths_mutex);
-	for (i = 0; i < MAX_PATHS_NUM; i++) {
-		if (sess == srv->paths[i]) {
-			srv->paths[i] = NULL;
-			WARN_ON(!srv->paths_num);
-			srv->paths_num--;
-			break;
-		}
-	}
+	list_del(&sess->s.entry);
+	WARN_ON(!srv->paths_num);
+	srv->paths_num--;
 	mutex_unlock(&srv->paths_mutex);
-	WARN_ON(i >= MAX_PATHS_NUM);
 }
 
 static void ibtrs_srv_close_work(struct work_struct *work)
@@ -1360,12 +1344,8 @@ static struct ibtrs_srv_sess *
 __find_sess(struct ibtrs_srv *srv, const uuid_t *sess_uuid)
 {
 	struct ibtrs_srv_sess *sess;
-	int i;
 
-	for (i = 0; i < srv->paths_num; i++) {
-		sess = srv->paths[i];
-		if (!sess)
-			continue;
+	list_for_each_entry(sess, &srv->paths_list, s.entry) {
 		if (uuid_equal(&sess->s.uuid, sess_uuid))
 			return sess;
 	}
@@ -1843,15 +1823,10 @@ static void close_sess(struct ibtrs_srv_sess *sess)
 static void close_sessions(struct ibtrs_srv *srv)
 {
 	struct ibtrs_srv_sess *sess;
-	int i;
 
 	mutex_lock(&srv->paths_mutex);
-	for (i = 0; i < srv->paths_num; i++) {
-		sess = srv->paths[i];
-		if (!sess)
-			continue;
+	list_for_each_entry(sess, &srv->paths_list, s.entry)
 		close_sess(sess);
-	}
 	mutex_unlock(&srv->paths_mutex);
 }
 

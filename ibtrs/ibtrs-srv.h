@@ -132,7 +132,7 @@ struct ibtrs_srv_sess {
 };
 
 struct ibtrs_srv {
-	struct ibtrs_srv_sess	*paths[MAX_PATHS_NUM];
+	struct list_head	paths_list;
 	int			paths_up;
 	struct mutex		paths_ev_mutex;
 	size_t			paths_num;
