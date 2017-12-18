@@ -930,6 +930,7 @@ static void __exit ibnbd_srv_cleanup_module(void)
 	WARN_ON(!list_empty(&sess_list));
 	ibnbd_srv_destroy_sysfs_files();
 	ibnbd_dev_destroy();
+	pr_info("Module unloaded\n");
 }
 
 module_init(ibnbd_srv_init_module);
