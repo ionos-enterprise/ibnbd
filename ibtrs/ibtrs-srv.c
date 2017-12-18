@@ -1402,16 +1402,7 @@ static int create_con(struct ibtrs_srv_sess *sess,
 		wr_queue_size = SERVICE_CON_QUEUE_DEPTH + 2;
 	} else {
 		cq_size       = srv->queue_depth;
-		/*
-		 * We need as many workrequests as there can be
-		 * descriptors in the biggest possible read
-		 * multiplied with queue depth plus another one for drain
-		 */
-		wr_queue_size = (MAX_REQ_SIZE -
-				 sizeof(u32) - sizeof(u32) - IO_MSG_SIZE) /
-				sizeof(struct ibtrs_sg_desc) *
-				srv->queue_depth + 1;
-
+		wr_queue_size = sess->s.ib_dev->attrs.max_qp_wr;
 	}
 
 	cq_vector = ibtrs_srv_get_next_cq_vector(sess);
