@@ -1093,16 +1093,6 @@ const char *ibtrs_srv_get_sess_name(struct ibtrs_srv *srv)
 }
 EXPORT_SYMBOL(ibtrs_srv_get_sess_name);
 
-const struct sockaddr *
-ibtrs_srv_get_sess_sockaddr(struct ibtrs_srv *srv)
-{
-	/* XXX Should be changed */
-	struct ibtrs_srv_sess *sess = srv->paths[0];
-
-	return (const struct sockaddr *)&sess->s.dst_addr;
-}
-EXPORT_SYMBOL(ibtrs_srv_get_sess_sockaddr);
-
 int ibtrs_srv_get_queue_depth(struct ibtrs_srv *srv)
 {
 	return srv->queue_depth;

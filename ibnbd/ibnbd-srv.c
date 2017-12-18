@@ -306,13 +306,10 @@ out:
 
 static int create_sess(struct ibtrs_srv *ibtrs)
 {
-	const struct sockaddr *sockaddr;
 	struct ibnbd_srv_session *srv_sess;
 	char sessname[NAME_MAX];
 
 	strlcpy(sessname, ibtrs_srv_get_sess_name(ibtrs), sizeof(sessname));
-
-	sockaddr = ibtrs_srv_get_sess_sockaddr(ibtrs);
 
 	srv_sess = kzalloc(sizeof(*srv_sess), GFP_KERNEL);
 	if (!srv_sess) {
