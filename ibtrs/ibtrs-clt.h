@@ -200,24 +200,13 @@ struct ibtrs_clt_sess {
 	struct ibtrs_clt_stats  stats;
 };
 
-struct ibtrs_clt_paths {
-	struct ibtrs_clt_sess	*arr[MAX_PATHS_NUM];
-	size_t			num;
-};
-
-struct ibtrs_clt_paths_it {
-	struct ibtrs_clt_paths  *paths;
-	struct ibtrs_clt_sess   *sess;
-	int                     i;
-};
-
 struct ibtrs_clt {
-	struct ibtrs_clt_paths  __rcu *paths;
-	struct ibtrs_clt_paths  *paths_shadow;
-	struct ibtrs_clt_paths  __paths;
-	struct ibtrs_clt_paths  __paths_shadow;
+	struct list_head   /* __rcu */ paths_list;
+	size_t			       paths_num;
+	struct ibtrs_clt_sess
+		      __percpu * __rcu *pcpu_path;
+
 	bool			opened;
-	unsigned int __percpu	*curr_path;
 	uuid_t			paths_uuid;
 	int			paths_up;
 	struct mutex		paths_mutex;
@@ -240,27 +229,28 @@ struct ibtrs_clt {
 	struct kobject		kobj_paths;
 };
 
-#define init_paths_it(it, clt) ({		\
-	it.paths = rcu_dereference(clt->paths); \
-	it.i = 0;				\
-	it.sess = NULL;				\
+/**
+ * list_next_or_null_rr - get next list element in round-robin fashion.
+ * @pos:     entry, starting cursor.
+ * @head:    head of the list to examine. This list must have at least one
+ *           element, namely @pos.
+ * @member:  name of the list_head structure within typeof(*pos).
+ *
+ * Important to understand that @pos is a list entry, which can be already
+ * removed using list_del_rcu(), so if @head has become empty NULL will be
+ * returned. Otherwise next element is returned in round-robin fashion.
+ */
+#define list_next_or_null_rcu_rr(pos, head, member) ({			\
+	typeof(pos) ________next = NULL;				\
+									\
+	if (!list_empty(head))						\
+		________next = (pos)->member.next != (head) ?		\
+			list_entry_rcu((pos)->member.next,		\
+				       typeof(*pos), member) :		\
+			list_entry_rcu((pos)->member.next->next,	\
+				       typeof(*pos), member);		\
+	________next;							\
 })
-
-/*  this part '% it.paths->num' is used to shut up compiler */
-#define path_it_get(it) \
-	(it.i < it.paths->num ? it.paths->arr[it.i % it.paths->num] : NULL)
-
-#define foreach_path(it, clt)						\
-	for (it.paths = rcu_dereference(clt->paths), it.i = 0,		\
-		     it.sess = path_it_get(it);				\
-	     it.i < it.paths->num;					\
-	     it.i++, it.sess = path_it_get(it))				\
-
-#define __foreach_path_from_to(it, from, to)				\
-	for (it.i = from, it.sess = path_it_get(it);			\
-	     it.i < to;							\
-	     it.i++, it.sess = path_it_get(it))				\
-
 
 /* See ibtrs-log.h */
 #define TYPES_TO_SESSNAME(obj)						\

@@ -228,15 +228,12 @@ bool ibtrs_clt_sess_is_connected(const struct ibtrs_clt_sess *sess)
 
 static inline bool ibtrs_clt_is_connected(const struct ibtrs_clt *clt)
 {
-	struct ibtrs_clt_paths_it it;
+	struct ibtrs_clt_sess *sess;
 	bool connected = false;
 
 	ibtrs_clt_state_lock();
-	foreach_path(it, clt) {
-		if (!it.sess)
-			continue;
-		connected |= ibtrs_clt_sess_is_connected(it.sess);
-	}
+	list_for_each_entry_rcu(sess, &clt->paths_list, s.entry)
+		connected |= ibtrs_clt_sess_is_connected(sess);
 	ibtrs_clt_state_unlock();
 
 	return connected;
@@ -1288,32 +1285,25 @@ static int post_recv_sess(struct ibtrs_clt_sess *sess)
 static inline struct ibtrs_clt_sess *
 ibtrs_clt_get_next_path(struct ibtrs_clt *clt)
 {
-	struct ibtrs_clt_paths_it it;
-	int *path_id;
+	struct ibtrs_clt_sess __percpu * __rcu *ppcpu_path, *path;
 
-	init_paths_it(it, clt);
+	ppcpu_path = this_cpu_ptr(clt->pcpu_path);
+	path = rcu_dereference(*ppcpu_path);
+	if (unlikely(!path))
+		path = list_first_or_null_rcu(
+				&clt->paths_list, typeof(*path), s.entry);
+	else
+		path = list_next_or_null_rcu_rr(
+				path, &clt->paths_list, s.entry);
+	rcu_assign_pointer(*ppcpu_path, path);
 
-	/*
-	 * This can happen if the user ignored our
-	 * DISCONNECTED event
-	 */
-	if (unlikely(!it.paths->num))
-		return NULL;
-
-	path_id = this_cpu_ptr(clt->curr_path);
-	*path_id = (*path_id + 1) % it.paths->num;
-
-	__foreach_path_from_to(it, *path_id, it.paths->num) {
-		if (likely(it.sess && it.sess->state == IBTRS_CLT_CONNECTED))
-			return it.sess;
-	}
-	__foreach_path_from_to(it, 0, *path_id) {
-		if (likely(it.sess && it.sess->state == IBTRS_CLT_CONNECTED))
-			return it.sess;
-	}
-
-	return NULL;
+	return path;
 }
+
+#define for_each_path(path, i, clt)					\
+	for (i = 0, path = ibtrs_clt_get_next_path(clt);		\
+	     path && i < clt->paths_num;				\
+	     i++, path = ibtrs_clt_get_next_path(clt))
 
 static inline void ibtrs_clt_init_req(struct ibtrs_clt_io_req *req,
 				      struct ibtrs_clt_sess *sess,
@@ -1384,33 +1374,25 @@ static int ibtrs_clt_failover_req(struct ibtrs_clt *clt,
 {
 	struct ibtrs_clt_sess *alive_sess;
 	struct ibtrs_clt_io_req *req;
-	int err;
+	int i, err = -ECONNABORTED;
 
-again:
 	ibtrs_clt_state_lock();
-	alive_sess = ibtrs_clt_get_next_path(clt);
-	if (unlikely(!alive_sess)) {
-		err = -ECONNABORTED;
-		goto err;
-	}
-	req = ibtrs_clt_get_copy_req(alive_sess, fail_req);
-	if (req->dir == DMA_TO_DEVICE)
-		err = ibtrs_clt_write_req(req);
-	else
-		err = ibtrs_clt_read_req(req);
-	if (likely(!err))
+	for_each_path(alive_sess, i, clt) {
+		if (unlikely(alive_sess->state != IBTRS_CLT_CONNECTED))
+			continue;
+		req = ibtrs_clt_get_copy_req(alive_sess, fail_req);
+		if (req->dir == DMA_TO_DEVICE)
+			err = ibtrs_clt_write_req(req);
+		else
+			err = ibtrs_clt_read_req(req);
+		if (unlikely(err)) {
+			req->in_use = false;
+			continue;
+		}
+		/* Success path */
 		ibtrs_clt_inc_failover_cnt(&alive_sess->stats);
-	else
-		req->in_use = false;
-	ibtrs_clt_state_unlock();
-	if (unlikely(err)) {
-		ibtrs_wrn(alive_sess, "Failover failed, choose another path\n");
-		goto again;
+		break;
 	}
-
-	return 0;
-
-err:
 	ibtrs_clt_state_unlock();
 
 	return err;
@@ -2496,8 +2478,8 @@ static void ibtrs_clt_sess_up(struct ibtrs_clt_sess *sess)
 	 * is greater than MAX_PATHS_NUM only while ibtrs_clt_open() is
 	 * in progress, thus paths removals are impossible.
 	 */
-	if (up > MAX_PATHS_NUM && up == MAX_PATHS_NUM + clt->paths->num)
-		clt->paths_up = clt->paths->num;
+	if (up > MAX_PATHS_NUM && up == MAX_PATHS_NUM + clt->paths_num)
+		clt->paths_up = clt->paths_num;
 	else if (up == 1)
 		clt->link_ev(clt->priv, IBTRS_CLT_LINK_EV_RECONNECTED);
 	mutex_unlock(&clt->paths_ev_mutex);
@@ -2577,53 +2559,51 @@ static void ibtrs_clt_stop_and_destroy_conns(struct ibtrs_clt_sess *sess,
 static void ibtrs_clt_remove_path_from_arr(struct ibtrs_clt_sess *sess)
 {
 	struct ibtrs_clt *clt = sess->clt;
-	int i, j;
+	struct ibtrs_clt_sess *next;
+	int cpu;
 
 	mutex_lock(&clt->paths_mutex);
-	/* Copy paths except dying one */
-	for (i = 0, j = 0; i < clt->paths->num; i++) {
-		if (clt->paths->arr[i] == sess)
-			continue;
-		clt->paths_shadow->arr[j++] = clt->paths->arr[i];
-	}
-	/* WTF?  We could not find session in an array */
-	WARN_ON(j != clt->paths->num - 1);
+	list_del_rcu(&sess->s.entry);
+	clt->paths_num--;
 
-	clt->paths_shadow->num = j;
-	/* Exchange pointers, xchg implies memory barrier */
-	clt->paths_shadow = xchg(&clt->paths, clt->paths_shadow);
+	/* Make sure everybody observes path removal. */
+	synchronize_rcu();
+
+	next = list_next_or_null_rcu_rr(sess, &clt->paths_list, s.entry);
 
 	/*
-	 * Make sure everybody observe path removal.
-	 *
-	 * It is important to synchronize_rcu() under lock to be sure,
-	 * that sequential add/remove path calls will not let IO path
-	 * observe parially updated shadow pointer.
+	 * Pcpu paths can still point to the path which is going to be
+	 * removed, so change the pointer manually.
 	 */
-	synchronize_rcu();
+	for_each_possible_cpu(cpu) {
+		struct ibtrs_clt_sess **ppcpu_path;
+
+		ppcpu_path = per_cpu_ptr(clt->pcpu_path, cpu);
+		if (*ppcpu_path != sess)
+			/*
+			 * synchronize_rcu() was called just after deleting
+			 * entry from the list, thus IO code path cannot
+			 * change pointer back to the pointer which is going
+			 * to be removed, we are safe here.
+			 */
+			continue;
+
+		/*
+		 * We race with IO code path, which also changes pointer,
+		 * thus we have to be carefull not to override it.
+		 */
+		cmpxchg(ppcpu_path, sess, next);
+	}
 	mutex_unlock(&clt->paths_mutex);
 }
 
 static void ibtrs_clt_add_path_to_arr(struct ibtrs_clt_sess *sess)
 {
 	struct ibtrs_clt *clt = sess->clt;
-	int num;
 
 	mutex_lock(&clt->paths_mutex);
-	/* Copy all paths */
-	*clt->paths_shadow = *clt->paths;
-	num = clt->paths_shadow->num;
-	clt->paths_shadow->arr[num] = sess;
-	clt->paths_shadow->num++;
-	WARN_ON(clt->paths_shadow->num > MAX_PATHS_NUM);
-	/* Exchange pointers, xchg implies memory barrier */
-	clt->paths_shadow = xchg(&clt->paths, clt->paths_shadow);
-	/*
-	 * It is important to synchronize_rcu() under lock to be sure,
-	 * that sequential add/remove path calls will not let IO path
-	 * observe parially updated shadow pointer.
-	 */
-	synchronize_rcu();
+	list_add_tail_rcu(&sess->s.entry, &clt->paths_list);
+	clt->paths_num++;
 	mutex_unlock(&clt->paths_mutex);
 }
 
@@ -3218,16 +3198,15 @@ static struct ibtrs_clt *alloc_clt(const char *sessname, size_t paths_num,
 	if (unlikely(!clt))
 		return ERR_PTR(-ENOMEM);
 
-	clt->curr_path = alloc_percpu(typeof(*clt->curr_path));
-	if (unlikely(!clt->curr_path)) {
+	clt->pcpu_path = alloc_percpu(typeof(*clt->pcpu_path));
+	if (unlikely(!clt->pcpu_path)) {
 		kfree(clt);
 		return ERR_PTR(-ENOMEM);
 	}
 
 	uuid_gen(&clt->paths_uuid);
-	clt->paths = &clt->__paths;
-	clt->paths_shadow = &clt->__paths_shadow;
-	clt->paths->num = paths_num;
+	INIT_LIST_HEAD_RCU(&clt->paths_list);
+	clt->paths_num = paths_num;
 	clt->paths_up = MAX_PATHS_NUM;
 	clt->port = port;
 	clt->pdu_sz = pdu_sz;
@@ -3243,7 +3222,7 @@ static struct ibtrs_clt *alloc_clt(const char *sessname, size_t paths_num,
 
 	err = ibtrs_clt_create_sysfs_root_folders(clt);
 	if (unlikely(err)) {
-		free_percpu(clt->curr_path);
+		free_percpu(clt->pcpu_path);
 		kfree(clt);
 		return ERR_PTR(err);
 	}
@@ -3255,7 +3234,7 @@ static void free_clt(struct ibtrs_clt *clt)
 {
 	ibtrs_clt_destroy_sysfs_root_folders(clt);
 	free_tags(clt);
-	free_percpu(clt->curr_path);
+	free_percpu(clt->pcpu_path);
 	kfree(clt);
 }
 
@@ -3268,6 +3247,7 @@ struct ibtrs_clt *ibtrs_clt_open(void *priv, link_clt_ev_fn *link_ev,
 				 u16 max_segments,
 				 s16 max_reconnect_attempts)
 {
+	struct ibtrs_clt_sess *sess, *tmp;
 	struct ibtrs_clt *clt;
 	int err, i;
 
@@ -3288,15 +3268,15 @@ struct ibtrs_clt *ibtrs_clt_open(void *priv, link_clt_ev_fn *link_ev,
 			ibtrs_err(clt, "alloc_sess(), err: %d\n", err);
 			goto close_all_sess;
 		}
-		clt->paths->arr[i] = sess;
+		list_add_tail_rcu(&sess->s.entry, &clt->paths_list);
 
 		err = init_sess(sess);
 		if (unlikely(err))
-			goto close_sess;
+			goto close_all_sess;
 
 		err = ibtrs_clt_create_sess_files(sess);
 		if (unlikely(err))
-			goto close_sess;
+			goto close_all_sess;
 	}
 	err = alloc_tags(clt);
 	if (unlikely(err)) {
@@ -3317,10 +3297,7 @@ struct ibtrs_clt *ibtrs_clt_open(void *priv, link_clt_ev_fn *link_ev,
 	return clt;
 
 close_all_sess:
-	while (i--) {
-		struct ibtrs_clt_sess *sess;
-close_sess:
-		sess = clt->paths->arr[i];
+	list_for_each_entry_safe(sess, tmp, &clt->paths_list, s.entry) {
 		ibtrs_clt_destroy_sess_files(sess);
 		ibtrs_clt_close_conns(sess, true);
 		free_sess(sess);
@@ -3334,7 +3311,7 @@ EXPORT_SYMBOL(ibtrs_clt_open);
 
 void ibtrs_clt_close(struct ibtrs_clt *clt)
 {
-	struct ibtrs_clt_paths_it it;
+	struct ibtrs_clt_sess *sess, *tmp;
 
 	/* Firstly forbid sysfs access */
 	ibtrs_clt_destroy_sysfs_root_files(clt);
@@ -3343,13 +3320,11 @@ void ibtrs_clt_close(struct ibtrs_clt *clt)
 	/* Wait for possible free works scheduled from sysfs */
 	flush_workqueue(ibtrs_wq);
 
-	/* Now it is save just iterate over all remaining paths */
-	foreach_path(it, clt) {
-		if (!it.sess)
-			continue;
-		ibtrs_clt_destroy_sess_files(it.sess);
-		ibtrs_clt_close_conns(it.sess, true);
-		free_sess(it.sess);
+	/* Now it is save to iterate over all paths without locks */
+	list_for_each_entry_safe(sess, tmp, &clt->paths_list, s.entry) {
+		ibtrs_clt_destroy_sess_files(sess);
+		ibtrs_clt_close_conns(sess, true);
+		free_sess(sess);
 	}
 	free_clt(clt);
 }
@@ -3579,40 +3554,31 @@ int ibtrs_clt_write(struct ibtrs_clt *clt, ibtrs_conf_fn *conf,
 	struct ibtrs_clt_io_req *req;
 	struct ibtrs_clt_sess *sess;
 
+	int i, err = -ECONNABORTED;
 	size_t usr_len;
-	int err;
 
 	usr_len = kvec_length(vec, nr);
-
-again:
 	ibtrs_clt_state_lock();
-	sess = ibtrs_clt_get_next_path(clt);
-	if (unlikely(!sess)) {
-		ibtrs_err(clt, "No connected paths found\n");
-		err = -ECOMM;
-		goto err;
+	for_each_path(sess, i, clt) {
+		if (unlikely(sess->state != IBTRS_CLT_CONNECTED))
+			continue;
+		if (unlikely(usr_len > IO_MSG_SIZE)) {
+			ibtrs_wrn_rl(sess, "RDMA-Write failed, user message size"
+				     " is %zu B big, max size is %d B\n",
+				     usr_len, IO_MSG_SIZE);
+			err = -EMSGSIZE;
+			break;
+		}
+		req = ibtrs_clt_get_req(sess, conf, tag, priv, vec, usr_len,
+					sg, sg_cnt, data_len, DMA_TO_DEVICE);
+		err = ibtrs_clt_write_req(req);
+		if (unlikely(err)) {
+			req->in_use = false;
+			continue;
+		}
+		/* Success path */
+		break;
 	}
-	if (unlikely(usr_len > IO_MSG_SIZE)) {
-		ibtrs_wrn_rl(sess, "RDMA-Write failed, user message size"
-			     " is %zu B big, max size is %d B\n", usr_len,
-			     IO_MSG_SIZE);
-		err = -EMSGSIZE;
-		goto err;
-	}
-	req = ibtrs_clt_get_req(sess, conf, tag, priv, vec, usr_len,
-				sg, sg_cnt, data_len, DMA_TO_DEVICE);
-	err = ibtrs_clt_write_req(req);
-	if (unlikely(err))
-	    req->in_use = false;
-	ibtrs_clt_state_unlock();
-	if (unlikely(err)) {
-		ibtrs_wrn(sess, "Write failed, choose another path\n");
-		goto again;
-	}
-
-	return 0;
-
-err:
 	ibtrs_clt_state_unlock();
 
 	return err;
@@ -3715,43 +3681,34 @@ int ibtrs_clt_read(struct ibtrs_clt *clt, ibtrs_conf_fn *conf,
 	struct ibtrs_clt_io_req *req;
 	struct ibtrs_clt_sess *sess;
 
+	int i, err = -ECONNABORTED;
 	size_t usr_len;
-	int err;
 
 	usr_len = kvec_length(vec, nr);
-
-again:
 	ibtrs_clt_state_lock();
-	sess = ibtrs_clt_get_next_path(clt);
-	if (unlikely(!sess)) {
-		ibtrs_err(clt, "No connected paths found\n");
-		err = -ECOMM;
-		goto err;
+	for_each_path(sess, i, clt) {
+		if (unlikely(sess->state != IBTRS_CLT_CONNECTED))
+			continue;
+		if (unlikely(usr_len > IO_MSG_SIZE ||
+			     sizeof(struct ibtrs_msg_req_rdma_write) +
+			     sg_cnt * sizeof(struct ibtrs_sg_desc) >
+			     sess->max_req_size)) {
+			ibtrs_wrn_rl(sess, "Request-RDMA-Write failed, user message size"
+				     " is %zu B big, max size is %d B\n",
+				     usr_len, IO_MSG_SIZE);
+			err = -EMSGSIZE;
+			break;
+		}
+		req = ibtrs_clt_get_req(sess, conf, tag, priv, vec, usr_len,
+					sg, sg_cnt, data_len, DMA_FROM_DEVICE);
+		err = ibtrs_clt_read_req(req);
+		if (unlikely(err)) {
+			req->in_use = false;
+			continue;
+		}
+		/* Success path */
+		break;
 	}
-	if (unlikely(usr_len > IO_MSG_SIZE ||
-		     sizeof(struct ibtrs_msg_req_rdma_write) +
-		     sg_cnt * sizeof(struct ibtrs_sg_desc) >
-		     sess->max_req_size)) {
-		ibtrs_wrn_rl(sess, "Request-RDMA-Write failed, user message size"
-			     " is %zu B big, max size is %d B\n", usr_len,
-			     IO_MSG_SIZE);
-		err = -EMSGSIZE;
-		goto err;
-	}
-	req = ibtrs_clt_get_req(sess, conf, tag, priv, vec, usr_len,
-				sg, sg_cnt, data_len, DMA_FROM_DEVICE);
-	err = ibtrs_clt_read_req(req);
-	if (unlikely(err))
-		req->in_use = false;
-	ibtrs_clt_state_unlock();
-	if (unlikely(err)) {
-		ibtrs_wrn(sess, "Read failed, choose another path\n");
-		goto again;
-	}
-
-	return 0;
-
-err:
 	ibtrs_clt_state_unlock();
 
 	return err;
@@ -3788,18 +3745,21 @@ int ibtrs_clt_create_path_from_sysfs(struct ibtrs_clt *clt,
 				     struct ibtrs_addr *addr)
 {
 	struct ibtrs_clt_sess *sess;
-	struct sockaddr *path_dst;
-	int err;
-	int i;
+	int err = 0;
 
-	for (i = 0; i < clt->paths->num; i++) {
-		path_dst = (struct sockaddr *)&clt->paths->arr[i]->s.dst_addr;
-		if (!sockaddr_cmp(path_dst, addr->dst))
-			return -EEXIST;
+	ibtrs_clt_state_lock();
+	list_for_each_entry_rcu(sess, &clt->paths_list, s.entry) {
+		if (!sockaddr_cmp((struct sockaddr *)&sess->s.dst_addr,
+				  addr->dst)) {
+			err = -EEXIST;
+			break;
+		}
 	}
+	ibtrs_clt_state_unlock();
+	if (unlikely(err))
+		return err;
 
-	sess = alloc_sess(clt, addr, CONS_PER_SESSION,
-			  clt->max_segments);
+	sess = alloc_sess(clt, addr, CONS_PER_SESSION, clt->max_segments);
 	if (unlikely(IS_ERR(sess)))
 		return PTR_ERR(sess);
 
