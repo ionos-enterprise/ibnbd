@@ -584,7 +584,7 @@ static void msg_open_conf(void *priv, int errno)
 	struct ibnbd_clt_dev *dev = iu->dev;
 
 	if (errno) {
-		ibnbd_wrn(dev, "Sending open msg failed: %d\n", errno);
+		ibnbd_wrn(dev, "Opening failed, server responded: %d\n", errno);
 		dev->open_errno = errno;
 		if (dev->open_compl)
 			complete(dev->open_compl);
@@ -598,7 +598,8 @@ static void msg_open_conf(void *priv, int errno)
 	 * process_msg_open_rsp fails?
 	 *
 	 * if server thinks its fine, but we fail to process then
-	 * be nice and send a close to server */
+	 * be nice and send a close to server
+	 */
 	if (process_msg_open_rsp(dev, rsp) && !rsp->result)
 		send_msg_close(dev, rsp->device_id);
 
