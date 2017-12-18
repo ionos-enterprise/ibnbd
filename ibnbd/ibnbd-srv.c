@@ -308,9 +308,14 @@ static int create_sess(struct ibtrs_srv *ibtrs)
 {
 	struct ibnbd_srv_session *srv_sess;
 	char sessname[NAME_MAX];
+	int err;
 
-	strlcpy(sessname, ibtrs_srv_get_sess_name(ibtrs), sizeof(sessname));
+	err = ibtrs_srv_get_sess_name(ibtrs, sessname, sizeof(sessname));
+	if (unlikely(err)) {
+		pr_err("ibtrs_srv_get_sess_name(%s): %d\n", sessname, err);
 
+		return err;
+	}
 	srv_sess = kzalloc(sizeof(*srv_sess), GFP_KERNEL);
 	if (!srv_sess) {
 		pr_err("Allocating srv_session for session %s failed\n",

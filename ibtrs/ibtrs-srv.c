@@ -1079,12 +1079,26 @@ static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 	}
 }
 
-const char *ibtrs_srv_get_sess_name(struct ibtrs_srv *srv)
+int ibtrs_srv_get_sess_name(struct ibtrs_srv *srv, char *sessname, size_t len)
 {
-	/* XXX Should be changed */
-	struct ibtrs_srv_sess *sess = srv->paths[0];
+	struct ibtrs_srv_sess *sess;
+	int i, err = -ENOTCONN;
 
-	return sess->s.sessname;
+	mutex_lock(&srv->paths_mutex);
+	for (i = 0; i < srv->paths_num; i++) {
+		sess = srv->paths[i];
+		if (!sess)
+			continue;
+		if (sess->state != IBTRS_SRV_CONNECTED)
+			continue;
+		memcpy(sessname, sess->s.sessname,
+		       min_t(size_t, sizeof(sess->s.sessname), len));
+		err = 0;
+		break;
+	}
+	mutex_unlock(&srv->paths_mutex);
+
+	return err;
 }
 EXPORT_SYMBOL(ibtrs_srv_get_sess_name);
 
