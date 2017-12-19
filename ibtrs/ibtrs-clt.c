@@ -335,13 +335,10 @@ static inline void __ibtrs_put_tag(struct ibtrs_clt *clt,
 
 struct ibtrs_tag *ibtrs_clt_get_tag(struct ibtrs_clt *clt,
 				    enum ibtrs_clt_con_type con_type,
-				    size_t nr_bytes, int can_wait)
+				    int can_wait)
 {
 	struct ibtrs_tag *tag;
 	DEFINE_WAIT(wait);
-
-	/* Is not used for now */
-	(void)nr_bytes;
 
 	tag = __ibtrs_get_tag(clt, con_type);
 	if (likely(tag) || !can_wait)
