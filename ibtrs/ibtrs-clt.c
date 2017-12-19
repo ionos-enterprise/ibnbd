@@ -137,8 +137,6 @@ static inline struct ibtrs_clt_sess *to_clt_sess(struct ibtrs_sess *s)
 static inline void ibtrs_clt_state_lock(void)
 {
 	rcu_read_lock();
-	/* Paired with state change */
-	smp_rmb();
 }
 
 static inline void ibtrs_clt_state_unlock(void)
