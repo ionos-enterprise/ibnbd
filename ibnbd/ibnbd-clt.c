@@ -1770,10 +1770,8 @@ __must_hold(&dev->sess->lock)
 	}
 
 	mutex_lock(&dev->sess->lock);
-	if (dev->gd)
-		ibnbd_info(dev, "Device is unmapped\n");
-	else
-		ibnbd_info(dev, "Device is unmapped\n");
+	ibnbd_info(dev, "Device is unmapped\n");
+
 	return 0;
 out:
 	mutex_unlock(&dev->lock);
