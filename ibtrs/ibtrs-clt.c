@@ -1161,8 +1161,6 @@ static void complete_rdma_req(struct ibtrs_clt_io_req *req,
 	ibtrs_clt_decrease_inflight(&sess->stats);
 
 	req->in_use = false;
-	/* paired with fail_all_outstanding_reqs() */
-	smp_wmb();
 	req->con = NULL;
 	priv = req->priv;
 	dir = req->dir;
@@ -1406,8 +1404,6 @@ again:
 		ibtrs_clt_inc_failover_cnt(&alive_sess->stats);
 	else
 		req->in_use = false;
-	/* paired with fail_all_outstanding_reqs() */
-	smp_wmb();
 	ibtrs_clt_state_unlock();
 	if (unlikely(err)) {
 		ibtrs_wrn(alive_sess, "Failover failed, choose another path\n");
@@ -1431,8 +1427,6 @@ static void fail_all_outstanding_reqs(struct ibtrs_clt_sess *sess,
 
 	if (!sess->reqs)
 		return;
-	/* paired with ibtrs_clt_[request_]rdma_write(),complete_rdma_req() */
-	smp_rmb();
 	for (i = 0; i < sess->queue_depth; ++i) {
 		bool notify;
 		int err = 0;
@@ -3612,8 +3606,6 @@ again:
 	err = ibtrs_clt_write_req(req);
 	if (unlikely(err))
 	    req->in_use = false;
-	/* paired with fail_all_outstanding_reqs() */
-	smp_wmb();
 	ibtrs_clt_state_unlock();
 	if (unlikely(err)) {
 		ibtrs_wrn(sess, "Write failed, choose another path\n");
@@ -3753,8 +3745,6 @@ again:
 	err = ibtrs_clt_read_req(req);
 	if (unlikely(err))
 		req->in_use = false;
-	/* paired with fail_all_outstanding_reqs() */
-	smp_wmb();
 	ibtrs_clt_state_unlock();
 	if (unlikely(err)) {
 		ibtrs_wrn(sess, "Read failed, choose another path\n");
