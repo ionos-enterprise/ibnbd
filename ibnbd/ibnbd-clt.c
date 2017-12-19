@@ -922,7 +922,7 @@ ibnbd_create_session(const char *sessname,
 		kfree(sess);
 		return ERR_PTR(-ENOMEM);
 	}
-	for_each_online_cpu(cpu) {
+	for_each_possible_cpu(cpu) {
 		*per_cpu_ptr(sess->cpu_rr, cpu) = -1;
 	}
 
