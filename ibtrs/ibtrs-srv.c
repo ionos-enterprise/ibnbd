@@ -657,9 +657,7 @@ static void ibtrs_srv_info_rsp_done(struct ib_cq *cq, struct ib_wc *wc)
 {
 	struct ibtrs_srv_con *con = cq->cq_context;
 	struct ibtrs_srv_sess *sess = to_srv_sess(con->c.sess);
-	struct ibtrs_srv *srv = sess->srv;
 	struct ibtrs_iu *iu;
-	int err;
 
 	iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
 	ibtrs_iu_free(iu, DMA_TO_DEVICE, sess->s.ib_dev->dev);
@@ -667,26 +665,11 @@ static void ibtrs_srv_info_rsp_done(struct ib_cq *cq, struct ib_wc *wc)
 	if (unlikely(wc->status != IB_WC_SUCCESS)) {
 		ibtrs_err(sess, "Sess info response send failed: %s\n",
 			  ib_wc_status_msg(wc->status));
-		goto close_sess;
+		close_sess(sess);
+		return;
 	}
 	WARN_ON(wc->opcode != IB_WC_SEND);
-
-	err = ibtrs_srv_create_once_sysfs_root_folders(srv, sess->s.sessname);
-	if (unlikely(err))
-		goto close_sess;
-
-	err = ibtrs_srv_create_sess_files(sess);
-	if (unlikely(err))
-		goto close_sess;
-
-	ibtrs_srv_change_state(sess, IBTRS_SRV_CONNECTED);
-	ibtrs_srv_start_hb(sess);
 	ibtrs_srv_update_wc_stats(con);
-
-	return;
-
-close_sess:
-       close_sess(sess);
 }
 
 static void ibtrs_srv_sess_up(struct ibtrs_srv_sess *sess)
@@ -755,6 +738,17 @@ static int process_info_req(struct ibtrs_srv_con *con,
 	for (i = 0; i < srv->queue_depth; i++)
 		rsp->addr[i] = cpu_to_le64(sess->rdma_addr[i]);
 
+	err = ibtrs_srv_create_once_sysfs_root_folders(srv, sess->s.sessname);
+	if (unlikely(err))
+		goto iu_free;
+
+	err = ibtrs_srv_create_sess_files(sess);
+	if (unlikely(err))
+		goto iu_free;
+
+	ibtrs_srv_change_state(sess, IBTRS_SRV_CONNECTED);
+	ibtrs_srv_start_hb(sess);
+
 	/*
 	 * We do not account number of established connections at the current
 	 * moment, we rely on the client, which should send info request when
@@ -767,6 +761,7 @@ static int process_info_req(struct ibtrs_srv_con *con,
 	err = ibtrs_iu_post_send(&con->c, tx_iu, tx_sz);
 	if (unlikely(err)) {
 		ibtrs_err(sess, "ibtrs_iu_post_send(), err: %d\n", err);
+iu_free:
 		ibtrs_iu_free(tx_iu, DMA_TO_DEVICE, sess->s.ib_dev->dev);
 	}
 
