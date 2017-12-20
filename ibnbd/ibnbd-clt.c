@@ -162,24 +162,13 @@ static int process_msg_open_rsp(struct ibnbd_clt_dev *dev,
 		       sess->sessname);
 		return -ENOENT;
 	}
-
 	mutex_lock(&dev->lock);
-
 	if (dev->dev_state == DEV_STATE_UNMAPPED) {
 		ibnbd_info(dev, "Ignoring Open-Response message from server for "
 			   " unmapped device\n");
 		err = -ENOENT;
 		goto out;
 	}
-
-	if (rsp->result) {
-		ibnbd_err(dev, "Server failed to open device for mapping, err:"
-			  " %d\n", rsp->result);
-		dev->open_errno = rsp->result;
-		complete(&dev->open_compl);
-		goto out;
-	}
-
 	if (dev->dev_state == DEV_STATE_CLOSED) {
 		/* if the device was remapped and the size changed in the
 		 * meantime we need to revalidate it
@@ -188,11 +177,8 @@ static int process_msg_open_rsp(struct ibnbd_clt_dev *dev,
 			ibnbd_clt_revalidate_disk(dev, (size_t)rsp->nsectors);
 		ibnbd_info(dev, "Device online, device remapped successfully\n");
 	}
-
 	ibnbd_clt_set_dev_attr(dev, rsp);
-
 	dev->dev_state = DEV_STATE_OPEN;
-	complete(&dev->open_compl);
 
 out:
 	mutex_unlock(&dev->lock);
@@ -589,26 +575,23 @@ static void msg_open_conf(void *priv, int errno)
 	struct ibnbd_clt_dev *dev = iu->dev;
 
 	if (errno) {
-		ibnbd_wrn(dev, "Opening failed, server responded: %d\n", errno);
-		dev->open_errno = errno;
-		complete(&dev->open_compl);
-		kfree(rsp);
-		ibnbd_put_iu(dev->sess, iu);
-		return;
+		ibnbd_err(dev, "Opening failed, server responded: %d\n", errno);
+	} else if (rsp->result) {
+		errno = rsp->result;
+		ibnbd_err(dev, "Server failed to open device for mapping: %d\n", errno);
+	} else {
+		errno = process_msg_open_rsp(dev, rsp);
+		if (unlikely(errno))
+			/*
+			 * if server thinks its fine, but we fail to process then
+			 * be nice and send a close to server
+			 */
+			send_msg_close(dev, rsp->device_id);
 	}
-
-	/*
-	 * TODO just copy/paste: but who completes open_compl if
-	 * process_msg_open_rsp fails?
-	 *
-	 * if server thinks its fine, but we fail to process then
-	 * be nice and send a close to server
-	 */
-	if (process_msg_open_rsp(dev, rsp) && !rsp->result)
-		send_msg_close(dev, rsp->device_id);
-
 	kfree(rsp);
 	ibnbd_put_iu(dev->sess, iu);
+	dev->open_errno = errno;
+	complete(&dev->open_compl);
 }
 
 static void msg_sess_info_conf(void *priv, int errno)
