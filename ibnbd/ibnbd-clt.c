@@ -706,15 +706,10 @@ static int find_dev_cb(int id, void *ptr, void *data)
 	struct ibnbd_clt_dev *dev = ptr;
 	struct ibnbd_clt_session *sess = data;
 
-	if (dev->sess == sess && dev->dev_state == DEV_STATE_INIT &&
-	    dev->open_compl) {
+	if (dev->sess == sess && dev->dev_state == DEV_STATE_INIT) {
 		dev->dev_state = DEV_STATE_INIT_CLOSED;
-		dev->open_errno = -ECOMM;
-		complete(dev->open_compl);
 		ibnbd_err(dev, "Device offline, session disconnected.\n");
-	} else if (dev->sess == sess && dev->dev_state == DEV_STATE_UNMAPPED &&
-		   dev->close_compl) {
-		complete(dev->close_compl);
+	} else if (dev->sess == sess && dev->dev_state == DEV_STATE_UNMAPPED) {
 		ibnbd_err(dev, "Device closed, session disconnected.\n");
 	}
 
@@ -728,9 +723,6 @@ static void __set_dev_states_closed(struct ibnbd_clt_session *sess)
 	list_for_each_entry(dev, &sess->devs_list, list) {
 		mutex_lock(&dev->lock);
 		dev->dev_state = DEV_STATE_CLOSED;
-		dev->open_errno = -ECOMM;
-		if (dev->open_compl)
-			complete(dev->open_compl);
 		ibnbd_err(dev, "Device offline, session disconnected.\n");
 		mutex_unlock(&dev->lock);
 	}
