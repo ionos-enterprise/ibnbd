@@ -539,10 +539,7 @@ static void msg_close_conf(void *priv, int errno)
 	struct ibnbd_iu *iu = (struct ibnbd_iu *)priv;
 	struct ibnbd_clt_dev *dev = iu->dev;
 
-	/* TODO just copy/paste: but why do we check state here? */
-	if (dev->dev_state == DEV_STATE_UNMAPPED)
-		complete(&dev->close_compl);
-
+	complete(&dev->close_compl);
 	ibnbd_put_iu(dev->sess, iu);
 }
 
@@ -571,6 +568,17 @@ static int send_msg_close(struct ibnbd_clt_dev *dev, u32 device_id)
 
 	return ibtrs_clt_request(WRITE, msg_close_conf, sess->ibtrs,
 				 iu->tag, iu, &vec, 1, 0, NULL, 0);
+}
+
+static int send_msg_close_sync(struct ibnbd_clt_dev *dev, u32 device_id)
+{
+	int err;
+
+	err = send_msg_close(dev, device_id);
+	if (likely(!err))
+		wait_for_completion(&dev->close_compl);
+
+	return err;
 }
 
 static void msg_open_conf(void *priv, int errno)
@@ -1658,8 +1666,7 @@ ibnbd_client_add_device(struct ibnbd_clt_session *sess,
 	return dev;
 
 out_close:
-	if (!WARN_ON(ibnbd_close_device(dev, true)))
-		wait_for_completion(&dev->close_compl);
+	ibnbd_close_device(dev, true);
 out:
 	ibnbd_clt_put_dev(dev);
 	return ERR_PTR(ret);
@@ -1716,12 +1723,8 @@ __must_hold(&dev->sess->lock)
 	mutex_unlock(&dev->lock);
 
 	mutex_unlock(&dev->sess->lock);
-	if (prev_state == DEV_STATE_OPEN && dev->sess->ibtrs) {
-		if (send_msg_close(dev, dev->device_id))
-			complete(&dev->close_compl);
-	} else {
-		complete(&dev->close_compl);
-	}
+	if (prev_state == DEV_STATE_OPEN && dev->sess->ibtrs)
+		send_msg_close_sync(dev, dev->device_id);
 
 	mutex_lock(&dev->sess->lock);
 	ibnbd_info(dev, "Device is unmapped\n");
@@ -1747,7 +1750,6 @@ static void ibnbd_destroy_sessions(void)
 {
 	struct ibnbd_clt_session *sess, *sn;
 	struct ibnbd_clt_dev *dev, *tn;
-	int ret;
 
 	list_for_each_entry_safe(sess, sn, &session_list, list) {
 		if (!ibnbd_clt_get_sess(sess))
@@ -1757,12 +1759,7 @@ static void ibnbd_destroy_sessions(void)
 		list_for_each_entry_safe(dev, tn, &sess->devs_list, list) {
 			if (!kobject_get(&dev->kobj))
 				continue;
-			ret = __close_device(dev, true);
-			if (ret)
-				ibnbd_wrn(dev, "Closing device failed, err: %d\n",
-					  ret);
-			else
-				wait_for_completion(&dev->close_compl);
+			__close_device(dev, true);
 			ibnbd_clt_schedule_dev_destroy(dev);
 			kobject_put(&dev->kobj);
 		}
