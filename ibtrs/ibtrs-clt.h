@@ -113,18 +113,10 @@ struct ibtrs_clt_stats_rdma_stats {
 	u16 inflight;
 };
 
-#define MIN_LOG_SG 2
-#define MAX_LOG_SG 5
-#define MAX_LIN_SG BIT(MIN_LOG_SG)
-#define SG_DISTR_LEN (MAX_LOG_SG - MIN_LOG_SG + MAX_LIN_SG + 1)
-
 struct ibtrs_clt_stats_rdma_lat_entry {
 	u64 read;
 	u64 write;
 };
-
-#define MAX_LOG_LATENCY	16
-#define MIN_LOG_LATENCY	0
 
 struct ibtrs_clt_stats {
 	struct ibtrs_clt_stats_cpu_migration	cpu_migr;
