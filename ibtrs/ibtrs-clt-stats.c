@@ -224,13 +224,9 @@ ssize_t ibtrs_clt_stats_rdma_to_str(struct ibtrs_clt_stats *stats,
 int ibtrs_clt_stats_sg_list_distr_to_str(struct ibtrs_clt_stats *stats,
 					 char *buf, size_t len)
 {
-	int cnt = 0;
-	unsigned p, p_i, p_f;
-	u64 *total = stats->sg_list_total;
-	u64 **distr = stats->sg_list_distr;
-	int i, j;
+	int i, j, cnt;
 
-	cnt += scnprintf(buf + cnt, len - cnt, "n\\cpu:");
+	cnt = scnprintf(buf, len, "n\\cpu:");
 	for (j = 0; j < num_online_cpus(); j++)
 		cnt += scnprintf(buf + cnt, len - cnt, "%5d", j);
 
@@ -247,11 +243,16 @@ int ibtrs_clt_stats_sg_list_distr_to_str(struct ibtrs_clt_stats *stats,
 					 1 << (i + MIN_LOG_SG - MAX_LIN_SG - 1));
 
 		for (j = 0; j < num_online_cpus(); j++) {
-			p = total[j] ? distr[j][i] * 1000 / total[j] : 0;
+			u64 total = stats->sg_list_total[j];
+			u64 distr = stats->sg_list_distr[j][i];
+
+			unsigned p, p_i, p_f;
+
+			p = total ? distr * 1000 / total : 0;
 			p_i = p / 10;
 			p_f = p % 10;
 
-			if (distr[j][i])
+			if (distr)
 				cnt += scnprintf(buf + cnt, len - cnt,
 						 " %2u.%01u", p_i, p_f);
 			else
@@ -261,7 +262,8 @@ int ibtrs_clt_stats_sg_list_distr_to_str(struct ibtrs_clt_stats *stats,
 
 	cnt += scnprintf(buf + cnt, len - cnt, "\ntotal:");
 	for (j = 0; j < num_online_cpus(); j++)
-		cnt += scnprintf(buf + cnt, len - cnt, " %llu", total[j]);
+		cnt += scnprintf(buf + cnt, len - cnt, " %llu",
+				 stats->sg_list_total[j]);
 	cnt += scnprintf(buf + cnt, len - cnt, "\n");
 
 	return cnt;
@@ -302,17 +304,13 @@ int ibtrs_clt_reset_rdma_lat_distr_stats(struct ibtrs_clt_stats *s,
 int ibtrs_clt_reset_sg_list_distr_stats(struct ibtrs_clt_stats *stats,
 					       bool enable)
 {
-	int i;
-
 	if (enable) {
 		memset(stats->sg_list_total, 0,
-		       num_online_cpus() *
-		       sizeof(*stats->sg_list_total));
+		       num_online_cpus() * sizeof(*stats->sg_list_total));
 
-		for (i = 0; i < num_online_cpus(); i++)
-			memset(stats->sg_list_distr[i], 0,
-			       sizeof(*stats->sg_list_distr[0]) *
-			       SG_DISTR_SZ);
+		memset(stats->sg_list_distr, 0,
+		       num_online_cpus() * sizeof(*stats->sg_list_distr));
+
 		return 0;
 	}
 
@@ -373,7 +371,7 @@ int ibtrs_clt_reset_all_stats(struct ibtrs_clt_stats *s, bool enable)
 	return -EINVAL;
 }
 
-static inline void ibtrs_clt_record_sg_distr(u64 *stat, u64 *total,
+static inline void ibtrs_clt_record_sg_distr(u64 stat[SG_DISTR_SZ], u64 *total,
 					     unsigned int cnt)
 {
 	int i;
@@ -412,33 +410,23 @@ void ibtrs_clt_update_all_stats(struct ibtrs_clt_io_req *req, int dir)
 
 static int ibtrs_clt_init_sg_list_distr_stats(struct ibtrs_clt_stats *stats)
 {
-	u64 **list_d, *list_t;
-	int i;
-
-	list_d = kmalloc_array(num_online_cpus(), sizeof(*list_d), GFP_KERNEL);
-	if (unlikely(!list_d))
+	stats->sg_list_distr = kcalloc(num_online_cpus(),
+				       sizeof(*stats->sg_list_distr),
+				       GFP_KERNEL);
+	if (unlikely(!stats->sg_list_distr))
 		return -ENOMEM;
 
-	for (i = 0; i < num_online_cpus(); i++) {
-		list_d[i] = kzalloc_node(sizeof(*list_d[0]) * SG_DISTR_SZ,
-					 GFP_KERNEL, cpu_to_node(i));
-		if (unlikely(!list_d[i]))
-			goto err;
-	}
-	list_t = kcalloc(num_online_cpus(), sizeof(*list_t), GFP_KERNEL);
-	if (unlikely(!list_t))
+	stats->sg_list_total = kcalloc(num_online_cpus(),
+				       sizeof(*stats->sg_list_total),
+				       GFP_KERNEL);
+	if (unlikely(!stats->sg_list_total))
 		goto err;
-
-	stats->sg_list_distr = list_d;
-	stats->sg_list_total = list_t;
 
 	return 0;
 
 err:
-	while (i--)
-		kfree(list_d[i]);
-
-	kfree(list_d);
+	kfree(stats->sg_list_distr);
+	stats->sg_list_distr = NULL;
 
 	return -ENOMEM;
 }
@@ -522,10 +510,6 @@ static void ibtrs_clt_free_wc_comp_stats(struct ibtrs_clt_stats *stats)
 
 static void ibtrs_clt_free_sg_list_distr_stats(struct ibtrs_clt_stats *stats)
 {
-	int i;
-
-	for (i = 0; i < num_online_cpus(); i++)
-		kfree(stats->sg_list_distr[i]);
 	kfree(stats->sg_list_distr);
 	stats->sg_list_distr = NULL;
 	kfree(stats->sg_list_total);

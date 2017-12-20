@@ -132,7 +132,7 @@ struct ibtrs_clt_stats {
 	struct ibtrs_clt_stats_rdma_stats	*rdma_stats;
 	bool					enable_rdma_lat;
 	u64					*sg_list_total;
-	u64					**sg_list_distr;
+	u64					(*sg_list_distr)[SG_DISTR_SZ];
 	struct ibtrs_clt_stats_reconnects	reconnects;
 	struct ibtrs_clt_stats_rdma_lat_entry	(*rdma_lat_distr)[LOG_LAT_SZ];
 	struct ibtrs_clt_stats_rdma_lat_entry	*rdma_lat_max;
