@@ -398,11 +398,11 @@ void ibtrs_clt_update_all_stats(struct ibtrs_clt_io_req *req, int dir)
 	struct ibtrs_clt_con *con = req->con;
 	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
 	struct ibtrs_clt_stats *stats = &sess->stats;
-	struct ibtrs_tag *tag = req->tag;
+	int cpu = raw_smp_processor_id();
 	unsigned int len;
 
-	ibtrs_clt_record_sg_distr(stats->sg_list_distr[tag->cpu_id],
-				  &stats->sg_list_total[tag->cpu_id],
+	ibtrs_clt_record_sg_distr(stats->sg_list_distr[cpu],
+				  &stats->sg_list_total[cpu],
 				  req->sg_cnt);
 	len = req->usr_len + req->data_len;
 	ibtrs_clt_update_rdma_stats(stats, len, dir);
