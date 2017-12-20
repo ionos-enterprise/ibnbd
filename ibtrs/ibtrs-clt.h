@@ -123,9 +123,9 @@ struct ibtrs_clt_stats_rdma_lat_entry {
 	u64 write;
 };
 
-#define MAX_LOG_LATENCY	16
-#define MIN_LOG_LATENCY	0
-#define LOG_LATENCY_SZ (MAX_LOG_LATENCY - MIN_LOG_LATENCY + 2)
+#define MAX_LOG_LAT 16
+#define MIN_LOG_LAT 0
+#define LOG_LAT_SZ (MAX_LOG_LAT - MIN_LOG_LAT + 2)
 
 struct ibtrs_clt_stats {
 	struct ibtrs_clt_stats_cpu_migration	cpu_migr;
