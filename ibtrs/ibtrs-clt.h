@@ -116,7 +116,7 @@ struct ibtrs_clt_stats_rdma_stats {
 #define MIN_LOG_SG 2
 #define MAX_LOG_SG 5
 #define MAX_LIN_SG BIT(MIN_LOG_SG)
-#define SG_DISTR_LEN (MAX_LOG_SG - MIN_LOG_SG + MAX_LIN_SG + 1)
+#define SG_DISTR_SZ (MAX_LOG_SG - MIN_LOG_SG + MAX_LIN_SG + 2)
 
 struct ibtrs_clt_stats_rdma_lat_entry {
 	u64 read;

@@ -234,10 +234,10 @@ int ibtrs_clt_stats_sg_list_distr_to_str(struct ibtrs_clt_stats *stats,
 	for (j = 0; j < num_online_cpus(); j++)
 		cnt += scnprintf(buf + cnt, len - cnt, "%5d", j);
 
-	for (i = 0; i < SG_DISTR_LEN + 1; i++) {
+	for (i = 0; i < SG_DISTR_SZ; i++) {
 		if (i <= MAX_LIN_SG)
 			cnt += scnprintf(buf + cnt, len - cnt, "\n= %3d:", i);
-		else if (i < SG_DISTR_LEN)
+		else if (i < SG_DISTR_SZ - 1)
 			cnt += scnprintf(buf + cnt, len - cnt,
 					 "\n< %3d:",
 					 1 << (i + MIN_LOG_SG - MAX_LIN_SG));
@@ -312,7 +312,7 @@ int ibtrs_clt_reset_sg_list_distr_stats(struct ibtrs_clt_stats *stats,
 		for (i = 0; i < num_online_cpus(); i++)
 			memset(stats->sg_list_distr[i], 0,
 			       sizeof(*stats->sg_list_distr[0]) *
-			       (SG_DISTR_LEN + 1));
+			       SG_DISTR_SZ);
 		return 0;
 	}
 
@@ -379,7 +379,7 @@ static inline void ibtrs_clt_record_sg_distr(u64 *stat, u64 *total,
 	int i;
 
 	i = cnt > MAX_LIN_SG ? ilog2(cnt) + MAX_LIN_SG - MIN_LOG_SG + 1 : cnt;
-	i = i > SG_DISTR_LEN ? SG_DISTR_LEN : i;
+	i = i < SG_DISTR_SZ ? i : SG_DISTR_SZ - 1;
 
 	stat[i]++;
 	(*total)++;
@@ -420,7 +420,7 @@ static int ibtrs_clt_init_sg_list_distr_stats(struct ibtrs_clt_stats *stats)
 		return -ENOMEM;
 
 	for (i = 0; i < num_online_cpus(); i++) {
-		list_d[i] = kzalloc_node(sizeof(*list_d[0]) * (SG_DISTR_LEN + 1),
+		list_d[i] = kzalloc_node(sizeof(*list_d[0]) * SG_DISTR_SZ,
 					 GFP_KERNEL, cpu_to_node(i));
 		if (unlikely(!list_d[i]))
 			goto err;
