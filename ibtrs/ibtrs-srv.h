@@ -166,6 +166,12 @@ void ibtrs_srv_queue_close(struct ibtrs_srv_sess *sess);
 int ibtrs_srv_current_hca_port_to_str(struct ibtrs_srv_sess *sess,
 				      char *buf, size_t len);
 const char *ibtrs_srv_get_sess_hca_name(struct ibtrs_srv_sess *sess);
+
+/* ibtrs-srv-stats.c */
+
+void ibtrs_srv_update_rdma_stats(struct ibtrs_srv_stats *s, size_t size, int d);
+void ibtrs_srv_update_wc_stats(struct ibtrs_srv_stats *s);
+
 int ibtrs_srv_reset_rdma_stats(struct ibtrs_srv_stats *stats, bool enable);
 ssize_t ibtrs_srv_stats_rdma_to_str(struct ibtrs_srv_stats *stats,
 				    char *page, size_t len);

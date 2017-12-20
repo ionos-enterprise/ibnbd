@@ -49,7 +49,6 @@
 #include <linux/mempool.h>
 #include <rdma/rdma_cm.h>
 
-#include "ibtrs-pri.h"
 #include "ibtrs-srv.h"
 #include "ibtrs-log.h"
 
@@ -304,76 +303,6 @@ const char *ibtrs_srv_get_sess_hca_name(struct ibtrs_srv_sess *sess)
 		return sess->s.ib_dev->dev->name;
 
 	return "n/a";
-}
-
-static void ibtrs_srv_update_rdma_stats(struct ibtrs_srv_stats *s,
-					size_t size, int d)
-{
-	atomic64_inc(&s->rdma_stats.dir[d].cnt);
-	atomic64_add(size, &s->rdma_stats.dir[d].size_total);
-}
-
-int ibtrs_srv_reset_rdma_stats(struct ibtrs_srv_stats *stats, bool enable)
-{
-	if (enable) {
-		struct ibtrs_srv_stats_rdma_stats *r = &stats->rdma_stats;
-
-		memset(r, 0, sizeof(*r));
-		return 0;
-	}
-
-	return -EINVAL;
-}
-
-ssize_t ibtrs_srv_stats_rdma_to_str(struct ibtrs_srv_stats *stats,
-				    char *page, size_t len)
-{
-	struct ibtrs_srv_stats_rdma_stats *r = &stats->rdma_stats;
-	struct ibtrs_srv_sess *sess;
-
-	sess = container_of(stats, typeof(*sess), stats);
-
-	return scnprintf(page, len, "%ld %ld %ld %ld %u\n",
-			 atomic64_read(&r->dir[READ].cnt),
-			 atomic64_read(&r->dir[READ].size_total),
-			 atomic64_read(&r->dir[WRITE].cnt),
-			 atomic64_read(&r->dir[WRITE].size_total),
-			 atomic_read(&sess->ids_inflight));
-}
-
-int ibtrs_srv_reset_wc_completion_stats(struct ibtrs_srv_stats *stats, bool enable)
-{
-	if (enable) {
-		memset(&stats->wc_comp, 0, sizeof(stats->wc_comp));
-		return 0;
-	}
-
-	return -EINVAL;
-}
-
-int ibtrs_srv_stats_wc_completion_to_str(struct ibtrs_srv_stats *stats, char *buf,
-					 size_t len)
-{
-	return snprintf(buf, len, "%ld %ld\n",
-			atomic64_read(&stats->wc_comp.total_wc_cnt),
-			atomic64_read(&stats->wc_comp.calls));
-}
-
-ssize_t ibtrs_srv_reset_all_help(struct ibtrs_srv_stats *stats,
-				 char *page, size_t len)
-{
-	return scnprintf(page, PAGE_SIZE, "echo 1 to reset all statistics\n");
-}
-
-int ibtrs_srv_reset_all_stats(struct ibtrs_srv_stats *stats, bool enable)
-{
-	if (enable) {
-		ibtrs_srv_reset_wc_completion_stats(stats, enable);
-		ibtrs_srv_reset_rdma_stats(stats, enable);
-		return 0;
-	}
-
-	return -EINVAL;
 }
 
 static void free_id(struct ibtrs_srv_op *id)
@@ -645,14 +574,6 @@ static void ibtrs_srv_stop_hb(struct ibtrs_srv_sess *sess)
 	ibtrs_stop_hb(&sess->s);
 }
 
-static void ibtrs_srv_update_wc_stats(struct ibtrs_srv_con *con)
-{
-	struct ibtrs_srv_sess *sess = to_srv_sess(con->c.sess);
-
-	atomic64_inc(&sess->stats.wc_comp.calls);
-	atomic64_inc(&sess->stats.wc_comp.total_wc_cnt);
-}
-
 static void ibtrs_srv_info_rsp_done(struct ib_cq *cq, struct ib_wc *wc)
 {
 	struct ibtrs_srv_con *con = cq->cq_context;
@@ -669,7 +590,7 @@ static void ibtrs_srv_info_rsp_done(struct ib_cq *cq, struct ib_wc *wc)
 		return;
 	}
 	WARN_ON(wc->opcode != IB_WC_SEND);
-	ibtrs_srv_update_wc_stats(con);
+	ibtrs_srv_update_wc_stats(&sess->stats);
 }
 
 static void ibtrs_srv_sess_up(struct ibtrs_srv_sess *sess)
@@ -1028,7 +949,7 @@ static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 		}
 		return;
 	}
-	ibtrs_srv_update_wc_stats(con);
+	ibtrs_srv_update_wc_stats(&sess->stats);
 
 	switch (wc->opcode) {
 	case IB_WC_RDMA_WRITE:

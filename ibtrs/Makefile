@@ -3,6 +3,7 @@ ibtrs-client-y := ibtrs-clt.o \
 		  ibtrs-clt-sysfs.o
 
 ibtrs-server-y := ibtrs-srv.o \
+		  ibtrs-srv-stats.o \
 		  ibtrs-srv-sysfs.o
 
 ibtrs-core-y := ibtrs.o \
