@@ -92,7 +92,6 @@ static void ibnbd_clt_put_dev(struct ibnbd_clt_dev *dev)
 		idr_remove(&g_index_idr, dev->clt_device_id);
 		write_unlock(&g_index_lock);
 		kfree(dev->hw_queues);
-		kfree(dev->close_compl);
 		ibnbd_clt_put_sess(dev->sess);
 		kfree(dev);
 	}
@@ -177,8 +176,7 @@ static int process_msg_open_rsp(struct ibnbd_clt_dev *dev,
 		ibnbd_err(dev, "Server failed to open device for mapping, err:"
 			  " %d\n", rsp->result);
 		dev->open_errno = rsp->result;
-		if (dev->open_compl)
-			complete(dev->open_compl);
+		complete(&dev->open_compl);
 		goto out;
 	}
 
@@ -194,8 +192,7 @@ static int process_msg_open_rsp(struct ibnbd_clt_dev *dev,
 	ibnbd_clt_set_dev_attr(dev, rsp);
 
 	dev->dev_state = DEV_STATE_OPEN;
-	if (dev->open_compl)
-		complete(dev->open_compl);
+	complete(&dev->open_compl);
 
 out:
 	mutex_unlock(&dev->lock);
@@ -543,8 +540,8 @@ static void msg_close_conf(void *priv, int errno)
 	struct ibnbd_clt_dev *dev = iu->dev;
 
 	/* TODO just copy/paste: but why do we check state here? */
-	if (dev->close_compl && dev->dev_state == DEV_STATE_UNMAPPED)
-		complete(dev->close_compl);
+	if (dev->dev_state == DEV_STATE_UNMAPPED)
+		complete(&dev->close_compl);
 
 	ibnbd_put_iu(dev->sess, iu);
 }
@@ -586,8 +583,7 @@ static void msg_open_conf(void *priv, int errno)
 	if (errno) {
 		ibnbd_wrn(dev, "Opening failed, server responded: %d\n", errno);
 		dev->open_errno = errno;
-		if (dev->open_compl)
-			complete(dev->open_compl);
+		complete(&dev->open_compl);
 		kfree(rsp);
 		ibnbd_put_iu(dev->sess, iu);
 		return;
@@ -1471,6 +1467,7 @@ static int ibnbd_client_setup_device(struct ibnbd_clt_session *sess,
 static struct ibnbd_clt_dev *init_dev(struct ibnbd_clt_session *sess,
 				      enum ibnbd_access_mode access_mode,
 				      enum ibnbd_queue_mode queue_mode,
+				      enum ibnbd_io_mode io_mode,
 				      const char *pathname)
 {
 	int ret;
@@ -1516,24 +1513,14 @@ static struct ibnbd_clt_dev *init_dev(struct ibnbd_clt_session *sess,
 		       sess->sessname, ret);
 		goto out_queues;
 	}
-
 	dev->clt_device_id	= ret;
-	dev->close_compl	= kmalloc(sizeof(*dev->close_compl),
-					  GFP_KERNEL);
-	if (!dev->close_compl) {
-		pr_err("Failed to initialize device '%s' from session %s,"
-		       " allocating close completion failed, err: %d\n",
-		       pathname, sess->sessname, ret);
-		ret = -ENOMEM;
-		goto out_idr;
-	}
-	init_completion(dev->close_compl);
 	dev->sess		= sess;
 	dev->access_mode	= access_mode;
 	dev->queue_mode		= queue_mode;
-
+	dev->io_mode		= io_mode;
+	init_completion(&dev->close_compl);
+	init_completion(&dev->open_compl);
 	strlcpy(dev->pathname, pathname, sizeof(dev->pathname));
-
 	INIT_DELAYED_WORK(&dev->rq_delay_work, ibnbd_blk_delay_work);
 	mutex_init(&dev->lock);
 	atomic_set(&dev->refcount, 1);
@@ -1541,10 +1528,6 @@ static struct ibnbd_clt_dev *init_dev(struct ibnbd_clt_session *sess,
 
 	return dev;
 
-out_idr:
-	write_lock(&g_index_lock);
-	idr_remove(&g_index_idr, dev->clt_device_id);
-	write_unlock(&g_index_lock);
 out_queues:
 	kfree(dev->hw_queues);
 out_alloc:
@@ -1589,7 +1572,6 @@ ibnbd_client_add_device(struct ibnbd_clt_session *sess,
 {
 	int ret;
 	struct ibnbd_clt_dev *dev;
-	struct completion *open_compl;
 
 	pr_debug("Add remote device: server=%s, path='%s', access_mode=%d,"
 		 " queue_mode=%d\n", sess->sessname, pathname, access_mode,
@@ -1613,41 +1595,23 @@ ibnbd_client_add_device(struct ibnbd_clt_session *sess,
 	}
 
 	mutex_unlock(&sess->lock);
-	dev = init_dev(sess, access_mode, queue_mode, pathname);
+	dev = init_dev(sess, access_mode, queue_mode, io_mode, pathname);
 	if (IS_ERR(dev)) {
 		pr_err("map_device: failed to map device '%s' from session %s,"
 		       " can't initialize device, err: %ld\n", pathname,
 		       sess->sessname, PTR_ERR(dev));
 		return dev;
 	}
-
 	ibnbd_clt_get_sess(sess);
-
-	open_compl = kmalloc(sizeof(*open_compl), GFP_KERNEL);
-	if (!open_compl) {
-		ibnbd_err(dev, "map_device: failed, Can't allocate memory for"
-			  " completion\n");
-		ret = -ENOMEM;
-		goto out;
-	}
-	init_completion(open_compl);
-	dev->open_compl = open_compl;
-	dev->io_mode = io_mode;
-
 	ret = open_remote_device(dev);
 	if (ret) {
 		ibnbd_err(dev, "map_device: failed, can't open remote device,"
 			  " err: %d\n", ret);
-		kfree(open_compl);
-		dev->open_compl = NULL;
 		ret = -EINVAL;
 		goto out;
 	}
-	wait_for_completion(dev->open_compl);
+	wait_for_completion(&dev->open_compl);
 	mutex_lock(&dev->lock);
-
-	kfree(open_compl);
-	dev->open_compl = NULL;
 
 	if (!ibnbd_clt_dev_is_open(dev)) {
 		mutex_unlock(&dev->lock);
@@ -1695,7 +1659,7 @@ ibnbd_client_add_device(struct ibnbd_clt_session *sess,
 
 out_close:
 	if (!WARN_ON(ibnbd_close_device(dev, true)))
-		wait_for_completion(dev->close_compl);
+		wait_for_completion(&dev->close_compl);
 out:
 	ibnbd_clt_put_dev(dev);
 	return ERR_PTR(ret);
@@ -1754,9 +1718,9 @@ __must_hold(&dev->sess->lock)
 	mutex_unlock(&dev->sess->lock);
 	if (prev_state == DEV_STATE_OPEN && dev->sess->ibtrs) {
 		if (send_msg_close(dev, dev->device_id))
-			complete(dev->close_compl);
+			complete(&dev->close_compl);
 	} else {
-		complete(dev->close_compl);
+		complete(&dev->close_compl);
 	}
 
 	mutex_lock(&dev->sess->lock);
@@ -1798,7 +1762,7 @@ static void ibnbd_destroy_sessions(void)
 				ibnbd_wrn(dev, "Closing device failed, err: %d\n",
 					  ret);
 			else
-				wait_for_completion(dev->close_compl);
+				wait_for_completion(&dev->close_compl);
 			ibnbd_clt_schedule_dev_destroy(dev);
 			kobject_put(&dev->kobj);
 		}

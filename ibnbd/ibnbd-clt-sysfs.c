@@ -454,7 +454,7 @@ static ssize_t ibnbd_clt_unmap_dev_store(struct kobject *kobj,
 		goto out;
 	}
 
-	wait_for_completion(dev->close_compl);
+	wait_for_completion(&dev->close_compl);
 
 	ibnbd_clt_schedule_dev_destroy(dev);
 
@@ -765,7 +765,7 @@ static ssize_t ibnbd_clt_map_device_store(struct kobject *kobj,
 	ret = ibnbd_clt_add_dev_kobj(dev);
 	if (ret) {
 		if (!WARN_ON(ibnbd_close_device(dev, true)))
-			wait_for_completion(dev->close_compl);
+			wait_for_completion(&dev->close_compl);
 		/* ibnbd_destroy_gen_disk() will put the reference that was
 		 * acquired by ibnbd_client_add_device()
 		 */
@@ -782,7 +782,7 @@ static ssize_t ibnbd_clt_map_device_store(struct kobject *kobj,
 
 out_close_dev:
 	if (!WARN_ON(ibnbd_close_device(dev, true)))
-		wait_for_completion(dev->close_compl);
+		wait_for_completion(&dev->close_compl);
 	kobject_del(&dev->kobj);
 	kobject_put(&dev->kobj);
 out_sess_put:

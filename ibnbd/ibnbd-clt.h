@@ -145,7 +145,8 @@ struct ibnbd_clt_dev {
 	u32			device_id;
 	/* local Idr index - used to track minor number allocations. */
 	u32			clt_device_id;
-	struct completion	*open_compl;	/* completion for open msg */
+	struct completion	close_compl;
+	struct completion	open_compl;
 	int			open_errno;
 	struct mutex		lock;
 	enum ibnbd_clt_dev_state	dev_state;
@@ -171,7 +172,6 @@ struct ibnbd_clt_dev {
 	struct gendisk		*gd;
 	struct kobject		kobj;
 	char			blk_symlink_name[NAME_MAX];
-	struct completion	*close_compl;
 	atomic_t		refcount;
 };
 
