@@ -51,7 +51,7 @@ static inline int ibtrs_clt_ms_to_id(unsigned long ms)
 {
 	int id = ms ? ilog2(ms) - MIN_LOG_LATENCY + 1 : 0;
 
-	return clamp(id, 0, MAX_LOG_LATENCY - MIN_LOG_LATENCY + 1);
+	return clamp(id, 0, LOG_LATENCY_SZ - 1);
 }
 
 void ibtrs_clt_update_rdma_lat(struct ibtrs_clt_stats *s, bool read,
@@ -125,8 +125,7 @@ ssize_t ibtrs_clt_stats_rdma_lat_distr_to_str(struct ibtrs_clt_stats *s,
 {
 	ssize_t cnt = 0;
 	int i, cpu;
-	struct ibtrs_clt_stats_rdma_lat_entry res[MAX_LOG_LATENCY -
-						  MIN_LOG_LATENCY + 2];
+	struct ibtrs_clt_stats_rdma_lat_entry res[LOG_LATENCY_SZ];
 	struct ibtrs_clt_stats_rdma_lat_entry max;
 
 	max.write	= 0;
@@ -296,8 +295,7 @@ int ibtrs_clt_reset_rdma_lat_distr_stats(struct ibtrs_clt_stats *s,
 
 		for (i = 0; i < num_online_cpus(); i++)
 			memset(s->rdma_lat_distr[i], 0,
-			       sizeof(*s->rdma_lat_distr[0]) *
-			       (MAX_LOG_LATENCY - MIN_LOG_LATENCY + 2));
+			       sizeof(*s->rdma_lat_distr[0]) * LOG_LATENCY_SZ);
 	}
 	s->enable_rdma_lat = enable;
 
@@ -487,7 +485,7 @@ static int ibtrs_clt_init_rdma_lat_distr_stats(struct ibtrs_clt_stats *s)
 	for (i = 0; i < num_online_cpus(); i++) {
 		s->rdma_lat_distr[i] =
 			kzalloc_node(sizeof(*s->rdma_lat_distr[0]) *
-				     (MAX_LOG_LATENCY - MIN_LOG_LATENCY + 2),
+				     LOG_LATENCY_SZ,
 				     GFP_KERNEL, cpu_to_node(i));
 		if (unlikely(!s->rdma_lat_distr[i]))
 			goto err2;

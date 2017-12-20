@@ -125,6 +125,7 @@ struct ibtrs_clt_stats_rdma_lat_entry {
 
 #define MAX_LOG_LATENCY	16
 #define MIN_LOG_LATENCY	0
+#define LOG_LATENCY_SZ (MAX_LOG_LATENCY - MIN_LOG_LATENCY + 2)
 
 struct ibtrs_clt_stats {
 	struct ibtrs_clt_stats_cpu_migration	cpu_migr;
