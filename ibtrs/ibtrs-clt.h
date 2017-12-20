@@ -134,7 +134,7 @@ struct ibtrs_clt_stats {
 	u64					*sg_list_total;
 	u64					**sg_list_distr;
 	struct ibtrs_clt_stats_reconnects	reconnects;
-	struct ibtrs_clt_stats_rdma_lat_entry	**rdma_lat_distr;
+	struct ibtrs_clt_stats_rdma_lat_entry	(*rdma_lat_distr)[LOG_LAT_SZ];
 	struct ibtrs_clt_stats_rdma_lat_entry	*rdma_lat_max;
 	struct ibtrs_clt_stats_wc_comp		*wc_comp;
 };

@@ -287,15 +287,12 @@ int ibtrs_clt_reset_rdma_stats(struct ibtrs_clt_stats *s, bool enable)
 int ibtrs_clt_reset_rdma_lat_distr_stats(struct ibtrs_clt_stats *s,
 					 bool enable)
 {
-	int i;
-
 	if (enable) {
 		memset(s->rdma_lat_max, 0,
 		       num_online_cpus() * sizeof(*s->rdma_lat_max));
 
-		for (i = 0; i < num_online_cpus(); i++)
-			memset(s->rdma_lat_distr[i], 0,
-			       sizeof(*s->rdma_lat_distr[0]) * LOG_LAT_SZ);
+		memset(s->rdma_lat_distr, 0,
+		       num_online_cpus() * sizeof(*s->rdma_lat_distr));
 	}
 	s->enable_rdma_lat = enable;
 
@@ -469,35 +466,20 @@ static int ibtrs_clt_init_cpu_migr_stats(struct ibtrs_clt_stats *stats)
 
 static int ibtrs_clt_init_rdma_lat_distr_stats(struct ibtrs_clt_stats *s)
 {
-	int i;
-
-	s->rdma_lat_max = kzalloc(num_online_cpus() *
-				  sizeof(*s->rdma_lat_max), GFP_KERNEL);
+	s->rdma_lat_max = kcalloc(num_online_cpus(),
+				  sizeof(*s->rdma_lat_max),
+				  GFP_KERNEL);
 	if (unlikely(!s->rdma_lat_max))
 		return -ENOMEM;
 
-	s->rdma_lat_distr = kmalloc_array(num_online_cpus(),
-					  sizeof(*s->rdma_lat_distr),
-					  GFP_KERNEL);
+	s->rdma_lat_distr = kcalloc(num_online_cpus(),
+				    sizeof(*s->rdma_lat_distr),
+				    GFP_KERNEL);
 	if (unlikely(!s->rdma_lat_distr))
 		goto err1;
 
-	for (i = 0; i < num_online_cpus(); i++) {
-		s->rdma_lat_distr[i] =
-			kzalloc_node(sizeof(*s->rdma_lat_distr[0]) * LOG_LAT_SZ,
-				     GFP_KERNEL, cpu_to_node(i));
-		if (unlikely(!s->rdma_lat_distr[i]))
-			goto err2;
-	}
-
 	return 0;
 
-err2:
-	while (i--)
-		kfree(s->rdma_lat_distr[i]);
-
-	kfree(s->rdma_lat_distr);
-	s->rdma_lat_distr = NULL;
 err1:
 	kfree(s->rdma_lat_max);
 	s->rdma_lat_max = NULL;
@@ -560,11 +542,6 @@ static void ibtrs_clt_free_cpu_migr_stats(struct ibtrs_clt_stats *stats)
 
 static void ibtrs_clt_free_rdma_lat_stats(struct ibtrs_clt_stats *stats)
 {
-	int i;
-
-	for (i = 0; i < num_online_cpus(); i++)
-		kfree(stats->rdma_lat_distr[i]);
-
 	kfree(stats->rdma_lat_distr);
 	stats->rdma_lat_distr = NULL;
 	kfree(stats->rdma_lat_max);
