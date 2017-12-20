@@ -47,14 +47,6 @@
 
 #include "ibtrs-clt.h"
 
-#define MIN_LOG_SG 2
-#define MAX_LOG_SG 5
-#define MAX_LIN_SG BIT(MIN_LOG_SG)
-#define SG_DISTR_LEN (MAX_LOG_SG - MIN_LOG_SG + MAX_LIN_SG + 1)
-
-#define MAX_LOG_LATENCY	16
-#define MIN_LOG_LATENCY	0
-
 static inline int ibtrs_clt_ms_to_id(unsigned long ms)
 {
 	int id = ms ? ilog2(ms) - MIN_LOG_LATENCY + 1 : 0;
