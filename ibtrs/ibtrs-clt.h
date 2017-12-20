@@ -98,12 +98,12 @@ struct ibtrs_clt_stats_wc_comp {
 	u64 total_cnt;
 };
 
-struct ibtrs_clt_stats_cpu_migration {
-	atomic_t *from;
-	int *to;
+struct ibtrs_clt_stats_cpu_migr {
+	atomic_t from;
+	int to;
 };
 
-struct ibtrs_clt_stats_rdma_stats {
+struct ibtrs_clt_stats_rdma {
 	struct {
 		u64 cnt;
 		u64 size_total;
@@ -113,30 +113,34 @@ struct ibtrs_clt_stats_rdma_stats {
 	u16 inflight;
 };
 
+struct ibtrs_clt_stats_rdma_lat {
+	u64 read;
+	u64 write;
+};
+
 #define MIN_LOG_SG 2
 #define MAX_LOG_SG 5
 #define MAX_LIN_SG BIT(MIN_LOG_SG)
 #define SG_DISTR_SZ (MAX_LOG_SG - MIN_LOG_SG + MAX_LIN_SG + 2)
 
-struct ibtrs_clt_stats_rdma_lat_entry {
-	u64 read;
-	u64 write;
-};
-
 #define MAX_LOG_LAT 16
 #define MIN_LOG_LAT 0
 #define LOG_LAT_SZ (MAX_LOG_LAT - MIN_LOG_LAT + 2)
 
+struct ibtrs_clt_stats_pcpu {
+	struct ibtrs_clt_stats_cpu_migr		cpu_migr;
+	struct ibtrs_clt_stats_rdma		rdma;
+	u64					sg_list_total;
+	u64					sg_list_distr[SG_DISTR_SZ];
+	struct ibtrs_clt_stats_rdma_lat		rdma_lat_distr[LOG_LAT_SZ];
+	struct ibtrs_clt_stats_rdma_lat		rdma_lat_max;
+	struct ibtrs_clt_stats_wc_comp		wc_comp;
+};
+
 struct ibtrs_clt_stats {
-	struct ibtrs_clt_stats_cpu_migration	cpu_migr;
-	struct ibtrs_clt_stats_rdma_stats	*rdma_stats;
 	bool					enable_rdma_lat;
-	u64					*sg_list_total;
-	u64					(*sg_list_distr)[SG_DISTR_SZ];
+	struct ibtrs_clt_stats_pcpu    __percpu	*pcpu_stats;
 	struct ibtrs_clt_stats_reconnects	reconnects;
-	struct ibtrs_clt_stats_rdma_lat_entry	(*rdma_lat_distr)[LOG_LAT_SZ];
-	struct ibtrs_clt_stats_rdma_lat_entry	*rdma_lat_max;
-	struct ibtrs_clt_stats_wc_comp		*wc_comp;
 };
 
 struct ibtrs_clt_con {

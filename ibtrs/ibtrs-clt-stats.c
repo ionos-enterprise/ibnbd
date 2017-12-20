@@ -54,60 +54,73 @@ static inline int ibtrs_clt_ms_to_id(unsigned long ms)
 	return clamp(id, 0, LOG_LAT_SZ - 1);
 }
 
-void ibtrs_clt_update_rdma_lat(struct ibtrs_clt_stats *s, bool read,
+void ibtrs_clt_update_rdma_lat(struct ibtrs_clt_stats *stats, bool read,
 			       unsigned long ms)
 {
-	const int id = ibtrs_clt_ms_to_id(ms);
-	const int cpu = raw_smp_processor_id();
+	struct ibtrs_clt_stats_pcpu *s;
+	int id;
 
+	id = ibtrs_clt_ms_to_id(ms);
+	s = this_cpu_ptr(stats->pcpu_stats);
 	if (read) {
-		s->rdma_lat_distr[cpu][id].read++;
-		if (s->rdma_lat_max[cpu].read < ms)
-			s->rdma_lat_max[cpu].read = ms;
+		s->rdma_lat_distr[id].read++;
+		if (s->rdma_lat_max.read < ms)
+			s->rdma_lat_max.read = ms;
 	} else {
-		s->rdma_lat_distr[cpu][id].write++;
-		if (s->rdma_lat_max[cpu].write < ms)
-			s->rdma_lat_max[cpu].write = ms;
+		s->rdma_lat_distr[id].write++;
+		if (s->rdma_lat_max.write < ms)
+			s->rdma_lat_max.write = ms;
 	}
 }
 
-void ibtrs_clt_decrease_inflight(struct ibtrs_clt_stats *s)
+void ibtrs_clt_decrease_inflight(struct ibtrs_clt_stats *stats)
 {
-	s->rdma_stats[raw_smp_processor_id()].inflight--;
+	struct ibtrs_clt_stats_pcpu *s;
+
+	s = this_cpu_ptr(stats->pcpu_stats);
+	s->rdma.inflight--;
 }
 
 void ibtrs_clt_update_wc_stats(struct ibtrs_clt_con *con)
 {
 	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
-	unsigned cpu = raw_smp_processor_id();
+	struct ibtrs_clt_stats *stats = &sess->stats;
+	struct ibtrs_clt_stats_pcpu *s;
+	int cpu;
 
+	cpu = raw_smp_processor_id();
+	s = this_cpu_ptr(stats->pcpu_stats);
+	s->wc_comp.cnt++;
+	s->wc_comp.total_cnt++;
 	if (unlikely(con->cpu != cpu)) {
-		pr_debug_ratelimited("WC processing is migrated from CPU %d to "
-				     "%d, state %s, user: %s\n",
-				     con->cpu, cpu,
-				     ibtrs_clt_state_str(sess->state),
-				     con->c.cid == 0 ? "true" : "false");
-		atomic_inc(&sess->stats.cpu_migr.from[con->cpu]);
-		sess->stats.cpu_migr.to[cpu]++;
+		s->cpu_migr.to++;
+
+		/* Careful here, override s pointer */
+		s = per_cpu_ptr(stats->pcpu_stats, con->cpu);
+		atomic_inc(&s->cpu_migr.from);
 	}
-	sess->stats.wc_comp[cpu].cnt++;
-	sess->stats.wc_comp[cpu].total_cnt++;
 }
 
-void ibtrs_clt_inc_failover_cnt(struct ibtrs_clt_stats *s)
+void ibtrs_clt_inc_failover_cnt(struct ibtrs_clt_stats *stats)
 {
-	s->rdma_stats[raw_smp_processor_id()].failover_cnt++;
+	struct ibtrs_clt_stats_pcpu *s;
+
+	s = this_cpu_ptr(stats->pcpu_stats);
+	s->rdma.failover_cnt++;
 }
 
 static inline u32 ibtrs_clt_stats_get_avg_wc_cnt(struct ibtrs_clt_stats *stats)
 {
 	u32 cnt = 0;
 	u64 sum = 0;
-	int i;
+	int cpu;
 
-	for (i = 0; i < num_online_cpus(); i++) {
-		sum += stats->wc_comp[i].total_cnt;
-		cnt += stats->wc_comp[i].cnt;
+	for_each_possible_cpu(cpu) {
+		struct ibtrs_clt_stats_pcpu *s;
+
+		s = per_cpu_ptr(stats->pcpu_stats, cpu);
+		sum += s->wc_comp.total_cnt;
+		cnt += s->wc_comp.cnt;
 	}
 
 	return cnt ? sum / cnt : 0;
@@ -120,29 +133,34 @@ int ibtrs_clt_stats_wc_completion_to_str(struct ibtrs_clt_stats *stats,
 			 ibtrs_clt_stats_get_avg_wc_cnt(stats));
 }
 
-ssize_t ibtrs_clt_stats_rdma_lat_distr_to_str(struct ibtrs_clt_stats *s,
+ssize_t ibtrs_clt_stats_rdma_lat_distr_to_str(struct ibtrs_clt_stats *stats,
 					      char *page, size_t len)
 {
+	struct ibtrs_clt_stats_rdma_lat res[LOG_LAT_SZ];
+	struct ibtrs_clt_stats_rdma_lat max;
+	struct ibtrs_clt_stats_pcpu *s;
+
 	ssize_t cnt = 0;
 	int i, cpu;
-	struct ibtrs_clt_stats_rdma_lat_entry res[LOG_LAT_SZ];
-	struct ibtrs_clt_stats_rdma_lat_entry max;
 
-	max.write	= 0;
-	max.read	= 0;
-	for (cpu = 0; cpu < num_online_cpus(); cpu++) {
-		if (max.write < s->rdma_lat_max[cpu].write)
-			max.write = s->rdma_lat_max[cpu].write;
-		if (max.read < s->rdma_lat_max[cpu].read)
-			max.read = s->rdma_lat_max[cpu].read;
+	max.write = 0;
+	max.read = 0;
+	for_each_possible_cpu(cpu) {
+		s = per_cpu_ptr(stats->pcpu_stats, cpu);
+
+		if (max.write < s->rdma_lat_max.write)
+			max.write = s->rdma_lat_max.write;
+		if (max.read < s->rdma_lat_max.read)
+			max.read = s->rdma_lat_max.read;
 	}
-
 	for (i = 0; i < ARRAY_SIZE(res); i++) {
-		res[i].write	= 0;
-		res[i].read	= 0;
-		for (cpu = 0; cpu < num_online_cpus(); cpu++) {
-			res[i].write += s->rdma_lat_distr[cpu][i].write;
-			res[i].read += s->rdma_lat_distr[cpu][i].read;
+		res[i].write = 0;
+		res[i].read = 0;
+		for_each_possible_cpu(cpu) {
+			s = per_cpu_ptr(stats->pcpu_stats, cpu);
+
+			res[i].write += s->rdma_lat_distr[i].write;
+			res[i].read += s->rdma_lat_distr[i].read;
 		}
 	}
 
@@ -163,27 +181,28 @@ ssize_t ibtrs_clt_stats_rdma_lat_distr_to_str(struct ibtrs_clt_stats *s,
 int ibtrs_clt_stats_migration_cnt_to_str(struct ibtrs_clt_stats *stats,
 					 char *buf, size_t len)
 {
-	int i;
-	size_t used = 0;
+	struct ibtrs_clt_stats_pcpu *s;
 
-	used += scnprintf(buf + used, len - used, "    ");
+	size_t used;
+	int cpu;
 
-	for (i = 0; i < num_online_cpus(); i++)
-		used += scnprintf(buf + used, len - used, " CPU%u", i);
+	used = scnprintf(buf, len, "    ");
+	for_each_possible_cpu(cpu)
+		used += scnprintf(buf + used, len - used, " CPU%u", cpu);
 
 	used += scnprintf(buf + used, len - used, "\nfrom:");
-
-	for (i = 0; i < num_online_cpus(); i++)
+	for_each_possible_cpu(cpu) {
+		s = per_cpu_ptr(stats->pcpu_stats, cpu);
 		used += scnprintf(buf + used, len - used, " %d",
-				  atomic_read(&stats->cpu_migr.from[i]));
+				  atomic_read(&s->cpu_migr.from));
+	}
 
-	used += scnprintf(buf + used, len - used, "\n"
-			  "to  :");
-
-	for (i = 0; i < num_online_cpus(); i++)
+	used += scnprintf(buf + used, len - used, "\nto  :");
+	for_each_possible_cpu(cpu) {
+		s = per_cpu_ptr(stats->pcpu_stats, cpu);
 		used += scnprintf(buf + used, len - used, " %d",
-				  stats->cpu_migr.to[i]);
-
+				  s->cpu_migr.to);
+	}
 	used += scnprintf(buf + used, len - used, "\n");
 
 	return used;
@@ -200,35 +219,39 @@ int ibtrs_clt_stats_reconnects_to_str(struct ibtrs_clt_stats *stats, char *buf,
 ssize_t ibtrs_clt_stats_rdma_to_str(struct ibtrs_clt_stats *stats,
 				    char *page, size_t len)
 {
-	struct ibtrs_clt_stats_rdma_stats s;
-	struct ibtrs_clt_stats_rdma_stats *r = stats->rdma_stats;
-	int i;
+	struct ibtrs_clt_stats_rdma sum;
+	struct ibtrs_clt_stats_rdma *r;
+	int cpu;
 
-	memset(&s, 0, sizeof(s));
+	memset(&sum, 0, sizeof(sum));
 
-	for (i = 0; i < num_online_cpus(); i++) {
-		s.dir[READ].cnt		+= r[i].dir[READ].cnt;
-		s.dir[READ].size_total	+= r[i].dir[READ].size_total;
-		s.dir[WRITE].cnt	+= r[i].dir[WRITE].cnt;
-		s.dir[WRITE].size_total	+= r[i].dir[WRITE].size_total;
-		s.failover_cnt		+= r[i].failover_cnt;
-		s.inflight		+= r[i].inflight;
+	for_each_possible_cpu(cpu) {
+		r = &per_cpu_ptr(stats->pcpu_stats, cpu)->rdma;
+
+		sum.dir[READ].cnt	  += r->dir[READ].cnt;
+		sum.dir[READ].size_total  += r->dir[READ].size_total;
+		sum.dir[WRITE].cnt	  += r->dir[WRITE].cnt;
+		sum.dir[WRITE].size_total += r->dir[WRITE].size_total;
+		sum.failover_cnt	  += r->failover_cnt;
+		sum.inflight		  += r->inflight;
 	}
 
 	return scnprintf(page, len, "%llu %llu %llu %llu %llu %u\n",
-			 s.dir[READ].cnt, s.dir[READ].size_total,
-			 s.dir[WRITE].cnt, s.dir[WRITE].size_total,
-			 s.failover_cnt, s.inflight);
+			 sum.dir[READ].cnt, sum.dir[READ].size_total,
+			 sum.dir[WRITE].cnt, sum.dir[WRITE].size_total,
+			 sum.failover_cnt, sum.inflight);
 }
 
 int ibtrs_clt_stats_sg_list_distr_to_str(struct ibtrs_clt_stats *stats,
 					 char *buf, size_t len)
 {
-	int i, j, cnt;
+	struct ibtrs_clt_stats_pcpu *s;
+
+	int i, cpu, cnt;
 
 	cnt = scnprintf(buf, len, "n\\cpu:");
-	for (j = 0; j < num_online_cpus(); j++)
-		cnt += scnprintf(buf + cnt, len - cnt, "%5d", j);
+	for_each_possible_cpu(cpu)
+		cnt += scnprintf(buf + cnt, len - cnt, "%5d", cpu);
 
 	for (i = 0; i < SG_DISTR_SZ; i++) {
 		if (i <= MAX_LIN_SG)
@@ -242,11 +265,13 @@ int ibtrs_clt_stats_sg_list_distr_to_str(struct ibtrs_clt_stats *stats,
 					 "\n>=%3d:",
 					 1 << (i + MIN_LOG_SG - MAX_LIN_SG - 1));
 
-		for (j = 0; j < num_online_cpus(); j++) {
-			u64 total = stats->sg_list_total[j];
-			u64 distr = stats->sg_list_distr[j][i];
-
+		for_each_possible_cpu(cpu) {
 			unsigned p, p_i, p_f;
+			u64 total, distr;
+
+			s = per_cpu_ptr(stats->pcpu_stats, cpu);
+			total = s->sg_list_total;
+			distr = s->sg_list_distr[i];
 
 			p = total ? distr * 1000 / total : 0;
 			p_i = p / 10;
@@ -261,9 +286,11 @@ int ibtrs_clt_stats_sg_list_distr_to_str(struct ibtrs_clt_stats *stats,
 	}
 
 	cnt += scnprintf(buf + cnt, len - cnt, "\ntotal:");
-	for (j = 0; j < num_online_cpus(); j++)
+	for_each_possible_cpu(cpu) {
+		s = per_cpu_ptr(stats->pcpu_stats, cpu);
 		cnt += scnprintf(buf + cnt, len - cnt, " %llu",
-				 stats->sg_list_total[j]);
+				 s->sg_list_total);
+	}
 	cnt += scnprintf(buf + cnt, len - cnt, "\n");
 
 	return cnt;
@@ -275,28 +302,36 @@ ssize_t ibtrs_clt_reset_all_help(struct ibtrs_clt_stats *s,
 	return scnprintf(page, len, "echo 1 to reset all statistics\n");
 }
 
-int ibtrs_clt_reset_rdma_stats(struct ibtrs_clt_stats *s, bool enable)
+int ibtrs_clt_reset_rdma_stats(struct ibtrs_clt_stats *stats, bool enable)
 {
-	if (enable) {
-		memset(s->rdma_stats, 0,
-		       num_online_cpus() * sizeof(*s->rdma_stats));
-		return 0;
+	struct ibtrs_clt_stats_pcpu *s;
+	int cpu;
+
+	if (unlikely(!enable))
+		return -EINVAL;
+
+	for_each_possible_cpu(cpu) {
+		s = per_cpu_ptr(stats->pcpu_stats, cpu);
+		memset(&s->rdma, 0, sizeof(s->rdma));
 	}
 
-	return -EINVAL;
+	return 0;
 }
 
-int ibtrs_clt_reset_rdma_lat_distr_stats(struct ibtrs_clt_stats *s,
+int ibtrs_clt_reset_rdma_lat_distr_stats(struct ibtrs_clt_stats *stats,
 					 bool enable)
 {
-	if (enable) {
-		memset(s->rdma_lat_max, 0,
-		       num_online_cpus() * sizeof(*s->rdma_lat_max));
+	struct ibtrs_clt_stats_pcpu *s;
+	int cpu;
 
-		memset(s->rdma_lat_distr, 0,
-		       num_online_cpus() * sizeof(*s->rdma_lat_distr));
+	if (enable) {
+		for_each_possible_cpu(cpu) {
+			s = per_cpu_ptr(stats->pcpu_stats, cpu);
+			memset(&s->rdma_lat_max, 0, sizeof(s->rdma_lat_max));
+			memset(&s->rdma_lat_distr, 0, sizeof(s->rdma_lat_distr));
+		}
 	}
-	s->enable_rdma_lat = enable;
+	stats->enable_rdma_lat = enable;
 
 	return 0;
 }
@@ -304,55 +339,61 @@ int ibtrs_clt_reset_rdma_lat_distr_stats(struct ibtrs_clt_stats *s,
 int ibtrs_clt_reset_sg_list_distr_stats(struct ibtrs_clt_stats *stats,
 					       bool enable)
 {
-	if (enable) {
-		memset(stats->sg_list_total, 0,
-		       num_online_cpus() * sizeof(*stats->sg_list_total));
+	struct ibtrs_clt_stats_pcpu *s;
+	int cpu;
 
-		memset(stats->sg_list_distr, 0,
-		       num_online_cpus() * sizeof(*stats->sg_list_distr));
+	if (unlikely(!enable))
+		return -EINVAL;
 
-		return 0;
+	for_each_possible_cpu(cpu) {
+		s = per_cpu_ptr(stats->pcpu_stats, cpu);
+		memset(&s->sg_list_total, 0, sizeof(s->sg_list_total));
+		memset(&s->sg_list_distr, 0, sizeof(s->sg_list_distr));
 	}
 
-	return -EINVAL;
+	return 0;
 }
-
 
 int ibtrs_clt_reset_cpu_migr_stats(struct ibtrs_clt_stats *stats, bool enable)
 {
-	if (enable) {
-		memset(stats->cpu_migr.from, 0,
-		       num_online_cpus() *
-		       sizeof(*stats->cpu_migr.from));
+	struct ibtrs_clt_stats_pcpu *s;
+	int cpu;
 
-		memset(stats->cpu_migr.to, 0,
-		       num_online_cpus() * sizeof(*stats->cpu_migr.to));
-		return 0;
+	if (unlikely(!enable))
+		return -EINVAL;
+
+	for_each_possible_cpu(cpu) {
+		s = per_cpu_ptr(stats->pcpu_stats, cpu);
+		memset(&s->cpu_migr, 0, sizeof(s->cpu_migr));
 	}
 
-	return -EINVAL;
+	return 0;
 }
 
 int ibtrs_clt_reset_reconnects_stat(struct ibtrs_clt_stats *stats, bool enable)
 {
-	if (enable) {
-		memset(&stats->reconnects, 0,
-		       sizeof(stats->reconnects));
-		return 0;
-	}
+	if (unlikely(!enable))
+		return -EINVAL;
 
-	return -EINVAL;
+	memset(&stats->reconnects, 0, sizeof(stats->reconnects));
+
+	return 0;
 }
 
 int ibtrs_clt_reset_wc_comp_stats(struct ibtrs_clt_stats *stats, bool enable)
 {
-	if (enable) {
-		memset(stats->wc_comp, 0,
-		       num_online_cpus() * sizeof(*stats->wc_comp));
-		return 0;
+	struct ibtrs_clt_stats_pcpu *s;
+	int cpu;
+
+	if (unlikely(!enable))
+		return -EINVAL;
+
+	for_each_possible_cpu(cpu) {
+		s = per_cpu_ptr(stats->pcpu_stats, cpu);
+		memset(&s->wc_comp, 0, sizeof(s->wc_comp));
 	}
 
-	return -EINVAL;
+	return 0;
 }
 
 int ibtrs_clt_reset_all_stats(struct ibtrs_clt_stats *s, bool enable)
@@ -383,14 +424,15 @@ static inline void ibtrs_clt_record_sg_distr(u64 stat[SG_DISTR_SZ], u64 *total,
 	(*total)++;
 }
 
-static inline void ibtrs_clt_update_rdma_stats(struct ibtrs_clt_stats *s,
+static inline void ibtrs_clt_update_rdma_stats(struct ibtrs_clt_stats *stats,
 					       size_t size, int d)
 {
-	int cpu = raw_smp_processor_id();
+	struct ibtrs_clt_stats_pcpu *s;
 
-	s->rdma_stats[cpu].dir[d].cnt++;
-	s->rdma_stats[cpu].dir[d].size_total += size;
-	s->rdma_stats[cpu].inflight++;
+	s = this_cpu_ptr(stats->pcpu_stats);
+	s->rdma.dir[d].cnt++;
+	s->rdma.dir[d].size_total += size;
+	s->rdma.inflight++;
 }
 
 void ibtrs_clt_update_all_stats(struct ibtrs_clt_io_req *req, int dir)
@@ -398,163 +440,23 @@ void ibtrs_clt_update_all_stats(struct ibtrs_clt_io_req *req, int dir)
 	struct ibtrs_clt_con *con = req->con;
 	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
 	struct ibtrs_clt_stats *stats = &sess->stats;
-	int cpu = raw_smp_processor_id();
 	unsigned int len;
 
-	ibtrs_clt_record_sg_distr(stats->sg_list_distr[cpu],
-				  &stats->sg_list_total[cpu],
+	struct ibtrs_clt_stats_pcpu *s;
+
+	s = this_cpu_ptr(stats->pcpu_stats);
+	ibtrs_clt_record_sg_distr(s->sg_list_distr, &s->sg_list_total,
 				  req->sg_cnt);
 	len = req->usr_len + req->data_len;
 	ibtrs_clt_update_rdma_stats(stats, len, dir);
 }
 
-static int ibtrs_clt_init_sg_list_distr_stats(struct ibtrs_clt_stats *stats)
-{
-	stats->sg_list_distr = kcalloc(num_online_cpus(),
-				       sizeof(*stats->sg_list_distr),
-				       GFP_KERNEL);
-	if (unlikely(!stats->sg_list_distr))
-		return -ENOMEM;
-
-	stats->sg_list_total = kcalloc(num_online_cpus(),
-				       sizeof(*stats->sg_list_total),
-				       GFP_KERNEL);
-	if (unlikely(!stats->sg_list_total))
-		goto err;
-
-	return 0;
-
-err:
-	kfree(stats->sg_list_distr);
-	stats->sg_list_distr = NULL;
-
-	return -ENOMEM;
-}
-
-static int ibtrs_clt_init_cpu_migr_stats(struct ibtrs_clt_stats *stats)
-{
-	stats->cpu_migr.from = kcalloc(num_online_cpus(),
-				       sizeof(*stats->cpu_migr.from),
-				       GFP_KERNEL);
-	if (unlikely(!stats->cpu_migr.from))
-		return -ENOMEM;
-
-	stats->cpu_migr.to = kcalloc(num_online_cpus(),
-				     sizeof(*stats->cpu_migr.to),
-				     GFP_KERNEL);
-	if (unlikely(!stats->cpu_migr.to)) {
-		kfree(stats->cpu_migr.from);
-		stats->cpu_migr.from = NULL;
-
-		return -ENOMEM;
-	}
-
-	return 0;
-}
-
-static int ibtrs_clt_init_rdma_lat_distr_stats(struct ibtrs_clt_stats *s)
-{
-	s->rdma_lat_max = kcalloc(num_online_cpus(),
-				  sizeof(*s->rdma_lat_max),
-				  GFP_KERNEL);
-	if (unlikely(!s->rdma_lat_max))
-		return -ENOMEM;
-
-	s->rdma_lat_distr = kcalloc(num_online_cpus(),
-				    sizeof(*s->rdma_lat_distr),
-				    GFP_KERNEL);
-	if (unlikely(!s->rdma_lat_distr))
-		goto err1;
-
-	return 0;
-
-err1:
-	kfree(s->rdma_lat_max);
-	s->rdma_lat_max = NULL;
-
-	return -ENOMEM;
-}
-
-static int ibtrs_clt_init_wc_comp_stats(struct ibtrs_clt_stats *stats)
-{
-	stats->wc_comp = kcalloc(num_online_cpus(),
-				 sizeof(*stats->wc_comp),
-				 GFP_KERNEL);
-	if (unlikely(!stats->wc_comp))
-		return -ENOMEM;
-
-	return 0;
-}
-
-static int ibtrs_clt_init_rdma_stats(struct ibtrs_clt_stats *s)
-{
-	s->rdma_stats = kcalloc(num_online_cpus(), sizeof(*s->rdma_stats),
-				GFP_KERNEL);
-	if (unlikely(!s->rdma_stats))
-		return -ENOMEM;
-
-	return 0;
-}
-
-static void ibtrs_clt_free_rdma_stats(struct ibtrs_clt_stats *stats)
-{
-	kfree(stats->rdma_stats);
-	stats->rdma_stats = NULL;
-}
-
-static void ibtrs_clt_free_wc_comp_stats(struct ibtrs_clt_stats *stats)
-{
-	kfree(stats->wc_comp);
-	stats->wc_comp = NULL;
-}
-
-static void ibtrs_clt_free_sg_list_distr_stats(struct ibtrs_clt_stats *stats)
-{
-	kfree(stats->sg_list_distr);
-	stats->sg_list_distr = NULL;
-	kfree(stats->sg_list_total);
-	stats->sg_list_total = NULL;
-}
-
-static void ibtrs_clt_free_cpu_migr_stats(struct ibtrs_clt_stats *stats)
-{
-	kfree(stats->cpu_migr.to);
-	stats->cpu_migr.to = NULL;
-	kfree(stats->cpu_migr.from);
-	stats->cpu_migr.from = NULL;
-}
-
-static void ibtrs_clt_free_rdma_lat_stats(struct ibtrs_clt_stats *stats)
-{
-	kfree(stats->rdma_lat_distr);
-	stats->rdma_lat_distr = NULL;
-	kfree(stats->rdma_lat_max);
-	stats->rdma_lat_max = NULL;
-}
-
 int ibtrs_clt_init_stats(struct ibtrs_clt_stats *stats)
 {
-	int err;
-
-	err = ibtrs_clt_init_sg_list_distr_stats(stats);
-	if (unlikely(err))
-		return err;
-
-	err = ibtrs_clt_init_cpu_migr_stats(stats);
-	if (unlikely(err))
-		goto err_sg_list;
-
-	err = ibtrs_clt_init_rdma_lat_distr_stats(stats);
-	if (unlikely(err))
-		goto err_migr;
-
-	err = ibtrs_clt_init_wc_comp_stats(stats);
-	if (unlikely(err))
-		goto err_rdma_lat;
-
-	err = ibtrs_clt_init_rdma_stats(stats);
-	if (unlikely(err))
-		goto err_wc_comp;
+	stats->enable_rdma_lat = false;
+	stats->pcpu_stats = alloc_percpu(typeof(*stats->pcpu_stats));
+	if (unlikely(!stats->pcpu_stats))
+		return -ENOMEM;
 
 	/*
 	 * successfull_cnt will be set to 0 after session
@@ -563,24 +465,9 @@ int ibtrs_clt_init_stats(struct ibtrs_clt_stats *stats)
 	stats->reconnects.successful_cnt = -1;
 
 	return 0;
-
-err_wc_comp:
-	ibtrs_clt_free_wc_comp_stats(stats);
-err_rdma_lat:
-	ibtrs_clt_free_rdma_lat_stats(stats);
-err_migr:
-	ibtrs_clt_free_cpu_migr_stats(stats);
-err_sg_list:
-	ibtrs_clt_free_sg_list_distr_stats(stats);
-
-	return err;
 }
 
 void ibtrs_clt_free_stats(struct ibtrs_clt_stats *stats)
 {
-	ibtrs_clt_free_rdma_stats(stats);
-	ibtrs_clt_free_rdma_lat_stats(stats);
-	ibtrs_clt_free_cpu_migr_stats(stats);
-	ibtrs_clt_free_sg_list_distr_stats(stats);
-	ibtrs_clt_free_wc_comp_stats(stats);
+	free_percpu(stats->pcpu_stats);
 }
