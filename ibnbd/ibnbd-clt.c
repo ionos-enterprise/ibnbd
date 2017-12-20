@@ -706,26 +706,26 @@ static int find_dev_cb(int id, void *ptr, void *data)
 	struct ibnbd_clt_dev *dev = ptr;
 	struct ibnbd_clt_session *sess = data;
 
-	if (dev->sess == sess && dev->dev_state == DEV_STATE_INIT) {
+	if (dev->sess != sess)
+		return 0;
+
+	ibnbd_err(dev, "Device closed, session disconnected.\n");
+
+	/*
+	 * XXX obviously here lock for device should be taken,
+	 * XXX but we can't sleep here.
+	 */
+
+	if (dev->dev_state == DEV_STATE_INIT)
 		dev->dev_state = DEV_STATE_INIT_CLOSED;
-		ibnbd_err(dev, "Device offline, session disconnected.\n");
-	} else if (dev->sess == sess && dev->dev_state == DEV_STATE_UNMAPPED) {
-		ibnbd_err(dev, "Device closed, session disconnected.\n");
-	}
+	else if (dev->dev_state == DEV_STATE_OPEN)
+		dev->dev_state = DEV_STATE_CLOSED;
 
 	return 0;
 }
 
 static void __set_dev_states_closed(struct ibnbd_clt_session *sess)
 {
-	struct ibnbd_clt_dev *dev;
-
-	list_for_each_entry(dev, &sess->devs_list, list) {
-		mutex_lock(&dev->lock);
-		dev->dev_state = DEV_STATE_CLOSED;
-		ibnbd_err(dev, "Device offline, session disconnected.\n");
-		mutex_unlock(&dev->lock);
-	}
 	read_lock(&g_index_lock);
 	idr_for_each(&g_index_idr, find_dev_cb, sess);
 	read_unlock(&g_index_lock);
