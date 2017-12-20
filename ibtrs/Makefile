@@ -1,4 +1,5 @@
 ibtrs-client-y := ibtrs-clt.o \
+		  ibtrs-clt-stats.o \
 		  ibtrs-clt-sysfs.o
 
 ibtrs-server-y := ibtrs-srv.o \

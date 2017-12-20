@@ -229,6 +229,22 @@ struct ibtrs_clt {
 	struct kobject		kobj_paths;
 };
 
+static inline struct ibtrs_clt_con *to_clt_con(struct ibtrs_con *c)
+{
+	if (unlikely(!c))
+		return NULL;
+
+	return container_of(c, struct ibtrs_clt_con, c);
+}
+
+static inline struct ibtrs_clt_sess *to_clt_sess(struct ibtrs_sess *s)
+{
+	if (unlikely(!s))
+		return NULL;
+
+	return container_of(s, struct ibtrs_clt_sess, s);
+}
+
 /**
  * list_next_or_null_rr - get next list element in round-robin fashion.
  * @pos:     entry, starting cursor.
@@ -268,6 +284,19 @@ int ibtrs_clt_remove_path_from_sysfs(struct ibtrs_clt_sess *sess);
 
 void ibtrs_clt_set_max_reconnect_attempts(struct ibtrs_clt *clt, int value);
 int ibtrs_clt_get_max_reconnect_attempts(const struct ibtrs_clt *clt);
+
+/* ibtrs-clt-stats.c */
+
+int ibtrs_clt_init_stats(struct ibtrs_clt_stats *stats);
+void ibtrs_clt_free_stats(struct ibtrs_clt_stats *stats);
+
+void ibtrs_clt_decrease_inflight(struct ibtrs_clt_stats *s);
+void ibtrs_clt_inc_failover_cnt(struct ibtrs_clt_stats *s);
+
+void ibtrs_clt_update_rdma_lat(struct ibtrs_clt_stats *s, bool read,
+			       unsigned long ms);
+void ibtrs_clt_update_wc_stats(struct ibtrs_clt_con *con);
+void ibtrs_clt_update_all_stats(struct ibtrs_clt_io_req *req, int dir);
 
 int ibtrs_clt_reset_sg_list_distr_stats(struct ibtrs_clt_stats *stats,
 					bool enable);
