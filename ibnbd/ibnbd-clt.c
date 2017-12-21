@@ -62,7 +62,7 @@ MODULE_LICENSE("GPL");
 
 static int ibnbd_client_major;
 static DEFINE_IDR(g_index_idr);
-static DEFINE_RWLOCK(g_index_lock);
+static DEFINE_MUTEX(g_mutex);
 static DEFINE_SPINLOCK(sess_lock);
 static DEFINE_SPINLOCK(dev_lock);
 static LIST_HEAD(session_list);
@@ -88,9 +88,9 @@ inline bool ibnbd_clt_dev_is_open(struct ibnbd_clt_dev *dev)
 static void ibnbd_clt_put_dev(struct ibnbd_clt_dev *dev)
 {
 	if (!atomic_dec_if_positive(&dev->refcount)) {
-		write_lock(&g_index_lock);
+		mutex_lock(&g_mutex);
 		idr_remove(&g_index_idr, dev->clt_device_id);
-		write_unlock(&g_index_lock);
+		mutex_unlock(&g_mutex);
 		kfree(dev->hw_queues);
 		ibnbd_clt_put_sess(dev->sess);
 		kfree(dev);
@@ -713,9 +713,9 @@ static int find_dev_cb(int id, void *ptr, void *data)
 
 static void __set_dev_states_closed(struct ibnbd_clt_session *sess)
 {
-	read_lock(&g_index_lock);
+	mutex_lock(&g_mutex);
 	idr_for_each(&g_index_idr, find_dev_cb, sess);
-	read_unlock(&g_index_lock);
+	mutex_unlock(&g_mutex);
 }
 
 static int update_sess_info(struct ibnbd_clt_session *sess)
@@ -1491,13 +1491,10 @@ static struct ibnbd_clt_dev *init_dev(struct ibnbd_clt_session *sess,
 		if (queue_mode == BLK_RQ)
 			ibnbd_init_hw_queue(dev, dev->hw_queues, NULL);
 	}
-
-	idr_preload(GFP_KERNEL);
-	write_lock(&g_index_lock);
+	mutex_lock(&g_mutex);
 	ret = idr_alloc(&g_index_idr, dev, 0, minor_to_index(1 << MINORBITS),
-			GFP_ATOMIC);
-	write_unlock(&g_index_lock);
-	idr_preload_end();
+			GFP_KERNEL);
+	mutex_unlock(&g_mutex);
 	if (ret < 0) {
 		pr_err("Failed to initialize device '%s' from session %s,"
 		       " allocating idr failed, err: %d\n", pathname,
