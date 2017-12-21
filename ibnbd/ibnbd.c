@@ -42,9 +42,15 @@
  * POSSIBILITY OF SUCH DAMAGES.
  */
 
-#include <linux/ctype.h>
+#include <linux/module.h>
+
 #include "ibnbd.h"
 #include "ibnbd-proto.h"
+
+MODULE_AUTHOR("ibnbd@profitbricks.com");
+MODULE_DESCRIPTION("InfiniBand Network Block Device Core");
+MODULE_VERSION(IBNBD_VER_STRING);
+MODULE_LICENSE("GPL");
 
 u32 ibnbd_to_bio_flags(u32 ibnbd_flags)
 {
