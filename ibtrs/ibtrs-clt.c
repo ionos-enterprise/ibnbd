@@ -1162,8 +1162,7 @@ static int post_recv_sess(struct ibtrs_clt_sess *sess)
 /*
  * ibtrs_clt_state_lock() must be taken before calling this function.
  */
-static inline struct ibtrs_clt_sess *
-ibtrs_clt_get_next_path(struct ibtrs_clt *clt)
+static inline struct ibtrs_clt_sess *get_next_path(struct ibtrs_clt *clt)
 {
 	struct ibtrs_clt_sess __percpu * __rcu *ppcpu_path, *path;
 
@@ -1180,10 +1179,8 @@ ibtrs_clt_get_next_path(struct ibtrs_clt *clt)
 	return path;
 }
 
-#define for_each_path(path, i, clt)					\
-	for (i = 0, path = ibtrs_clt_get_next_path(clt);		\
-	     path && i < clt->paths_num;				\
-	     i++, path = ibtrs_clt_get_next_path(clt))
+#define for_each_path_continue(path, i, clt)				\
+	for (i = 0; ((path) = get_next_path(clt)) && i < clt->paths_num; i++)
 
 static inline void ibtrs_clt_init_req(struct ibtrs_clt_io_req *req,
 				      struct ibtrs_clt_sess *sess,
@@ -1252,7 +1249,7 @@ static int ibtrs_clt_failover_req(struct ibtrs_clt *clt,
 	int i, err = -ECONNABORTED;
 
 	ibtrs_clt_state_lock();
-	for_each_path(alive_sess, i, clt) {
+	for_each_path_continue(alive_sess, i, clt) {
 		if (unlikely(alive_sess->state != IBTRS_CLT_CONNECTED))
 			continue;
 		req = ibtrs_clt_get_copy_req(alive_sess, fail_req);
@@ -3030,7 +3027,7 @@ int ibtrs_clt_write(struct ibtrs_clt *clt, ibtrs_conf_fn *conf,
 
 	usr_len = kvec_length(vec, nr);
 	ibtrs_clt_state_lock();
-	for_each_path(sess, i, clt) {
+	for_each_path_continue(sess, i, clt) {
 		if (unlikely(sess->state != IBTRS_CLT_CONNECTED))
 			continue;
 		if (unlikely(usr_len > IO_MSG_SIZE)) {
@@ -3157,7 +3154,7 @@ int ibtrs_clt_read(struct ibtrs_clt *clt, ibtrs_conf_fn *conf,
 
 	usr_len = kvec_length(vec, nr);
 	ibtrs_clt_state_lock();
-	for_each_path(sess, i, clt) {
+	for_each_path_continue(sess, i, clt) {
 		if (unlikely(sess->state != IBTRS_CLT_CONNECTED))
 			continue;
 		if (unlikely(usr_len > IO_MSG_SIZE ||
