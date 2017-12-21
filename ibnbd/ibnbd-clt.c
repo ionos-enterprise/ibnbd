@@ -688,30 +688,25 @@ int open_remote_device(struct ibnbd_clt_dev *dev)
 	return 0;
 }
 
-static int find_dev_cb(int id, void *ptr, void *data)
-{
-	struct ibnbd_clt_dev *dev = ptr;
-	struct ibnbd_clt_session *sess = data;
-
-	if (dev->sess != sess)
-		return 0;
-
-	ibnbd_err(dev, "Device closed, session disconnected.\n");
-
-	mutex_lock(&dev->lock);
-	if (dev->dev_state == DEV_STATE_INIT)
-		dev->dev_state = DEV_STATE_INIT_CLOSED;
-	else if (dev->dev_state == DEV_STATE_OPEN)
-		dev->dev_state = DEV_STATE_CLOSED;
-	mutex_unlock(&dev->lock);
-
-	return 0;
-}
-
 static void __set_dev_states_closed(struct ibnbd_clt_session *sess)
 {
+	struct ibnbd_clt_dev *dev;
+	unsigned id;
+
 	mutex_lock(&g_mutex);
-	idr_for_each(&g_index_idr, find_dev_cb, sess);
+	idr_for_each_entry(&g_index_idr, dev, id) {
+		if (dev->sess != sess)
+			continue;
+
+		ibnbd_err(dev, "Device closed, session disconnected.\n");
+
+		mutex_lock(&dev->lock);
+		if (dev->dev_state == DEV_STATE_INIT)
+			dev->dev_state = DEV_STATE_INIT_CLOSED;
+		else if (dev->dev_state == DEV_STATE_OPEN)
+			dev->dev_state = DEV_STATE_CLOSED;
+		mutex_unlock(&dev->lock);
+	}
 	mutex_unlock(&g_mutex);
 }
 
