@@ -698,15 +698,12 @@ static int find_dev_cb(int id, void *ptr, void *data)
 
 	ibnbd_err(dev, "Device closed, session disconnected.\n");
 
-	/*
-	 * XXX obviously here lock for device should be taken,
-	 * XXX but we can't sleep here.
-	 */
-
+	mutex_lock(&dev->lock);
 	if (dev->dev_state == DEV_STATE_INIT)
 		dev->dev_state = DEV_STATE_INIT_CLOSED;
 	else if (dev->dev_state == DEV_STATE_OPEN)
 		dev->dev_state = DEV_STATE_CLOSED;
+	mutex_unlock(&dev->lock);
 
 	return 0;
 }
