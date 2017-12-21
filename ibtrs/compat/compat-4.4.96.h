@@ -1040,6 +1040,11 @@ typedef uuid_be uuid_t;
 #define rdma_accept backport_rdma_accept
 #define rdma_reject backport_rdma_reject
 #define rdma_get_service_id backport_rdma_get_service_id
-#endif /* ifndef COMPAT */
 
+/*
+ * Common stuff
+ */
+#include "compat.h"
+
+#endif /* ifndef COMPAT */
 #endif /* IBTRS_4_4_96_COMPAT_H */
