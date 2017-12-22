@@ -100,8 +100,7 @@ static ssize_t ibtrs_srv_current_hca_port_show(struct kobject *kobj,
 }
 
 static struct kobj_attribute ibtrs_srv_current_hca_port_attr =
-	__ATTR(ibtrs_srv_current_hca_port, 0444,
-	       ibtrs_srv_current_hca_port_show, NULL);
+	__ATTR(current_hca_port, 0444, ibtrs_srv_current_hca_port_show, NULL);
 
 static ssize_t ibtrs_srv_hca_name_show(struct kobject *kobj,
 				       struct kobj_attribute *attr,
@@ -116,8 +115,7 @@ static ssize_t ibtrs_srv_hca_name_show(struct kobject *kobj,
 }
 
 static struct kobj_attribute ibtrs_srv_hca_name_attr =
-	__ATTR(ibtrs_srv_hca_name, 0444,
-	       ibtrs_srv_hca_name_show, NULL);
+	__ATTR(hca_name, 0444, ibtrs_srv_hca_name_show, NULL);
 
 static struct attribute *ibtrs_srv_sess_attrs[] = {
 	&ibtrs_srv_hca_name_attr.attr,
