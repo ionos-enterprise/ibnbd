@@ -121,11 +121,6 @@ struct ibnbd_clt_session {
 	struct completion	*sess_info_compl;
 };
 
-struct ibnbd_work {
-	struct work_struct	work;
-	struct ibnbd_clt_session	*sess;
-};
-
 /**
  * Submission queues.
  */
