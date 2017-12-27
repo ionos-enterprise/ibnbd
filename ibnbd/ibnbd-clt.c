@@ -1744,11 +1744,8 @@ static void ibnbd_destroy_sessions(void)
 		mutex_lock(&sess->lock);
 		sess->state = CLT_SESS_STATE_DESTROYED;
 		list_for_each_entry_safe(dev, tn, &sess->devs_list, list) {
-			if (!kobject_get(&dev->kobj))
-				continue;
 			__unmap_device(dev, true);
 			ibnbd_clt_schedule_dev_destroy(dev);
-			kobject_put(&dev->kobj);
 		}
 		mutex_unlock(&sess->lock);
 		ibnbd_clt_put_sess(sess);
