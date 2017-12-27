@@ -371,8 +371,6 @@ static ssize_t ibnbd_clt_unmap_dev_store(struct kobject *kobj,
 	bool force;
 	char *options;
 
-	if (!try_module_get(THIS_MODULE))
-		return -ENODEV;
 	options = kstrdup(buf, GFP_KERNEL);
 	if (!options)
 		return -ENOMEM;
@@ -408,11 +406,9 @@ static ssize_t ibnbd_clt_unmap_dev_store(struct kobject *kobj,
 	}
 	ibnbd_clt_schedule_dev_destroy(dev);
 
-	module_put(THIS_MODULE);
 	kfree(options);
 	return count;
 out:
-	module_put(THIS_MODULE);
 	kfree(options);
 	return err;
 }
