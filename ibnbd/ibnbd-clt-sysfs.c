@@ -62,11 +62,6 @@ static struct kobject *ibnbd_kobject;
 static struct kobject *ibnbd_devices_kobject;
 static DEFINE_MUTEX(sess_lock);
 
-struct ibnbd_clt_dev_destroy_kobj_work {
-	struct ibnbd_clt_dev	*dev;
-	struct work_struct	work;
-};
-
 enum {
 	IBNBD_OPT_ERR		= 0,
 	IBNBD_OPT_PATH		= 1 << 0,
@@ -293,12 +288,6 @@ void ibnbd_clt_put_sess(struct ibnbd_clt_session *sess)
 	mutex_unlock(&sess_lock);
 }
 
-static void ibnbd_clt_dev_destroy_kobjs(struct ibnbd_clt_dev *dev)
-{
-	kobject_del(&dev->kobj);
-	kobject_put(&dev->kobj);
-}
-
 static ssize_t ibnbd_clt_state_show(struct kobject *kobj,
 				    struct kobj_attribute *attr, char *page)
 {
@@ -371,42 +360,6 @@ static ssize_t ibnbd_clt_unmap_dev_show(struct kobject *kobj,
 {
 	return scnprintf(page, PAGE_SIZE, "Usage: echo <normal|force> > %s\n",
 			 attr->attr.name);
-}
-
-static void ibnbd_clt_dev_kobj_destroy_worker(struct work_struct *work)
-{
-	struct ibnbd_clt_dev_destroy_kobj_work *destroy_work;
-	struct ibnbd_clt_dev *dev;
-
-	destroy_work = container_of(work,
-				    struct ibnbd_clt_dev_destroy_kobj_work,
-				    work);
-	dev = destroy_work->dev;
-	kobject_get(&dev->kobj);
-	ibnbd_clt_dev_destroy_kobjs(dev);
-	kobject_put(&dev->kobj);
-	kfree(destroy_work);
-}
-
-void ibnbd_clt_schedule_dev_destroy(struct ibnbd_clt_dev *dev)
-{
-	struct ibnbd_clt_dev_destroy_kobj_work *destroy_work = NULL;
-
-	/* memory allocation cannot fail, otherwise the last reference to the
-	 * session will never be put
-	 */
-	while (!destroy_work) {
-		destroy_work = kmalloc(sizeof(*destroy_work),
-				       (GFP_KERNEL | __GFP_RETRY_MAYFAIL));
-		if (!destroy_work)
-			cond_resched();
-	}
-
-	destroy_work->dev = dev;
-	INIT_WORK(&destroy_work->work, ibnbd_clt_dev_kobj_destroy_worker);
-	if (WARN(!schedule_work(&destroy_work->work),
-		 "failed to schedule work\n"))
-		kfree(destroy_work);
 }
 
 static ssize_t ibnbd_clt_unmap_dev_store(struct kobject *kobj,

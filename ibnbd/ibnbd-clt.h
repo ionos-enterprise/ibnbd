@@ -141,6 +141,7 @@ struct ibnbd_clt_dev {
 	struct request_queue	*queue;
 	struct ibnbd_queue	*hw_queues;
 	struct delayed_work	rq_delay_work;
+	struct work_struct	destroy_work;
 	u32			device_id;
 	/* local Idr index - used to track minor number allocations. */
 	u32			clt_device_id;
@@ -186,6 +187,7 @@ static inline const char *ibnbd_queue_mode_str(enum ibnbd_queue_mode mode)
 	}
 }
 
+void ibnbd_clt_schedule_dev_destroy(struct ibnbd_clt_dev *dev);
 int ibnbd_unmap_device(struct ibnbd_clt_dev *dev, bool force);
 struct ibnbd_clt_session *ibnbd_create_session(const char *sessname,
 					const struct ibtrs_addr *paths,
