@@ -1504,6 +1504,12 @@ static struct ibnbd_clt_dev *init_dev(struct ibnbd_clt_session *sess,
 	atomic_set(&dev->refcount, 1);
 	dev->dev_state = DEV_STATE_INIT;
 
+	/*
+	 * XXX Here we called from sysfs entry, thus clt-sysfs is
+	 *     responsible that session will not disappear.
+	 */
+	ibnbd_clt_get_sess(sess);
+
 	return dev;
 
 out_queues:
@@ -1572,6 +1578,7 @@ ibnbd_client_add_device(struct ibnbd_clt_session *sess,
 	}
 
 	mutex_unlock(&sess->lock);
+
 	dev = init_dev(sess, access_mode, queue_mode, io_mode, pathname);
 	if (IS_ERR(dev)) {
 		pr_err("map_device: failed to map device '%s' from session %s,"
@@ -1579,7 +1586,6 @@ ibnbd_client_add_device(struct ibnbd_clt_session *sess,
 		       sess->sessname, PTR_ERR(dev));
 		return dev;
 	}
-	ibnbd_clt_get_sess(sess);
 	ret = open_remote_device(dev);
 	if (ret) {
 		ibnbd_err(dev, "map_device: failed, can't open remote device,"
