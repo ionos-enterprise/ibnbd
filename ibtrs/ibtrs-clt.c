@@ -2800,6 +2800,9 @@ struct ibtrs_clt *ibtrs_clt_open(void *priv, link_clt_ev_fn *link_ev,
 	 */
 	clt->opened = true;
 
+	/* Do not let module be unloaded if client is alive */
+	__module_get(THIS_MODULE);
+
 	return clt;
 
 close_all_sess:
@@ -2833,6 +2836,7 @@ void ibtrs_clt_close(struct ibtrs_clt *clt)
 		free_sess(sess);
 	}
 	free_clt(clt);
+	module_put(THIS_MODULE);
 }
 EXPORT_SYMBOL(ibtrs_clt_close);
 

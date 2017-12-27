@@ -1716,11 +1716,12 @@ struct ibtrs_srv_ctx *ibtrs_srv_open(rdma_ev_fn *rdma_ev, link_ev_fn *link_ev,
 		return ERR_PTR(-ENOMEM);
 
 	err = ibtrs_srv_rdma_init(ctx, port);
-	if (err) {
+	if (unlikely(err)) {
 		free_srv_ctx(ctx);
-		pr_err("Can't init RDMA resource, err: %d\n", err);
 		return ERR_PTR(err);
 	}
+	/* Do not let module be unloaded if server context is alive */
+	__module_get(THIS_MODULE);
 
 	return ctx;
 }
@@ -1768,6 +1769,7 @@ void ibtrs_srv_close(struct ibtrs_srv_ctx *ctx)
 	rdma_destroy_id(ctx->cm_id_ib);
 	close_ctx(ctx);
 	free_srv_ctx(ctx);
+	module_put(THIS_MODULE);
 }
 EXPORT_SYMBOL(ibtrs_srv_close);
 
