@@ -447,7 +447,7 @@ static ssize_t ibnbd_clt_unmap_dev_store(struct kobject *kobj,
 	ibnbd_info(dev, "Unmapping device, option: %s.\n",
 		   force ? "force" : "normal");
 
-	err = ibnbd_close_device(dev, force);
+	err = ibnbd_unmap_device(dev, force);
 	if (err) {
 		ibnbd_err(dev, "unmap_device: Failed to close device, err: %d\n",
 			  err);
@@ -761,7 +761,7 @@ static ssize_t ibnbd_clt_map_device_store(struct kobject *kobj,
 
 	ret = ibnbd_clt_add_dev_kobj(dev);
 	if (ret) {
-		ibnbd_close_device(dev, true);
+		ibnbd_unmap_device(dev, true);
 		/* ibnbd_destroy_gen_disk() will put the reference that was
 		 * acquired by ibnbd_client_add_device()
 		 */
@@ -771,13 +771,13 @@ static ssize_t ibnbd_clt_map_device_store(struct kobject *kobj,
 
 	ret = ibnbd_clt_add_dev_symlink(dev);
 	if (ret)
-		goto out_close_dev;
+		goto out_unmap_dev;
 
 	ibnbd_clt_put_sess(sess);
 	return count;
 
-out_close_dev:
-	ibnbd_close_device(dev, true);
+out_unmap_dev:
+	ibnbd_unmap_device(dev, true);
 	kobject_del(&dev->kobj);
 	kobject_put(&dev->kobj);
 out_sess_put:

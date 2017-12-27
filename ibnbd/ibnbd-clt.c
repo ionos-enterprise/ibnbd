@@ -1631,7 +1631,7 @@ ibnbd_client_add_device(struct ibnbd_clt_session *sess,
 	return dev;
 
 out_close:
-	ibnbd_close_device(dev, true);
+	ibnbd_unmap_device(dev, true);
 out:
 	ibnbd_clt_put_dev(dev);
 	return ERR_PTR(ret);
@@ -1653,7 +1653,7 @@ void ibnbd_destroy_gen_disk(struct ibnbd_clt_dev *dev)
 	ibnbd_clt_put_dev(dev);
 }
 
-static int __close_device(struct ibnbd_clt_dev *dev, bool force)
+static int __unmap_device(struct ibnbd_clt_dev *dev, bool force)
 __must_hold(&dev->sess->lock)
 {
 	enum ibnbd_clt_dev_state prev_state;
@@ -1696,12 +1696,12 @@ out:
 	return ret;
 }
 
-int ibnbd_close_device(struct ibnbd_clt_dev *dev, bool force)
+int ibnbd_unmap_device(struct ibnbd_clt_dev *dev, bool force)
 {
 	int ret;
 
 	mutex_lock(&dev->sess->lock);
-	ret = __close_device(dev, force);
+	ret = __unmap_device(dev, force);
 	mutex_unlock(&dev->sess->lock);
 
 	return ret;
@@ -1720,7 +1720,7 @@ static void ibnbd_destroy_sessions(void)
 		list_for_each_entry_safe(dev, tn, &sess->devs_list, list) {
 			if (!kobject_get(&dev->kobj))
 				continue;
-			__close_device(dev, true);
+			__unmap_device(dev, true);
 			ibnbd_clt_schedule_dev_destroy(dev);
 			kobject_put(&dev->kobj);
 		}

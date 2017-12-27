@@ -186,7 +186,7 @@ static inline const char *ibnbd_queue_mode_str(enum ibnbd_queue_mode mode)
 	}
 }
 
-int ibnbd_close_device(struct ibnbd_clt_dev *dev, bool force);
+int ibnbd_unmap_device(struct ibnbd_clt_dev *dev, bool force);
 struct ibnbd_clt_session *ibnbd_create_session(const char *sessname,
 					const struct ibtrs_addr *paths,
 					size_t path_cnt);
