@@ -543,7 +543,12 @@ static struct attribute *ibnbd_dev_attrs[] = {
 
 void ibnbd_clt_remove_dev_symlink(struct ibnbd_clt_dev *dev)
 {
-	if (strlen(dev->blk_symlink_name))
+	/*
+	 * The module_is_live() check is crucial and helps to avoid annoying
+	 * sysfs warning raised in sysfs_remove_link(), when the whole sysfs
+	 * path was just removed, see ibnbd_close_sessions().
+	 */
+	if (strlen(dev->blk_symlink_name) && module_is_live(THIS_MODULE))
 		sysfs_remove_link(ibnbd_devices_kobject, dev->blk_symlink_name);
 }
 
