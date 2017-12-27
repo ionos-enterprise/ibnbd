@@ -1513,7 +1513,7 @@ out_alloc:
 	return ERR_PTR(ret);
 }
 
-bool ibnbd_clt_dev_is_mapped(const char *pathname)
+bool ibnbd_clt_devpath_is_mapped(const char *pathname)
 {
 	struct ibnbd_clt_dev *dev;
 	unsigned id;
