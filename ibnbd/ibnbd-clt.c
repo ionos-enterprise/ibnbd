@@ -65,7 +65,6 @@ static DEFINE_IDR(g_index_idr);
 static DEFINE_MUTEX(g_mutex);
 static DEFINE_SPINLOCK(sess_lock);
 static LIST_HEAD(session_list);
-static DECLARE_WAIT_QUEUE_HEAD(sess_list_waitq);
 
 static bool softirq_enable;
 module_param(softirq_enable, bool, 0444);
@@ -969,7 +968,6 @@ static void ibnbd_clt_destroy_session(struct ibnbd_clt_session *sess)
 	spin_lock(&sess_lock);
 	list_del(&sess->list);
 	spin_unlock(&sess_lock);
-	wake_up(&sess_list_waitq);
 
 	free_percpu(sess->cpu_queues);
 	free_percpu(sess->cpu_rr);
@@ -1755,7 +1753,9 @@ static void ibnbd_destroy_sessions(void)
 		mutex_unlock(&sess->lock);
 		ibnbd_clt_put_sess(sess);
 	}
-	wait_event(sess_list_waitq, list_empty(&session_list));
+	/* Wait for all scheduled destroy works */
+	flush_scheduled_work();
+	WARN_ON(!list_empty(&session_list));
 }
 
 static int __init ibnbd_client_init(void)
