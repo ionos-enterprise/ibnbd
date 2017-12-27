@@ -788,6 +788,8 @@ void ibnbd_clt_destroy_default_group(void)
 
 void ibnbd_clt_destroy_sysfs_files(void)
 {
+	kobject_del(ibnbd_devices_kobject);
 	kobject_put(ibnbd_devices_kobject);
+	kobject_del(ibnbd_kobject);
 	kobject_put(ibnbd_kobject);
 }

@@ -1733,6 +1733,13 @@ static void ibnbd_destroy_sessions(void)
 	struct ibnbd_clt_session *sess, *sn;
 	struct ibnbd_clt_dev *dev, *tn;
 
+	/* Firstly forbid access thru sysfs interface */
+	ibnbd_clt_destroy_default_group();
+	ibnbd_clt_destroy_sysfs_files();
+
+	/* Wait for all possible works scheduled from sysfs */
+	flush_scheduled_work();
+
 	list_for_each_entry_safe(sess, sn, &session_list, list) {
 		if (!ibnbd_clt_get_sess(sess))
 			continue;
@@ -1748,6 +1755,7 @@ static void ibnbd_destroy_sessions(void)
 		mutex_unlock(&sess->lock);
 		ibnbd_clt_put_sess(sess);
 	}
+	wait_event(sess_list_waitq, list_empty(&session_list));
 }
 
 static int __init ibnbd_client_init(void)
@@ -1784,11 +1792,7 @@ out:
 static void __exit ibnbd_client_exit(void)
 {
 	pr_info("Unloading module\n");
-	ibnbd_clt_destroy_default_group();
-	flush_scheduled_work();
 	ibnbd_destroy_sessions();
-	wait_event(sess_list_waitq, list_empty(&session_list));
-	ibnbd_clt_destroy_sysfs_files();
 	unregister_blkdev(ibnbd_client_major, "ibnbd");
 	idr_destroy(&g_index_idr);
 	pr_info("Module unloaded\n");
