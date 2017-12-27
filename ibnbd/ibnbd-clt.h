@@ -137,7 +137,6 @@ struct ibnbd_queue {
 };
 
 struct ibnbd_clt_dev {
-	struct list_head        g_list;
 	struct ibnbd_clt_session	*sess;
 	struct request_queue	*queue;
 	struct ibnbd_queue	*hw_queues;

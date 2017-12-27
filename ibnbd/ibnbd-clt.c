@@ -64,9 +64,7 @@ static int ibnbd_client_major;
 static DEFINE_IDR(g_index_idr);
 static DEFINE_MUTEX(g_mutex);
 static DEFINE_SPINLOCK(sess_lock);
-static DEFINE_SPINLOCK(dev_lock);
 static LIST_HEAD(session_list);
-static LIST_HEAD(devs_list);
 static DECLARE_WAIT_QUEUE_HEAD(sess_list_waitq);
 
 static bool softirq_enable;
@@ -1518,16 +1516,15 @@ out_alloc:
 bool ibnbd_clt_dev_is_mapped(const char *pathname)
 {
 	struct ibnbd_clt_dev *dev;
+	unsigned id;
 
-	spin_lock(&dev_lock);
-	list_for_each_entry(dev, &devs_list, g_list)
-		if (!strncmp(dev->pathname, pathname, sizeof(dev->pathname))) {
-			spin_unlock(&dev_lock);
-			return true;
-		}
-	spin_unlock(&dev_lock);
+	mutex_lock(&g_mutex);
+	idr_for_each_entry(&g_index_idr, dev, id)
+		if (!strncmp(dev->pathname, pathname, sizeof(dev->pathname)))
+			break;
+	mutex_unlock(&g_mutex);
 
-	return false;
+	return !!dev;
 }
 
 static struct ibnbd_clt_dev *
@@ -1603,10 +1600,6 @@ ibnbd_client_add_device(struct ibnbd_clt_session *sess,
 	mutex_lock(&sess->lock);
 	list_add(&dev->list, &sess->devs_list);
 	mutex_unlock(&sess->lock);
-
-	spin_lock(&dev_lock);
-	list_add(&dev->g_list, &devs_list);
-	spin_unlock(&dev_lock);
 
 	pr_debug("Opened remote device: session=%s, path='%s'\n", sess->sessname,
 		 pathname);
@@ -1686,10 +1679,6 @@ __must_hold(&dev->sess->lock)
 	dev->dev_state = DEV_STATE_UNMAPPED;
 
 	list_del(&dev->list);
-
-	spin_lock(&dev_lock);
-	list_del(&dev->g_list);
-	spin_unlock(&dev_lock);
 
 	ibnbd_clt_remove_dev_symlink(dev);
 	mutex_unlock(&dev->lock);
