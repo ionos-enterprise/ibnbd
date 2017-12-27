@@ -718,22 +718,20 @@ static ssize_t ibnbd_clt_map_device_store(struct kobject *kobj,
 	enum ibnbd_queue_mode queue_mode = BLK_MQ;
 	enum ibnbd_io_mode io_mode = IBNBD_AUTOIO;
 
-#define MAX_PATH_CNT 3
 	size_t path_cnt;
-	struct ibtrs_addr paths[MAX_PATH_CNT];
-	struct sockaddr_storage saddr[MAX_PATH_CNT];
-	struct sockaddr_storage daddr[MAX_PATH_CNT];
+	struct ibtrs_addr paths[3];
+	struct sockaddr_storage saddr[ARRAY_SIZE(paths)];
+	struct sockaddr_storage daddr[ARRAY_SIZE(paths)];
 
-	for (path_cnt = 0; path_cnt < MAX_PATH_CNT; path_cnt++) {
+	for (path_cnt = 0; path_cnt < ARRAY_SIZE(paths); path_cnt++) {
 		paths[path_cnt].src = (struct sockaddr *)&saddr[path_cnt];
 		paths[path_cnt].dst = (struct sockaddr *)&daddr[path_cnt];
 	}
 
-	ret = ibnbd_clt_parse_map_options(buf, sessname,
-					  paths, &path_cnt, MAX_PATH_CNT,
-					  pathname,
-					  &access_mode, &queue_mode,
-					  &io_mode);
+	ret = ibnbd_clt_parse_map_options(buf, sessname, paths,
+					  &path_cnt, ARRAY_SIZE(paths),
+					  pathname, &access_mode,
+					  &queue_mode, &io_mode);
 	if (ret)
 		return ret;
 
