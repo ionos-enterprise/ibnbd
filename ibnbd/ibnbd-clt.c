@@ -734,9 +734,6 @@ static void ibnbd_clt_sess_reopen(struct ibnbd_clt_session *sess)
 	struct ibtrs_attrs attrs;
 	int err;
 
-	if (WARN_ON(!ibnbd_clt_get_sess(sess)))
-		return;
-
 	mutex_lock(&sess->lock);
 	if (sess->state == CLT_SESS_STATE_DESTROYED) {
 		/*
@@ -763,7 +760,6 @@ static void ibnbd_clt_sess_reopen(struct ibnbd_clt_session *sess)
 	}
 out:
 	mutex_unlock(&sess->lock);
-	ibnbd_clt_put_sess(sess);
 }
 
 static void ibnbd_clt_link_ev(void *priv, enum ibtrs_clt_link_ev ev)
