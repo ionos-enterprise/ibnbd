@@ -788,22 +788,6 @@ static void ibnbd_clt_link_ev(void *priv, enum ibtrs_clt_link_ev ev)
 	}
 }
 
-struct ibnbd_clt_session *
-ibnbd_clt_find_sess(const char *sessname)
-{
-	struct ibnbd_clt_session *sess;
-
-	spin_lock(&sess_lock);
-	list_for_each_entry(sess, &session_list, list)
-		if (!strcmp(sessname, sess->sessname)) {
-			spin_unlock(&sess_lock);
-			return sess;
-		}
-	spin_unlock(&sess_lock);
-
-	return NULL;
-}
-
 static void ibnbd_init_cpu_qlists(struct ibnbd_cpu_qlist __percpu *cpu_queues)
 {
 	unsigned int cpu;
@@ -867,22 +851,12 @@ static void free_sess(struct ibnbd_clt_session *sess)
 	kfree(sess);
 }
 
-struct ibnbd_clt_session *
-ibnbd_create_session(const char *sessname,
-		     const struct ibtrs_addr *paths, size_t path_cnt)
+static struct ibnbd_clt_session *alloc_sess(const char *sessname,
+					    const struct ibtrs_addr *paths,
+					    size_t path_cnt)
 {
 	struct ibnbd_clt_session *sess;
-	struct ibtrs_attrs attrs;
-	int err;
-	int cpu;
-
-	pr_debug("Establishing session to %s\n", sessname);
-
-	if (ibnbd_clt_find_sess(sessname)) {
-		pr_err("Can't create session, session %s already exists\n",
-		       sessname);
-		return ERR_PTR(-EEXIST);
-	}
+	int err, cpu;
 
 	sess = kzalloc_node(sizeof(*sess), GFP_KERNEL, NUMA_NO_NODE);
 	if (unlikely(!sess)) {
@@ -915,34 +889,110 @@ ibnbd_create_session(const char *sessname,
 		*per_cpu_ptr(sess->cpu_rr, cpu) = -1;
 	}
 
-	memset(&attrs, 0, sizeof(attrs));
 	strlcpy(sess->sessname, sessname, sizeof(sess->sessname));
-
 	atomic_set(&sess->busy, 0);
 	mutex_init(&sess->lock);
 	INIT_LIST_HEAD(&sess->devs_list);
 	bitmap_zero(sess->cpu_queues_bm, NR_CPUS);
-	kref_init(&sess->refcount);
 	sess->state = CLT_SESS_STATE_DISCONNECTED;
 
+	return sess;
+
+err:
+	free_sess(sess);
+
+	return ERR_PTR(err);
+}
+
+static struct ibnbd_clt_session *__find_and_get_sess(const char *sessname)
+{
+	struct ibnbd_clt_session *sess;
+
+	list_for_each_entry(sess, &session_list, list) {
+		if (strcmp(sessname, sess->sessname))
+			continue;
+
+		if (unlikely(!ibnbd_clt_get_sess(sess)))
+			/*
+			 * Session exists but ref is 0, which means it is dying
+			 * or it has been just added and IBTRS connection is not
+			 * yet established.
+			 */
+			sess = ERR_PTR(-EBUSY);
+
+		return sess;
+	}
+
+	return NULL;
+}
+
+static struct ibnbd_clt_session *find_and_get_sess(const char *sessname)
+{
+	struct ibnbd_clt_session *sess;
+
 	spin_lock(&sess_lock);
-	list_add(&sess->list, &session_list);
+	sess = __find_and_get_sess(sessname);
 	spin_unlock(&sess_lock);
 
-	sess->ibtrs = ibtrs_clt_open(sess, ibnbd_clt_link_ev, sessname, paths,
-				     path_cnt, IBTRS_PORT,
+	return sess;
+}
+
+static struct ibnbd_clt_session *
+find_and_get_or_insert_sess(struct ibnbd_clt_session *sess)
+{
+	struct ibnbd_clt_session *found;
+
+	spin_lock(&sess_lock);
+	found = __find_and_get_sess(sess->sessname);
+	if (!found) {
+		/*
+		 * Add session with 0 ref count to the list in order to forbid
+		 * possible concurrent access, see __find_and_get_sess().
+		 */
+		list_add(&sess->list, &session_list);
+	}
+	spin_unlock(&sess_lock);
+
+	return found;
+}
+
+struct ibnbd_clt_session *
+ibnbd_clt_find_and_get_or_create_sess(const char *sessname,
+				      const struct ibtrs_addr *paths,
+				      size_t path_cnt)
+{
+	struct ibnbd_clt_session *sess, *found;
+	struct ibtrs_attrs attrs;
+	int err;
+
+	sess = find_and_get_sess(sessname);
+	if (IS_ERR(sess) || sess)
+		/* Either success or error path */
+		return sess;
+
+	sess = alloc_sess(sessname, paths, path_cnt);
+	if (unlikely(IS_ERR(sess)))
+		return sess;
+
+	found = find_and_get_or_insert_sess(sess);
+	if (IS_ERR(found) || found) {
+		/* Either success or error path */
+		free_sess(sess);
+
+		return found;
+	}
+	/*
+	 * Nothing was found, establish ibtrs connection and proceed further.
+	 */
+	sess->ibtrs = ibtrs_clt_open(sess, ibnbd_clt_link_ev, sessname,
+				     paths, path_cnt, IBTRS_PORT,
 				     sizeof(struct ibnbd_iu),
 				     RECONNECT_DELAY, BMAX_SEGMENTS,
 				     MAX_RECONNECTS);
-	if (likely(!IS_ERR(sess->ibtrs))) {
-		mutex_lock(&sess->lock);
-		sess->state = CLT_SESS_STATE_READY;
-		mutex_unlock(&sess->lock);
-	} else {
+	if (unlikely(IS_ERR(sess->ibtrs))) {
 		err = PTR_ERR(sess->ibtrs);
 		goto err;
 	}
-
 	ibtrs_clt_query(sess->ibtrs, &attrs);
 	sess->max_io_size = attrs.max_io_size;
 	sess->queue_depth = attrs.queue_depth;
@@ -954,6 +1004,9 @@ ibnbd_create_session(const char *sessname,
 	err = update_sess_info(sess);
 	if (unlikely(err))
 		goto err;
+
+	/* Now session is reachable */
+	kref_init(&sess->refcount);
 
 	return sess;
 

@@ -581,18 +581,9 @@ ibnbd_clt_get_create_sess(const char *sessname, struct ibtrs_addr *paths,
 {
 	struct ibnbd_clt_session *sess;
 
+	/* XXX remove mutex ASAP */
 	mutex_lock(&sess_lock);
-	sess = ibnbd_clt_find_sess(sessname);
-	if (sess) {
-		if (sess->state != CLT_SESS_STATE_READY ||
-		    !ibnbd_clt_get_sess(sess)) {
-			pr_err("Session is not connected or "
-			       "is being destroyed\n");
-			sess = ERR_PTR(-EIO);
-		}
-	} else {
-		sess = ibnbd_create_session(sessname, paths, path_cnt);
-	}
+	sess = ibnbd_clt_find_and_get_or_create_sess(sessname, paths, path_cnt);
 	mutex_unlock(&sess_lock);
 
 	return sess;
