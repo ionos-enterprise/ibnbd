@@ -893,16 +893,16 @@ ibnbd_create_session(const char *sessname,
 	memset(&attrs, 0, sizeof(attrs));
 	strlcpy(sess->sessname, sessname, sizeof(sess->sessname));
 
-	spin_lock(&sess_lock);
-	list_add(&sess->list, &session_list);
-	spin_unlock(&sess_lock);
-
 	atomic_set(&sess->busy, 0);
 	mutex_init(&sess->lock);
 	INIT_LIST_HEAD(&sess->devs_list);
 	bitmap_zero(sess->cpu_queues_bm, NR_CPUS);
 	kref_init(&sess->refcount);
 	sess->state = CLT_SESS_STATE_DISCONNECTED;
+
+	spin_lock(&sess_lock);
+	list_add(&sess->list, &session_list);
+	spin_unlock(&sess_lock);
 
 	sess->ibtrs = ibtrs_clt_open(sess, ibnbd_clt_link_ev, sessname, paths,
 				     path_cnt, IBTRS_PORT,
