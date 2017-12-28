@@ -853,7 +853,9 @@ static void free_sess(struct ibnbd_clt_session *sess)
 		return;
 	}
 	mutex_unlock(&sess->lock);
-	ibtrs_clt_close(sess->ibtrs);
+
+	if (!IS_ERR_OR_NULL(sess->ibtrs))
+		ibtrs_clt_close(sess->ibtrs);
 
 	destroy_mq_tags(sess);
 	spin_lock(&sess_lock);
@@ -892,8 +894,8 @@ ibnbd_create_session(const char *sessname,
 	if (unlikely(!sess->cpu_queues)) {
 		pr_err("Failed to create session to %s,"
 		       " alloc of percpu var (cpu_queues) failed\n", sessname);
-		kvfree(sess);
-		return ERR_PTR(-ENOMEM);
+		err = -ENOMEM;
+		goto err;
 	}
 	ibnbd_init_cpu_qlists(sess->cpu_queues);
 
@@ -906,9 +908,8 @@ ibnbd_create_session(const char *sessname,
 	if (unlikely(!sess->cpu_rr)) {
 		pr_err("Failed to create session %s,"
 		       " alloc of percpu var (cpu_rr) failed\n", sessname);
-		free_percpu(sess->cpu_queues);
-		kfree(sess);
-		return ERR_PTR(-ENOMEM);
+		err = -ENOMEM;
+		goto err;
 	}
 	for_each_possible_cpu(cpu) {
 		*per_cpu_ptr(sess->cpu_rr, cpu) = -1;
@@ -939,7 +940,7 @@ ibnbd_create_session(const char *sessname,
 		mutex_unlock(&sess->lock);
 	} else {
 		err = PTR_ERR(sess->ibtrs);
-		goto out_free;
+		goto err;
 	}
 
 	ibtrs_clt_query(sess->ibtrs, &attrs);
@@ -948,25 +949,17 @@ ibnbd_create_session(const char *sessname,
 
 	err = setup_mq_tags(sess);
 	if (unlikely(err))
-		goto close_sess;
+		goto err;
 
 	err = update_sess_info(sess);
 	if (unlikely(err))
-		goto destroy_tags;
+		goto err;
 
 	return sess;
 
-destroy_tags:
-	destroy_mq_tags(sess);
-close_sess:
-	ibtrs_clt_close(sess->ibtrs);
-out_free:
-	spin_lock(&sess_lock);
-	list_del(&sess->list);
-	spin_unlock(&sess_lock);
-	free_percpu(sess->cpu_queues);
-	free_percpu(sess->cpu_rr);
-	kfree(sess);
+err:
+	free_sess(sess);
+
 	return ERR_PTR(err);
 }
 
