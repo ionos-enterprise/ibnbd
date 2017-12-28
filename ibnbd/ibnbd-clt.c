@@ -841,6 +841,30 @@ static void destroy_mq_tags(struct ibnbd_clt_session *sess)
 	blk_mq_free_tag_set(&sess->tag_set);
 }
 
+static void free_sess(struct ibnbd_clt_session *sess)
+{
+	mutex_lock(&sess->lock);
+	sess->state = CLT_SESS_STATE_DESTROYED;
+
+	if (!list_empty(&sess->devs_list)) {
+		mutex_unlock(&sess->lock);
+		pr_warn("Device list is not empty,"
+			" closing session to %s failed\n", sess->sessname);
+		return;
+	}
+	mutex_unlock(&sess->lock);
+	ibtrs_clt_close(sess->ibtrs);
+
+	destroy_mq_tags(sess);
+	spin_lock(&sess_lock);
+	list_del(&sess->list);
+	spin_unlock(&sess_lock);
+
+	free_percpu(sess->cpu_queues);
+	free_percpu(sess->cpu_rr);
+	kfree(sess);
+}
+
 struct ibnbd_clt_session *
 ibnbd_create_session(const char *sessname,
 		     const struct ibtrs_addr *paths, size_t path_cnt)
@@ -946,36 +970,12 @@ out_free:
 	return ERR_PTR(err);
 }
 
-static void ibnbd_clt_destroy_session(struct ibnbd_clt_session *sess)
-{
-	mutex_lock(&sess->lock);
-	sess->state = CLT_SESS_STATE_DESTROYED;
-
-	if (!list_empty(&sess->devs_list)) {
-		mutex_unlock(&sess->lock);
-		pr_warn("Device list is not empty,"
-			" closing session to %s failed\n", sess->sessname);
-		return;
-	}
-	mutex_unlock(&sess->lock);
-	ibtrs_clt_close(sess->ibtrs);
-
-	destroy_mq_tags(sess);
-	spin_lock(&sess_lock);
-	list_del(&sess->list);
-	spin_unlock(&sess_lock);
-
-	free_percpu(sess->cpu_queues);
-	free_percpu(sess->cpu_rr);
-	kfree(sess);
-}
-
 void ibnbd_clt_sess_release(struct kref *ref)
 {
 	struct ibnbd_clt_session *sess;
 
 	sess = container_of(ref, struct ibnbd_clt_session, refcount);
-	ibnbd_clt_destroy_session(sess);
+	free_sess(sess);
 }
 
 static int ibnbd_client_open(struct block_device *block_device, fmode_t mode)
