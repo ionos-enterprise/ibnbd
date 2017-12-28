@@ -60,7 +60,6 @@
 
 static struct kobject *ibnbd_kobject;
 static struct kobject *ibnbd_devices_kobject;
-static DEFINE_MUTEX(sess_lock);
 
 enum {
 	IBNBD_OPT_ERR		= 0,
@@ -283,9 +282,7 @@ int ibnbd_clt_get_sess(struct ibnbd_clt_session *sess)
 
 void ibnbd_clt_put_sess(struct ibnbd_clt_session *sess)
 {
-	mutex_lock(&sess_lock);
 	kref_put(&sess->refcount, ibnbd_clt_sess_release);
-	mutex_unlock(&sess_lock);
 }
 
 static ssize_t ibnbd_clt_state_show(struct kobject *kobj,
@@ -575,19 +572,6 @@ static int ibnbd_clt_add_dev_kobj(struct ibnbd_clt_dev *dev)
 
 	return ret;
 }
-static struct ibnbd_clt_session *
-ibnbd_clt_get_create_sess(const char *sessname, struct ibtrs_addr *paths,
-			  size_t path_cnt)
-{
-	struct ibnbd_clt_session *sess;
-
-	/* XXX remove mutex ASAP */
-	mutex_lock(&sess_lock);
-	sess = ibnbd_clt_find_and_get_or_create_sess(sessname, paths, path_cnt);
-	mutex_unlock(&sess_lock);
-
-	return sess;
-}
 
 static ssize_t ibnbd_clt_map_device_show(struct kobject *kobj,
 					 struct kobj_attribute *attr,
@@ -691,8 +675,8 @@ static ssize_t ibnbd_clt_map_device_store(struct kobject *kobj,
 		pathname, sessname, ibnbd_access_mode_str(access_mode),
 		ibnbd_queue_mode_str(queue_mode), ibnbd_io_mode_str(io_mode));
 
-	sess = ibnbd_clt_get_create_sess(sessname, paths, path_cnt);
-	if (IS_ERR(sess))
+	sess = ibnbd_clt_find_and_get_or_create_sess(sessname, paths, path_cnt);
+	if (unlikely(IS_ERR(sess)))
 		return PTR_ERR(sess);
 
 	dev = ibnbd_client_add_device(sess, pathname, access_mode, queue_mode,
