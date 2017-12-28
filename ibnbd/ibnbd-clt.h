@@ -95,12 +95,6 @@ struct ibnbd_cpu_qlist {
 	unsigned int		cpu;
 };
 
-enum ibnbd_clt_sess_state {
-	CLT_SESS_STATE_READY,
-	CLT_SESS_STATE_DISCONNECTED,
-	CLT_SESS_STATE_DESTROYED,
-};
-
 struct ibnbd_clt_session {
 	struct list_head        list;
 	struct ibtrs_clt        *ibtrs;
@@ -116,7 +110,6 @@ struct ibnbd_clt_session {
 	struct list_head        devs_list; /* list of struct ibnbd_clt_dev */
 	struct kref		refcount;
 	char			sessname[NAME_MAX];
-	enum ibnbd_clt_sess_state state;
 	u8			ver; /* protocol version */
 	struct completion	*sess_info_compl;
 };

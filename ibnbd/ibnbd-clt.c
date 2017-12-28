@@ -734,20 +734,8 @@ static void ibnbd_clt_sess_reopen(struct ibnbd_clt_session *sess)
 	struct ibtrs_attrs attrs;
 	int err;
 
-	mutex_lock(&sess->lock);
-	if (sess->state == CLT_SESS_STATE_DESTROYED) {
-		/*
-		 * This may happen if the session started to be closed
-		 * before the reconnect event arrived. In this case, we
-		 * just return and the session will be closed later
-		 */
-		goto out;
-	}
-
-	sess->state = CLT_SESS_STATE_READY;
-
-	memset(&attrs, 0, sizeof(attrs));
 	ibtrs_clt_query(sess->ibtrs, &attrs);
+	mutex_lock(&sess->lock);
 	sess->max_io_size = attrs.max_io_size;
 
 	err = update_sess_info(sess);
@@ -771,11 +759,6 @@ static void ibnbd_clt_link_ev(void *priv, enum ibtrs_clt_link_ev ev)
 		if (sess->sess_info_compl)
 			complete(sess->sess_info_compl);
 		mutex_lock(&sess->lock);
-		if (sess->state == CLT_SESS_STATE_DESTROYED) {
-			mutex_unlock(&sess->lock);
-			return;
-		}
-		sess->state = CLT_SESS_STATE_DISCONNECTED;
 		__set_dev_states_closed(sess);
 		mutex_unlock(&sess->lock);
 		break;
@@ -827,16 +810,7 @@ static void destroy_mq_tags(struct ibnbd_clt_session *sess)
 
 static void free_sess(struct ibnbd_clt_session *sess)
 {
-	mutex_lock(&sess->lock);
-	sess->state = CLT_SESS_STATE_DESTROYED;
-
-	if (!list_empty(&sess->devs_list)) {
-		mutex_unlock(&sess->lock);
-		pr_warn("Device list is not empty,"
-			" closing session to %s failed\n", sess->sessname);
-		return;
-	}
-	mutex_unlock(&sess->lock);
+	WARN_ON(!list_empty(&sess->devs_list));
 
 	if (!IS_ERR_OR_NULL(sess->ibtrs))
 		ibtrs_clt_close(sess->ibtrs);
@@ -894,7 +868,6 @@ static struct ibnbd_clt_session *alloc_sess(const char *sessname,
 	mutex_init(&sess->lock);
 	INIT_LIST_HEAD(&sess->devs_list);
 	bitmap_zero(sess->cpu_queues_bm, NR_CPUS);
-	sess->state = CLT_SESS_STATE_DISCONNECTED;
 
 	return sess;
 
@@ -1617,13 +1590,6 @@ ibnbd_client_add_device(struct ibnbd_clt_session *sess,
 
 	mutex_lock(&sess->lock);
 
-	if (sess->state != CLT_SESS_STATE_READY) {
-		mutex_unlock(&sess->lock);
-		pr_err("map_device: failed to map device '%s' from session %s,"
-		       " session is not connected\n", pathname, sess->sessname);
-		return ERR_PTR(-ENOENT);
-	}
-
 	if (__find_sess_dev(sess, pathname)) {
 		mutex_unlock(&sess->lock);
 		pr_err("map_device: failed to map device '%s' from session %s,"
@@ -1782,7 +1748,6 @@ static void ibnbd_destroy_sessions(void)
 
 	list_for_each_entry_safe(sess, sn, &session_list, list) {
 		mutex_lock(&sess->lock);
-		sess->state = CLT_SESS_STATE_DESTROYED;
 		list_for_each_entry_safe(dev, tn, &sess->devs_list, list) {
 			__unmap_device(dev, true);
 			ibnbd_clt_schedule_dev_destroy(dev);
