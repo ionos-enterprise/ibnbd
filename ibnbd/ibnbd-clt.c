@@ -1739,8 +1739,6 @@ static void ibnbd_destroy_sessions(void)
 	flush_scheduled_work();
 
 	list_for_each_entry_safe(sess, sn, &session_list, list) {
-		if (!ibnbd_clt_get_sess(sess))
-			continue;
 		mutex_lock(&sess->lock);
 		sess->state = CLT_SESS_STATE_DESTROYED;
 		list_for_each_entry_safe(dev, tn, &sess->devs_list, list) {
@@ -1748,7 +1746,6 @@ static void ibnbd_destroy_sessions(void)
 			ibnbd_clt_schedule_dev_destroy(dev);
 		}
 		mutex_unlock(&sess->lock);
-		ibnbd_clt_put_sess(sess);
 	}
 	/* Wait for all scheduled destroy works */
 	flush_scheduled_work();
