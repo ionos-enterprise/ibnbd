@@ -98,6 +98,8 @@ struct ibnbd_cpu_qlist {
 struct ibnbd_clt_session {
 	struct list_head        list;
 	struct ibtrs_clt        *ibtrs;
+	wait_queue_head_t       ibtrs_waitq;
+	bool                    ibtrs_ready;
 	struct ibnbd_cpu_qlist	__percpu
 				*cpu_queues;
 	DECLARE_BITMAP(cpu_queues_bm, NR_CPUS);

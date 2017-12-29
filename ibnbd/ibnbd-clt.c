@@ -868,6 +868,8 @@ static struct ibnbd_clt_session *alloc_sess(const char *sessname,
 	mutex_init(&sess->lock);
 	INIT_LIST_HEAD(&sess->devs_list);
 	bitmap_zero(sess->cpu_queues_bm, NR_CPUS);
+	init_waitqueue_head(&sess->ibtrs_waitq);
+	kref_init(&sess->refcount);
 
 	return sess;
 
@@ -877,21 +879,60 @@ err:
 	return ERR_PTR(err);
 }
 
+static int wait_for_ibtrs_connection(struct ibnbd_clt_session *sess)
+{
+	int err;
+
+	err = wait_event_interruptible(sess->ibtrs_waitq, sess->ibtrs_ready);
+	if (unlikely(err))
+		return err;
+
+	if (unlikely(IS_ERR_OR_NULL(sess->ibtrs)))
+		return -ECONNRESET;
+
+	return 0;
+}
+
 static struct ibnbd_clt_session *__find_and_get_sess(const char *sessname)
+__releases(&sess_lock)
+__acquires(&sess_lock)
 {
 	struct ibnbd_clt_session *sess;
+	int err;
 
+again:
 	list_for_each_entry(sess, &session_list, list) {
 		if (strcmp(sessname, sess->sessname))
 			continue;
 
+		if (unlikely(sess->ibtrs_ready && IS_ERR_OR_NULL(sess->ibtrs)))
+			/*
+			 * IBTRS connection failed, session is dying.
+			 */
+			continue;
+
 		if (unlikely(!ibnbd_clt_get_sess(sess)))
 			/*
-			 * Session exists but ref is 0, which means it is dying
-			 * or it has been just added and IBTRS connection is not
-			 * yet established.
+			 * Ref is 0, session is dying.
 			 */
-			sess = ERR_PTR(-EBUSY);
+			continue;
+
+		spin_unlock(&sess_lock);
+		/*
+		 * Alive session is found, wait for IBTRS connection.
+		 */
+		err = wait_for_ibtrs_connection(sess);
+		if (unlikely(err))
+			ibnbd_clt_put_sess(sess);
+		spin_lock(&sess_lock);
+
+		if (unlikely(err == -ERESTARTSYS))
+			/* Wait was interrupted, propagate error */
+			sess = ERR_PTR(err);
+
+		else if (unlikely(err))
+			/* Session is dying, repeat the loop */
+			goto again;
 
 		return sess;
 	}
@@ -917,13 +958,8 @@ find_and_get_or_insert_sess(struct ibnbd_clt_session *sess)
 
 	spin_lock(&sess_lock);
 	found = __find_and_get_sess(sess->sessname);
-	if (!found) {
-		/*
-		 * Add session with 0 ref count to the list in order to forbid
-		 * possible concurrent access, see __find_and_get_sess().
-		 */
+	if (!found)
 		list_add(&sess->list, &session_list);
-	}
 	spin_unlock(&sess_lock);
 
 	return found;
@@ -964,7 +1000,7 @@ ibnbd_clt_find_and_get_or_create_sess(const char *sessname,
 				     MAX_RECONNECTS);
 	if (unlikely(IS_ERR(sess->ibtrs))) {
 		err = PTR_ERR(sess->ibtrs);
-		goto err;
+		goto put_sess;
 	}
 	ibtrs_clt_query(sess->ibtrs, &attrs);
 	sess->max_io_size = attrs.max_io_size;
@@ -972,19 +1008,21 @@ ibnbd_clt_find_and_get_or_create_sess(const char *sessname,
 
 	err = setup_mq_tags(sess);
 	if (unlikely(err))
-		goto err;
+		goto put_sess;
 
 	err = update_sess_info(sess);
 	if (unlikely(err))
-		goto err;
+		goto put_sess;
 
-	/* Now session is reachable */
-	kref_init(&sess->refcount);
+	sess->ibtrs_ready = true;
+	wake_up_all(&sess->ibtrs_waitq);
 
 	return sess;
 
-err:
-	free_sess(sess);
+put_sess:
+	sess->ibtrs_ready = true;
+	wake_up_all(&sess->ibtrs_waitq);
+	ibnbd_clt_put_sess(sess);
 
 	return ERR_PTR(err);
 }
