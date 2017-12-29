@@ -377,11 +377,6 @@ static ssize_t ibnbd_clt_unmap_dev_store(struct kobject *kobj,
 
 	dev = container_of(kobj, struct ibnbd_clt_dev, kobj);
 
-	if (dev->dev_state == DEV_STATE_UNMAPPED) {
-		err = -EALREADY;
-		goto out;
-	}
-
 	if (sysfs_streq(options, "normal")) {
 		force = false;
 	} else if (sysfs_streq(options, "force")) {
@@ -396,9 +391,9 @@ static ssize_t ibnbd_clt_unmap_dev_store(struct kobject *kobj,
 		   force ? "force" : "normal");
 
 	err = ibnbd_unmap_device(dev, force);
-	if (err) {
-		ibnbd_err(dev, "unmap_device: Failed to close device, err: %d\n",
-			  err);
+	if (unlikely(err)) {
+		if (unlikely(err != -EALREADY))
+		    ibnbd_err(dev, "unmap_device: %d\n",  err);
 		goto out;
 	}
 	ibnbd_clt_schedule_dev_destroy(dev);
