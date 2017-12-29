@@ -150,15 +150,8 @@ static int ibnbd_clt_revalidate_disk(struct ibnbd_clt_dev *dev,
 static int process_msg_open_rsp(struct ibnbd_clt_dev *dev,
 				struct ibnbd_msg_open_rsp *rsp)
 {
-	struct ibnbd_clt_session *sess = dev->sess;
 	int err = 0;
 
-	if (!ibnbd_clt_get_dev(dev)) {
-		pr_err("Failed to process Open-Response message on session"
-		       " %s, unable to get reference to device",
-		       sess->sessname);
-		return -ENOENT;
-	}
 	mutex_lock(&dev->lock);
 	if (dev->dev_state == DEV_STATE_UNMAPPED) {
 		ibnbd_info(dev, "Ignoring Open-Response message from server for "
@@ -179,7 +172,6 @@ static int process_msg_open_rsp(struct ibnbd_clt_dev *dev,
 
 out:
 	mutex_unlock(&dev->lock);
-	ibnbd_clt_put_dev(dev);
 
 	return err;
 }
@@ -187,13 +179,6 @@ out:
 int ibnbd_clt_resize_disk(struct ibnbd_clt_dev *dev, size_t newsize)
 {
 	int ret = 0;
-
-	if (!ibnbd_clt_get_dev(dev)) {
-		pr_err("Failed to set new device size on"
-		       " session %s, unable to get reference to device"
-		       " (id: %d)", dev->sess->sessname, dev->clt_device_id);
-		return -ENOENT;
-	}
 
 	mutex_lock(&dev->lock);
 	if (dev->dev_state != DEV_STATE_OPEN) {
@@ -203,9 +188,10 @@ int ibnbd_clt_resize_disk(struct ibnbd_clt_dev *dev, size_t newsize)
 		goto out;
 	}
 	ret = ibnbd_clt_revalidate_disk(dev, newsize);
+
 out:
 	mutex_unlock(&dev->lock);
-	ibnbd_clt_put_dev(dev);
+
 	return ret;
 }
 
