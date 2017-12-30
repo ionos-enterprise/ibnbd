@@ -540,18 +540,9 @@ void ibnbd_clt_remove_dev_symlink(struct ibnbd_clt_dev *dev)
 		sysfs_remove_link(ibnbd_devices_kobject, dev->blk_symlink_name);
 }
 
-static void ibnbd_clt_dev_release(struct kobject *kobj)
-{
-	struct ibnbd_clt_dev *dev;
-
-	dev = container_of(kobj, struct ibnbd_clt_dev, kobj);
-	ibnbd_destroy_gen_disk(dev);
-}
-
 static struct kobj_type ibnbd_dev_ktype = {
 	.sysfs_ops      = &kobj_sysfs_ops,
 	.default_attrs  = ibnbd_dev_attrs,
-	.release	= ibnbd_clt_dev_release,
 };
 
 static int ibnbd_clt_add_dev_kobj(struct ibnbd_clt_dev *dev)
@@ -684,9 +675,6 @@ static ssize_t ibnbd_clt_map_device_store(struct kobject *kobj,
 	ret = ibnbd_clt_add_dev_kobj(dev);
 	if (ret) {
 		ibnbd_unmap_device(dev, true);
-		/* ibnbd_destroy_gen_disk() will put the reference that was
-		 * acquired by ibnbd_client_add_device()
-		 */
 		ibnbd_destroy_gen_disk(dev);
 		goto out_sess_put;
 	}
@@ -700,8 +688,7 @@ static ssize_t ibnbd_clt_map_device_store(struct kobject *kobj,
 
 out_unmap_dev:
 	ibnbd_unmap_device(dev, true);
-	kobject_del(&dev->kobj);
-	kobject_put(&dev->kobj);
+	ibnbd_destroy_gen_disk(dev);
 out_sess_put:
 	ibnbd_clt_put_sess(sess);
 

@@ -1508,8 +1508,7 @@ static void ibnbd_clt_dev_destroy_work(struct work_struct *work)
 	struct ibnbd_clt_dev *dev;
 
 	dev = container_of(work, typeof(*dev), destroy_work);
-	kobject_del(&dev->kobj);
-	kobject_put(&dev->kobj);
+	ibnbd_destroy_gen_disk(dev);
 }
 
 void ibnbd_clt_schedule_dev_destroy(struct ibnbd_clt_dev *dev)
@@ -1711,6 +1710,11 @@ out:
 
 void ibnbd_destroy_gen_disk(struct ibnbd_clt_dev *dev)
 {
+	if (dev->kobj.state_initialized) {
+		kobject_del(&dev->kobj);
+		kobject_put(&dev->kobj);
+	}
+
 	del_gendisk(dev->gd);
 	/*
 	 * Before marking queue as dying (blk_cleanup_queue() does that)
