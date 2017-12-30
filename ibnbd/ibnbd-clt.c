@@ -510,6 +510,7 @@ static void msg_close_conf(void *priv, int errno)
 
 	complete(&dev->close_compl);
 	ibnbd_put_iu(dev->sess, iu);
+	ibnbd_clt_put_dev(dev);
 }
 
 static int send_msg_close(struct ibnbd_clt_dev *dev, u32 device_id)
@@ -521,6 +522,7 @@ static int send_msg_close(struct ibnbd_clt_dev *dev, u32 device_id)
 		.iov_base = &msg,
 		.iov_len  = sizeof(msg)
 	};
+	int err;
 
 	iu = ibnbd_get_iu(sess, IBTRS_USR_CON, IBTRS_TAG_WAIT);
 	if (unlikely(!iu)) {
@@ -535,8 +537,13 @@ static int send_msg_close(struct ibnbd_clt_dev *dev, u32 device_id)
 	msg.hdr.type	= IBNBD_MSG_CLOSE;
 	msg.device_id	= device_id;
 
-	return ibtrs_clt_request(WRITE, msg_close_conf, sess->ibtrs,
-				 iu->tag, iu, &vec, 1, 0, NULL, 0);
+	ibnbd_clt_get_dev(dev);
+	err = ibtrs_clt_request(WRITE, msg_close_conf, sess->ibtrs,
+				iu->tag, iu, &vec, 1, 0, NULL, 0);
+	if (unlikely(err))
+		ibnbd_clt_put_dev(dev);
+
+	return err;
 }
 
 static int send_msg_close_sync(struct ibnbd_clt_dev *dev, u32 device_id)
@@ -575,6 +582,7 @@ static void msg_open_conf(void *priv, int errno)
 	ibnbd_put_iu(dev->sess, iu);
 	dev->open_errno = errno;
 	complete(&dev->open_compl);
+	ibnbd_clt_put_dev(dev);
 }
 
 static void msg_sess_info_conf(void *priv, int errno)
@@ -589,6 +597,7 @@ static void msg_sess_info_conf(void *priv, int errno)
 		complete(sess->sess_info_compl);
 	kfree(rsp);
 	ibnbd_put_iu(sess, iu);
+	ibnbd_clt_put_sess(sess);
 }
 
 static int send_msg_open(struct ibnbd_clt_dev *dev)
@@ -601,6 +610,7 @@ static int send_msg_open(struct ibnbd_clt_dev *dev)
 		.iov_base = &msg,
 		.iov_len  = sizeof(msg)
 	};
+	int err;
 
 	rsp = kzalloc(sizeof(*rsp), GFP_KERNEL);
 	if (unlikely(!rsp))
@@ -622,8 +632,13 @@ static int send_msg_open(struct ibnbd_clt_dev *dev)
 	msg.io_mode		= dev->io_mode;
 	strlcpy(msg.dev_name, dev->pathname, sizeof(msg.dev_name));
 
-	return ibtrs_clt_request(READ, msg_open_conf, sess->ibtrs, iu->tag,
-				 iu, &vec, 1, sizeof(*rsp), iu->sglist, 1);
+	ibnbd_clt_get_dev(dev);
+	err = ibtrs_clt_request(READ, msg_open_conf, sess->ibtrs, iu->tag,
+				iu, &vec, 1, sizeof(*rsp), iu->sglist, 1);
+	if (unlikely(err))
+		ibnbd_clt_put_dev(dev);
+
+	return err;
 }
 
 static int send_msg_sess_info(struct ibnbd_clt_session *sess)
@@ -635,6 +650,7 @@ static int send_msg_sess_info(struct ibnbd_clt_session *sess)
 		.iov_base = &msg,
 		.iov_len  = sizeof(msg)
 	};
+	int err;
 
 	rsp = kzalloc(sizeof(*rsp), GFP_KERNEL);
 	if (unlikely(!rsp))
@@ -654,8 +670,13 @@ static int send_msg_sess_info(struct ibnbd_clt_session *sess)
 	msg.hdr.type = IBNBD_MSG_SESS_INFO;
 	msg.ver      = IBNBD_VER_MAJOR;
 
-	return ibtrs_clt_request(READ, msg_sess_info_conf, sess->ibtrs, iu->tag,
-				 iu, &vec, 1, sizeof(*rsp), iu->sglist, 1);
+	ibnbd_clt_get_sess(sess);
+	err = ibtrs_clt_request(READ, msg_sess_info_conf, sess->ibtrs, iu->tag,
+				iu, &vec, 1, sizeof(*rsp), iu->sglist, 1);
+	if (unlikely(err))
+		ibnbd_clt_put_sess(sess);
+
+	return err;
 }
 
 int open_remote_device(struct ibnbd_clt_dev *dev)
