@@ -1799,12 +1799,10 @@ static void ibnbd_destroy_sessions(void)
 		mutex_lock(&sess->lock);
 		list_for_each_entry_safe(dev, tn, &sess->devs_list, list) {
 			__unmap_device(dev, true);
-			ibnbd_clt_schedule_dev_destroy(dev);
+			ibnbd_destroy_gen_disk(dev);
 		}
 		mutex_unlock(&sess->lock);
 	}
-	/* Wait for all scheduled destroy works */
-	flush_scheduled_work();
 	WARN_ON(!list_empty(&session_list));
 }
 
