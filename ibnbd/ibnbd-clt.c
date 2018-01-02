@@ -1611,6 +1611,67 @@ __find_sess_dev(const struct ibnbd_clt_session *sess,
 	return NULL;
 }
 
+static bool __exists_dev(const char *pathname)
+{
+	struct ibnbd_clt_session *sess;
+	struct ibnbd_clt_dev *dev;
+	bool found = false;
+
+	list_for_each_entry(sess, &session_list, list) {
+		mutex_lock(&sess->lock);
+		list_for_each_entry(dev, &sess->devs_list, list) {
+			if (!strncmp(dev->pathname, pathname,
+				     sizeof(dev->pathname))) {
+				found = true;
+				break;
+			}
+		}
+		mutex_unlock(&sess->lock);
+		if (found)
+			break;
+	}
+
+	return found;
+}
+
+static bool exists_devpath(const char *pathname)
+{
+	bool found;
+
+	mutex_lock(&sess_lock);
+	found = __exists_dev(pathname);
+	mutex_unlock(&sess_lock);
+
+	return found;
+}
+
+static bool insert_dev_if_not_exists_devpath(const char *pathname,
+					     struct ibnbd_clt_session *sess,
+					     struct ibnbd_clt_dev *dev)
+{
+	bool found;
+
+	mutex_lock(&sess_lock);
+	found = __exists_dev(pathname);
+	if (!found) {
+		mutex_lock(&sess->lock);
+		list_add_tail(&dev->list, &sess->devs_list);
+		mutex_unlock(&sess->lock);
+	}
+	mutex_unlock(&sess_lock);
+
+	return found;
+}
+
+static void delete_dev(struct ibnbd_clt_dev *dev)
+{
+	struct ibnbd_clt_session *sess = dev->sess;
+
+	mutex_lock(&sess->lock);
+	list_del(&dev->list);
+	mutex_unlock(&sess->lock);
+}
+
 struct ibnbd_clt_dev *
 ibnbd_client_add_device(struct ibnbd_clt_session *sess,
 			const char *pathname,
@@ -1637,6 +1698,9 @@ ibnbd_client_add_device(struct ibnbd_clt_session *sess,
 
 	mutex_unlock(&sess->lock);
 
+	if (unlikely(exists_devpath(pathname)))
+		return ERR_PTR(-EEXIST);
+
 	dev = init_dev(sess, access_mode, queue_mode, io_mode, pathname);
 	if (IS_ERR(dev)) {
 		pr_err("map_device: failed to map device '%s' from session %s,"
@@ -1644,12 +1708,16 @@ ibnbd_client_add_device(struct ibnbd_clt_session *sess,
 		       sess->sessname, PTR_ERR(dev));
 		return dev;
 	}
+	if (unlikely(insert_dev_if_not_exists_devpath(pathname, sess, dev))) {
+		ret = -EEXIST;
+		goto put_dev;
+	}
 	ret = open_remote_device(dev);
 	if (ret) {
 		ibnbd_err(dev, "map_device: failed, can't open remote device,"
 			  " err: %d\n", ret);
 		ret = -EINVAL;
-		goto out;
+		goto del_dev;
 	}
 	wait_for_completion(&dev->open_compl);
 	mutex_lock(&dev->lock);
@@ -1658,12 +1726,8 @@ ibnbd_client_add_device(struct ibnbd_clt_session *sess,
 		mutex_unlock(&dev->lock);
 		ret = dev->open_errno;
 		ibnbd_err(dev, "map_device: failed err: %d\n", ret);
-		goto out;
+		goto del_dev;
 	}
-
-	mutex_lock(&sess->lock);
-	list_add(&dev->list, &sess->devs_list);
-	mutex_unlock(&sess->lock);
 
 	pr_debug("Opened remote device: session=%s, path='%s'\n", sess->sessname,
 		 pathname);
@@ -1673,7 +1737,7 @@ ibnbd_client_add_device(struct ibnbd_clt_session *sess,
 			  ret);
 		mutex_unlock(&dev->lock);
 		ret = -EINVAL;
-		goto out_close;
+		goto del_dev;
 	}
 
 	ibnbd_info(dev, "map_device: Device mapped as %s (nsectors: %zu,"
@@ -1694,10 +1758,11 @@ ibnbd_client_add_device(struct ibnbd_clt_session *sess,
 
 	return dev;
 
-out_close:
-	ibnbd_unmap_device(dev, true);
-out:
+del_dev:
+	delete_dev(dev);
+put_dev:
 	ibnbd_clt_put_dev(dev);
+
 	return ERR_PTR(ret);
 }
 
