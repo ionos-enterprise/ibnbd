@@ -977,10 +977,10 @@ find_and_get_or_insert_sess(struct ibnbd_clt_session *sess)
 	return found;
 }
 
-struct ibnbd_clt_session *
-ibnbd_clt_find_and_get_or_create_sess(const char *sessname,
-				      const struct ibtrs_addr *paths,
-				      size_t path_cnt)
+static struct ibnbd_clt_session *
+find_and_get_or_create_sess(const char *sessname,
+			    const struct ibtrs_addr *paths,
+			    size_t path_cnt)
 {
 	struct ibnbd_clt_session *sess, *found;
 	struct ibtrs_attrs attrs;
@@ -1645,29 +1645,32 @@ static void delete_dev(struct ibnbd_clt_dev *dev)
 	mutex_unlock(&sess->lock);
 }
 
-struct ibnbd_clt_dev *
-ibnbd_client_add_device(struct ibnbd_clt_session *sess,
-			const char *pathname,
-			enum ibnbd_access_mode access_mode,
-			enum ibnbd_queue_mode queue_mode,
-			enum ibnbd_io_mode io_mode)
+struct ibnbd_clt_dev *ibnbd_clt_map_device(const char *sessname,
+					   struct ibtrs_addr *paths,
+					   size_t path_cnt,
+					   const char *pathname,
+					   enum ibnbd_access_mode access_mode,
+					   enum ibnbd_queue_mode queue_mode,
+					   enum ibnbd_io_mode io_mode)
 {
-	int ret;
+	struct ibnbd_clt_session *sess;
 	struct ibnbd_clt_dev *dev;
-
-	pr_debug("Add remote device: server=%s, path='%s', access_mode=%d,"
-		 " queue_mode=%d\n", sess->sessname, pathname, access_mode,
-		 queue_mode);
+	int ret;
 
 	if (unlikely(exists_devpath(pathname)))
 		return ERR_PTR(-EEXIST);
+
+	sess = find_and_get_or_create_sess(sessname, paths, path_cnt);
+	if (unlikely(IS_ERR(sess)))
+		return ERR_CAST(sess);
 
 	dev = init_dev(sess, access_mode, queue_mode, io_mode, pathname);
 	if (unlikely(IS_ERR(dev))) {
 		pr_err("map_device: failed to map device '%s' from session %s,"
 		       " can't initialize device, err: %ld\n", pathname,
 		       sess->sessname, PTR_ERR(dev));
-		return dev;
+		ret = PTR_ERR(dev);
+		goto put_sess;
 	}
 	if (unlikely(insert_dev_if_not_exists_devpath(pathname, sess, dev))) {
 		ret = -EEXIST;
@@ -1716,6 +1719,7 @@ ibnbd_client_add_device(struct ibnbd_clt_session *sess,
 	mutex_unlock(&dev->lock);
 
 	ibnbd_clt_add_gen_disk(dev);
+	ibnbd_clt_put_sess(sess);
 
 	return dev;
 
@@ -1723,6 +1727,8 @@ del_dev:
 	delete_dev(dev);
 put_dev:
 	ibnbd_clt_put_dev(dev);
+put_sess:
+	ibnbd_clt_put_sess(sess);
 
 	return ERR_PTR(ret);
 }

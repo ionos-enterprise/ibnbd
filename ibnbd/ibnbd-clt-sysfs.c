@@ -655,7 +655,6 @@ static ssize_t ibnbd_clt_map_device_store(struct kobject *kobj,
 					  struct kobj_attribute *attr,
 					  const char *buf, size_t count)
 {
-	struct ibnbd_clt_session *sess;
 	struct ibnbd_clt_dev *dev;
 	int ret;
 	char pathname[NAME_MAX];
@@ -686,36 +685,24 @@ static ssize_t ibnbd_clt_map_device_store(struct kobject *kobj,
 		pathname, sessname, ibnbd_access_mode_str(access_mode),
 		ibnbd_queue_mode_str(queue_mode), ibnbd_io_mode_str(io_mode));
 
-	sess = ibnbd_clt_find_and_get_or_create_sess(sessname, paths, path_cnt);
-	if (unlikely(IS_ERR(sess)))
-		return PTR_ERR(sess);
-
-	dev = ibnbd_client_add_device(sess, pathname, access_mode, queue_mode,
-				      io_mode);
-	if (IS_ERR(dev)) {
-		ret = PTR_ERR(dev);
-		goto out_sess_put;
-	}
+	dev = ibnbd_clt_map_device(sessname, paths, path_cnt, pathname,
+				   access_mode, queue_mode, io_mode);
+	if (unlikely(IS_ERR(dev)))
+		return PTR_ERR(dev);
 
 	ret = ibnbd_clt_add_dev_kobj(dev);
-	if (ret) {
-		ibnbd_unmap_device(dev, true);
-		ibnbd_destroy_gen_disk(dev);
-		goto out_sess_put;
-	}
+	if (unlikely(ret))
+		goto unmap_dev;
 
 	ret = ibnbd_clt_add_dev_symlink(dev);
 	if (ret)
-		goto out_unmap_dev;
+		goto unmap_dev;
 
-	ibnbd_clt_put_sess(sess);
 	return count;
 
-out_unmap_dev:
+unmap_dev:
 	ibnbd_unmap_device(dev, true);
 	ibnbd_destroy_gen_disk(dev);
-out_sess_put:
-	ibnbd_clt_put_sess(sess);
 
 	return ret;
 }
