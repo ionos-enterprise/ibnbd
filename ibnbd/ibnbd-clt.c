@@ -61,8 +61,8 @@ MODULE_VERSION(IBNBD_VER_STRING);
 MODULE_LICENSE("GPL");
 
 static int ibnbd_client_major;
-static DEFINE_IDR(g_index_idr);
-static DEFINE_MUTEX(g_mutex);
+static DEFINE_IDA(index_ida);
+static DEFINE_MUTEX(ida_lock);
 static DEFINE_MUTEX(sess_lock);
 static LIST_HEAD(session_list);
 
@@ -87,9 +87,9 @@ static void ibnbd_clt_put_dev(struct ibnbd_clt_dev *dev)
 	might_sleep();
 
 	if (!atomic_dec_if_positive(&dev->refcount)) {
-		mutex_lock(&g_mutex);
-		idr_remove(&g_index_idr, dev->clt_device_id);
-		mutex_unlock(&g_mutex);
+		mutex_lock(&ida_lock);
+		ida_simple_remove(&index_ida, dev->clt_device_id);
+		mutex_unlock(&ida_lock);
 		kfree(dev->hw_queues);
 		ibnbd_clt_put_sess(dev->sess);
 		kfree(dev);
@@ -1546,10 +1546,10 @@ static struct ibnbd_clt_dev *init_dev(struct ibnbd_clt_session *sess,
 		if (queue_mode == BLK_RQ)
 			ibnbd_init_hw_queue(dev, dev->hw_queues, NULL);
 	}
-	mutex_lock(&g_mutex);
-	ret = idr_alloc(&g_index_idr, dev, 0, minor_to_index(1 << MINORBITS),
-			GFP_KERNEL);
-	mutex_unlock(&g_mutex);
+	mutex_lock(&ida_lock);
+	ret = ida_simple_get(&index_ida, 0, minor_to_index(1 << MINORBITS),
+			     GFP_KERNEL);
+	mutex_unlock(&ida_lock);
 	if (ret < 0) {
 		pr_err("Failed to initialize device '%s' from session %s,"
 		       " allocating idr failed, err: %d\n", pathname,
@@ -1858,7 +1858,7 @@ static void __exit ibnbd_client_exit(void)
 	pr_info("Unloading module\n");
 	ibnbd_destroy_sessions();
 	unregister_blkdev(ibnbd_client_major, "ibnbd");
-	idr_destroy(&g_index_idr);
+	ida_destroy(&index_ida);
 	pr_info("Module unloaded\n");
 }
 
