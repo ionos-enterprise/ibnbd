@@ -697,7 +697,7 @@ static int send_msg_sess_info(struct ibnbd_clt_session *sess)
 	return err;
 }
 
-int open_remote_device(struct ibnbd_clt_dev *dev)
+int ibnbd_clt_send_open_msg_async(struct ibnbd_clt_dev *dev)
 {
 	int err;
 
@@ -773,7 +773,7 @@ static void ibnbd_clt_sess_reopen(struct ibnbd_clt_session *sess)
 			continue;
 
 		ibnbd_info(dev, "session reconnected, remapping device\n");
-		open_remote_device(dev);
+		ibnbd_clt_send_open_msg_async(dev);
 	}
 out:
 	mutex_unlock(&sess->lock);
@@ -1675,7 +1675,7 @@ struct ibnbd_clt_dev *ibnbd_clt_map_device(const char *sessname,
 		ret = -EEXIST;
 		goto put_dev;
 	}
-	ret = open_remote_device(dev);
+	ret = ibnbd_clt_send_open_msg_async(dev);
 	if (unlikely(ret)) {
 		ibnbd_err(dev, "map_device: failed, can't open remote device,"
 			  " err: %d\n", ret);

@@ -505,7 +505,7 @@ static ssize_t ibnbd_clt_remap_dev_store(struct kobject *kobj,
 		mutex_unlock(&dev->lock);
 		ibnbd_info(dev, "Remapping device.\n");
 
-		err = open_remote_device(dev);
+		err = ibnbd_clt_send_open_msg_async(dev);
 		if (err) {
 			ibnbd_err(dev, "remap_device: Failed to remap device,"
 				  " err: %d\n", err);
