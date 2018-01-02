@@ -176,6 +176,8 @@ static inline const char *ibnbd_queue_mode_str(enum ibnbd_queue_mode mode)
 	}
 }
 
+/* ibnbd-clt.c */
+
 struct ibnbd_clt_dev *ibnbd_clt_map_device(const char *sessname,
 					   struct ibtrs_addr *paths,
 					   size_t path_cnt,
@@ -188,5 +190,16 @@ int ibnbd_clt_unmap_device(struct ibnbd_clt_dev *dev, bool force,
 
 int ibnbd_clt_send_open_msg_async(struct ibnbd_clt_dev *dev);
 int ibnbd_clt_resize_disk(struct ibnbd_clt_dev *dev, size_t newsize);
+
+/* ibnbd-clt-sysfs.c */
+
+int ibnbd_clt_create_sysfs_files(void);
+
+void ibnbd_clt_destroy_sysfs_files(void);
+void ibnbd_clt_destroy_default_group(void);
+
+void ibnbd_clt_remove_dev_symlink(struct ibnbd_clt_dev *dev);
+void ibnbd_sysfs_remove_file_self(struct kobject *kobj,
+				  const struct attribute *attr);
 
 #endif /* IBNBD_CLT_H */

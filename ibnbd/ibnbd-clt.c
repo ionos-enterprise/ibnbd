@@ -53,7 +53,6 @@
 
 #include "ibnbd.h"
 #include "ibnbd-clt.h"
-#include "ibnbd-clt-sysfs.h"
 
 MODULE_AUTHOR("ibnbd@profitbricks.com");
 MODULE_DESCRIPTION("InfiniBand Network Block Device Client");

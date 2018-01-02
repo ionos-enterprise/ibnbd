@@ -55,7 +55,6 @@
 #include <rdma/ib.h>
 #include <rdma/rdma_cm.h>
 
-#include "ibnbd-clt-sysfs.h"
 #include "ibnbd-clt.h"
 
 static struct kobject *ibnbd_kobject;
