@@ -1570,8 +1570,8 @@ static struct ibnbd_clt_dev *init_dev(struct ibnbd_clt_session *sess,
 	dev->dev_state = DEV_STATE_INIT;
 
 	/*
-	 * XXX Here we called from sysfs entry, thus clt-sysfs is
-	 *     responsible that session will not disappear.
+	 * Here we called from sysfs entry, thus clt-sysfs is
+	 * responsible that session will not disappear.
 	 */
 	ibnbd_clt_get_sess(sess);
 
@@ -1582,33 +1582,6 @@ out_queues:
 out_alloc:
 	kfree(dev);
 	return ERR_PTR(ret);
-}
-
-bool ibnbd_clt_devpath_is_mapped(const char *pathname)
-{
-	struct ibnbd_clt_dev *dev;
-	unsigned id;
-
-	mutex_lock(&g_mutex);
-	idr_for_each_entry(&g_index_idr, dev, id)
-		if (!strncmp(dev->pathname, pathname, sizeof(dev->pathname)))
-			break;
-	mutex_unlock(&g_mutex);
-
-	return !!dev;
-}
-
-static struct ibnbd_clt_dev *
-__find_sess_dev(const struct ibnbd_clt_session *sess,
-		const char *pathname)
-{
-	struct ibnbd_clt_dev *dev;
-
-	list_for_each_entry(dev, &sess->devs_list, list)
-		if (!strncmp(dev->pathname, pathname, sizeof(dev->pathname)))
-			return dev;
-
-	return NULL;
 }
 
 static bool __exists_dev(const char *pathname)
@@ -1686,23 +1659,11 @@ ibnbd_client_add_device(struct ibnbd_clt_session *sess,
 		 " queue_mode=%d\n", sess->sessname, pathname, access_mode,
 		 queue_mode);
 
-	mutex_lock(&sess->lock);
-
-	if (__find_sess_dev(sess, pathname)) {
-		mutex_unlock(&sess->lock);
-		pr_err("map_device: failed to map device '%s' from session %s,"
-		       " device with same path is already mapped\n", pathname,
-		       sess->sessname);
-		return ERR_PTR(-EEXIST);
-	}
-
-	mutex_unlock(&sess->lock);
-
 	if (unlikely(exists_devpath(pathname)))
 		return ERR_PTR(-EEXIST);
 
 	dev = init_dev(sess, access_mode, queue_mode, io_mode, pathname);
-	if (IS_ERR(dev)) {
+	if (unlikely(IS_ERR(dev))) {
 		pr_err("map_device: failed to map device '%s' from session %s,"
 		       " can't initialize device, err: %ld\n", pathname,
 		       sess->sessname, PTR_ERR(dev));
@@ -1713,7 +1674,7 @@ ibnbd_client_add_device(struct ibnbd_clt_session *sess,
 		goto put_dev;
 	}
 	ret = open_remote_device(dev);
-	if (ret) {
+	if (unlikely(ret)) {
 		ibnbd_err(dev, "map_device: failed, can't open remote device,"
 			  " err: %d\n", ret);
 		ret = -EINVAL;

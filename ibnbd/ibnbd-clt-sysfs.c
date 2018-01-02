@@ -681,12 +681,6 @@ static ssize_t ibnbd_clt_map_device_store(struct kobject *kobj,
 	if (ret)
 		return ret;
 
-	if (ibnbd_clt_devpath_is_mapped(pathname)) {
-		pr_err("map_device: failed, Device with same path '%s' is"
-		       " already mapped\n", pathname);
-		return -EEXIST;
-	}
-
 	pr_info("Mapping device %s on session %s,"
 		" (access_mode: %s, input_mode: %s, io_mode: %s)\n",
 		pathname, sessname, ibnbd_access_mode_str(access_mode),

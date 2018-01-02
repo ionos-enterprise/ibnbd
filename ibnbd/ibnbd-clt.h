@@ -188,7 +188,6 @@ struct ibnbd_clt_dev *ibnbd_client_add_device(struct ibnbd_clt_session *sess,
 					      enum ibnbd_io_mode io_mode);
 void ibnbd_destroy_gen_disk(struct ibnbd_clt_dev *dev);
 bool ibnbd_clt_dev_is_open(struct ibnbd_clt_dev *dev);
-bool ibnbd_clt_devpath_is_mapped(const char *pathname);
 int open_remote_device(struct ibnbd_clt_dev *dev);
 int ibnbd_clt_resize_disk(struct ibnbd_clt_dev *dev, size_t newsize);
 
