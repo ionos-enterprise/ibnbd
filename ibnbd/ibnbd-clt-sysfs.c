@@ -382,10 +382,10 @@ static ssize_t ibnbd_clt_unmap_dev_store(struct kobject *kobj,
 					 struct kobj_attribute *attr,
 					 const char *buf, size_t count)
 {
-	int err;
 	struct ibnbd_clt_dev *dev;
-	bool force;
 	char *options;
+	bool force;
+	int err;
 
 	options = kstrdup(buf, GFP_KERNEL);
 	if (!options)
@@ -409,19 +409,30 @@ static ssize_t ibnbd_clt_unmap_dev_store(struct kobject *kobj,
 	ibnbd_info(dev, "Unmapping device, option: %s.\n",
 		   force ? "force" : "normal");
 
+	/*
+	 * We take explicit module reference only for one reason: do not
+	 * race with lockless ibnbd_destroy_sessions().
+	 */
+	if (!try_module_get(THIS_MODULE)) {
+		err = -ENODEV;
+		goto out;
+	}
 	err = ibnbd_unmap_device(dev, force);
 	if (unlikely(err)) {
 		if (unlikely(err != -EALREADY))
 		    ibnbd_err(dev, "unmap_device: %d\n",  err);
-		goto out;
+		goto module_put;
 	}
 	ibnbd_sysfs_remove_file_self(&dev->kobj, attr);
 	ibnbd_destroy_gen_disk(dev);
 
-	kfree(options);
-	return count;
+	err = count;
+
+module_put:
+	module_put(THIS_MODULE);
 out:
 	kfree(options);
+
 	return err;
 }
 
