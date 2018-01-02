@@ -728,8 +728,6 @@ static int update_sess_info(struct ibnbd_clt_session *sess)
 		       sess->sessname);
 		goto out;
 	}
-
-	/* wait for IBNBD_MSG_SESS_INFO_RSP from server */
 	wait_for_completion(&comp);
 out:
 	sess->sess_info_compl = NULL;
@@ -765,8 +763,6 @@ static void ibnbd_clt_link_ev(void *priv, enum ibtrs_clt_link_ev ev)
 
 	switch (ev) {
 	case IBTRS_CLT_LINK_EV_DISCONNECTED:
-		if (sess->sess_info_compl)
-			complete(sess->sess_info_compl);
 		mutex_lock(&sess->lock);
 		__set_dev_states_closed(sess);
 		mutex_unlock(&sess->lock);
