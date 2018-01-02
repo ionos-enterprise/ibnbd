@@ -50,6 +50,7 @@
 #include <linux/in.h>			/* for sockaddr_in */
 #include <linux/inet.h>			/* for sockaddr_in */
 #include <linux/blk-mq.h>
+#include <linux/refcount.h>
 #include <rdma/ibtrs.h>
 
 #include "ibnbd.h"
@@ -109,7 +110,7 @@ struct ibnbd_clt_session {
 	struct blk_mq_tag_set	tag_set;
 	struct mutex		lock; /* protects state and devs_list */
 	struct list_head        devs_list; /* list of struct ibnbd_clt_dev */
-	struct kref		refcount;
+	refcount_t		refcount;
 	char			sessname[NAME_MAX];
 	u8			ver; /* protocol version */
 	struct completion	*sess_info_compl;
@@ -160,7 +161,7 @@ struct ibnbd_clt_dev {
 	struct gendisk		*gd;
 	struct kobject		kobj;
 	char			blk_symlink_name[NAME_MAX];
-	atomic_t		refcount;
+	refcount_t		refcount;
 };
 
 static inline const char *ibnbd_queue_mode_str(enum ibnbd_queue_mode mode)
@@ -176,7 +177,6 @@ static inline const char *ibnbd_queue_mode_str(enum ibnbd_queue_mode mode)
 }
 
 int ibnbd_unmap_device(struct ibnbd_clt_dev *dev, bool force);
-void ibnbd_clt_sess_release(struct kref *ref);
 struct ibnbd_clt_dev *ibnbd_clt_map_device(const char *sessname,
 					   struct ibtrs_addr *paths,
 					   size_t path_cnt,
@@ -185,7 +185,6 @@ struct ibnbd_clt_dev *ibnbd_clt_map_device(const char *sessname,
 					   enum ibnbd_queue_mode queue_mode,
 					   enum ibnbd_io_mode io_mode);
 void ibnbd_destroy_gen_disk(struct ibnbd_clt_dev *dev);
-bool ibnbd_clt_dev_is_open(struct ibnbd_clt_dev *dev);
 int open_remote_device(struct ibnbd_clt_dev *dev);
 int ibnbd_clt_resize_disk(struct ibnbd_clt_dev *dev, size_t newsize);
 

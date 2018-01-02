@@ -77,7 +77,22 @@ MODULE_PARM_DESC(softirq_enable, "finish request in softirq_fn."
 #define IBNBD_PART_BITS		6
 #define KERNEL_SECTOR_SIZE      512
 
-inline bool ibnbd_clt_dev_is_open(struct ibnbd_clt_dev *dev)
+static inline bool ibnbd_clt_get_sess(struct ibnbd_clt_session *sess)
+{
+	return refcount_inc_not_zero(&sess->refcount);
+}
+
+static void free_sess(struct ibnbd_clt_session *sess);
+
+static void ibnbd_clt_put_sess(struct ibnbd_clt_session *sess)
+{
+	might_sleep();
+
+	if (refcount_dec_and_test(&sess->refcount))
+		free_sess(sess);
+}
+
+static inline bool ibnbd_clt_dev_is_open(struct ibnbd_clt_dev *dev)
 {
 	return dev->dev_state == DEV_STATE_OPEN;
 }
@@ -86,7 +101,7 @@ static void ibnbd_clt_put_dev(struct ibnbd_clt_dev *dev)
 {
 	might_sleep();
 
-	if (!atomic_dec_if_positive(&dev->refcount)) {
+	if (refcount_dec_and_test(&dev->refcount)) {
 		mutex_lock(&ida_lock);
 		ida_simple_remove(&index_ida, dev->clt_device_id);
 		mutex_unlock(&ida_lock);
@@ -96,9 +111,9 @@ static void ibnbd_clt_put_dev(struct ibnbd_clt_dev *dev)
 	}
 }
 
-static int ibnbd_clt_get_dev(struct ibnbd_clt_dev *dev)
+static inline bool ibnbd_clt_get_dev(struct ibnbd_clt_dev *dev)
 {
-	return atomic_inc_not_zero(&dev->refcount);
+	return refcount_inc_not_zero(&dev->refcount);
 }
 
 static void ibnbd_clt_set_dev_attr(struct ibnbd_clt_dev *dev,
@@ -881,7 +896,7 @@ static struct ibnbd_clt_session *alloc_sess(const char *sessname,
 	INIT_LIST_HEAD(&sess->devs_list);
 	bitmap_zero(sess->cpu_queues_bm, NR_CPUS);
 	init_waitqueue_head(&sess->ibtrs_waitq);
-	kref_init(&sess->refcount);
+	refcount_set(&sess->refcount, 1);
 
 	return sess;
 
@@ -1039,16 +1054,6 @@ put_sess:
 	return ERR_PTR(err);
 }
 
-void ibnbd_clt_sess_release(struct kref *ref)
-{
-	struct ibnbd_clt_session *sess;
-
-	might_sleep();
-
-	sess = container_of(ref, struct ibnbd_clt_session, refcount);
-	free_sess(sess);
-}
-
 static int ibnbd_client_open(struct block_device *block_device, fmode_t mode)
 {
 	struct ibnbd_clt_dev *dev = block_device->bd_disk->private_data;
@@ -1060,18 +1065,12 @@ static int ibnbd_client_open(struct block_device *block_device, fmode_t mode)
 	    !ibnbd_clt_get_dev(dev))
 		return -EIO;
 
-	pr_debug("OPEN, name=%s, open_cnt=%d\n", dev->gd->disk_name,
-		 atomic_read(&dev->refcount) - 1);
-
 	return 0;
 }
 
 static void ibnbd_client_release(struct gendisk *gen, fmode_t mode)
 {
 	struct ibnbd_clt_dev *dev = gen->private_data;
-
-	pr_debug("RELEASE, name=%s, open_cnt %d\n", dev->gd->disk_name,
-		 atomic_read(&dev->refcount) - 1);
 
 	ibnbd_clt_put_dev(dev);
 }
@@ -1566,7 +1565,7 @@ static struct ibnbd_clt_dev *init_dev(struct ibnbd_clt_session *sess,
 	strlcpy(dev->pathname, pathname, sizeof(dev->pathname));
 	INIT_DELAYED_WORK(&dev->rq_delay_work, ibnbd_blk_delay_work);
 	mutex_init(&dev->lock);
-	atomic_set(&dev->refcount, 1);
+	refcount_set(&dev->refcount, 1);
 	dev->dev_state = DEV_STATE_INIT;
 
 	/*
@@ -1768,7 +1767,7 @@ __must_hold(&dev->sess->lock)
 		goto out;
 	}
 
-	refcount = atomic_read(&dev->refcount);
+	refcount = refcount_read(&dev->refcount);
 	if (!force && refcount > 1) {
 		ibnbd_err(dev, "Closing device failed, device is in use,"
 			  " (%d device users)\n", refcount - 1);

@@ -275,17 +275,6 @@ out:
 	return ret;
 }
 
-int ibnbd_clt_get_sess(struct ibnbd_clt_session *sess)
-{
-	return kref_get_unless_zero(&sess->refcount);
-}
-
-void ibnbd_clt_put_sess(struct ibnbd_clt_session *sess)
-{
-	might_sleep();
-	kref_put(&sess->refcount, ibnbd_clt_sess_release);
-}
-
 static ssize_t ibnbd_clt_state_show(struct kobject *kobj,
 				    struct kobj_attribute *attr, char *page)
 {

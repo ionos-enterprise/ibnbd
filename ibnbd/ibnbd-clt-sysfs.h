@@ -54,8 +54,4 @@ void ibnbd_clt_destroy_default_group(void);
 
 void ibnbd_clt_remove_dev_symlink(struct ibnbd_clt_dev *dev);
 
-int ibnbd_clt_get_sess(struct ibnbd_clt_session *sess);
-
-void ibnbd_clt_put_sess(struct ibnbd_clt_session *sess);
-
 #endif /* IBNBD_CLT_SYSFS_H */
