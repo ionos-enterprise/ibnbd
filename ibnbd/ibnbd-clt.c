@@ -1503,19 +1503,6 @@ static int ibnbd_client_setup_device(struct ibnbd_clt_session *sess,
 	return 0;
 }
 
-static void ibnbd_clt_dev_destroy_work(struct work_struct *work)
-{
-	struct ibnbd_clt_dev *dev;
-
-	dev = container_of(work, typeof(*dev), destroy_work);
-	ibnbd_destroy_gen_disk(dev);
-}
-
-void ibnbd_clt_schedule_dev_destroy(struct ibnbd_clt_dev *dev)
-{
-	WARN_ON(!schedule_work(&dev->destroy_work));
-}
-
 static struct ibnbd_clt_dev *init_dev(struct ibnbd_clt_session *sess,
 				      enum ibnbd_access_mode access_mode,
 				      enum ibnbd_queue_mode queue_mode,
@@ -1571,7 +1558,6 @@ static struct ibnbd_clt_dev *init_dev(struct ibnbd_clt_session *sess,
 	init_completion(&dev->open_compl);
 	strlcpy(dev->pathname, pathname, sizeof(dev->pathname));
 	INIT_DELAYED_WORK(&dev->rq_delay_work, ibnbd_blk_delay_work);
-	INIT_WORK(&dev->destroy_work, ibnbd_clt_dev_destroy_work);
 	mutex_init(&dev->lock);
 	atomic_set(&dev->refcount, 1);
 	dev->dev_state = DEV_STATE_INIT;
@@ -1791,9 +1777,6 @@ static void ibnbd_destroy_sessions(void)
 	/* Firstly forbid access thru sysfs interface */
 	ibnbd_clt_destroy_default_group();
 	ibnbd_clt_destroy_sysfs_files();
-
-	/* Wait for all possible works scheduled from sysfs */
-	flush_scheduled_work();
 
 	list_for_each_entry_safe(sess, sn, &session_list, list) {
 		mutex_lock(&sess->lock);
