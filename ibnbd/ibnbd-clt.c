@@ -1754,8 +1754,10 @@ void ibnbd_destroy_gen_disk(struct ibnbd_clt_dev *dev)
 }
 
 static int __unmap_device(struct ibnbd_clt_dev *dev, bool force)
-__must_hold(&dev->sess->lock)
+__releases(&sess->lock)
+__acquires(&sess->lock)
 {
+	struct ibnbd_clt_session *sess = dev->sess;
 	enum ibnbd_clt_dev_state prev_state;
 	int refcount, ret = 0;
 
@@ -1783,11 +1785,11 @@ __must_hold(&dev->sess->lock)
 	ibnbd_clt_remove_dev_symlink(dev);
 	mutex_unlock(&dev->lock);
 
-	mutex_unlock(&dev->sess->lock);
-	if (prev_state == DEV_STATE_OPEN && dev->sess->ibtrs)
+	mutex_unlock(&sess->lock);
+	if (prev_state == DEV_STATE_OPEN && sess->ibtrs)
 		send_msg_close_sync(dev, dev->device_id);
 
-	mutex_lock(&dev->sess->lock);
+	mutex_lock(&sess->lock);
 	ibnbd_info(dev, "Device is unmapped\n");
 
 	return 0;
