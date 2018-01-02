@@ -162,7 +162,8 @@ static int process_msg_open_rsp(struct ibnbd_clt_dev *dev,
 		goto out;
 	}
 	if (dev->dev_state == DEV_STATE_CLOSED) {
-		/* if the device was remapped and the size changed in the
+		/*
+		 * If the device was remapped and the size changed in the
 		 * meantime we need to revalidate it
 		 */
 		if (dev->nsectors != rsp->nsectors)
@@ -707,9 +708,7 @@ static void __set_dev_states_closed(struct ibnbd_clt_session *sess)
 		ibnbd_err(dev, "Device closed, session disconnected.\n");
 
 		mutex_lock(&dev->lock);
-		if (dev->dev_state == DEV_STATE_INIT)
-			dev->dev_state = DEV_STATE_INIT_CLOSED;
-		else if (dev->dev_state == DEV_STATE_OPEN)
+		if (dev->dev_state == DEV_STATE_OPEN)
 			dev->dev_state = DEV_STATE_CLOSED;
 		mutex_unlock(&dev->lock);
 	}
