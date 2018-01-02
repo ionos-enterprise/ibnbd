@@ -695,16 +695,12 @@ int open_remote_device(struct ibnbd_clt_dev *dev)
 	return 0;
 }
 
-static void __set_dev_states_closed(struct ibnbd_clt_session *sess)
+static void set_dev_states_closed(struct ibnbd_clt_session *sess)
 {
 	struct ibnbd_clt_dev *dev;
-	unsigned id;
 
-	mutex_lock(&g_mutex);
-	idr_for_each_entry(&g_index_idr, dev, id) {
-		if (dev->sess != sess)
-			continue;
-
+	mutex_lock(&sess->lock);
+	list_for_each_entry(dev, &sess->devs_list, list) {
 		ibnbd_err(dev, "Device closed, session disconnected.\n");
 
 		mutex_lock(&dev->lock);
@@ -712,7 +708,7 @@ static void __set_dev_states_closed(struct ibnbd_clt_session *sess)
 			dev->dev_state = DEV_STATE_CLOSED;
 		mutex_unlock(&dev->lock);
 	}
-	mutex_unlock(&g_mutex);
+	mutex_unlock(&sess->lock);
 }
 
 static int update_sess_info(struct ibnbd_clt_session *sess)
@@ -762,9 +758,7 @@ static void ibnbd_clt_link_ev(void *priv, enum ibtrs_clt_link_ev ev)
 
 	switch (ev) {
 	case IBTRS_CLT_LINK_EV_DISCONNECTED:
-		mutex_lock(&sess->lock);
-		__set_dev_states_closed(sess);
-		mutex_unlock(&sess->lock);
+		set_dev_states_closed(sess);
 		break;
 	case IBTRS_CLT_LINK_EV_RECONNECTED:
 		ibnbd_clt_sess_reopen(sess);
