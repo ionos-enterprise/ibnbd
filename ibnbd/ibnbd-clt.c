@@ -745,6 +745,18 @@ static void ibnbd_clt_sess_reopen(struct ibnbd_clt_session *sess)
 		goto out;
 
 	list_for_each_entry(dev, &sess->devs_list, list) {
+		bool skip;
+
+		mutex_lock(&dev->lock);
+		skip = (dev->dev_state == DEV_STATE_INIT);
+		mutex_unlock(&dev->lock);
+		if (skip)
+			/*
+			 * When device is establishing connection for the first
+			 * time - do not reopen, it will be closed soon.
+			 */
+			continue;
+
 		ibnbd_info(dev, "session reconnected, remapping device\n");
 		open_remote_device(dev);
 	}
