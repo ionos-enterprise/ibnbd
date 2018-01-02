@@ -1819,12 +1819,12 @@ static void ibnbd_destroy_sessions(void)
 	ibnbd_clt_destroy_sysfs_files();
 
 	list_for_each_entry_safe(sess, sn, &session_list, list) {
-		mutex_lock(&sess->lock);
+		ibnbd_clt_get_sess(sess);
 		list_for_each_entry_safe(dev, tn, &sess->devs_list, list) {
-			__unmap_device(dev, true);
+			ibnbd_unmap_device(dev, true);
 			ibnbd_destroy_gen_disk(dev);
 		}
-		mutex_unlock(&sess->lock);
+		ibnbd_clt_put_sess(sess);
 	}
 	WARN_ON(!list_empty(&session_list));
 }
