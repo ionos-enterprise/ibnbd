@@ -84,6 +84,8 @@ inline bool ibnbd_clt_dev_is_open(struct ibnbd_clt_dev *dev)
 
 static void ibnbd_clt_put_dev(struct ibnbd_clt_dev *dev)
 {
+	might_sleep();
+
 	if (!atomic_dec_if_positive(&dev->refcount)) {
 		mutex_lock(&g_mutex);
 		idr_remove(&g_index_idr, dev->clt_device_id);
@@ -819,6 +821,8 @@ static void free_sess(struct ibnbd_clt_session *sess)
 {
 	WARN_ON(!list_empty(&sess->devs_list));
 
+	might_sleep();
+
 	if (!IS_ERR_OR_NULL(sess->ibtrs))
 		ibtrs_clt_close(sess->ibtrs);
 
@@ -1037,6 +1041,8 @@ put_sess:
 void ibnbd_clt_sess_release(struct kref *ref)
 {
 	struct ibnbd_clt_session *sess;
+
+	might_sleep();
 
 	sess = container_of(ref, struct ibnbd_clt_session, refcount);
 	free_sess(sess);

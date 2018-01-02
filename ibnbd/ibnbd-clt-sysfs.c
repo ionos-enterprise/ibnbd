@@ -282,6 +282,7 @@ int ibnbd_clt_get_sess(struct ibnbd_clt_session *sess)
 
 void ibnbd_clt_put_sess(struct ibnbd_clt_session *sess)
 {
+	might_sleep();
 	kref_put(&sess->refcount, ibnbd_clt_sess_release);
 }
 
