@@ -349,11 +349,11 @@ static ssize_t ibnbd_clt_unmap_dev_show(struct kobject *kobj,
 			 attr->attr.name);
 }
 
-static void ibnbd_sysfs_remove_file_self(struct kobject *kobj,
-					 struct kobj_attribute *attr)
+void ibnbd_sysfs_remove_file_self(struct kobject *kobj,
+				  const struct attribute *attr)
 {
 	struct device_attribute dattr = {
-		.attr.name = attr->attr.name
+		.attr.name = attr->name
 	};
 	struct device *device;
 
@@ -406,14 +406,16 @@ static ssize_t ibnbd_clt_unmap_dev_store(struct kobject *kobj,
 		err = -ENODEV;
 		goto out;
 	}
-	err = ibnbd_clt_unmap_device(dev, force);
+	err = ibnbd_clt_unmap_device(dev, force, &attr->attr);
 	if (unlikely(err)) {
 		if (unlikely(err != -EALREADY))
 		    ibnbd_err(dev, "unmap_device: %d\n",  err);
 		goto module_put;
 	}
-	ibnbd_sysfs_remove_file_self(&dev->kobj, attr);
-	ibnbd_destroy_gen_disk(dev);
+
+	/*
+	 * Here device can be vanished!
+	 */
 
 	err = count;
 
@@ -690,8 +692,7 @@ static ssize_t ibnbd_clt_map_device_store(struct kobject *kobj,
 	return count;
 
 unmap_dev:
-	ibnbd_clt_unmap_device(dev, true);
-	ibnbd_destroy_gen_disk(dev);
+	ibnbd_clt_unmap_device(dev, true, NULL);
 
 	return ret;
 }

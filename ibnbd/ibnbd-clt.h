@@ -183,9 +183,9 @@ struct ibnbd_clt_dev *ibnbd_clt_map_device(const char *sessname,
 					   enum ibnbd_access_mode access_mode,
 					   enum ibnbd_queue_mode queue_mode,
 					   enum ibnbd_io_mode io_mode);
-int ibnbd_clt_unmap_device(struct ibnbd_clt_dev *dev, bool force);
+int ibnbd_clt_unmap_device(struct ibnbd_clt_dev *dev, bool force,
+			   const struct attribute *sysfs_self);
 
-void ibnbd_destroy_gen_disk(struct ibnbd_clt_dev *dev);
 int open_remote_device(struct ibnbd_clt_dev *dev);
 int ibnbd_clt_resize_disk(struct ibnbd_clt_dev *dev, size_t newsize);
 

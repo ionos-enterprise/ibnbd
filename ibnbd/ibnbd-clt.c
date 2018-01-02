@@ -1732,9 +1732,14 @@ put_sess:
 	return ERR_PTR(ret);
 }
 
-void ibnbd_destroy_gen_disk(struct ibnbd_clt_dev *dev)
+static void destroy_gen_disk(struct ibnbd_clt_dev *dev,
+			     const struct attribute *sysfs_self)
 {
+	ibnbd_clt_remove_dev_symlink(dev);
 	if (dev->kobj.state_initialized) {
+		if (sysfs_self)
+			/* To avoid deadlock firstly commit suicide */
+			ibnbd_sysfs_remove_file_self(&dev->kobj, sysfs_self);
 		kobject_del(&dev->kobj);
 		kobject_put(&dev->kobj);
 	}
@@ -1749,11 +1754,10 @@ void ibnbd_destroy_gen_disk(struct ibnbd_clt_dev *dev)
 	blk_mq_unfreeze_queue(dev->queue);
 	blk_cleanup_queue(dev->queue);
 	put_disk(dev->gd);
-
-	ibnbd_clt_put_dev(dev);
 }
 
-int ibnbd_clt_unmap_device(struct ibnbd_clt_dev *dev, bool force)
+int ibnbd_clt_unmap_device(struct ibnbd_clt_dev *dev, bool force,
+			   const struct attribute *sysfs_self)
 {
 	struct ibnbd_clt_session *sess = dev->sess;
 	enum ibnbd_clt_dev_state prev_state;
@@ -1780,11 +1784,18 @@ int ibnbd_clt_unmap_device(struct ibnbd_clt_dev *dev, bool force)
 	list_del(&dev->list);
 	mutex_unlock(&sess->lock);
 
-	ibnbd_clt_remove_dev_symlink(dev);
 	if (prev_state == DEV_STATE_OPEN && sess->ibtrs)
 		send_msg_close_sync(dev, dev->device_id);
 
 	ibnbd_info(dev, "Device is unmapped\n");
+	destroy_gen_disk(dev, sysfs_self);
+
+	/* Likely last reference put */
+	ibnbd_clt_put_dev(dev);
+
+	/*
+	 * Here device and session can be vanished!
+	 */
 
 	return 0;
 err:
@@ -1804,10 +1815,8 @@ static void ibnbd_destroy_sessions(void)
 
 	list_for_each_entry_safe(sess, sn, &session_list, list) {
 		ibnbd_clt_get_sess(sess);
-		list_for_each_entry_safe(dev, tn, &sess->devs_list, list) {
-			ibnbd_clt_unmap_device(dev, true);
-			ibnbd_destroy_gen_disk(dev);
-		}
+		list_for_each_entry_safe(dev, tn, &sess->devs_list, list)
+			ibnbd_clt_unmap_device(dev, true, NULL);
 		ibnbd_clt_put_sess(sess);
 	}
 	WARN_ON(!list_empty(&session_list));
