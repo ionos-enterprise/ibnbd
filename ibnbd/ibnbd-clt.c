@@ -63,7 +63,7 @@ MODULE_LICENSE("GPL");
 static int ibnbd_client_major;
 static DEFINE_IDR(g_index_idr);
 static DEFINE_MUTEX(g_mutex);
-static DEFINE_SPINLOCK(sess_lock);
+static DEFINE_MUTEX(sess_lock);
 static LIST_HEAD(session_list);
 
 static bool softirq_enable;
@@ -828,9 +828,9 @@ static void free_sess(struct ibnbd_clt_session *sess)
 		ibtrs_clt_close(sess->ibtrs);
 
 	destroy_mq_tags(sess);
-	spin_lock(&sess_lock);
+	mutex_lock(&sess_lock);
 	list_del(&sess->list);
-	spin_unlock(&sess_lock);
+	mutex_unlock(&sess_lock);
 
 	free_percpu(sess->cpu_queues);
 	free_percpu(sess->cpu_rr);
@@ -929,14 +929,14 @@ again:
 			 */
 			continue;
 
-		spin_unlock(&sess_lock);
+		mutex_unlock(&sess_lock);
 		/*
 		 * Alive session is found, wait for IBTRS connection.
 		 */
 		err = wait_for_ibtrs_connection(sess);
 		if (unlikely(err))
 			ibnbd_clt_put_sess(sess);
-		spin_lock(&sess_lock);
+		mutex_lock(&sess_lock);
 
 		if (unlikely(err == -ERESTARTSYS))
 			/* Wait was interrupted, propagate error */
@@ -956,9 +956,9 @@ static struct ibnbd_clt_session *find_and_get_sess(const char *sessname)
 {
 	struct ibnbd_clt_session *sess;
 
-	spin_lock(&sess_lock);
+	mutex_lock(&sess_lock);
 	sess = __find_and_get_sess(sessname);
-	spin_unlock(&sess_lock);
+	mutex_unlock(&sess_lock);
 
 	return sess;
 }
@@ -968,11 +968,11 @@ find_and_get_or_insert_sess(struct ibnbd_clt_session *sess)
 {
 	struct ibnbd_clt_session *found;
 
-	spin_lock(&sess_lock);
+	mutex_lock(&sess_lock);
 	found = __find_and_get_sess(sess->sessname);
 	if (!found)
 		list_add(&sess->list, &session_list);
-	spin_unlock(&sess_lock);
+	mutex_unlock(&sess_lock);
 
 	return found;
 }
