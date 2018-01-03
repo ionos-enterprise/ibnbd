@@ -744,7 +744,7 @@ out:
 	return err;
 }
 
-static void ibnbd_clt_sess_reopen(struct ibnbd_clt_session *sess)
+static void remap_devs(struct ibnbd_clt_session *sess)
 {
 	struct ibnbd_clt_dev *dev;
 	struct ibtrs_attrs attrs;
@@ -767,7 +767,7 @@ static void ibnbd_clt_sess_reopen(struct ibnbd_clt_session *sess)
 		if (skip)
 			/*
 			 * When device is establishing connection for the first
-			 * time - do not reopen, it will be closed soon.
+			 * time - do not remap, it will be closed soon.
 			 */
 			continue;
 
@@ -787,7 +787,7 @@ static void ibnbd_clt_link_ev(void *priv, enum ibtrs_clt_link_ev ev)
 		set_dev_states_to_disconnected(sess);
 		break;
 	case IBTRS_CLT_LINK_EV_RECONNECTED:
-		ibnbd_clt_sess_reopen(sess);
+		remap_devs(sess);
 		break;
 	default:
 		pr_err("Unknown session event received (%d), session: %s\n",
