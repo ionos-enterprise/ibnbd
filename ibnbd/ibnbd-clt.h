@@ -87,6 +87,8 @@ struct ibnbd_iu {
 	};
 	blk_status_t		status;
 	struct scatterlist	sglist[BMAX_SEGMENTS];
+	struct work_struct	work;
+	int			errno;
 };
 
 struct ibnbd_cpu_qlist {

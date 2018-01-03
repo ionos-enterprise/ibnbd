@@ -520,9 +520,17 @@ static void msg_io_conf(void *priv, int errno)
 			      errno);
 }
 
-static void msg_close_conf(void *priv, int errno)
+static void msg_conf(void *priv, int errno)
 {
 	struct ibnbd_iu *iu = (struct ibnbd_iu *)priv;
+
+	iu->errno = errno;
+	schedule_work(&iu->work);
+}
+
+static void msg_close_conf(struct work_struct *work)
+{
+	struct ibnbd_iu *iu = container_of(work, struct ibnbd_iu, work);
 	struct ibnbd_clt_dev *dev = iu->dev;
 
 	complete(&dev->close_compl);
@@ -554,8 +562,9 @@ static int send_msg_close(struct ibnbd_clt_dev *dev, u32 device_id)
 	msg.hdr.type	= IBNBD_MSG_CLOSE;
 	msg.device_id	= device_id;
 
+	INIT_WORK(&iu->work, msg_close_conf);
 	ibnbd_clt_get_dev(dev);
-	err = ibtrs_clt_request(WRITE, msg_close_conf, sess->ibtrs,
+	err = ibtrs_clt_request(WRITE, msg_conf, sess->ibtrs,
 				iu->tag, iu, &vec, 1, 0, NULL, 0);
 	if (unlikely(err))
 		ibnbd_clt_put_dev(dev);
@@ -574,18 +583,20 @@ static int send_msg_close_sync(struct ibnbd_clt_dev *dev, u32 device_id)
 	return err;
 }
 
-static void msg_open_conf(void *priv, int errno)
+static void msg_open_conf(struct work_struct *work)
 {
-	struct ibnbd_iu *iu = (struct ibnbd_iu *)priv;
+	struct ibnbd_iu *iu = container_of(work, struct ibnbd_iu, work);
 	struct ibnbd_msg_open_rsp *rsp =
 		(struct ibnbd_msg_open_rsp *)iu->buf;
 	struct ibnbd_clt_dev *dev = iu->dev;
+	int errno = iu->errno;
 
 	if (errno) {
 		ibnbd_err(dev, "Opening failed, server responded: %d\n", errno);
 	} else if (rsp->result) {
 		errno = rsp->result;
-		ibnbd_err(dev, "Server failed to open device for mapping: %d\n", errno);
+		ibnbd_err(dev, "Server failed to open device for mapping: %d\n",
+			  errno);
 	} else {
 		errno = process_msg_open_rsp(dev, rsp);
 		if (unlikely(errno))
@@ -602,9 +613,9 @@ static void msg_open_conf(void *priv, int errno)
 	ibnbd_clt_put_dev(dev);
 }
 
-static void msg_sess_info_conf(void *priv, int errno)
+static void msg_sess_info_conf(struct work_struct *work)
 {
-	struct ibnbd_iu *iu = (struct ibnbd_iu *)priv;
+	struct ibnbd_iu *iu = container_of(work, struct ibnbd_iu, work);
 	struct ibnbd_msg_sess_info_rsp *rsp =
 		(struct ibnbd_msg_sess_info_rsp *)iu->buf;
 	struct ibnbd_clt_session *sess = iu->sess;
@@ -649,8 +660,9 @@ static int send_msg_open(struct ibnbd_clt_dev *dev)
 	msg.io_mode		= dev->io_mode;
 	strlcpy(msg.dev_name, dev->pathname, sizeof(msg.dev_name));
 
+	INIT_WORK(&iu->work, msg_open_conf);
 	ibnbd_clt_get_dev(dev);
-	err = ibtrs_clt_request(READ, msg_open_conf, sess->ibtrs, iu->tag,
+	err = ibtrs_clt_request(READ, msg_conf, sess->ibtrs, iu->tag,
 				iu, &vec, 1, sizeof(*rsp), iu->sglist, 1);
 	if (unlikely(err))
 		ibnbd_clt_put_dev(dev);
@@ -687,8 +699,9 @@ static int send_msg_sess_info(struct ibnbd_clt_session *sess)
 	msg.hdr.type = IBNBD_MSG_SESS_INFO;
 	msg.ver      = IBNBD_VER_MAJOR;
 
+	INIT_WORK(&iu->work, msg_sess_info_conf);
 	ibnbd_clt_get_sess(sess);
-	err = ibtrs_clt_request(READ, msg_sess_info_conf, sess->ibtrs, iu->tag,
+	err = ibtrs_clt_request(READ, msg_conf, sess->ibtrs, iu->tag,
 				iu, &vec, 1, sizeof(*rsp), iu->sglist, 1);
 	if (unlikely(err))
 		ibnbd_clt_put_sess(sess);
