@@ -63,9 +63,9 @@
 
 enum ibnbd_clt_dev_state {
 	DEV_STATE_INIT,
-	DEV_STATE_CLOSED,
+	DEV_STATE_MAPPED,
+	DEV_STATE_MAPPED_DISCONNECTED,
 	DEV_STATE_UNMAPPED,
-	DEV_STATE_OPEN
 };
 
 enum ibnbd_queue_mode {

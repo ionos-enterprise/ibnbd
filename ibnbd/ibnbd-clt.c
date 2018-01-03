@@ -91,9 +91,9 @@ static void ibnbd_clt_put_sess(struct ibnbd_clt_session *sess)
 		free_sess(sess);
 }
 
-static inline bool ibnbd_clt_dev_is_open(struct ibnbd_clt_dev *dev)
+static inline bool ibnbd_clt_dev_is_mapped(struct ibnbd_clt_dev *dev)
 {
-	return dev->dev_state == DEV_STATE_OPEN;
+	return dev->dev_state == DEV_STATE_MAPPED;
 }
 
 static void ibnbd_clt_put_dev(struct ibnbd_clt_dev *dev)
@@ -175,7 +175,7 @@ static int process_msg_open_rsp(struct ibnbd_clt_dev *dev,
 		err = -ENOENT;
 		goto out;
 	}
-	if (dev->dev_state == DEV_STATE_CLOSED) {
+	if (dev->dev_state == DEV_STATE_MAPPED_DISCONNECTED) {
 		/*
 		 * If the device was remapped and the size changed in the
 		 * meantime we need to revalidate it
@@ -185,7 +185,7 @@ static int process_msg_open_rsp(struct ibnbd_clt_dev *dev,
 		ibnbd_info(dev, "Device online, device remapped successfully\n");
 	}
 	ibnbd_clt_set_dev_attr(dev, rsp);
-	dev->dev_state = DEV_STATE_OPEN;
+	dev->dev_state = DEV_STATE_MAPPED;
 
 out:
 	mutex_unlock(&dev->lock);
@@ -198,7 +198,7 @@ int ibnbd_clt_resize_disk(struct ibnbd_clt_dev *dev, size_t newsize)
 	int ret = 0;
 
 	mutex_lock(&dev->lock);
-	if (dev->dev_state != DEV_STATE_OPEN) {
+	if (dev->dev_state != DEV_STATE_MAPPED) {
 		pr_err("Failed to set new size of the device, "
 		       "device is not opened\n");
 		ret = -ENOENT;
@@ -709,17 +709,17 @@ int ibnbd_clt_send_open_msg_async(struct ibnbd_clt_dev *dev)
 	return 0;
 }
 
-static void set_dev_states_closed(struct ibnbd_clt_session *sess)
+static void set_dev_states_to_disconnected(struct ibnbd_clt_session *sess)
 {
 	struct ibnbd_clt_dev *dev;
 
 	mutex_lock(&sess->lock);
 	list_for_each_entry(dev, &sess->devs_list, list) {
-		ibnbd_err(dev, "Device closed, session disconnected.\n");
+		ibnbd_err(dev, "Device disconnected.\n");
 
 		mutex_lock(&dev->lock);
-		if (dev->dev_state == DEV_STATE_OPEN)
-			dev->dev_state = DEV_STATE_CLOSED;
+		if (dev->dev_state == DEV_STATE_MAPPED)
+			dev->dev_state = DEV_STATE_MAPPED_DISCONNECTED;
 		mutex_unlock(&dev->lock);
 	}
 	mutex_unlock(&sess->lock);
@@ -784,7 +784,7 @@ static void ibnbd_clt_link_ev(void *priv, enum ibtrs_clt_link_ev ev)
 
 	switch (ev) {
 	case IBTRS_CLT_LINK_EV_DISCONNECTED:
-		set_dev_states_closed(sess);
+		set_dev_states_to_disconnected(sess);
 		break;
 	case IBTRS_CLT_LINK_EV_RECONNECTED:
 		ibnbd_clt_sess_reopen(sess);
@@ -1245,7 +1245,7 @@ static blk_status_t ibnbd_queue_rq(struct blk_mq_hw_ctx *hctx,
 	struct ibnbd_iu *iu = blk_mq_rq_to_pdu(rq);
 	int err;
 
-	if (unlikely(!ibnbd_clt_dev_is_open(dev)))
+	if (unlikely(!ibnbd_clt_dev_is_mapped(dev)))
 		return BLK_STS_IOERR;
 
 	iu->tag = ibnbd_get_tag(dev->sess, IBTRS_IO_CON, IBTRS_TAG_NOWAIT);
@@ -1354,7 +1354,7 @@ __must_hold(q->queue_lock)
 	while ((req = blk_fetch_request(q)) != NULL) {
 		spin_unlock_irq(q->queue_lock);
 
-		if (unlikely(!ibnbd_clt_dev_is_open(dev))) {
+		if (unlikely(!ibnbd_clt_dev_is_mapped(dev))) {
 			err = -EIO;
 			goto next;
 		}
@@ -1684,7 +1684,7 @@ struct ibnbd_clt_dev *ibnbd_clt_map_device(const char *sessname,
 	wait_for_completion(&dev->open_compl);
 	mutex_lock(&dev->lock);
 
-	if (!ibnbd_clt_dev_is_open(dev)) {
+	if (!ibnbd_clt_dev_is_mapped(dev)) {
 		mutex_unlock(&dev->lock);
 		ret = dev->open_errno;
 		ibnbd_err(dev, "map_device: failed err: %d\n", ret);
@@ -1786,7 +1786,7 @@ int ibnbd_clt_unmap_device(struct ibnbd_clt_dev *dev, bool force,
 	list_del(&dev->list);
 	mutex_unlock(&sess->lock);
 
-	if (prev_state == DEV_STATE_OPEN && sess->ibtrs)
+	if (prev_state == DEV_STATE_MAPPED && sess->ibtrs)
 		send_msg_close_sync(dev, dev->device_id);
 
 	ibnbd_info(dev, "Device is unmapped\n");

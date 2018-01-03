@@ -284,9 +284,11 @@ static ssize_t ibnbd_clt_state_show(struct kobject *kobj,
 	switch (dev->dev_state) {
 	case (DEV_STATE_INIT):
 		return scnprintf(page, PAGE_SIZE, "init\n");
-	case (DEV_STATE_OPEN):
+	case (DEV_STATE_MAPPED):
+		/* TODO fix cli tool before changing to proper state */
 		return scnprintf(page, PAGE_SIZE, "open\n");
-	case (DEV_STATE_CLOSED):
+	case (DEV_STATE_MAPPED_DISCONNECTED):
+		/* TODO fix cli tool before changing to proper state */
 		return scnprintf(page, PAGE_SIZE, "closed\n");
 	case (DEV_STATE_UNMAPPED):
 		return scnprintf(page, PAGE_SIZE, "unmapped\n");
@@ -497,10 +499,10 @@ static ssize_t ibnbd_clt_remap_dev_store(struct kobject *kobj,
 		err = -EIO;
 		mutex_unlock(&dev->lock);
 		goto out;
-	} else if (dev->dev_state == DEV_STATE_OPEN) {
+	} else if (dev->dev_state == DEV_STATE_MAPPED) {
 		mutex_unlock(&dev->lock);
 		goto out1;
-	} else if (dev->dev_state == DEV_STATE_CLOSED) {
+	} else if (dev->dev_state == DEV_STATE_MAPPED_DISCONNECTED) {
 		mutex_unlock(&dev->lock);
 		ibnbd_info(dev, "Remapping device.\n");
 
