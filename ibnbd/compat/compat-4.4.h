@@ -173,60 +173,36 @@ backport_blk_mq_init_queue(struct backport_blk_mq_tag_set *set)
 	return blk_mq_init_queue((struct blk_mq_tag_set *)set);
 }
 
-struct tags_priv {
-	struct backport_blk_mq_tag_set *set;
-	void *data;
-};
-
 static inline int
 backport_init_request(void *data, struct request *rq,
 		      unsigned int hctx_idx,
 		      unsigned int request_idx,
 		      unsigned int numa_node)
 {
-	struct tags_priv *p = data;
-	int err;
+	struct backport_blk_mq_tag_set *set = data;
 
 	(void)request_idx;
-	p->set->driver_data = p->data;
-	err = p->set->ops->init_request(p->set, rq, hctx_idx, numa_node);
-	p->set->driver_data = p;
 
-	return err;
+	return set->ops->init_request(set, rq, hctx_idx, numa_node);
 }
 
 static inline int
 backport_blk_mq_alloc_tag_set(struct backport_blk_mq_tag_set *set)
 {
-	struct tags_priv *p;
-	int err;
 
-	p = kmalloc(sizeof(*p), GFP_KERNEL);
-	if (unlikely(!p))
-		return -ENOMEM;
-
-	p->set = set;
-	p->data = set->driver_data;
-
-	set->driver_data = p;
+	BUG_ON(set->driver_data);
+	set->driver_data = set;
 	set->ops->orig_init_request = backport_init_request;
 	if (!set->ops->map_queue)
 		set->ops->map_queue = blk_mq_map_queue;
 
-	err = blk_mq_alloc_tag_set((struct blk_mq_tag_set *)set);
-	if (unlikely(err))
-		kfree(p);
-
-	return err;
+	return blk_mq_alloc_tag_set((struct blk_mq_tag_set *)set);
 }
 
 static inline void
 backport_blk_mq_free_tag_set(struct backport_blk_mq_tag_set *set)
 {
-	struct tags_priv *p = set->driver_data;
-
 	blk_mq_free_tag_set((struct blk_mq_tag_set *)set);
-	kfree(p);
 }
 
 static inline ssize_t
