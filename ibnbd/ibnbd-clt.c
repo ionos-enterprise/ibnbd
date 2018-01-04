@@ -1753,58 +1753,42 @@ void ibnbd_destroy_gen_disk(struct ibnbd_clt_dev *dev)
 	ibnbd_clt_put_dev(dev);
 }
 
-static int __unmap_device(struct ibnbd_clt_dev *dev, bool force)
-__releases(&sess->lock)
-__acquires(&sess->lock)
+int ibnbd_clt_unmap_device(struct ibnbd_clt_dev *dev, bool force)
 {
 	struct ibnbd_clt_session *sess = dev->sess;
 	enum ibnbd_clt_dev_state prev_state;
 	int refcount, ret = 0;
 
 	mutex_lock(&dev->lock);
-
 	if (dev->dev_state == DEV_STATE_UNMAPPED) {
 		ibnbd_info(dev, "Device is already being unmapped\n");
 		ret = -EALREADY;
-		goto out;
+		goto err;
 	}
-
 	refcount = refcount_read(&dev->refcount);
 	if (!force && refcount > 1) {
 		ibnbd_err(dev, "Closing device failed, device is in use,"
 			  " (%d device users)\n", refcount - 1);
 		ret = -EBUSY;
-		goto out;
+		goto err;
 	}
-
 	prev_state = dev->dev_state;
 	dev->dev_state = DEV_STATE_UNMAPPED;
-
-	list_del(&dev->list);
-
-	ibnbd_clt_remove_dev_symlink(dev);
 	mutex_unlock(&dev->lock);
 
+	mutex_lock(&sess->lock);
+	list_del(&dev->list);
 	mutex_unlock(&sess->lock);
+
+	ibnbd_clt_remove_dev_symlink(dev);
 	if (prev_state == DEV_STATE_OPEN && sess->ibtrs)
 		send_msg_close_sync(dev, dev->device_id);
 
-	mutex_lock(&sess->lock);
 	ibnbd_info(dev, "Device is unmapped\n");
 
 	return 0;
-out:
+err:
 	mutex_unlock(&dev->lock);
-	return ret;
-}
-
-int ibnbd_clt_unmap_device(struct ibnbd_clt_dev *dev, bool force)
-{
-	int ret;
-
-	mutex_lock(&dev->sess->lock);
-	ret = __unmap_device(dev, force);
-	mutex_unlock(&dev->sess->lock);
 
 	return ret;
 }
