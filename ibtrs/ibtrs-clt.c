@@ -2736,9 +2736,20 @@ static struct ibtrs_clt *alloc_clt(const char *sessname, size_t paths_num,
 	return clt;
 }
 
+static void wait_for_inflight_tags(struct ibtrs_clt *clt)
+{
+	if (clt->tags_map) {
+		size_t sz = clt->queue_depth;
+
+		wait_event(clt->tags_wait,
+			   find_first_bit(clt->tags_map, sz) >= sz);
+	}
+}
+
 static void free_clt(struct ibtrs_clt *clt)
 {
 	ibtrs_clt_destroy_sysfs_root_folders(clt);
+	wait_for_inflight_tags(clt);
 	free_tags(clt);
 	free_percpu(clt->pcpu_path);
 	kfree(clt);
