@@ -845,15 +845,23 @@ static void destroy_mq_tags(struct ibnbd_clt_session *sess)
 	blk_mq_free_tag_set(&sess->tag_set);
 }
 
+static void close_ibtrs(struct ibnbd_clt_session *sess)
+{
+	might_sleep();
+
+	if (!IS_ERR_OR_NULL(sess->ibtrs)) {
+		ibtrs_clt_close(sess->ibtrs);
+		sess->ibtrs = NULL;
+	}
+}
+
 static void free_sess(struct ibnbd_clt_session *sess)
 {
 	WARN_ON(!list_empty(&sess->devs_list));
 
 	might_sleep();
 
-	if (!IS_ERR_OR_NULL(sess->ibtrs))
-		ibtrs_clt_close(sess->ibtrs);
-
+	close_ibtrs(sess);
 	destroy_mq_tags(sess);
 	mutex_lock(&sess_lock);
 	list_del(&sess->list);
@@ -1829,8 +1837,24 @@ static void ibnbd_destroy_sessions(void)
 	ibnbd_clt_destroy_default_group();
 	ibnbd_clt_destroy_sysfs_files();
 
+	/*
+	 * Here at this point there is no any concurrent access to sessions
+	 * list and devices list:
+	 *   1. New session or device can'be be created - session sysfs files
+	 *      are removed.
+	 *   2. Device or session can't be removed - module reference is taken
+	 *      into account in unmap device sysfs callback.
+	 *   3. No IO requests inflight - each file open of block_dev increases
+	 *      module reference in get_disk().
+	 *
+	 * But still there can be user requests inflights, which are sent by
+	 * asynchronous send_msg_*() functions, thus before unmapping devices
+	 * IBTRS session must be explicitly closed.
+	 */
+
 	list_for_each_entry_safe(sess, sn, &session_list, list) {
 		ibnbd_clt_get_sess(sess);
+		close_ibtrs(sess);
 		list_for_each_entry_safe(dev, tn, &sess->devs_list, list)
 			ibnbd_clt_unmap_device(dev, true, NULL);
 		ibnbd_clt_put_sess(sess);
