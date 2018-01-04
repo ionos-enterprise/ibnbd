@@ -1732,18 +1732,8 @@ put_sess:
 	return ERR_PTR(ret);
 }
 
-static void destroy_gen_disk(struct ibnbd_clt_dev *dev,
-			     const struct attribute *sysfs_self)
+static void destroy_gen_disk(struct ibnbd_clt_dev *dev)
 {
-	ibnbd_clt_remove_dev_symlink(dev);
-	if (dev->kobj.state_initialized) {
-		if (sysfs_self)
-			/* To avoid deadlock firstly commit suicide */
-			ibnbd_sysfs_remove_file_self(&dev->kobj, sysfs_self);
-		kobject_del(&dev->kobj);
-		kobject_put(&dev->kobj);
-	}
-
 	del_gendisk(dev->gd);
 	/*
 	 * Before marking queue as dying (blk_cleanup_queue() does that)
@@ -1754,6 +1744,19 @@ static void destroy_gen_disk(struct ibnbd_clt_dev *dev,
 	blk_mq_unfreeze_queue(dev->queue);
 	blk_cleanup_queue(dev->queue);
 	put_disk(dev->gd);
+}
+
+static void destroy_sysfs(struct ibnbd_clt_dev *dev,
+			  const struct attribute *sysfs_self)
+{
+	ibnbd_clt_remove_dev_symlink(dev);
+	if (dev->kobj.state_initialized) {
+		if (sysfs_self)
+			/* To avoid deadlock firstly commit suicide */
+			ibnbd_sysfs_remove_file_self(&dev->kobj, sysfs_self);
+		kobject_del(&dev->kobj);
+		kobject_put(&dev->kobj);
+	}
 }
 
 int ibnbd_clt_unmap_device(struct ibnbd_clt_dev *dev, bool force,
@@ -1788,7 +1791,8 @@ int ibnbd_clt_unmap_device(struct ibnbd_clt_dev *dev, bool force,
 		send_msg_close_sync(dev, dev->device_id);
 
 	ibnbd_info(dev, "Device is unmapped\n");
-	destroy_gen_disk(dev, sysfs_self);
+	destroy_sysfs(dev, sysfs_self);
+	destroy_gen_disk(dev);
 
 	/* Likely last reference put */
 	ibnbd_clt_put_dev(dev);
