@@ -875,10 +875,11 @@ static void free_sess(struct ibnbd_clt_session *sess)
 
 	close_ibtrs(sess);
 	destroy_mq_tags(sess);
-	mutex_lock(&sess_lock);
-	list_del(&sess->list);
-	mutex_unlock(&sess_lock);
-
+	if (!list_empty(&sess->list)) {
+		mutex_lock(&sess_lock);
+		list_del(&sess->list);
+		mutex_unlock(&sess_lock);
+	}
 	free_percpu(sess->cpu_queues);
 	free_percpu(sess->cpu_rr);
 	kfree(sess);
@@ -901,6 +902,7 @@ static struct ibnbd_clt_session *alloc_sess(const char *sessname,
 	atomic_set(&sess->busy, 0);
 	mutex_init(&sess->lock);
 	INIT_LIST_HEAD(&sess->devs_list);
+	INIT_LIST_HEAD(&sess->list);
 	bitmap_zero(sess->cpu_queues_bm, NR_CPUS);
 	init_waitqueue_head(&sess->ibtrs_waitq);
 	refcount_set(&sess->refcount, 1);
