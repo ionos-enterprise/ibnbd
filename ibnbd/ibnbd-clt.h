@@ -73,6 +73,11 @@ enum ibnbd_queue_mode {
 	BLK_RQ
 };
 
+struct ibnbd_iu_comp {
+	wait_queue_head_t wait;
+	int errno;
+};
+
 struct ibnbd_iu {
 	union {
 		struct request *rq; /* for block io */
@@ -89,6 +94,7 @@ struct ibnbd_iu {
 	struct scatterlist	sglist[BMAX_SEGMENTS];
 	struct work_struct	work;
 	int			errno;
+	struct ibnbd_iu_comp	*comp;
 };
 
 struct ibnbd_cpu_qlist {

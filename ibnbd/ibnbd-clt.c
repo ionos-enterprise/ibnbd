@@ -520,6 +520,34 @@ static void msg_io_conf(void *priv, int errno)
 			      errno);
 }
 
+static void init_iu_comp(struct ibnbd_iu *iu, struct ibnbd_iu_comp *comp)
+{
+	init_waitqueue_head(&comp->wait);
+	comp->errno = INT_MAX;
+	iu->comp = comp;
+}
+
+static void deinit_iu_comp(struct ibnbd_iu *iu)
+{
+	iu->comp = NULL;
+}
+
+static void wake_up_iu_comp(struct ibnbd_iu *iu, int errno)
+{
+	struct ibnbd_iu_comp *comp = iu->comp;
+
+	if (comp) {
+		comp->errno = errno;
+		wake_up(&comp->wait);
+		deinit_iu_comp(iu);
+	}
+}
+
+static void wait_iu_comp(struct ibnbd_iu_comp *comp)
+{
+	wait_event(comp->wait, comp->errno != INT_MAX);
+}
+
 static void msg_conf(void *priv, int errno)
 {
 	struct ibnbd_iu *iu = (struct ibnbd_iu *)priv;
@@ -528,17 +556,47 @@ static void msg_conf(void *priv, int errno)
 	schedule_work(&iu->work);
 }
 
+enum {
+	NO_WAIT = 0,
+	WAIT    = 1
+};
+
+static int send_usr_msg(struct ibtrs_clt *ibtrs, int dir,
+			struct ibnbd_iu *iu, struct kvec *vec, size_t nr,
+			size_t len, struct scatterlist *sg, unsigned int sg_len,
+			void (*conf)(struct work_struct *work),
+			bool wait)
+{
+	struct ibnbd_iu_comp comp;
+	int err;
+
+	if (wait)
+		init_iu_comp(iu, &comp);
+	INIT_WORK(&iu->work, conf);
+	err = ibtrs_clt_request(dir, msg_conf, ibtrs, iu->tag,
+				iu, vec, nr, len, sg, sg_len);
+	if (unlikely(err))
+		deinit_iu_comp(iu);
+	else if (wait) {
+		wait_iu_comp(&comp);
+		err = comp.errno;
+	}
+
+	return err;
+}
+
 static void msg_close_conf(struct work_struct *work)
 {
 	struct ibnbd_iu *iu = container_of(work, struct ibnbd_iu, work);
 	struct ibnbd_clt_dev *dev = iu->dev;
 
 	complete(&dev->close_compl);
+	wake_up_iu_comp(iu, iu->errno);
 	ibnbd_put_iu(dev->sess, iu);
 	ibnbd_clt_put_dev(dev);
 }
 
-static int send_msg_close(struct ibnbd_clt_dev *dev, u32 device_id)
+static int send_msg_close(struct ibnbd_clt_dev *dev, u32 device_id, bool wait)
 {
 	struct ibnbd_clt_session *sess = dev->sess;
 	struct ibnbd_msg_close msg;
@@ -562,23 +620,11 @@ static int send_msg_close(struct ibnbd_clt_dev *dev, u32 device_id)
 	msg.hdr.type	= IBNBD_MSG_CLOSE;
 	msg.device_id	= device_id;
 
-	INIT_WORK(&iu->work, msg_close_conf);
 	ibnbd_clt_get_dev(dev);
-	err = ibtrs_clt_request(WRITE, msg_conf, sess->ibtrs,
-				iu->tag, iu, &vec, 1, 0, NULL, 0);
+	err = send_usr_msg(sess->ibtrs, WRITE, iu, &vec, 1, 0, NULL, 0,
+			   msg_close_conf, wait);
 	if (unlikely(err))
 		ibnbd_clt_put_dev(dev);
-
-	return err;
-}
-
-static int send_msg_close_sync(struct ibnbd_clt_dev *dev, u32 device_id)
-{
-	int err;
-
-	err = send_msg_close(dev, device_id);
-	if (likely(!err))
-		wait_for_completion(&dev->close_compl);
 
 	return err;
 }
@@ -604,9 +650,10 @@ static void msg_open_conf(struct work_struct *work)
 			 * if server thinks its fine, but we fail to process then
 			 * be nice and send a close to server
 			 */
-			send_msg_close(dev, rsp->device_id);
+			send_msg_close(dev, rsp->device_id, NO_WAIT);
 	}
 	kfree(rsp);
+	wake_up_iu_comp(iu, errno);
 	ibnbd_put_iu(dev->sess, iu);
 	dev->open_errno = errno;
 	complete(&dev->open_compl);
@@ -624,11 +671,12 @@ static void msg_sess_info_conf(struct work_struct *work)
 	if (sess->sess_info_compl)
 		complete(sess->sess_info_compl);
 	kfree(rsp);
+	wake_up_iu_comp(iu, iu->errno);
 	ibnbd_put_iu(sess, iu);
 	ibnbd_clt_put_sess(sess);
 }
 
-static int send_msg_open(struct ibnbd_clt_dev *dev)
+static int send_msg_open(struct ibnbd_clt_dev *dev, bool wait)
 {
 	struct ibnbd_clt_session *sess = dev->sess;
 	struct ibnbd_msg_open_rsp *rsp;
@@ -660,17 +708,17 @@ static int send_msg_open(struct ibnbd_clt_dev *dev)
 	msg.io_mode		= dev->io_mode;
 	strlcpy(msg.dev_name, dev->pathname, sizeof(msg.dev_name));
 
-	INIT_WORK(&iu->work, msg_open_conf);
 	ibnbd_clt_get_dev(dev);
-	err = ibtrs_clt_request(READ, msg_conf, sess->ibtrs, iu->tag,
-				iu, &vec, 1, sizeof(*rsp), iu->sglist, 1);
+	err = send_usr_msg(sess->ibtrs, READ, iu,
+			   &vec, 1, sizeof(*rsp), iu->sglist, 1,
+			   msg_open_conf, wait);
 	if (unlikely(err))
 		ibnbd_clt_put_dev(dev);
 
 	return err;
 }
 
-static int send_msg_sess_info(struct ibnbd_clt_session *sess)
+static int send_msg_sess_info(struct ibnbd_clt_session *sess, bool wait)
 {
 	struct ibnbd_msg_sess_info_rsp *rsp;
 	struct ibnbd_msg_sess_info msg;
@@ -699,10 +747,10 @@ static int send_msg_sess_info(struct ibnbd_clt_session *sess)
 	msg.hdr.type = IBNBD_MSG_SESS_INFO;
 	msg.ver      = IBNBD_VER_MAJOR;
 
-	INIT_WORK(&iu->work, msg_sess_info_conf);
 	ibnbd_clt_get_sess(sess);
-	err = ibtrs_clt_request(READ, msg_conf, sess->ibtrs, iu->tag,
-				iu, &vec, 1, sizeof(*rsp), iu->sglist, 1);
+	err = send_usr_msg(sess->ibtrs, READ, iu,
+			   &vec, 1, sizeof(*rsp), iu->sglist, 1,
+			   msg_sess_info_conf, wait);
 	if (unlikely(err))
 		ibnbd_clt_put_sess(sess);
 
@@ -731,7 +779,7 @@ static int update_sess_info(struct ibnbd_clt_session *sess)
 	int err;
 
 	sess->sess_info_compl = &comp;
-	err = send_msg_sess_info(sess);
+	err = send_msg_sess_info(sess, WAIT);
 	if (unlikely(err)) {
 		pr_err("Failed to send SESS_INFO message on session %s\n",
 		       sess->sessname);
@@ -772,7 +820,8 @@ static void remap_devs(struct ibnbd_clt_session *sess)
 			continue;
 
 		ibnbd_info(dev, "session reconnected, remapping device\n");
-		send_msg_open(dev);
+		/* FIXME: handle error message */
+		(void)send_msg_open(dev, NO_WAIT);
 	}
 out:
 	mutex_unlock(&sess->lock);
@@ -1682,7 +1731,7 @@ struct ibnbd_clt_dev *ibnbd_clt_map_device(const char *sessname,
 		ret = -EEXIST;
 		goto put_dev;
 	}
-	ret = send_msg_open(dev);
+	ret = send_msg_open(dev, NO_WAIT);
 	if (unlikely(ret)) {
 		ibnbd_err(dev, "map_device: failed, can't open remote device,"
 			  " err: %d\n", ret);
@@ -1795,7 +1844,7 @@ int ibnbd_clt_unmap_device(struct ibnbd_clt_dev *dev, bool force,
 	mutex_unlock(&sess->lock);
 
 	if (prev_state == DEV_STATE_MAPPED && sess->ibtrs)
-		send_msg_close_sync(dev, dev->device_id);
+		send_msg_close(dev, dev->device_id, WAIT);
 
 	ibnbd_info(dev, "Device is unmapped\n");
 	destroy_sysfs(dev, sysfs_self);
@@ -1831,7 +1880,7 @@ int ibnbd_clt_remap_device(struct ibnbd_clt_dev *dev)
 	mutex_unlock(&dev->lock);
 	if (likely(!err)) {
 		ibnbd_info(dev, "Remapping device.\n");
-		err = send_msg_open(dev);
+		err = send_msg_open(dev, WAIT);
 		if (unlikely(err))
 			ibnbd_err(dev, "remap_device: %d\n", err);
 	}
