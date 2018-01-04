@@ -190,7 +190,7 @@ struct ibnbd_clt_dev *ibnbd_clt_map_device(const char *sessname,
 int ibnbd_clt_unmap_device(struct ibnbd_clt_dev *dev, bool force,
 			   const struct attribute *sysfs_self);
 
-int ibnbd_clt_send_open_msg_async(struct ibnbd_clt_dev *dev);
+int ibnbd_clt_remap_device(struct ibnbd_clt_dev *dev);
 int ibnbd_clt_resize_disk(struct ibnbd_clt_dev *dev, size_t newsize);
 
 /* ibnbd-clt-sysfs.c */

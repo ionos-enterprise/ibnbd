@@ -476,9 +476,9 @@ static ssize_t ibnbd_clt_remap_dev_store(struct kobject *kobj,
 					 struct kobj_attribute *attr,
 					 const char *buf, size_t count)
 {
-	int err;
 	struct ibnbd_clt_dev *dev;
 	char *options;
+	int err;
 
 	options = kstrdup(buf, GFP_KERNEL);
 	if (!options)
@@ -493,32 +493,13 @@ static ssize_t ibnbd_clt_remap_dev_store(struct kobject *kobj,
 		err = -EINVAL;
 		goto out;
 	}
+	err = ibnbd_clt_remap_device(dev);
+	if (likely(!err))
+		err = count;
 
-	mutex_lock(&dev->lock);
-	if (dev->dev_state == DEV_STATE_UNMAPPED) {
-		err = -EIO;
-		mutex_unlock(&dev->lock);
-		goto out;
-	} else if (dev->dev_state == DEV_STATE_MAPPED) {
-		mutex_unlock(&dev->lock);
-		goto out1;
-	} else if (dev->dev_state == DEV_STATE_MAPPED_DISCONNECTED) {
-		mutex_unlock(&dev->lock);
-		ibnbd_info(dev, "Remapping device.\n");
-
-		err = ibnbd_clt_send_open_msg_async(dev);
-		if (err) {
-			ibnbd_err(dev, "remap_device: Failed to remap device,"
-				  " err: %d\n", err);
-			goto out;
-		}
-	}
-
-out1:
-	kfree(options);
-	return count;
 out:
 	kfree(options);
+
 	return err;
 }
 

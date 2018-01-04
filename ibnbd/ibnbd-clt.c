@@ -709,19 +709,6 @@ static int send_msg_sess_info(struct ibnbd_clt_session *sess)
 	return err;
 }
 
-int ibnbd_clt_send_open_msg_async(struct ibnbd_clt_dev *dev)
-{
-	int err;
-
-	err = send_msg_open(dev);
-	if (unlikely(err)) {
-		ibnbd_err(dev, "Failed to send open msg, err: %d\n", err);
-		return err;
-	}
-
-	return 0;
-}
-
 static void set_dev_states_to_disconnected(struct ibnbd_clt_session *sess)
 {
 	struct ibnbd_clt_dev *dev;
@@ -785,7 +772,7 @@ static void remap_devs(struct ibnbd_clt_session *sess)
 			continue;
 
 		ibnbd_info(dev, "session reconnected, remapping device\n");
-		ibnbd_clt_send_open_msg_async(dev);
+		send_msg_open(dev);
 	}
 out:
 	mutex_unlock(&sess->lock);
@@ -1695,7 +1682,7 @@ struct ibnbd_clt_dev *ibnbd_clt_map_device(const char *sessname,
 		ret = -EEXIST;
 		goto put_dev;
 	}
-	ret = ibnbd_clt_send_open_msg_async(dev);
+	ret = send_msg_open(dev);
 	if (unlikely(ret)) {
 		ibnbd_err(dev, "map_device: failed, can't open remote device,"
 			  " err: %d\n", ret);
@@ -1826,6 +1813,30 @@ err:
 	mutex_unlock(&dev->lock);
 
 	return ret;
+}
+
+int ibnbd_clt_remap_device(struct ibnbd_clt_dev *dev)
+{
+	int err;
+
+	mutex_lock(&dev->lock);
+	if (likely(dev->dev_state == DEV_STATE_MAPPED_DISCONNECTED))
+		err = 0;
+	else if (dev->dev_state == DEV_STATE_UNMAPPED)
+		err = -ENODEV;
+	else if (dev->dev_state == DEV_STATE_MAPPED)
+		err = -EALREADY;
+	else
+		err = -EBUSY;
+	mutex_unlock(&dev->lock);
+	if (likely(!err)) {
+		ibnbd_info(dev, "Remapping device.\n");
+		err = send_msg_open(dev);
+		if (unlikely(err))
+			ibnbd_err(dev, "remap_device: %d\n", err);
+	}
+
+	return err;
 }
 
 static void ibnbd_destroy_sessions(void)
