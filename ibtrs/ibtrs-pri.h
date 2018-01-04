@@ -146,15 +146,15 @@ struct ibtrs_iu {
  * enum ibtrs_msg_types - IBTRS message types.
  * @IBTRS_MSG_INFO_REQ:		Client additional info request to the server
  * @IBTRS_MSG_INFO_RSP:		Server additional info response to the client
- * @IBTRS_MSG_RDMA_WRITE:	Client writes data per RDMA to Server
- * @IBTRS_MSG_REQ_RDMA_WRITE:	Client requests data transfer per RDMA
+ * @IBTRS_MSG_WRITE:		Client writes data per RDMA to server
+ * @IBTRS_MSG_READ:		Client requests data transfer from server
  * @IBTRS_MSG_USER:		Data transfer per Infiniband message
  */
 enum ibtrs_msg_types {
 	IBTRS_MSG_INFO_REQ,
 	IBTRS_MSG_INFO_RSP,
-	IBTRS_MSG_RDMA_WRITE,
-	IBTRS_MSG_REQ_RDMA_WRITE,
+	IBTRS_MSG_WRITE,
+	IBTRS_MSG_READ,
 	IBTRS_MSG_USER,
 };
 
@@ -285,7 +285,7 @@ struct ibtrs_sg_desc {
 
 /**
  * struct ibtrs_msg_req_rdma_write - RDMA data transfer request from client
- * @type:		always @IBTRS_MSG_REQ_RDMA_WRITE
+ * @type:		always @IBTRS_MSG_READ
  * @usr_len:		length of user payload
  * @sg_cnt:		number of @desc entries
  * @desc:		RDMA bufferst where the server can write the result to
@@ -299,7 +299,7 @@ struct ibtrs_msg_req_rdma_write {
 
 /**
  * struct_msg_rdma_write - Message transferred to server with RDMA-Write
- * @type:		always @IBTRS_MSG_RDMA_WRITE
+ * @type:		always @IBTRS_MSG_WRITE
  * @usr_len:		length of user payload
  */
 struct ibtrs_msg_rdma_write {

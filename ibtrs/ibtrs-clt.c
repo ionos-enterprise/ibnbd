@@ -930,7 +930,7 @@ last_one:
 
 	ret = ib_post_send(con->c.qp, &wrs[0].wr, &bad_wr);
 	if (unlikely(ret))
-		ibtrs_err(sess, "Posting RDMA-Write-Request to QP failed,"
+		ibtrs_err(sess, "Posting write request to QP failed,"
 			  " err: %d\n", ret);
 	kfree(wrs);
 	return ret;
@@ -2955,7 +2955,7 @@ static int ibtrs_clt_rdma_write_desc(struct ibtrs_clt_con *con,
 	ret = ibtrs_fast_reg_map_data(con, desc, req);
 	if (unlikely(ret < 0)) {
 		ibtrs_err_rl(sess,
-			     "RDMA-Write failed, fast reg. data mapping"
+			     "Write request failed, fast reg. data mapping"
 			     " failed, err: %d\n", ret);
 		kfree(desc);
 		return ret;
@@ -2963,7 +2963,7 @@ static int ibtrs_clt_rdma_write_desc(struct ibtrs_clt_con *con,
 	ret = ibtrs_post_send_rdma_desc(con, req, desc, ret, buf,
 					u_msg_len + sizeof(*msg), imm);
 	if (unlikely(ret)) {
-		ibtrs_err(sess, "RDMA-Write failed, posting work"
+		ibtrs_err(sess, "Write request failed, posting work"
 			  " request failed, err: %d\n", ret);
 		ibtrs_unmap_fast_reg_data(con, req);
 	}
@@ -2984,7 +2984,7 @@ static int ibtrs_clt_write_req(struct ibtrs_clt_io_req *req)
 	const size_t tsize = sizeof(*msg) + req->data_len + req->usr_len;
 
 	if (unlikely(tsize > sess->chunk_size)) {
-		ibtrs_wrn(sess, "RDMA-Write failed, size too big %zu > %d\n",
+		ibtrs_wrn(sess, "Write request failed, size too big %zu > %d\n",
 			  tsize, sess->chunk_size);
 		return -EMSGSIZE;
 	}
@@ -2992,13 +2992,13 @@ static int ibtrs_clt_write_req(struct ibtrs_clt_io_req *req)
 		count = ib_dma_map_sg(sess->s.ib_dev->dev, req->sglist,
 				      req->sg_cnt, req->dir);
 		if (unlikely(!count)) {
-			ibtrs_wrn(sess, "RDMA-Write failed, map failed\n");
+			ibtrs_wrn(sess, "Write request failed, map failed\n");
 			return -EINVAL;
 		}
 	}
 	/* put ibtrs msg after sg and user message */
 	msg = req->iu->buf + req->usr_len;
-	msg->type = cpu_to_le16(IBTRS_MSG_RDMA_WRITE);
+	msg->type = cpu_to_le16(IBTRS_MSG_WRITE);
 	msg->usr_len = cpu_to_le16(req->usr_len);
 
 	/* ibtrs message on server side will be after user data and message */
@@ -3020,7 +3020,7 @@ static int ibtrs_clt_write_req(struct ibtrs_clt_io_req *req)
 		ret = ibtrs_post_send_rdma_more(req->con, req, buf,
 					req->usr_len + sizeof(*msg), imm);
 	if (unlikely(ret)) {
-		ibtrs_err(sess, "RDMA-Write failed: %d\n", ret);
+		ibtrs_err(sess, "Write request failed: %d\n", ret);
 		ibtrs_clt_decrease_inflight(&sess->stats);
 		if (req->sg_cnt)
 			ib_dma_unmap_sg(sess->s.ib_dev->dev, req->sglist,
@@ -3047,7 +3047,7 @@ int ibtrs_clt_write(struct ibtrs_clt *clt, ibtrs_conf_fn *conf,
 		if (unlikely(sess->state != IBTRS_CLT_CONNECTED))
 			continue;
 		if (unlikely(usr_len > IO_MSG_SIZE)) {
-			ibtrs_wrn_rl(sess, "RDMA-Write failed, user message size"
+			ibtrs_wrn_rl(sess, "Write request failed, user message size"
 				     " is %zu B big, max size is %d B\n",
 				     usr_len, IO_MSG_SIZE);
 			err = -EMSGSIZE;
@@ -3084,7 +3084,7 @@ static int ibtrs_clt_read_req(struct ibtrs_clt_io_req *req)
 	ibdev = sess->s.ib_dev;
 
 	if (unlikely(tsize > sess->chunk_size)) {
-		ibtrs_wrn(sess, "Request-RDMA-Write failed, message size is"
+		ibtrs_wrn(sess, "Read request failed, message size is"
 			  " %zu, bigger than CHUNK_SIZE %d\n", tsize,
 			  sess->chunk_size);
 		return -EMSGSIZE;
@@ -3094,13 +3094,13 @@ static int ibtrs_clt_read_req(struct ibtrs_clt_io_req *req)
 		count = ib_dma_map_sg(ibdev->dev, req->sglist, req->sg_cnt,
 				      req->dir);
 		if (unlikely(!count)) {
-			ibtrs_wrn(sess, "Request-RDMA-Write failed, dma map failed\n");
+			ibtrs_wrn(sess, "Read request failed, dma map failed\n");
 			return -EINVAL;
 		}
 	}
 	/* put our message into req->buf after user message*/
 	msg = req->iu->buf + req->usr_len;
-	msg->type = cpu_to_le16(IBTRS_MSG_REQ_RDMA_WRITE);
+	msg->type = cpu_to_le16(IBTRS_MSG_READ);
 	msg->sg_cnt = cpu_to_le32(count);
 	msg->usr_len = cpu_to_le16(req->usr_len);
 
@@ -3108,7 +3108,7 @@ static int ibtrs_clt_read_req(struct ibtrs_clt_io_req *req)
 		ret = ibtrs_fast_reg_map_data(req->con, msg->desc, req);
 		if (ret < 0) {
 			ibtrs_err_rl(sess,
-				     "Request-RDMA-Write failed, failed to map "
+				     "Read request failed, failed to map "
 				     " fast reg. data, err: %d\n", ret);
 			ib_dma_unmap_sg(ibdev->dev, req->sglist, req->sg_cnt,
 					req->dir);
@@ -3145,7 +3145,7 @@ static int ibtrs_clt_read_req(struct ibtrs_clt_io_req *req)
 	ret = ibtrs_post_send_rdma(req->con, req, sess->srv_rdma_addr[buf_id],
 				   req->data_len, imm);
 	if (unlikely(ret)) {
-		ibtrs_err(sess, "Request-RDMA-Write failed: %d\n", ret);
+		ibtrs_err(sess, "Read request failed: %d\n", ret);
 		ibtrs_clt_decrease_inflight(&sess->stats);
 		if (unlikely(count > fmr_sg_cnt))
 			ibtrs_unmap_fast_reg_data(req->con, req);
@@ -3177,7 +3177,7 @@ int ibtrs_clt_read(struct ibtrs_clt *clt, ibtrs_conf_fn *conf,
 			     sizeof(struct ibtrs_msg_req_rdma_write) +
 			     sg_cnt * sizeof(struct ibtrs_sg_desc) >
 			     sess->max_req_size)) {
-			ibtrs_wrn_rl(sess, "Request-RDMA-Write failed, user message size"
+			ibtrs_wrn_rl(sess, "Read request failed, user message size"
 				     " is %zu B big, max size is %d B\n",
 				     usr_len, IO_MSG_SIZE);
 			err = -EMSGSIZE;

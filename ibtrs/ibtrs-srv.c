@@ -784,9 +784,9 @@ static int post_recv_sess(struct ibtrs_srv_sess *sess)
 	return 0;
 }
 
-static void process_rdma_write_req(struct ibtrs_srv_con *con,
-				   struct ibtrs_msg_req_rdma_write *req,
-				   u32 buf_id, u32 off)
+static void process_read(struct ibtrs_srv_con *con,
+			 struct ibtrs_msg_req_rdma_write *req,
+			 u32 buf_id, u32 off)
 {
 	struct ibtrs_srv_sess *sess = to_srv_sess(con->c.sess);
 	struct ibtrs_srv *srv = sess->srv;
@@ -798,7 +798,7 @@ static void process_rdma_write_req(struct ibtrs_srv_con *con,
 	int ret;
 
 	if (unlikely(sess->state != IBTRS_SRV_CONNECTED)) {
-		ibtrs_err_rl(sess, "Processing RDMA-Write-Req request failed, "
+		ibtrs_err_rl(sess, "Processing read request failed, "
 			     " session is disconnected, sess state %s\n",
 			     ibtrs_srv_state_str(sess->state));
 		return;
@@ -819,7 +819,7 @@ static void process_rdma_write_req(struct ibtrs_srv_con *con,
 		id->tx_wr	= kcalloc(sg_cnt, sizeof(*id->tx_wr), GFP_KERNEL);
 		id->tx_sg	= kcalloc(sg_cnt, sizeof(*id->tx_sg), GFP_KERNEL);
 		if (!id->tx_wr || !id->tx_sg) {
-			ibtrs_err_rl(sess, "Processing RDMA-Write-Req failed, work request "
+			ibtrs_err_rl(sess, "Processing read request failed, work request "
 				     "or scatter gather allocation failed for msg_id %d\n",
 				     buf_id);
 			ret = -ENOMEM;
@@ -834,7 +834,7 @@ static void process_rdma_write_req(struct ibtrs_srv_con *con,
 			   data + data_len, usr_len);
 
 	if (unlikely(ret)) {
-		ibtrs_err_rl(sess, "Processing RDMA-Write-Req failed, user "
+		ibtrs_err_rl(sess, "Processing read request failed, user "
 			     "module cb reported for msg_id %d, err: %d\n",
 			     buf_id, ret);
 		goto send_err_msg;
@@ -852,9 +852,9 @@ send_err_msg:
 	ibtrs_srv_put_ops_ids(sess);
 }
 
-static void process_rdma_write(struct ibtrs_srv_con *con,
-			       struct ibtrs_msg_rdma_write *req,
-			       u32 buf_id, u32 off)
+static void process_write(struct ibtrs_srv_con *con,
+			  struct ibtrs_msg_rdma_write *req,
+			  u32 buf_id, u32 off)
 {
 	struct ibtrs_srv_sess *sess = to_srv_sess(con->c.sess);
 	struct ibtrs_srv *srv = sess->srv;
@@ -866,7 +866,7 @@ static void process_rdma_write(struct ibtrs_srv_con *con,
 	int ret;
 
 	if (unlikely(sess->state != IBTRS_SRV_CONNECTED)) {
-		ibtrs_err_rl(sess, "Processing RDMA-Write request failed, "
+		ibtrs_err_rl(sess, "Processing write request failed, "
 			     " session is disconnected, sess state %s\n",
 			     ibtrs_srv_state_str(sess->state));
 		return;
@@ -884,7 +884,7 @@ static void process_rdma_write(struct ibtrs_srv_con *con,
 	ret = ctx->rdma_ev(srv, srv->priv, id, WRITE, data, data_len,
 			   data + data_len, usr_len);
 	if (unlikely(ret)) {
-		ibtrs_err_rl(sess, "Processing RDMA-Write failed, user module"
+		ibtrs_err_rl(sess, "Processing write request failed, user module"
 			     " callback reports err: %d\n", ret);
 		goto send_err_msg;
 	}
@@ -894,7 +894,7 @@ static void process_rdma_write(struct ibtrs_srv_con *con,
 send_err_msg:
 	ret = send_io_resp_imm(con, buf_id, ret);
 	if (ret < 0) {
-		ibtrs_err_rl(sess, "Processing RDMA-Write failed, sending I/O"
+		ibtrs_err_rl(sess, "Processing write request failed, sending I/O"
 			     " response failed, msg_id %d, err: %d\n",
 			     buf_id, ret);
 		close_sess(sess);
@@ -911,11 +911,11 @@ static void process_io_req(struct ibtrs_srv_con *con, void *msg,
 	type = le16_to_cpu(le16_to_cpu(*(__le16 *)msg));
 
 	switch (type) {
-	case IBTRS_MSG_RDMA_WRITE:
-		process_rdma_write(con, msg, id, off);
+	case IBTRS_MSG_WRITE:
+		process_write(con, msg, id, off);
 		break;
-	case IBTRS_MSG_REQ_RDMA_WRITE:
-		process_rdma_write_req(con, msg, id, off);
+	case IBTRS_MSG_READ:
+		process_read(con, msg, id, off);
 		break;
 	default:
 		ibtrs_err(sess, "Processing I/O request failed, "
