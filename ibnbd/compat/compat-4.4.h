@@ -20,7 +20,7 @@ static inline int req_op(struct request *rq)
 	if (rq->cmd_flags & REQ_WRITE_SAME)
 		return REQ_WRITE_SAME;
 	else if (rq->cmd_flags & REQ_DISCARD)
-		return REQ_DISCARD;
+		return (REQ_DISCARD | REQ_WRITE);
 	else if (rq->cmd_flags & REQ_FLUSH)
 		return REQ_FLUSH;
 	else if (rq->cmd_flags & REQ_SECURE)
@@ -35,7 +35,7 @@ static inline int req_op(struct request *rq)
 #define REQ_OP_WRITE        REQ_WRITE
 #define REQ_OP_WRITE_SAME   REQ_WRITE_SAME
 #define REQ_OP_FLUSH        REQ_FLUSH
-#define REQ_OP_DISCARD      REQ_DISCARD
+#define REQ_OP_DISCARD      (REQ_DISCARD | REQ_WRITE)
 #define REQ_OP_SECURE_ERASE REQ_SECURE
 #define REQ_OP_WRITE_SAME   REQ_WRITE_SAME
 #define REQ_PREFLUSH        0
