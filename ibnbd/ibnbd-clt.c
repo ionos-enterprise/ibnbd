@@ -897,6 +897,14 @@ static struct ibnbd_clt_session *alloc_sess(const char *sessname,
 		       " allocating session struct failed\n", sessname);
 		return ERR_PTR(-ENOMEM);
 	}
+	strlcpy(sess->sessname, sessname, sizeof(sess->sessname));
+	atomic_set(&sess->busy, 0);
+	mutex_init(&sess->lock);
+	INIT_LIST_HEAD(&sess->devs_list);
+	bitmap_zero(sess->cpu_queues_bm, NR_CPUS);
+	init_waitqueue_head(&sess->ibtrs_waitq);
+	refcount_set(&sess->refcount, 1);
+
 	sess->cpu_queues = alloc_percpu(struct ibnbd_cpu_qlist);
 	if (unlikely(!sess->cpu_queues)) {
 		pr_err("Failed to create session to %s,"
@@ -921,14 +929,6 @@ static struct ibnbd_clt_session *alloc_sess(const char *sessname,
 	for_each_possible_cpu(cpu) {
 		*per_cpu_ptr(sess->cpu_rr, cpu) = -1;
 	}
-
-	strlcpy(sess->sessname, sessname, sizeof(sess->sessname));
-	atomic_set(&sess->busy, 0);
-	mutex_init(&sess->lock);
-	INIT_LIST_HEAD(&sess->devs_list);
-	bitmap_zero(sess->cpu_queues_bm, NR_CPUS);
-	init_waitqueue_head(&sess->ibtrs_waitq);
-	refcount_set(&sess->refcount, 1);
 
 	return sess;
 
