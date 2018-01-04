@@ -1804,9 +1804,7 @@ int ibnbd_clt_unmap_device(struct ibnbd_clt_dev *dev, bool force,
 	dev->dev_state = DEV_STATE_UNMAPPED;
 	mutex_unlock(&dev->lock);
 
-	mutex_lock(&sess->lock);
-	list_del(&dev->list);
-	mutex_unlock(&sess->lock);
+	delete_dev(dev);
 
 	if (prev_state == DEV_STATE_MAPPED && sess->ibtrs)
 		send_msg_close(dev, dev->device_id, WAIT);
