@@ -296,7 +296,8 @@ void ibtrs_clt_put_tag(struct ibtrs_clt *clt, struct ibtrs_tag *tag)
 
 	__ibtrs_put_tag(clt, tag);
 
-	/* Putting a tag is a barrier, so we will observe
+	/*
+	 * Putting a tag is a barrier, so we will observe
 	 * new entry in the wait list, no worries.
 	 */
 	if (waitqueue_active(&clt->tags_wait))
@@ -2321,7 +2322,7 @@ static int ibtrs_rdma_conn_established(struct ibtrs_clt_con *con,
 		/*
 		 * Global queue depth and is always a minimum.  If while a
 		 * reconnection server sends us a value a bit higher -
-		 * client does side not care and uses cached minimum.
+		 * client does not care and uses cached minimum.
 		 */
 		ibtrs_clt_set_min_queue_depth(sess->clt, sess->queue_depth);
 		ibtrs_clt_set_min_io_size(sess->clt, sess->max_io_size);

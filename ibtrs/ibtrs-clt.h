@@ -223,7 +223,6 @@ struct ibtrs_clt {
 	unsigned		max_segments;
 	void			*tags;
 	unsigned long		*tags_map;
-	size_t			user_queue_depth;
 	size_t			queue_depth;
 	size_t			max_io_size;
 	wait_queue_head_t	tags_wait;
