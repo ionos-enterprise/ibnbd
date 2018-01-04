@@ -590,7 +590,6 @@ static void msg_close_conf(struct work_struct *work)
 	struct ibnbd_iu *iu = container_of(work, struct ibnbd_iu, work);
 	struct ibnbd_clt_dev *dev = iu->dev;
 
-	complete(&dev->close_compl);
 	wake_up_iu_comp(iu, iu->errno);
 	ibnbd_put_iu(dev->sess, iu);
 	ibnbd_clt_put_dev(dev);
@@ -647,16 +646,14 @@ static void msg_open_conf(struct work_struct *work)
 		errno = process_msg_open_rsp(dev, rsp);
 		if (unlikely(errno))
 			/*
-			 * if server thinks its fine, but we fail to process then
-			 * be nice and send a close to server
+			 * If server thinks its fine, but we fail to process
+			 * then be nice and send a close to server.
 			 */
-			send_msg_close(dev, rsp->device_id, NO_WAIT);
+			(void)send_msg_close(dev, rsp->device_id, NO_WAIT);
 	}
 	kfree(rsp);
 	wake_up_iu_comp(iu, errno);
 	ibnbd_put_iu(dev->sess, iu);
-	dev->open_errno = errno;
-	complete(&dev->open_compl);
 	ibnbd_clt_put_dev(dev);
 }
 
@@ -668,8 +665,6 @@ static void msg_sess_info_conf(struct work_struct *work)
 	struct ibnbd_clt_session *sess = iu->sess;
 
 	sess->ver = min_t(u8, rsp->ver, IBNBD_VER_MAJOR);
-	if (sess->sess_info_compl)
-		complete(sess->sess_info_compl);
 	kfree(rsp);
 	wake_up_iu_comp(iu, iu->errno);
 	ibnbd_put_iu(sess, iu);
@@ -773,25 +768,6 @@ static void set_dev_states_to_disconnected(struct ibnbd_clt_session *sess)
 	mutex_unlock(&sess->lock);
 }
 
-static int update_sess_info(struct ibnbd_clt_session *sess)
-{
-	DECLARE_COMPLETION_ONSTACK(comp);
-	int err;
-
-	sess->sess_info_compl = &comp;
-	err = send_msg_sess_info(sess, WAIT);
-	if (unlikely(err)) {
-		pr_err("Failed to send SESS_INFO message on session %s\n",
-		       sess->sessname);
-		goto out;
-	}
-	wait_for_completion(&comp);
-out:
-	sess->sess_info_compl = NULL;
-
-	return err;
-}
-
 static void remap_devs(struct ibnbd_clt_session *sess)
 {
 	struct ibnbd_clt_dev *dev;
@@ -802,7 +778,7 @@ static void remap_devs(struct ibnbd_clt_session *sess)
 	mutex_lock(&sess->lock);
 	sess->max_io_size = attrs.max_io_size;
 
-	err = update_sess_info(sess);
+	err = send_msg_sess_info(sess, WAIT);
 	if (unlikely(err))
 		goto out;
 
@@ -1093,7 +1069,7 @@ find_and_get_or_create_sess(const char *sessname,
 	if (unlikely(err))
 		goto put_sess;
 
-	err = update_sess_info(sess);
+	err = send_msg_sess_info(sess, WAIT);
 	if (unlikely(err))
 		goto put_sess;
 
@@ -1616,8 +1592,6 @@ static struct ibnbd_clt_dev *init_dev(struct ibnbd_clt_session *sess,
 	dev->access_mode	= access_mode;
 	dev->queue_mode		= queue_mode;
 	dev->io_mode		= io_mode;
-	init_completion(&dev->close_compl);
-	init_completion(&dev->open_compl);
 	strlcpy(dev->pathname, pathname, sizeof(dev->pathname));
 	INIT_DELAYED_WORK(&dev->rq_delay_work, ibnbd_blk_delay_work);
 	mutex_init(&dev->lock);
@@ -1731,23 +1705,14 @@ struct ibnbd_clt_dev *ibnbd_clt_map_device(const char *sessname,
 		ret = -EEXIST;
 		goto put_dev;
 	}
-	ret = send_msg_open(dev, NO_WAIT);
+	ret = send_msg_open(dev, WAIT);
 	if (unlikely(ret)) {
 		ibnbd_err(dev, "map_device: failed, can't open remote device,"
 			  " err: %d\n", ret);
 		ret = -EINVAL;
 		goto del_dev;
 	}
-	wait_for_completion(&dev->open_compl);
 	mutex_lock(&dev->lock);
-
-	if (!ibnbd_clt_dev_is_mapped(dev)) {
-		mutex_unlock(&dev->lock);
-		ret = dev->open_errno;
-		ibnbd_err(dev, "map_device: failed err: %d\n", ret);
-		goto del_dev;
-	}
-
 	pr_debug("Opened remote device: session=%s, path='%s'\n", sess->sessname,
 		 pathname);
 	ret = ibnbd_client_setup_device(sess, dev, dev->clt_device_id);

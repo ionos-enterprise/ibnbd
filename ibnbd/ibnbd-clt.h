@@ -121,7 +121,6 @@ struct ibnbd_clt_session {
 	refcount_t		refcount;
 	char			sessname[NAME_MAX];
 	u8			ver; /* protocol version */
-	struct completion	*sess_info_compl;
 };
 
 /**
@@ -142,9 +141,6 @@ struct ibnbd_clt_dev {
 	u32			device_id;
 	/* local Idr index - used to track minor number allocations. */
 	u32			clt_device_id;
-	struct completion	close_compl;
-	struct completion	open_compl;
-	int			open_errno;
 	struct mutex		lock;
 	enum ibnbd_clt_dev_state	dev_state;
 	enum ibnbd_queue_mode	queue_mode;
