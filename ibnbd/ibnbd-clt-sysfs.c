@@ -406,7 +406,7 @@ static ssize_t ibnbd_clt_unmap_dev_store(struct kobject *kobj,
 		err = -ENODEV;
 		goto out;
 	}
-	err = ibnbd_unmap_device(dev, force);
+	err = ibnbd_clt_unmap_device(dev, force);
 	if (unlikely(err)) {
 		if (unlikely(err != -EALREADY))
 		    ibnbd_err(dev, "unmap_device: %d\n",  err);
@@ -690,7 +690,7 @@ static ssize_t ibnbd_clt_map_device_store(struct kobject *kobj,
 	return count;
 
 unmap_dev:
-	ibnbd_unmap_device(dev, true);
+	ibnbd_clt_unmap_device(dev, true);
 	ibnbd_destroy_gen_disk(dev);
 
 	return ret;

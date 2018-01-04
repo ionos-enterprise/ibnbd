@@ -176,7 +176,6 @@ static inline const char *ibnbd_queue_mode_str(enum ibnbd_queue_mode mode)
 	}
 }
 
-int ibnbd_unmap_device(struct ibnbd_clt_dev *dev, bool force);
 struct ibnbd_clt_dev *ibnbd_clt_map_device(const char *sessname,
 					   struct ibtrs_addr *paths,
 					   size_t path_cnt,
@@ -184,6 +183,8 @@ struct ibnbd_clt_dev *ibnbd_clt_map_device(const char *sessname,
 					   enum ibnbd_access_mode access_mode,
 					   enum ibnbd_queue_mode queue_mode,
 					   enum ibnbd_io_mode io_mode);
+int ibnbd_clt_unmap_device(struct ibnbd_clt_dev *dev, bool force);
+
 void ibnbd_destroy_gen_disk(struct ibnbd_clt_dev *dev);
 int open_remote_device(struct ibnbd_clt_dev *dev);
 int ibnbd_clt_resize_disk(struct ibnbd_clt_dev *dev, size_t newsize);

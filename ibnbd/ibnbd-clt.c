@@ -1798,7 +1798,7 @@ out:
 	return ret;
 }
 
-int ibnbd_unmap_device(struct ibnbd_clt_dev *dev, bool force)
+int ibnbd_clt_unmap_device(struct ibnbd_clt_dev *dev, bool force)
 {
 	int ret;
 
@@ -1821,7 +1821,7 @@ static void ibnbd_destroy_sessions(void)
 	list_for_each_entry_safe(sess, sn, &session_list, list) {
 		ibnbd_clt_get_sess(sess);
 		list_for_each_entry_safe(dev, tn, &sess->devs_list, list) {
-			ibnbd_unmap_device(dev, true);
+			ibnbd_clt_unmap_device(dev, true);
 			ibnbd_destroy_gen_disk(dev);
 		}
 		ibnbd_clt_put_sess(sess);
