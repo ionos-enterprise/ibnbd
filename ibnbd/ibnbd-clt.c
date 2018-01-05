@@ -565,7 +565,7 @@ static int send_usr_msg(struct ibtrs_clt *ibtrs, int dir,
 			struct ibnbd_iu *iu, struct kvec *vec, size_t nr,
 			size_t len, struct scatterlist *sg, unsigned int sg_len,
 			void (*conf)(struct work_struct *work),
-			bool wait)
+			int *errno, bool wait)
 {
 	struct ibnbd_iu_comp comp;
 	int err;
@@ -579,8 +579,9 @@ static int send_usr_msg(struct ibtrs_clt *ibtrs, int dir,
 		deinit_iu_comp(iu);
 	else if (wait) {
 		wait_iu_comp(&comp);
-		err = comp.errno;
-	}
+		*errno = comp.errno;
+	} else
+		*errno = 0;
 
 	return err;
 }
@@ -604,7 +605,7 @@ static int send_msg_close(struct ibnbd_clt_dev *dev, u32 device_id, bool wait)
 		.iov_base = &msg,
 		.iov_len  = sizeof(msg)
 	};
-	int err;
+	int err, errno;
 
 	iu = ibnbd_get_iu(sess, IBTRS_USR_CON, IBTRS_TAG_WAIT);
 	if (unlikely(!iu)) {
@@ -621,11 +622,12 @@ static int send_msg_close(struct ibnbd_clt_dev *dev, u32 device_id, bool wait)
 
 	ibnbd_clt_get_dev(dev);
 	err = send_usr_msg(sess->ibtrs, WRITE, iu, &vec, 1, 0, NULL, 0,
-			   msg_close_conf, wait);
+			   msg_close_conf, &errno, wait);
 	if (unlikely(err)) {
 		ibnbd_clt_put_dev(dev);
 		ibnbd_put_iu(sess, iu);
-	}
+	} else
+		err = errno;
 
 	return err;
 }
@@ -683,7 +685,7 @@ static int send_msg_open(struct ibnbd_clt_dev *dev, bool wait)
 		.iov_base = &msg,
 		.iov_len  = sizeof(msg)
 	};
-	int err;
+	int err, errno;
 
 	rsp = kzalloc(sizeof(*rsp), GFP_KERNEL);
 	if (unlikely(!rsp))
@@ -708,12 +710,13 @@ static int send_msg_open(struct ibnbd_clt_dev *dev, bool wait)
 	ibnbd_clt_get_dev(dev);
 	err = send_usr_msg(sess->ibtrs, READ, iu,
 			   &vec, 1, sizeof(*rsp), iu->sglist, 1,
-			   msg_open_conf, wait);
+			   msg_open_conf, &errno, wait);
 	if (unlikely(err)) {
 		ibnbd_clt_put_dev(dev);
 		ibnbd_put_iu(sess, iu);
 		kfree(rsp);
-	}
+	} else
+		err = errno;
 
 	return err;
 }
@@ -727,7 +730,7 @@ static int send_msg_sess_info(struct ibnbd_clt_session *sess, bool wait)
 		.iov_base = &msg,
 		.iov_len  = sizeof(msg)
 	};
-	int err;
+	int err, errno;
 
 	rsp = kzalloc(sizeof(*rsp), GFP_KERNEL);
 	if (unlikely(!rsp))
@@ -750,12 +753,13 @@ static int send_msg_sess_info(struct ibnbd_clt_session *sess, bool wait)
 	ibnbd_clt_get_sess(sess);
 	err = send_usr_msg(sess->ibtrs, READ, iu,
 			   &vec, 1, sizeof(*rsp), iu->sglist, 1,
-			   msg_sess_info_conf, wait);
+			   msg_sess_info_conf, &errno, wait);
 	if (unlikely(err)) {
 		ibnbd_clt_put_sess(sess);
 		ibnbd_put_iu(sess, iu);
 		kfree(rsp);
-	}
+	} else
+		err = errno;
 
 	return err;
 }
