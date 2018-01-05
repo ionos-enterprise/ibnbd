@@ -712,6 +712,7 @@ static int send_msg_open(struct ibnbd_clt_dev *dev, bool wait)
 	if (unlikely(err)) {
 		ibnbd_clt_put_dev(dev);
 		ibnbd_put_iu(sess, iu);
+		kfree(rsp);
 	}
 
 	return err;
@@ -753,6 +754,7 @@ static int send_msg_sess_info(struct ibnbd_clt_session *sess, bool wait)
 	if (unlikely(err)) {
 		ibnbd_clt_put_sess(sess);
 		ibnbd_put_iu(sess, iu);
+		kfree(rsp);
 	}
 
 	return err;
