@@ -622,8 +622,10 @@ static int send_msg_close(struct ibnbd_clt_dev *dev, u32 device_id, bool wait)
 	ibnbd_clt_get_dev(dev);
 	err = send_usr_msg(sess->ibtrs, WRITE, iu, &vec, 1, 0, NULL, 0,
 			   msg_close_conf, wait);
-	if (unlikely(err))
+	if (unlikely(err)) {
 		ibnbd_clt_put_dev(dev);
+		ibnbd_put_iu(sess, iu);
+	}
 
 	return err;
 }
@@ -707,8 +709,10 @@ static int send_msg_open(struct ibnbd_clt_dev *dev, bool wait)
 	err = send_usr_msg(sess->ibtrs, READ, iu,
 			   &vec, 1, sizeof(*rsp), iu->sglist, 1,
 			   msg_open_conf, wait);
-	if (unlikely(err))
+	if (unlikely(err)) {
 		ibnbd_clt_put_dev(dev);
+		ibnbd_put_iu(sess, iu);
+	}
 
 	return err;
 }
@@ -746,8 +750,10 @@ static int send_msg_sess_info(struct ibnbd_clt_session *sess, bool wait)
 	err = send_usr_msg(sess->ibtrs, READ, iu,
 			   &vec, 1, sizeof(*rsp), iu->sglist, 1,
 			   msg_sess_info_conf, wait);
-	if (unlikely(err))
+	if (unlikely(err)) {
 		ibnbd_clt_put_sess(sess);
+		ibnbd_put_iu(sess, iu);
+	}
 
 	return err;
 }
