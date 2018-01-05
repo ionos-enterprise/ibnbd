@@ -1069,17 +1069,19 @@ find_and_get_or_create_sess(const char *sessname,
 
 	err = setup_mq_tags(sess);
 	if (unlikely(err))
-		goto put_sess;
+		goto close_ibtrs;
 
 	err = send_msg_sess_info(sess, WAIT);
 	if (unlikely(err))
-		goto put_sess;
+		goto close_ibtrs;
 
 	sess->ibtrs_ready = true;
 	wake_up_all(&sess->ibtrs_waitq);
 
 	return sess;
 
+close_ibtrs:
+	close_ibtrs(sess);
 put_sess:
 	sess->ibtrs_ready = true;
 	wake_up_all(&sess->ibtrs_waitq);
