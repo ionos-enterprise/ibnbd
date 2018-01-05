@@ -786,13 +786,26 @@ static void remap_devs(struct ibnbd_clt_session *sess)
 	struct ibtrs_attrs attrs;
 	int err;
 
+	/*
+	 * Careful here: we are called from IBTRS link event directly,
+	 * thus we can't send any IBTRS request and wait for response
+	 * or IBTRS will not be able to complete request with failure
+	 * if something goes wrong (failing of outstanding requests
+	 * happens exactly from the context where we are blocking now).
+	 *
+	 * So to avoid deadlocks each usr message sent from here must
+	 * be asynchronous.
+	 */
+
+	err = send_msg_sess_info(sess, NO_WAIT);
+	if (unlikely(err)) {
+		pr_err("send_msg_sess_info(\"%s\"): %d\n", sess->sessname, err);
+		return;
+	}
+
 	ibtrs_clt_query(sess->ibtrs, &attrs);
 	mutex_lock(&sess->lock);
 	sess->max_io_size = attrs.max_io_size;
-
-	err = send_msg_sess_info(sess, WAIT);
-	if (unlikely(err))
-		goto out;
 
 	list_for_each_entry(dev, &sess->devs_list, list) {
 		bool skip;
@@ -808,10 +821,12 @@ static void remap_devs(struct ibnbd_clt_session *sess)
 			continue;
 
 		ibnbd_info(dev, "session reconnected, remapping device\n");
-		/* FIXME: handle error message */
-		(void)send_msg_open(dev, NO_WAIT);
+		err = send_msg_open(dev, NO_WAIT);
+		if (unlikely(err)) {
+			ibnbd_err(dev, "send_msg_open(): %d\n", err);
+			break;
+		}
 	}
-out:
 	mutex_unlock(&sess->lock);
 }
 
