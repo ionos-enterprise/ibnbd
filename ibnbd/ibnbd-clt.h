@@ -166,6 +166,7 @@ struct ibnbd_clt_dev {
 	struct kobject		kobj;
 	char			blk_symlink_name[NAME_MAX];
 	refcount_t		refcount;
+	struct work_struct	unmap_on_rmmod_work;
 };
 
 static inline const char *ibnbd_queue_mode_str(enum ibnbd_queue_mode mode)

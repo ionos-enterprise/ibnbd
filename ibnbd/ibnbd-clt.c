@@ -1863,6 +1863,14 @@ int ibnbd_clt_remap_device(struct ibnbd_clt_dev *dev)
 	return err;
 }
 
+static void unmap_device_work(struct work_struct *work)
+{
+	struct ibnbd_clt_dev *dev;
+
+	dev = container_of(work, typeof(*dev), unmap_on_rmmod_work);
+	ibnbd_clt_unmap_device(dev, true, NULL);
+}
+
 static void ibnbd_destroy_sessions(void)
 {
 	struct ibnbd_clt_session *sess, *sn;
@@ -1890,10 +1898,20 @@ static void ibnbd_destroy_sessions(void)
 	list_for_each_entry_safe(sess, sn, &session_list, list) {
 		ibnbd_clt_get_sess(sess);
 		close_ibtrs(sess);
-		list_for_each_entry_safe(dev, tn, &sess->devs_list, list)
-			ibnbd_clt_unmap_device(dev, true, NULL);
+		list_for_each_entry_safe(dev, tn, &sess->devs_list, list) {
+			/*
+			 * Here unmap happens in parallel for only one reason:
+			 * blk_cleanup_queue() takes around half a second, so
+			 * on huge amount of devices the whole module unload
+			 * procedure takes minutes.
+			 */
+			INIT_WORK(&dev->unmap_on_rmmod_work, unmap_device_work);
+			schedule_work(&dev->unmap_on_rmmod_work);
+		}
 		ibnbd_clt_put_sess(sess);
 	}
+	/* Wait for all scheduled unmap works */
+	flush_scheduled_work();
 	WARN_ON(!list_empty(&session_list));
 }
 
