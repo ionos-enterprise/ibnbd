@@ -668,7 +668,9 @@ static void msg_sess_info_conf(struct work_struct *work)
 		(struct ibnbd_msg_sess_info_rsp *)iu->buf;
 	struct ibnbd_clt_session *sess = iu->sess;
 
-	sess->ver = min_t(u8, rsp->ver, IBNBD_VER_MAJOR);
+	if (likely(!iu->errno))
+		sess->ver = min_t(u8, rsp->ver, IBNBD_VER_MAJOR);
+
 	kfree(rsp);
 	wake_up_iu_comp(iu, iu->errno);
 	ibnbd_put_iu(sess, iu);
