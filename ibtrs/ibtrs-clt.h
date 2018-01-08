@@ -284,7 +284,8 @@ int ibtrs_clt_reconnect_from_sysfs(struct ibtrs_clt_sess *sess);
 int ibtrs_clt_disconnect_from_sysfs(struct ibtrs_clt_sess *sess);
 int ibtrs_clt_create_path_from_sysfs(struct ibtrs_clt *clt,
 				     struct ibtrs_addr *addr);
-int ibtrs_clt_remove_path_from_sysfs(struct ibtrs_clt_sess *sess);
+int ibtrs_clt_remove_path_from_sysfs(struct ibtrs_clt_sess *sess,
+				     const struct attribute *sysfs_self);
 
 void ibtrs_clt_set_max_reconnect_attempts(struct ibtrs_clt *clt, int value);
 int ibtrs_clt_get_max_reconnect_attempts(const struct ibtrs_clt *clt);
@@ -338,6 +339,7 @@ void ibtrs_clt_destroy_sysfs_root_folders(struct ibtrs_clt *clt);
 void ibtrs_clt_destroy_sysfs_root_files(struct ibtrs_clt *clt);
 
 int ibtrs_clt_create_sess_files(struct ibtrs_clt_sess *sess);
-void ibtrs_clt_destroy_sess_files(struct ibtrs_clt_sess *sess);
+void ibtrs_clt_destroy_sess_files(struct ibtrs_clt_sess *sess,
+				  const struct attribute *sysfs_self);
 
 #endif /* IBTRS_CLT_H */

@@ -2819,7 +2819,7 @@ struct ibtrs_clt *ibtrs_clt_open(void *priv, link_clt_ev_fn *link_ev,
 
 close_all_sess:
 	list_for_each_entry_safe(sess, tmp, &clt->paths_list, s.entry) {
-		ibtrs_clt_destroy_sess_files(sess);
+		ibtrs_clt_destroy_sess_files(sess, NULL);
 		ibtrs_clt_close_conns(sess, true);
 		free_sess(sess);
 	}
@@ -2843,7 +2843,7 @@ void ibtrs_clt_close(struct ibtrs_clt *clt)
 
 	/* Now it is save to iterate over all paths without locks */
 	list_for_each_entry_safe(sess, tmp, &clt->paths_list, s.entry) {
-		ibtrs_clt_destroy_sess_files(sess);
+		ibtrs_clt_destroy_sess_files(sess, NULL);
 		ibtrs_clt_close_conns(sess, true);
 		free_sess(sess);
 	}
@@ -2891,7 +2891,8 @@ static void ibtrs_clt_free_from_sysfs_work(struct work_struct *work)
 	free_sess(sess);
 }
 
-int ibtrs_clt_remove_path_from_sysfs(struct ibtrs_clt_sess *sess)
+int ibtrs_clt_remove_path_from_sysfs(struct ibtrs_clt_sess *sess,
+				     const struct attribute *sysfs_self)
 {
 	struct ibtrs_clt *clt = sess->clt;
 	enum ibtrs_clt_state old_state;
@@ -2920,11 +2921,13 @@ int ibtrs_clt_remove_path_from_sysfs(struct ibtrs_clt_sess *sess)
 		   old_state != IBTRS_CLT_DEAD);
 
 	/*
-	 * If state was successfully changed to DEAD, schedule free work,
-	 * since we are not able to destroy sysfs files from sysfs call.
+	 * If state was successfully changed to DEAD, commit suicide.
 	 */
-	if (likely(changed))
-		queue_work(ibtrs_wq, &sess->free_from_sysfs_work);
+	if (likely(changed)) {
+		ibtrs_clt_destroy_sess_files(sess, sysfs_self);
+		ibtrs_clt_remove_path_from_arr(sess);
+		free_sess(sess);
+	}
 
 	return 0;
 }
