@@ -63,7 +63,7 @@ static int ibnbd_client_major;
 static DEFINE_IDA(index_ida);
 static DEFINE_MUTEX(ida_lock);
 static DEFINE_MUTEX(sess_lock);
-static LIST_HEAD(session_list);
+static LIST_HEAD(sess_list);
 
 static bool softirq_enable;
 module_param(softirq_enable, bool, 0444);
@@ -991,7 +991,7 @@ __acquires(&sess_lock)
 	int err;
 
 again:
-	list_for_each_entry(sess, &session_list, list) {
+	list_for_each_entry(sess, &sess_list, list) {
 		if (strcmp(sessname, sess->sessname))
 			continue;
 
@@ -1049,7 +1049,7 @@ find_and_get_or_insert_sess(struct ibnbd_clt_session *sess)
 	mutex_lock(&sess_lock);
 	found = __find_and_get_sess(sess->sessname);
 	if (!found)
-		list_add(&sess->list, &session_list);
+		list_add(&sess->list, &sess_list);
 	mutex_unlock(&sess_lock);
 
 	return found;
@@ -1652,7 +1652,7 @@ static bool __exists_dev(const char *pathname)
 	struct ibnbd_clt_dev *dev;
 	bool found = false;
 
-	list_for_each_entry(sess, &session_list, list) {
+	list_for_each_entry(sess, &sess_list, list) {
 		mutex_lock(&sess->lock);
 		list_for_each_entry(dev, &sess->devs_list, list) {
 			if (!strncmp(dev->pathname, pathname,
@@ -1916,7 +1916,7 @@ static void ibnbd_destroy_sessions(void)
 	 * IBTRS session must be explicitly closed.
 	 */
 
-	list_for_each_entry_safe(sess, sn, &session_list, list) {
+	list_for_each_entry_safe(sess, sn, &sess_list, list) {
 		ibnbd_clt_get_sess(sess);
 		close_ibtrs(sess);
 		list_for_each_entry_safe(dev, tn, &sess->devs_list, list) {
@@ -1933,7 +1933,7 @@ static void ibnbd_destroy_sessions(void)
 	}
 	/* Wait for all scheduled unmap works */
 	flush_scheduled_work();
-	WARN_ON(!list_empty(&session_list));
+	WARN_ON(!list_empty(&sess_list));
 }
 
 static int __init ibnbd_client_init(void)
