@@ -184,7 +184,6 @@ struct ibtrs_clt_sess {
 	struct ib_fmr_pool	*fmr_pool;
 	struct delayed_work	reconnect_dwork;
 	struct work_struct	close_work;
-	struct work_struct	free_from_sysfs_work;
 	unsigned		reconnect_attempts;
 	bool			established;
 	u64			*srv_rdma_addr;

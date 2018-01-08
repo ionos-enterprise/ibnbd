@@ -1672,7 +1672,6 @@ static enum ibtrs_clt_state ibtrs_clt_state(struct ibtrs_clt_sess *sess)
 
 static void ibtrs_clt_reconnect_work(struct work_struct *work);
 static void ibtrs_clt_close_work(struct work_struct *work);
-static void ibtrs_clt_free_from_sysfs_work(struct work_struct *work);
 
 static struct ibtrs_clt_sess *alloc_sess(struct ibtrs_clt *clt,
 					 const struct ibtrs_addr *path,
@@ -1709,7 +1708,6 @@ static struct ibtrs_clt_sess *alloc_sess(struct ibtrs_clt *clt,
 	init_waitqueue_head(&sess->state_wq);
 	sess->state = IBTRS_CLT_CONNECTING;
 	INIT_WORK(&sess->close_work, ibtrs_clt_close_work);
-	INIT_WORK(&sess->free_from_sysfs_work, ibtrs_clt_free_from_sysfs_work);
 	INIT_DELAYED_WORK(&sess->reconnect_dwork, ibtrs_clt_reconnect_work);
 
 	err = ibtrs_clt_init_stats(&sess->stats);
@@ -2879,16 +2877,6 @@ int ibtrs_clt_disconnect_from_sysfs(struct ibtrs_clt_sess *sess)
 	ibtrs_clt_close_conns(sess, true);
 
 	return 0;
-}
-
-static void ibtrs_clt_free_from_sysfs_work(struct work_struct *work)
-{
-	struct ibtrs_clt_sess *sess;
-
-	sess = container_of(work, struct ibtrs_clt_sess, free_from_sysfs_work);
-	ibtrs_clt_destroy_sess_files(sess);
-	ibtrs_clt_remove_path_from_arr(sess);
-	free_sess(sess);
 }
 
 int ibtrs_clt_remove_path_from_sysfs(struct ibtrs_clt_sess *sess,
