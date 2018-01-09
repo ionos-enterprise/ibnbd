@@ -70,7 +70,7 @@ MODULE_PARM_DESC(use_fr, "use FRWR mode for memory registration if possible."
 static ushort nr_cons_per_session;
 module_param(nr_cons_per_session, ushort, 0444);
 MODULE_PARM_DESC(nr_cons_per_session, "Number of connections per session."
-		 " (default: NR_CPUS)");
+		 " (default: nr_cpu_ids)");
 
 static int retry_count = 7;
 
@@ -3272,10 +3272,7 @@ static int check_module_params(void)
 		return -EINVAL;
 	}
 	if (nr_cons_per_session == 0)
-		nr_cons_per_session = nr_cpu_ids;
-	if (nr_cons_per_session >= U8_MAX)
-		/* Protocol header has only 8bits for connection number */
-		nr_cons_per_session = U8_MAX - 1;
+		nr_cons_per_session = min_t(unsigned int, nr_cpu_ids, U16_MAX);
 
 	return 0;
 }
