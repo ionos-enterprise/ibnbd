@@ -1745,7 +1745,7 @@ static int create_con(struct ibtrs_clt_sess *sess, unsigned cid)
 		return -ENOMEM;
 
 	/* Map first two connections to the first CPU */
-	con->cpu  = (cid ? cid - 1 : 0) % num_online_cpus();
+	con->cpu  = (cid ? cid - 1 : 0) % nr_cpu_ids;
 	con->c.cid = cid;
 	con->c.sess = &sess->s;
 	atomic_set(&con->io_cnt, 0);
