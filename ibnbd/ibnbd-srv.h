@@ -54,17 +54,11 @@
 #include "ibnbd-proto.h"
 #include "ibnbd-log.h"
 
-enum ibnbd_srv_sess_state {
-	SRV_SESS_STATE_CONNECTED,
-	SRV_SESS_STATE_DISCONNECTED
-};
-
 struct ibnbd_srv_session {
 	struct list_head        list; /* for the global sess_list */
 	struct ibtrs_srv	*ibtrs;
 	char			sessname[NAME_MAX];
 	int			queue_depth;
-	enum ibnbd_srv_sess_state state;
 	struct bio_set		*sess_bio_set;
 
 	rwlock_t                index_lock ____cacheline_aligned;

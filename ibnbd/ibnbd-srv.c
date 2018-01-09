@@ -278,8 +278,6 @@ static void destroy_sess(struct ibnbd_srv_session *srv_sess)
 {
 	struct ibnbd_srv_sess_dev *sess_dev, *tmp;
 
-	srv_sess->state = SRV_SESS_STATE_DISCONNECTED;
-
 	if (list_empty(&srv_sess->sess_dev_list))
 		goto out;
 
@@ -336,7 +334,6 @@ static int create_sess(struct ibtrs_srv *ibtrs)
 	rwlock_init(&srv_sess->index_lock);
 	INIT_LIST_HEAD(&srv_sess->sess_dev_list);
 	mutex_init(&srv_sess->lock);
-	srv_sess->state = SRV_SESS_STATE_CONNECTED;
 	mutex_lock(&sess_lock);
 	list_add(&srv_sess->list, &sess_list);
 	mutex_unlock(&sess_lock);
