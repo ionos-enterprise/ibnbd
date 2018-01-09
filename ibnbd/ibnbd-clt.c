@@ -1573,24 +1573,17 @@ static struct ibnbd_clt_dev *init_dev(struct ibnbd_clt_session *sess,
 		return ERR_PTR(-ENOMEM);
 	}
 
-	nr = (queue_mode == BLK_MQ ? num_online_cpus() :
-	      queue_mode == BLK_RQ ? 1 : 0);
-	if (nr) {
-		dev->hw_queues = kcalloc(nr, sizeof(*dev->hw_queues),
-					 GFP_KERNEL);
-		if (unlikely(!dev->hw_queues)) {
-			pr_err("Failed to initialize device '%s' from session"
-			       " %s, allocating hw_queues failed.", pathname,
-			       sess->sessname);
-			ret = -ENOMEM;
-			goto out_alloc;
-		}
-		/* for MQ mode we will init all hw queues after the
-		 * request queue is created
-		 */
-		if (queue_mode == BLK_RQ)
-			ibnbd_init_hw_queue(dev, dev->hw_queues, NULL);
+	nr = (queue_mode == BLK_MQ ? nr_cpu_ids : 1);
+	dev->hw_queues = kcalloc(nr, sizeof(*dev->hw_queues), GFP_KERNEL);
+	if (unlikely(!dev->hw_queues)) {
+		pr_err("Failed to initialize device '%s' from session"
+		       " %s, allocating hw_queues failed.", pathname,
+		       sess->sessname);
+		ret = -ENOMEM;
+		goto out_alloc;
 	}
+	if (queue_mode == BLK_RQ)
+		ibnbd_init_hw_queue(dev, dev->hw_queues, NULL);
 	mutex_lock(&ida_lock);
 	ret = ida_simple_get(&index_ida, 0, minor_to_index(1 << MINORBITS),
 			     GFP_KERNEL);
