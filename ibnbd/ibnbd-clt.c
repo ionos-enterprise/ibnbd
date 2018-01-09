@@ -1716,7 +1716,6 @@ struct ibnbd_clt_dev *ibnbd_clt_map_device(const char *sessname,
 	if (unlikely(ret)) {
 		ibnbd_err(dev, "map_device: failed, can't open remote device,"
 			  " err: %d\n", ret);
-		ret = -EINVAL;
 		goto del_dev;
 	}
 	mutex_lock(&dev->lock);
@@ -1727,7 +1726,6 @@ struct ibnbd_clt_dev *ibnbd_clt_map_device(const char *sessname,
 		ibnbd_err(dev, "map_device: Failed to configure device, err: %d\n",
 			  ret);
 		mutex_unlock(&dev->lock);
-		ret = -EINVAL;
 		goto del_dev;
 	}
 
