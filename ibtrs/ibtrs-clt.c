@@ -52,7 +52,6 @@
 #include "ibtrs-clt.h"
 #include "ibtrs-log.h"
 
-#define CONS_PER_SESSION (nr_cons_per_session + 1)
 #define RECONNECT_SEED 8
 #define MAX_SEGMENTS 31
 
@@ -1684,6 +1683,9 @@ static struct ibtrs_clt_sess *alloc_sess(struct ibtrs_clt *clt,
 	if (unlikely(!sess))
 		goto err;
 
+	/* Extra connection for user messages */
+	con_num += 1;
+
 	sess->s.con = kcalloc(con_num, sizeof(*sess->s.con), GFP_KERNEL);
 	if (unlikely(!sess->s.con))
 		goto err_free_sess;
@@ -2777,7 +2779,7 @@ struct ibtrs_clt *ibtrs_clt_open(void *priv, link_clt_ev_fn *link_ev,
 	for (i = 0; i < paths_num; i++) {
 		struct ibtrs_clt_sess *sess;
 
-		sess = alloc_sess(clt, &paths[i], CONS_PER_SESSION,
+		sess = alloc_sess(clt, &paths[i], nr_cons_per_session,
 				  max_segments);
 		if (unlikely(IS_ERR(sess))) {
 			err = PTR_ERR(sess);
@@ -3234,7 +3236,7 @@ int ibtrs_clt_create_path_from_sysfs(struct ibtrs_clt *clt,
 	if (unlikely(err))
 		return err;
 
-	sess = alloc_sess(clt, addr, CONS_PER_SESSION, clt->max_segments);
+	sess = alloc_sess(clt, addr, nr_cons_per_session, clt->max_segments);
 	if (unlikely(IS_ERR(sess)))
 		return PTR_ERR(sess);
 
