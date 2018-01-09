@@ -288,21 +288,6 @@ static inline int nxt_cpu(int cpu)
 }
 
 /**
- * get_cpu_rr_var() - returns pointer to percpu var containing last cpu requeued
- *
- * It also sets the var to the current cpu if the var was never set before
- * (== -1).
- */
-#define get_cpu_rr_var(percpu) ({		\
-	int *cpup;				\
-						\
-	cpup = &get_cpu_var(*percpu);		\
-	if (unlikely(*cpup < 0))		\
-		*cpup = smp_processor_id();	\
-	cpup;					\
-})
-
-/**
  * ibnbd_requeue_if_needed() - requeue if CPU queue is marked as non empty
  *
  * Description:
@@ -321,18 +306,15 @@ static inline bool ibnbd_requeue_if_needed(struct ibnbd_clt_session *sess)
 	struct ibnbd_queue *q = NULL;
 	struct ibnbd_cpu_qlist *cpu_q;
 	unsigned long flags;
-	int cpuv;
-
-	int *uninitialized_var(cpup);
+	int *cpup;
 
 	/*
 	 * To keep fairness and not to let other queues starve we always
 	 * try to wake up someone else in round-robin manner.  That of course
 	 * increases latency but queues always have a chance to be executed.
 	 */
-	cpup = get_cpu_rr_var(sess->cpu_rr);
-	cpuv = (*cpup + 1) % num_online_cpus();
-	for (cpu_q = ibnbd_get_cpu_qlist(sess, cpuv); cpu_q;
+	cpup = get_cpu_ptr(sess->cpu_rr);
+	for (cpu_q = ibnbd_get_cpu_qlist(sess, nxt_cpu(*cpup)); cpu_q;
 	     cpu_q = ibnbd_get_cpu_qlist(sess, nxt_cpu(cpu_q->cpu))) {
 		if (!spin_trylock_irqsave(&cpu_q->requeue_lock, flags))
 			continue;
@@ -957,9 +939,8 @@ static struct ibnbd_clt_session *alloc_sess(const char *sessname,
 		err = -ENOMEM;
 		goto err;
 	}
-	for_each_possible_cpu(cpu) {
-		*per_cpu_ptr(sess->cpu_rr, cpu) = -1;
-	}
+	for_each_possible_cpu(cpu)
+		*per_cpu_ptr(sess->cpu_rr, cpu) = cpu;
 
 	return sess;
 
