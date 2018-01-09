@@ -249,13 +249,12 @@ static void ibnbd_put_srv_dev(struct ibnbd_srv_dev *dev)
 
 static void ibnbd_destroy_sess_dev(struct ibnbd_srv_sess_dev *sess_dev)
 {
-	struct completion dc;
+	DECLARE_COMPLETION_ONSTACK(dc);
 
 	write_lock(&sess_dev->sess->index_lock);
 	idr_remove(&sess_dev->sess->index_idr, sess_dev->device_id);
 	write_unlock(&sess_dev->sess->index_lock);
 
-	init_completion(&dc);
 	sess_dev->destroy_comp = &dc;
 	ibnbd_put_sess_dev(sess_dev);
 	wait_for_completion(&dc);

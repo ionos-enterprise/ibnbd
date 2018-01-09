@@ -204,12 +204,11 @@ static struct attribute_group ibnbd_srv_default_dev_session_attr_group = {
 
 void ibnbd_srv_destroy_dev_session_sysfs(struct ibnbd_srv_sess_dev *sess_dev)
 {
-	struct completion sysfs_compl;
+	DECLARE_COMPLETION_ONSTACK(sysfs_compl);
 
 	sysfs_remove_group(&sess_dev->kobj,
 			   &ibnbd_srv_default_dev_session_attr_group);
 
-	init_completion(&sysfs_compl);
 	sess_dev->sysfs_release_compl = &sysfs_compl;
 	kobject_del(&sess_dev->kobj);
 	kobject_put(&sess_dev->kobj);
