@@ -2659,7 +2659,7 @@ static void ibtrs_clt_reconnect_work(struct work_struct *work)
 		/* User requested closing */
 		return;
 
-	if (sess->reconnect_attempts == clt->max_reconnect_attempts) {
+	if (sess->reconnect_attempts >= clt->max_reconnect_attempts) {
 		/* Close a session completely if max attempts is reached */
 		ibtrs_clt_close_conns(sess, false);
 		return;
