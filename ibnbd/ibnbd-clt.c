@@ -854,7 +854,7 @@ static void ibnbd_init_cpu_qlists(struct ibnbd_cpu_qlist __percpu *cpu_queues)
 	unsigned int cpu;
 	struct ibnbd_cpu_qlist *cpu_q;
 
-	for_each_online_cpu(cpu) {
+	for_each_possible_cpu(cpu) {
 		cpu_q = per_cpu_ptr(cpu_queues, cpu);
 
 		cpu_q->cpu = cpu;
