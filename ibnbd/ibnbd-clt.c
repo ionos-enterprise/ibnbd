@@ -284,7 +284,7 @@ ibnbd_get_cpu_qlist(struct ibnbd_clt_session *sess, int cpu)
 
 static inline int nxt_cpu(int cpu)
 {
-	return (cpu + 1) % NR_CPUS;
+	return (cpu + 1) % nr_cpu_ids;
 }
 
 /**
@@ -387,8 +387,8 @@ clear_bit:
  *     That can happen when all number of tags, say N, have been exhausted
  *     from one CPU, and we have many block devices per session, say M.
  *     Each block device has it's own queue (hctx) for each CPU, so eventually
- *     we can put that number of queues (hctxs) to sleep: M x NR_CPUS.
- *     If number of tags N < M x NR_CPUS finally we will get an IO hang.
+ *     we can put that number of queues (hctxs) to sleep: M x nr_cpu_ids.
+ *     If number of tags N < M x nr_cpu_ids finally we will get an IO hang.
  *
  *     To avoid this hang last caller of ibnbd_put_tag() (last caller is the
  *     one who observes sess->busy == 0) must wake up all remaining queues.
