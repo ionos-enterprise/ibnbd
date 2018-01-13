@@ -367,14 +367,15 @@ static void schedule_hb(struct ibtrs_sess *sess)
 
 void ibtrs_send_hb_ack(struct ibtrs_sess *sess)
 {
+	struct ibtrs_con *usr_con = sess->con[0];
 	int err;
 
-	err = ibtrs_post_rdma_write_imm_empty(sess->hb_con,
+	err = ibtrs_post_rdma_write_imm_empty(usr_con,
 					      sess->hb_cqe,
 					      IBTRS_HB_ACK_IMM,
 					      IB_SEND_SIGNALED);
 	if (unlikely(err)) {
-		sess->hb_err_handler(sess->hb_con, err);
+		sess->hb_err_handler(usr_con, err);
 		return;
 	}
 }
@@ -382,13 +383,15 @@ EXPORT_SYMBOL_GPL(ibtrs_send_hb_ack);
 
 static void hb_work(struct work_struct *work)
 {
+	struct ibtrs_con *usr_con;
 	struct ibtrs_sess *sess;
 	int err;
 
 	sess = container_of(to_delayed_work(work), typeof(*sess), hb_dwork);
+	usr_con = sess->con[0];
 
 	if (sess->hb_missed_cnt > sess->hb_missed_max) {
-		sess->hb_err_handler(sess->hb_con, -ETIMEDOUT);
+		sess->hb_err_handler(usr_con, -ETIMEDOUT);
 		return;
 	}
 	if (sess->hb_missed_cnt++) {
@@ -396,26 +399,23 @@ static void hb_work(struct work_struct *work)
 		schedule_hb(sess);
 		return;
 	}
-	err = ibtrs_post_rdma_write_imm_empty(sess->hb_con,
+	err = ibtrs_post_rdma_write_imm_empty(usr_con,
 					      sess->hb_cqe,
 					      IBTRS_HB_IMM,
 					      IB_SEND_SIGNALED);
 	if (unlikely(err)) {
-		sess->hb_err_handler(sess->hb_con, err);
+		sess->hb_err_handler(usr_con, err);
 		return;
 	}
 
 	schedule_hb(sess);
 }
 
-void ibtrs_start_hb(struct ibtrs_con *con, struct ib_cqe *cqe,
-		    unsigned interval_ms, unsigned missed_max,
-		    ibtrs_hb_handler_t *err_handler,
-		    struct workqueue_struct *wq)
+void ibtrs_init_hb(struct ibtrs_sess *sess, struct ib_cqe *cqe,
+		   unsigned interval_ms, unsigned missed_max,
+		   ibtrs_hb_handler_t *err_handler,
+		   struct workqueue_struct *wq)
 {
-	struct ibtrs_sess *sess = con->sess;
-
-	sess->hb_con = con;
 	sess->hb_cqe = cqe;
 	sess->hb_interval_ms = interval_ms;
 	sess->hb_err_handler = err_handler;
@@ -423,6 +423,11 @@ void ibtrs_start_hb(struct ibtrs_con *con, struct ib_cqe *cqe,
 	sess->hb_missed_max = missed_max;
 	sess->hb_missed_cnt = 0;
 	INIT_DELAYED_WORK(&sess->hb_dwork, hb_work);
+}
+EXPORT_SYMBOL_GPL(ibtrs_init_hb);
+
+void ibtrs_start_hb(struct ibtrs_sess *sess)
+{
 	schedule_hb(sess);
 }
 EXPORT_SYMBOL_GPL(ibtrs_start_hb);
@@ -430,10 +435,6 @@ EXPORT_SYMBOL_GPL(ibtrs_start_hb);
 void ibtrs_stop_hb(struct ibtrs_sess *sess)
 {
 	cancel_delayed_work_sync(&sess->hb_dwork);
-	sess->hb_con = NULL;
-	sess->hb_cqe = NULL;
-	sess->hb_interval_ms = 0;
-	sess->hb_err_handler = NULL;
 	sess->hb_missed_cnt = 0;
 	sess->hb_missed_max = 0;
 }

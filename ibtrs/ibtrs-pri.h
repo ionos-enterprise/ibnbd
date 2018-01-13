@@ -122,7 +122,6 @@ struct ibtrs_sess {
 	unsigned int		recon_cnt;
 	struct ibtrs_ib_dev	*ib_dev;
 	int			ib_dev_ref;
-	struct ibtrs_con	*hb_con;
 	struct ib_cqe		*hb_cqe;
 	ibtrs_hb_handler_t	*hb_err_handler;
 	struct workqueue_struct *hb_wq;
@@ -335,12 +334,13 @@ int ibtrs_cq_qp_create(struct ibtrs_sess *ibtrs_sess, struct ibtrs_con *con,
 		       u16 wr_queue_size, enum ib_poll_context poll_ctx);
 void ibtrs_cq_qp_destroy(struct ibtrs_con *con);
 
-void ibtrs_start_hb(struct ibtrs_con *con, struct ib_cqe *cqe,
-		    unsigned interval_ms, unsigned missed_max,
-		    ibtrs_hb_handler_t *err_handler,
-		    struct workqueue_struct *wq);
-void ibtrs_send_hb_ack(struct ibtrs_sess *sess);
+void ibtrs_init_hb(struct ibtrs_sess *sess, struct ib_cqe *cqe,
+		   unsigned interval_ms, unsigned missed_max,
+		   ibtrs_hb_handler_t *err_handler,
+		   struct workqueue_struct *wq);
+void ibtrs_start_hb(struct ibtrs_sess *sess);
 void ibtrs_stop_hb(struct ibtrs_sess *sess);
+void ibtrs_send_hb_ack(struct ibtrs_sess *sess);
 
 #define XX(a) case (a): return #a
 static inline const char *ib_wc_opcode_str(enum ib_wc_opcode opcode)

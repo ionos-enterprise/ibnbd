@@ -1669,6 +1669,34 @@ static enum ibtrs_clt_state ibtrs_clt_state(struct ibtrs_clt_sess *sess)
 	return state;
 }
 
+static void ibtrs_clt_hb_err_handler(struct ibtrs_con *c, int err)
+{
+	struct ibtrs_clt_con *con;
+
+	(void)err;
+	con = container_of(c, typeof(*con), c);
+	ibtrs_rdma_error_recovery(con);
+}
+
+static void ibtrs_clt_init_hb(struct ibtrs_clt_sess *sess)
+{
+	ibtrs_init_hb(&sess->s, &io_comp_cqe,
+		      IBTRS_HB_INTERVAL_MS,
+		      IBTRS_HB_MISSED_MAX,
+		      ibtrs_clt_hb_err_handler,
+		      ibtrs_wq);
+}
+
+static void ibtrs_clt_start_hb(struct ibtrs_clt_sess *sess)
+{
+	ibtrs_start_hb(&sess->s);
+}
+
+static void ibtrs_clt_stop_hb(struct ibtrs_clt_sess *sess)
+{
+	ibtrs_stop_hb(&sess->s);
+}
+
 static void ibtrs_clt_reconnect_work(struct work_struct *work);
 static void ibtrs_clt_close_work(struct work_struct *work);
 
@@ -1711,6 +1739,7 @@ static struct ibtrs_clt_sess *alloc_sess(struct ibtrs_clt *clt,
 	sess->state = IBTRS_CLT_CONNECTING;
 	INIT_WORK(&sess->close_work, ibtrs_clt_close_work);
 	INIT_DELAYED_WORK(&sess->reconnect_dwork, ibtrs_clt_reconnect_work);
+	ibtrs_clt_init_hb(sess);
 
 	err = ibtrs_clt_init_stats(&sess->stats);
 	if (unlikely(err)) {
@@ -1939,31 +1968,6 @@ destroy_cm:
 	destroy_cm(con);
 
 	return err;
-}
-
-static void ibtrs_clt_hb_err_handler(struct ibtrs_con *c, int err)
-{
-	struct ibtrs_clt_con *con;
-
-	(void)err;
-	con = container_of(c, typeof(*con), c);
-	ibtrs_rdma_error_recovery(con);
-}
-
-static void ibtrs_clt_start_hb(struct ibtrs_clt_sess *sess)
-{
-	struct ibtrs_clt_con *usr_con = to_clt_con(sess->s.con[0]);
-
-	ibtrs_start_hb(&usr_con->c, &io_comp_cqe,
-		       IBTRS_HB_INTERVAL_MS,
-		       IBTRS_HB_MISSED_MAX,
-		       ibtrs_clt_hb_err_handler,
-		       ibtrs_wq);
-}
-
-static void ibtrs_clt_stop_hb(struct ibtrs_clt_sess *sess)
-{
-	ibtrs_stop_hb(&sess->s);
 }
 
 static void ibtrs_clt_sess_up(struct ibtrs_clt_sess *sess)

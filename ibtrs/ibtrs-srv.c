@@ -558,15 +558,18 @@ static void ibtrs_srv_hb_err_handler(struct ibtrs_con *c, int err)
 	close_sess(to_srv_sess(c->sess));
 }
 
+static void ibtrs_srv_init_hb(struct ibtrs_srv_sess *sess)
+{
+	ibtrs_init_hb(&sess->s, &io_comp_cqe,
+		      IBTRS_HB_INTERVAL_MS,
+		      IBTRS_HB_MISSED_MAX,
+		      ibtrs_srv_hb_err_handler,
+		      ibtrs_wq);
+}
+
 static void ibtrs_srv_start_hb(struct ibtrs_srv_sess *sess)
 {
-	struct ibtrs_srv_con *usr_con = to_srv_con(sess->s.con[0]);
-
-	ibtrs_start_hb(&usr_con->c, &io_comp_cqe,
-		       IBTRS_HB_INTERVAL_MS,
-		       IBTRS_HB_MISSED_MAX,
-		       ibtrs_srv_hb_err_handler,
-		       ibtrs_wq);
+	ibtrs_start_hb(&sess->s);
 }
 
 static void ibtrs_srv_stop_hb(struct ibtrs_srv_sess *sess)
@@ -1373,6 +1376,7 @@ static struct ibtrs_srv_sess *__alloc_sess(struct ibtrs_srv *srv,
 	uuid_copy(&sess->s.uuid, uuid);
 	spin_lock_init(&sess->state_lock);
 	INIT_WORK(&sess->close_work, ibtrs_srv_close_work);
+	ibtrs_srv_init_hb(sess);
 
 	sess->s.ib_dev = ibtrs_ib_dev_find_get(cm_id);
 	if (unlikely(!sess->s.ib_dev)) {
