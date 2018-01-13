@@ -2075,10 +2075,32 @@ static void ibtrs_clt_remove_path_from_arr(struct ibtrs_clt_sess *sess)
 
 	mutex_lock(&clt->paths_mutex);
 	list_del_rcu(&sess->s.entry);
-	clt->paths_num--;
 
 	/* Make sure everybody observes path removal. */
 	synchronize_rcu();
+
+	/*
+	 * Decrement paths number only after grace period, because
+	 * caller of for_each_path_continue() must firstly observe
+	 * list without path and only then decremented paths number.
+	 *
+	 * Otherwise there can be the following situation:
+	 *    o Two paths exist and IO is comming.
+	 *    o One path is removed:
+	 *      CPU#0                          CPU#1
+	 *      for_each_path_continue():      ibtrs_clt_remove_path_from_arr():
+	 *          path = get_next_path()
+	 *          ^^^                            list_del_rcu(path)
+	 *          [!CONNECTED path]              clt->paths_num--
+	 *                                              ^^^^^^^^^
+	 *          load clt->paths_num                 from 2 to 1
+	 *                    ^^^^^^^^^
+	 *                    sees 1
+	 *
+	 *      path is observed as !CONNECTED, but for_each_path_continue()
+	 *      loop ends, because expression i < clt->paths_num is false.
+	 */
+	clt->paths_num--;
 
 	next = list_next_or_null_rcu_rr(sess, &clt->paths_list, s.entry);
 
