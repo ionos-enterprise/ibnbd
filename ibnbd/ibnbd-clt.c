@@ -617,8 +617,7 @@ static int send_msg_close(struct ibnbd_clt_dev *dev, u32 device_id, bool wait)
 static void msg_open_conf(struct work_struct *work)
 {
 	struct ibnbd_iu *iu = container_of(work, struct ibnbd_iu, work);
-	struct ibnbd_msg_open_rsp *rsp =
-		(struct ibnbd_msg_open_rsp *)iu->buf;
+	struct ibnbd_msg_open_rsp *rsp = iu->buf;
 	struct ibnbd_clt_dev *dev = iu->dev;
 	int errno = iu->errno;
 
@@ -646,8 +645,7 @@ static void msg_open_conf(struct work_struct *work)
 static void msg_sess_info_conf(struct work_struct *work)
 {
 	struct ibnbd_iu *iu = container_of(work, struct ibnbd_iu, work);
-	struct ibnbd_msg_sess_info_rsp *rsp =
-		(struct ibnbd_msg_sess_info_rsp *)iu->buf;
+	struct ibnbd_msg_sess_info_rsp *rsp = iu->buf;
 	struct ibnbd_clt_session *sess = iu->sess;
 
 	if (likely(!iu->errno))
