@@ -115,7 +115,6 @@ static DEFINE_SPINLOCK(dev_lock);
 static LIST_HEAD(sess_list);
 static LIST_HEAD(dev_list);
 
-
 struct ibnbd_io_private {
 	struct ibtrs_srv_op		*id;
 	struct ibnbd_srv_sess_dev	*sess_dev;
@@ -314,11 +313,8 @@ static int create_sess(struct ibtrs_srv *ibtrs)
 		return err;
 	}
 	srv_sess = kzalloc(sizeof(*srv_sess), GFP_KERNEL);
-	if (!srv_sess) {
-		pr_err("Allocating srv_session for session %s failed\n",
-		       sessname);
+	if (!srv_sess)
 		return -ENOMEM;
-	}
 	srv_sess->queue_depth = ibtrs_srv_get_queue_depth(ibtrs);
 	srv_sess->sess_bio_set = bioset_create(srv_sess->queue_depth, 0,
 					       BIOSET_NEED_BVECS);
@@ -340,7 +336,6 @@ static int create_sess(struct ibtrs_srv *ibtrs)
 	srv_sess->ibtrs = ibtrs;
 	srv_sess->queue_depth = ibtrs_srv_get_queue_depth(ibtrs);
 	strlcpy(srv_sess->sessname, sessname, sizeof(srv_sess->sessname));
-
 
 	ibtrs_srv_set_sess_priv(ibtrs, srv_sess);
 
@@ -371,17 +366,16 @@ static int ibnbd_srv_link_ev(struct ibtrs_srv *ibtrs,
 }
 
 static int process_msg_close(struct ibtrs_srv *ibtrs,
-			      struct ibnbd_srv_session *srv_sess,
-			      void *data, size_t datalen, const void *usr,
-			      size_t usrlen)
+			     struct ibnbd_srv_session *srv_sess,
+			     void *data, size_t datalen, const void *usr,
+			     size_t usrlen)
 {
 	const struct ibnbd_msg_close *close_msg = usr;
 	struct ibnbd_srv_sess_dev *sess_dev;
 
 	sess_dev = ibnbd_get_sess_dev(close_msg->device_id, srv_sess);
-	if (unlikely(IS_ERR(sess_dev))) {
+	if (unlikely(IS_ERR(sess_dev)))
 		return 0;
-	}
 
 	ibnbd_srv_destroy_dev_session_sysfs(sess_dev);
 	ibnbd_put_sess_dev(sess_dev);
@@ -392,9 +386,9 @@ static int process_msg_close(struct ibtrs_srv *ibtrs,
 }
 
 static int process_msg_open(struct ibtrs_srv *ibtrs,
-			     struct ibnbd_srv_session *srv_sess,
-			     const void *msg, size_t len,
-			     void *data, size_t datalen);
+			    struct ibnbd_srv_session *srv_sess,
+			    const void *msg, size_t len,
+			    void *data, size_t datalen);
 
 static int process_msg_sess_info(struct ibtrs_srv *ibtrs,
 				 struct ibnbd_srv_session *srv_sess,
@@ -431,7 +425,7 @@ static int ibnbd_srv_rdma_ev(struct ibtrs_srv *ibtrs, void *priv,
 		break;
 	default:
 		pr_warn("Received unexpected message type %d with dir %d from"
-			"session %s\n", hdr->type, dir, srv_sess->sessname);
+			" session %s\n", hdr->type, dir, srv_sess->sessname);
 		return -EINVAL;
 	}
 
@@ -607,27 +601,23 @@ static void ibnbd_srv_fill_msg_open_rsp(struct ibnbd_msg_open_rsp *rsp,
 {
 	struct ibnbd_dev *ibnbd_dev = sess_dev->ibnbd_dev;
 
-	rsp->hdr.type			= IBNBD_MSG_OPEN_RSP;
-
-	rsp->result			= 0;
-	rsp->device_id			= sess_dev->device_id;
-	rsp->nsectors			= get_capacity(ibnbd_dev->bdev->bd_disk);
-	rsp->logical_block_size		=
+	rsp->hdr.type		= IBNBD_MSG_OPEN_RSP;
+	rsp->result		= 0;
+	rsp->device_id		= sess_dev->device_id;
+	rsp->nsectors		= get_capacity(ibnbd_dev->bdev->bd_disk);
+	rsp->logical_block_size	=
 		ibnbd_dev_get_logical_bsize(ibnbd_dev);
-	rsp->physical_block_size	= ibnbd_dev_get_phys_bsize(ibnbd_dev);
-	rsp->max_segments		= ibnbd_dev_get_max_segs(ibnbd_dev);
-	rsp->max_hw_sectors		= ibnbd_dev_get_max_hw_sects(ibnbd_dev);
-	rsp->max_write_same_sectors	=
+	rsp->physical_block_size = ibnbd_dev_get_phys_bsize(ibnbd_dev);
+	rsp->max_segments	= ibnbd_dev_get_max_segs(ibnbd_dev);
+	rsp->max_hw_sectors	= ibnbd_dev_get_max_hw_sects(ibnbd_dev);
+	rsp->max_write_same_sectors =
 		ibnbd_dev_get_max_write_same_sects(ibnbd_dev);
-
-	rsp->max_discard_sectors	=
+	rsp->max_discard_sectors =
 		ibnbd_dev_get_max_discard_sects(ibnbd_dev);
-	rsp->discard_granularity	=
+	rsp->discard_granularity =
 		ibnbd_dev_get_discard_granularity(ibnbd_dev);
-
 	rsp->discard_alignment	= ibnbd_dev_get_discard_alignment(ibnbd_dev);
 	rsp->secure_discard	= ibnbd_dev_get_secure_discard(ibnbd_dev);
-
 	rsp->rotational	= !blk_queue_nonrot(bdev_get_queue(ibnbd_dev->bdev));
 	rsp->io_mode	= ibnbd_dev->mode;
 
@@ -736,9 +726,9 @@ find_srv_sess_dev(struct ibnbd_srv_session *srv_sess, const char *dev_name)
 }
 
 static int process_msg_open(struct ibtrs_srv *ibtrs,
-			     struct ibnbd_srv_session *srv_sess,
-			     const void *msg, size_t len,
-			     void *data, size_t datalen)
+			    struct ibnbd_srv_session *srv_sess,
+			    const void *msg, size_t len,
+			    void *data, size_t datalen)
 {
 	int ret;
 	struct ibnbd_srv_dev *srv_dev;

@@ -70,7 +70,7 @@ enum {
 	IBNBD_OPT_SESSNAME	= 1 << 6,
 };
 
-static unsigned ibnbd_opt_mandatory[] = {
+static unsigned int ibnbd_opt_mandatory[] = {
 	IBNBD_OPT_PATH,
 	IBNBD_OPT_DEV_PATH,
 	IBNBD_OPT_SESSNAME,
@@ -410,7 +410,7 @@ static ssize_t ibnbd_clt_unmap_dev_store(struct kobject *kobj,
 	err = ibnbd_clt_unmap_device(dev, force, &attr->attr);
 	if (unlikely(err)) {
 		if (unlikely(err != -EALREADY))
-		    ibnbd_err(dev, "unmap_device: %d\n",  err);
+			ibnbd_err(dev, "unmap_device: %d\n",  err);
 		goto module_put;
 	}
 
@@ -442,8 +442,8 @@ static ssize_t ibnbd_clt_resize_dev_show(struct kobject *kobj,
 }
 
 static ssize_t ibnbd_clt_resize_dev_store(struct kobject *kobj,
-					 struct kobj_attribute *attr,
-					 const char *buf, size_t count)
+					  struct kobj_attribute *attr,
+					  const char *buf, size_t count)
 {
 	int ret;
 	unsigned long sectors;
@@ -455,12 +455,13 @@ static ssize_t ibnbd_clt_resize_dev_store(struct kobject *kobj,
 	if (ret)
 		return ret;
 
-	ret = ibnbd_clt_resize_disk(dev, (size_t) sectors);
+	ret = ibnbd_clt_resize_disk(dev, (size_t)sectors);
 	if (ret)
 		return ret;
 
 	return count;
 }
+
 static struct kobj_attribute ibnbd_clt_resize_dev_attr =
 	__ATTR(resize, 0644, ibnbd_clt_resize_dev_show,
 	       ibnbd_clt_resize_dev_store);

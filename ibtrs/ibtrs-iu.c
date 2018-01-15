@@ -51,7 +51,8 @@
 struct ibtrs_iu *ibtrs_iu_alloc(u32 tag, size_t size, gfp_t gfp_mask,
 				struct ib_device *dma_dev,
 				enum dma_data_direction direction,
-				void (*done)(struct ib_cq *cq, struct ib_wc *wc))
+				void (*done)(struct ib_cq *cq,
+					     struct ib_wc *wc))
 {
 	struct ibtrs_iu *iu;
 

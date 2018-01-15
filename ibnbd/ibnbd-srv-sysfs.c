@@ -159,8 +159,8 @@ void ibnbd_srv_destroy_dev_sysfs(struct ibnbd_srv_dev *dev)
 }
 
 static ssize_t ibnbd_srv_dev_session_ro_show(struct kobject *kobj,
-					    struct kobj_attribute *attr,
-					    char *page)
+					     struct kobj_attribute *attr,
+					     char *page)
 {
 	struct ibnbd_srv_sess_dev *sess_dev;
 
@@ -175,10 +175,9 @@ static struct kobj_attribute ibnbd_srv_dev_session_ro_attr =
 	       ibnbd_srv_dev_session_ro_show,
 	       NULL);
 
-static ssize_t ibnbd_srv_dev_session_mapping_path_show(
-	struct kobject *kobj,
-	struct kobj_attribute *attr,
-	char *page)
+static ssize_t
+ibnbd_srv_dev_session_mapping_path_show(struct kobject *kobj,
+					struct kobj_attribute *attr, char *page)
 {
 	struct ibnbd_srv_sess_dev *sess_dev;
 

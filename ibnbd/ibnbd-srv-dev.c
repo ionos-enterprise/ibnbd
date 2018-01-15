@@ -349,10 +349,9 @@ static void ibnbd_dev_file_submit_io_worker(struct work_struct *w)
 	if (dev_work->bi_size) {
 		loff_t off_tmp = off;
 
-		if (ibnbd_op(dev_work->flags) == IBNBD_OP_WRITE) {
+		if (ibnbd_op(dev_work->flags) == IBNBD_OP_WRITE)
 			ret = kernel_write(f, dev_work->data, dev_work->bi_size,
 					   &off_tmp);
-		}
 		else
 			ret = kernel_read(f, dev_work->data, dev_work->bi_size,
 					  &off_tmp);

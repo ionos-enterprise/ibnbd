@@ -140,12 +140,13 @@ static void ibnbd_clt_set_dev_attr(struct ibnbd_clt_dev *dev,
 			rsp->max_hw_sectors ?
 			dev->sess->max_io_size /
 			rsp->logical_block_size : rsp->max_hw_sectors;
-		dev->max_segments = min_t(u16, rsp->max_segments, BMAX_SEGMENTS);
+		dev->max_segments = min_t(u16, rsp->max_segments,
+					  BMAX_SEGMENTS);
 	}
 }
 
 static int ibnbd_clt_revalidate_disk(struct ibnbd_clt_dev *dev,
-				      size_t new_nsectors)
+				     size_t new_nsectors)
 {
 	int err = 0;
 
@@ -226,7 +227,8 @@ static void ibnbd_blk_delay_work(struct work_struct *work)
  * What is the difference between this and original blk_delay_queue() ?
  * Here the stop queue flag is cleared, so we are like MQ.
  */
-static void ibnbd_blk_delay_queue(struct ibnbd_clt_dev *dev, unsigned long msecs)
+static void ibnbd_blk_delay_queue(struct ibnbd_clt_dev *dev,
+				  unsigned long msecs)
 {
 	int cpu = get_cpu();
 
@@ -483,11 +485,10 @@ static void msg_io_conf(void *priv, int errno)
 		}
 		break;
 	case BLK_RQ:
-		if (softirq_enable) {
+		if (softirq_enable)
 			blk_complete_request(rq);
-		} else {
+		else
 			blk_end_request_all(rq, iu->status);
-		}
 		break;
 	default:
 		WARN(true, "dev->queue_mode , contains unexpected"
@@ -557,13 +558,14 @@ static int send_usr_msg(struct ibtrs_clt *ibtrs, int dir,
 	INIT_WORK(&iu->work, conf);
 	err = ibtrs_clt_request(dir, msg_conf, ibtrs, iu->tag,
 				iu, vec, nr, len, sg, sg_len);
-	if (unlikely(err))
+	if (unlikely(err)) {
 		deinit_iu_comp(iu);
-	else if (wait) {
+	} else if (wait) {
 		wait_iu_comp(&comp);
 		*errno = comp.errno;
-	} else
+	} else {
 		*errno = 0;
+	}
 
 	return err;
 }
@@ -590,9 +592,8 @@ static int send_msg_close(struct ibnbd_clt_dev *dev, u32 device_id, bool wait)
 	int err, errno;
 
 	iu = ibnbd_get_iu(sess, IBTRS_USR_CON, IBTRS_TAG_WAIT);
-	if (unlikely(!iu)) {
+	if (unlikely(!iu))
 		return -ENOMEM;
-	}
 
 	iu->buf = NULL;
 	iu->dev = dev;
@@ -608,8 +609,9 @@ static int send_msg_close(struct ibnbd_clt_dev *dev, u32 device_id, bool wait)
 	if (unlikely(err)) {
 		ibnbd_clt_put_dev(dev);
 		ibnbd_put_iu(sess, iu);
-	} else
+	} else {
 		err = errno;
+	}
 
 	return err;
 }
@@ -697,8 +699,9 @@ static int send_msg_open(struct ibnbd_clt_dev *dev, bool wait)
 		ibnbd_clt_put_dev(dev);
 		ibnbd_put_iu(sess, iu);
 		kfree(rsp);
-	} else
+	} else {
 		err = errno;
+	}
 
 	return err;
 }
@@ -740,8 +743,9 @@ static int send_msg_sess_info(struct ibnbd_clt_session *sess, bool wait)
 		ibnbd_clt_put_sess(sess);
 		ibnbd_put_iu(sess, iu);
 		kfree(rsp);
-	} else
+	} else {
 		err = errno;
+	}
 
 	return err;
 }
@@ -1144,13 +1148,13 @@ static const struct block_device_operations ibnbd_client_ops = {
 
 static size_t ibnbd_clt_get_sg_size(struct scatterlist *sglist, u32 len)
 {
-       struct scatterlist *sg;
-       size_t tsize = 0;
-       int i;
+	struct scatterlist *sg;
+	size_t tsize = 0;
+	int i;
 
-       for_each_sg(sglist, sg, len, i)
-               tsize += sg->length;
-       return tsize;
+	for_each_sg(sglist, sg, len, i)
+		tsize += sg->length;
+	return tsize;
 }
 
 static int ibnbd_client_xfer_request(struct ibnbd_clt_dev *dev,
@@ -1564,12 +1568,8 @@ static struct ibnbd_clt_dev *init_dev(struct ibnbd_clt_session *sess,
 	size_t nr;
 
 	dev = kzalloc_node(sizeof(*dev), GFP_KERNEL, NUMA_NO_NODE);
-	if (!dev) {
-		pr_err("Failed to initialize device '%s' from session %s,"
-		       " allocating device structure failed\n", pathname,
-		       sess->sessname);
+	if (!dev)
 		return ERR_PTR(-ENOMEM);
-	}
 
 	nr = (queue_mode == BLK_MQ ? nr_cpu_ids : 1);
 	dev->hw_queues = kcalloc(nr, sizeof(*dev->hw_queues), GFP_KERNEL);
@@ -1717,8 +1717,8 @@ struct ibnbd_clt_dev *ibnbd_clt_map_device(const char *sessname,
 		goto del_dev;
 	}
 	mutex_lock(&dev->lock);
-	pr_debug("Opened remote device: session=%s, path='%s'\n", sess->sessname,
-		 pathname);
+	pr_debug("Opened remote device: session=%s, path='%s'\n",
+		 sess->sessname, pathname);
 	ret = ibnbd_client_setup_device(sess, dev, dev->clt_device_id);
 	if (ret) {
 		ibnbd_err(dev, "map_device: Failed to configure device, err: %d\n",
@@ -1867,7 +1867,7 @@ static void ibnbd_destroy_sessions(void)
 	struct ibnbd_clt_session *sess, *sn;
 	struct ibnbd_clt_dev *dev, *tn;
 
-	/* Firstly forbid access thru sysfs interface */
+	/* Firstly forbid access through sysfs interface */
 	ibnbd_clt_destroy_default_group();
 	ibnbd_clt_destroy_sysfs_files();
 

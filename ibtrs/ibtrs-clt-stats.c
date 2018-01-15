@@ -266,7 +266,7 @@ int ibtrs_clt_stats_sg_list_distr_to_str(struct ibtrs_clt_stats *stats,
 					 1 << (i + MIN_LOG_SG - MAX_LIN_SG - 1));
 
 		for_each_possible_cpu(cpu) {
-			unsigned p, p_i, p_f;
+			unsigned int p, p_i, p_f;
 			u64 total, distr;
 
 			s = per_cpu_ptr(stats->pcpu_stats, cpu);
@@ -328,7 +328,8 @@ int ibtrs_clt_reset_rdma_lat_distr_stats(struct ibtrs_clt_stats *stats,
 		for_each_possible_cpu(cpu) {
 			s = per_cpu_ptr(stats->pcpu_stats, cpu);
 			memset(&s->rdma_lat_max, 0, sizeof(s->rdma_lat_max));
-			memset(&s->rdma_lat_distr, 0, sizeof(s->rdma_lat_distr));
+			memset(&s->rdma_lat_distr, 0,
+			       sizeof(s->rdma_lat_distr));
 		}
 	}
 	stats->enable_rdma_lat = enable;
@@ -337,7 +338,7 @@ int ibtrs_clt_reset_rdma_lat_distr_stats(struct ibtrs_clt_stats *stats,
 }
 
 int ibtrs_clt_reset_sg_list_distr_stats(struct ibtrs_clt_stats *stats,
-					       bool enable)
+					bool enable)
 {
 	struct ibtrs_clt_stats_pcpu *s;
 	int cpu;
@@ -459,7 +460,7 @@ int ibtrs_clt_init_stats(struct ibtrs_clt_stats *stats)
 		return -ENOMEM;
 
 	/*
-	 * successfull_cnt will be set to 0 after session
+	 * successful_cnt will be set to 0 after session
 	 * is established for the first time
 	 */
 	stats->reconnects.successful_cnt = -1;

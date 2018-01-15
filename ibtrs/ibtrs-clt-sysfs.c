@@ -160,8 +160,8 @@ static ssize_t ibtrs_clt_disconnect_show(struct kobject *kobj,
 }
 
 static ssize_t ibtrs_clt_disconnect_store(struct kobject *kobj,
-					 struct kobj_attribute *attr,
-					 const char *buf, size_t count)
+					  struct kobj_attribute *attr,
+					  const char *buf, size_t count)
 {
 	struct ibtrs_clt_sess *sess;
 	int ret;
@@ -240,7 +240,8 @@ static ssize_t ibtrs_clt_add_path_store(struct kobject *kobj,
 
 	clt = container_of(kobj, struct ibtrs_clt, kobj);
 
-	if ((nl = strchr(buf, '\n')))
+	nl = strchr(buf, '\n');
+	if (nl)
 		len = nl - buf;
 	else
 		len = count;
@@ -362,9 +363,8 @@ int ibtrs_clt_create_sess_files(struct ibtrs_clt_sess *sess)
 		goto put_kobj;
 	}
 	err = ibtrs_clt_create_stats_files(&sess->kobj, &sess->kobj_stats);
-	if (unlikely(err)) {
+	if (unlikely(err))
 		goto put_kobj;
-	}
 
 	return 0;
 

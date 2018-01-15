@@ -412,7 +412,7 @@ static void hb_work(struct work_struct *work)
 }
 
 void ibtrs_init_hb(struct ibtrs_sess *sess, struct ib_cqe *cqe,
-		   unsigned interval_ms, unsigned missed_max,
+		   unsigned int interval_ms, unsigned int missed_max,
 		   ibtrs_hb_handler_t *err_handler,
 		   struct workqueue_struct *wq)
 {
@@ -509,7 +509,7 @@ static int ibtrs_str_gid_to_sockaddr(const char *addr, size_t len,
  * @port	Destination port
  * @dst		Destination sockaddr structure
  *
- * Returns 0 if conversion successfull. Non-zero on error.
+ * Returns 0 if conversion successful. Non-zero on error.
  */
 static int ibtrs_str_to_sockaddr(const char *addr, size_t len,
 				 short port, struct sockaddr *dst)
@@ -540,8 +540,9 @@ int ibtrs_addr_to_sockaddr(const char *str, size_t len, short port,
 		len -= d - str;
 		str  = d;
 
-	} else
+	} else {
 		addr->src = NULL;
+	}
 	ret = ibtrs_str_to_sockaddr(str, len, port, addr->dst);
 
 	return ret;

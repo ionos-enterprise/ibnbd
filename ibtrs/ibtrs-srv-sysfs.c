@@ -72,7 +72,8 @@ static ssize_t ibtrs_srv_disconnect_store(struct kobject *kobj,
 
 	sess = container_of(kobj, struct ibtrs_srv_sess, kobj);
 	if (!sysfs_streq(buf, "1")) {
-		ibtrs_err(sess, "%s: invalid value: '%s'\n", attr->attr.name, buf);
+		ibtrs_err(sess, "%s: invalid value: '%s'\n",
+			  attr->attr.name, buf);
 		return -EINVAL;
 	}
 

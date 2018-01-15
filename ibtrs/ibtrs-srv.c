@@ -502,8 +502,6 @@ void ibtrs_srv_resp_rdma(struct ibtrs_srv_op *id, int status)
 	}
 out:
 	ibtrs_srv_put_ops_ids(sess);
-
-	return;
 }
 EXPORT_SYMBOL(ibtrs_srv_resp_rdma);
 
@@ -819,11 +817,12 @@ static void process_read(struct ibtrs_srv_con *con,
 	id->msg_id	= buf_id;
 	id->req		= req;
 	if (sg_cnt) {
-		id->tx_wr	= kcalloc(sg_cnt, sizeof(*id->tx_wr), GFP_KERNEL);
-		id->tx_sg	= kcalloc(sg_cnt, sizeof(*id->tx_sg), GFP_KERNEL);
+		id->tx_wr = kcalloc(sg_cnt, sizeof(*id->tx_wr), GFP_KERNEL);
+		id->tx_sg = kcalloc(sg_cnt, sizeof(*id->tx_sg), GFP_KERNEL);
 		if (!id->tx_wr || !id->tx_sg) {
-			ibtrs_err_rl(sess, "Processing read request failed, work request "
-				     "or scatter gather allocation failed for msg_id %d\n",
+			ibtrs_err_rl(sess, "Processing read request failed, "
+				     "work request or scatter gather "
+				     "allocation failed for msg_id %d\n",
 				     buf_id);
 			ret = -ENOMEM;
 			goto send_err_msg;
@@ -887,8 +886,8 @@ static void process_write(struct ibtrs_srv_con *con,
 	ret = ctx->rdma_ev(srv, srv->priv, id, WRITE, data, data_len,
 			   data + data_len, usr_len);
 	if (unlikely(ret)) {
-		ibtrs_err_rl(sess, "Processing write request failed, user module"
-			     " callback reports err: %d\n", ret);
+		ibtrs_err_rl(sess, "Processing write request failed, user"
+			     " module callback reports err: %d\n", ret);
 		goto send_err_msg;
 	}
 
@@ -897,8 +896,8 @@ static void process_write(struct ibtrs_srv_con *con,
 send_err_msg:
 	ret = send_io_resp_imm(con, buf_id, ret);
 	if (ret < 0) {
-		ibtrs_err_rl(sess, "Processing write request failed, sending I/O"
-			     " response failed, msg_id %d, err: %d\n",
+		ibtrs_err_rl(sess, "Processing write request failed, sending"
+			     " I/O response failed, msg_id %d, err: %d\n",
 			     buf_id, ret);
 		close_sess(sess);
 	}
@@ -909,7 +908,7 @@ static void process_io_req(struct ibtrs_srv_con *con, void *msg,
 			   u32 id, u32 off)
 {
 	struct ibtrs_srv_sess *sess = to_srv_sess(con->c.sess);
-	unsigned type;
+	unsigned int type;
 
 	type = le16_to_cpu(le16_to_cpu(*(__le16 *)msg));
 
@@ -957,12 +956,14 @@ static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 	switch (wc->opcode) {
 	case IB_WC_RDMA_WRITE:
 		/*
-		 * post_send() RDMA write completions of IO reqs (read/write) and hb
+		 * post_send() RDMA write completions of IO reqs (read/write)
+		 * and hb
 		 */
 		break;
 	case IB_WC_RECV_RDMA_WITH_IMM:
 		/*
-		 * post_recv() RDMA write completions of IO reqs (read/write) and hb
+		 * post_recv() RDMA write completions of IO reqs (read/write)
+		 * and hb
 		 */
 		if (WARN_ON(wc->wr_cqe != &io_comp_cqe))
 			return;
@@ -1152,7 +1153,7 @@ static void __add_path_to_srv(struct ibtrs_srv *srv,
 
 static void del_path_from_srv(struct ibtrs_srv_sess *sess)
 {
-	struct ibtrs_srv* srv = sess->srv;
+	struct ibtrs_srv *srv = sess->srv;
 
 	if (WARN_ON(!srv))
 		return;
@@ -1279,7 +1280,7 @@ __find_sess(struct ibtrs_srv *srv, const uuid_t *sess_uuid)
 
 static int create_con(struct ibtrs_srv_sess *sess,
 		      struct rdma_cm_id *cm_id,
-		      unsigned cid)
+		      unsigned int cid)
 {
 	struct ibtrs_srv *srv = sess->srv;
 	struct ibtrs_srv_con *con;
@@ -1344,7 +1345,8 @@ err:
 
 static struct ibtrs_srv_sess *__alloc_sess(struct ibtrs_srv *srv,
 					   struct rdma_cm_id *cm_id,
-					   unsigned con_num, unsigned recon_cnt,
+					   unsigned int con_num,
+					   unsigned int recon_cnt,
 					   const uuid_t *uuid)
 {
 	struct ibtrs_srv_sess *sess;
@@ -1504,7 +1506,7 @@ static int ibtrs_rdma_connect(struct rdma_cm_id *cm_id,
 		(void)ibtrs_rdma_do_reject(cm_id, err);
 		/*
 		 * Since session has other connections we follow normal way
-		 * thru worqueue, but still return an error to tell cma.c
+		 * through workqueue, but still return an error to tell cma.c
 		 * to call rdma_destroy_id() for current connection.
 		 */
 		goto close_and_return_err;
@@ -1514,7 +1516,7 @@ static int ibtrs_rdma_connect(struct rdma_cm_id *cm_id,
 		(void)ibtrs_rdma_do_reject(cm_id, err);
 		/*
 		 * Since current connection was successfully added to the
-		 * session we follow normal way thru workqueue to close the
+		 * session we follow normal way through workqueue to close the
 		 * session, thus return 0 to tell cma.c we call
 		 * rdma_destroy_id() ourselves.
 		 */
@@ -1640,7 +1642,7 @@ err_out:
 	return ERR_PTR(ret);
 }
 
-static int ibtrs_srv_rdma_init(struct ibtrs_srv_ctx *ctx, unsigned port)
+static int ibtrs_srv_rdma_init(struct ibtrs_srv_ctx *ctx, unsigned int port)
 {
 	struct sockaddr_in6 sin = {
 		.sin6_family	= AF_INET6,
@@ -1664,10 +1666,9 @@ static int ibtrs_srv_rdma_init(struct ibtrs_srv_ctx *ctx, unsigned port)
 	 * If the cm initialization of one of the id's fails, we abort
 	 * everything.
 	 */
-
 	cm_ip = ibtrs_srv_cm_init(ctx, (struct sockaddr *)&sin, RDMA_PS_TCP);
 	if (unlikely(IS_ERR(cm_ip)))
-	    return PTR_ERR(cm_ip);
+		return PTR_ERR(cm_ip);
 
 	cm_ib = ibtrs_srv_cm_init(ctx, (struct sockaddr *)&sib, RDMA_PS_IB);
 	if (unlikely(IS_ERR(cm_ib))) {

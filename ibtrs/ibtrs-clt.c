@@ -192,7 +192,7 @@ struct ibtrs_fr_desc {
 struct ibtrs_fr_pool {
 	int			size;
 	int			max_page_list_len;
-	spinlock_t		lock;
+	spinlock_t		lock; /* protects free_list */
 	struct list_head	free_list;
 	struct ibtrs_fr_desc	desc[0];
 };
@@ -230,8 +230,8 @@ struct ibtrs_map_state {
 	enum dma_data_direction dir;
 };
 
-static inline struct ibtrs_tag *__ibtrs_get_tag(struct ibtrs_clt *clt,
-					enum ibtrs_clt_con_type con_type)
+static inline struct ibtrs_tag *
+__ibtrs_get_tag(struct ibtrs_clt *clt, enum ibtrs_clt_con_type con_type)
 {
 	size_t max_depth = clt->queue_depth;
 	struct ibtrs_tag *tag;
@@ -608,7 +608,7 @@ static int ibtrs_map_sg_entry(struct ibtrs_map_state *state,
 		return 0;
 
 	while (dma_len) {
-		unsigned offset = dma_addr & ~sess->mr_page_mask;
+		unsigned int offset = dma_addr & ~sess->mr_page_mask;
 
 		if (state->npages == sess->max_pages_per_mr ||
 		    offset != 0) {
@@ -645,6 +645,7 @@ static int ibtrs_map_fr(struct ibtrs_map_state *state,
 			struct scatterlist *sg, int sg_count)
 {
 	unsigned int sg_offset = 0;
+
 	state->sg = sg;
 
 	while (sg_count) {
@@ -661,6 +662,7 @@ static int ibtrs_map_fr(struct ibtrs_map_state *state,
 
 	return 0;
 }
+
 static int ibtrs_map_fmr(struct ibtrs_map_state *state,
 			 struct ibtrs_clt_con *con,
 			 struct scatterlist *sg_first_entry,
@@ -968,9 +970,10 @@ static int ibtrs_post_send_rdma_desc(struct ibtrs_clt_con *con,
 						   num_sge,
 						   sess->srv_rdma_buf_rkey,
 						   addr, imm, flags);
-	} else
+	} else {
 		ret = ibtrs_post_send_rdma_desc_more(con, list, req, desc, n,
 						     addr, size, imm);
+	}
 
 	kfree(list);
 	return ret;
@@ -1094,18 +1097,20 @@ static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 	switch (wc->opcode) {
 	case IB_WC_RDMA_WRITE:
 		/*
-		 * post_send() RDMA write completions of IO reqs (read/write) and hb
+		 * post_send() RDMA write completions of IO reqs (read/write)
+		 * and hb
 		 */
 		break;
 	case IB_WC_RECV_RDMA_WITH_IMM:
 		/*
-		 * post_recv() RDMA write completions of IO reqs (read/write) and hb
+		 * post_recv() RDMA write completions of IO reqs (read/write)
+		 * and hb
 		 */
 		if (WARN_ON(wc->wr_cqe != &io_comp_cqe))
 			return;
 		err = ibtrs_post_recv_empty(&con->c, &io_comp_cqe);
 		if (unlikely(err)) {
-			ibtrs_err(sess, "ibtrs_post_recv_empty(), err: %d\n", err);
+			ibtrs_err(sess, "ibtrs_post_recv_empty(): %d\n", err);
 			ibtrs_rdma_error_recovery(con);
 			break;
 		}
@@ -1169,11 +1174,11 @@ static inline struct ibtrs_clt_sess *get_next_path(struct ibtrs_clt *clt)
 	ppcpu_path = this_cpu_ptr(clt->pcpu_path);
 	path = rcu_dereference(*ppcpu_path);
 	if (unlikely(!path))
-		path = list_first_or_null_rcu(
-				&clt->paths_list, typeof(*path), s.entry);
+		path = list_first_or_null_rcu(&clt->paths_list,
+					      typeof(*path), s.entry);
 	else
-		path = list_next_or_null_rcu_rr(
-				path, &clt->paths_list, s.entry);
+		path = list_next_or_null_rcu_rr(path, &clt->paths_list,
+						s.entry);
 	rcu_assign_pointer(*ppcpu_path, path);
 
 	return path;
@@ -1343,8 +1348,8 @@ static int alloc_sess_reqs(struct ibtrs_clt_sess *sess)
 		else if (sess->fast_reg_mode == IBTRS_FAST_MEM_FMR)
 			req->fmr_list = mr_list;
 
-		req->map_page = kmalloc(sess->max_pages_per_mr *
-					sizeof(void *), GFP_KERNEL);
+		req->map_page = kmalloc_array(sess->max_pages_per_mr,
+					      sizeof(void *), GFP_KERNEL);
 		if (unlikely(!req->map_page))
 			goto out;
 	}
@@ -1361,7 +1366,7 @@ static int alloc_tags(struct ibtrs_clt *clt)
 {
 	int err, i;
 
-	clt->tags_map = kzalloc(BITS_TO_LONGS(clt->queue_depth) * sizeof(long),
+	clt->tags_map = kcalloc(BITS_TO_LONGS(clt->queue_depth), sizeof(long),
 				GFP_KERNEL);
 	if (unlikely(!clt->tags_map)) {
 		err = -ENOMEM;
@@ -1765,7 +1770,7 @@ static void free_sess(struct ibtrs_clt_sess *sess)
 	kfree(sess);
 }
 
-static int create_con(struct ibtrs_clt_sess *sess, unsigned cid)
+static int create_con(struct ibtrs_clt_sess *sess, unsigned int cid)
 {
 	struct ibtrs_clt_con *con;
 
@@ -2020,7 +2025,7 @@ static void ibtrs_clt_stop_and_destroy_conns(struct ibtrs_clt_sess *sess,
 					     bool failover)
 {
 	struct ibtrs_clt_con *con;
-	unsigned cid;
+	unsigned int cid;
 
 	WARN_ON(sess->state == IBTRS_CLT_CONNECTED);
 
@@ -2085,7 +2090,7 @@ static void ibtrs_clt_remove_path_from_arr(struct ibtrs_clt_sess *sess)
 	 * list without path and only then decremented paths number.
 	 *
 	 * Otherwise there can be the following situation:
-	 *    o Two paths exist and IO is comming.
+	 *    o Two paths exist and IO is coming.
 	 *    o One path is removed:
 	 *      CPU#0                          CPU#1
 	 *      for_each_path_continue():      ibtrs_clt_remove_path_from_arr():
@@ -2123,7 +2128,7 @@ static void ibtrs_clt_remove_path_from_arr(struct ibtrs_clt_sess *sess)
 
 		/*
 		 * We race with IO code path, which also changes pointer,
-		 * thus we have to be carefull not to override it.
+		 * thus we have to be careful not to override it.
 		 */
 		cmpxchg(ppcpu_path, sess, next);
 	}
@@ -2179,7 +2184,7 @@ static void ibtrs_clt_close_conns(struct ibtrs_clt_sess *sess, bool wait)
 
 static int init_conns(struct ibtrs_clt_sess *sess)
 {
-	unsigned cid;
+	unsigned int cid;
 	int err;
 
 	/*
@@ -2193,7 +2198,7 @@ static int init_conns(struct ibtrs_clt_sess *sess)
 	for (cid = 0; cid < sess->s.con_num; cid++) {
 		err = create_con(sess, cid);
 		if (unlikely(err))
-		    goto destroy;
+			goto destroy;
 
 		err = create_cm(to_clt_con(sess->s.con[cid]));
 		if (unlikely(err)) {
@@ -2326,13 +2331,13 @@ static int ibtrs_rdma_conn_established(struct ibtrs_clt_con *con,
 		}
 		if (!sess->srv_rdma_addr || sess->queue_depth < queue_depth) {
 			kfree(sess->srv_rdma_addr);
-			sess->srv_rdma_addr = kcalloc(
-						queue_depth,
-						sizeof(*sess->srv_rdma_addr),
-						GFP_KERNEL);
+			sess->srv_rdma_addr =
+				kcalloc(queue_depth,
+					sizeof(*sess->srv_rdma_addr),
+					GFP_KERNEL);
 			if (unlikely(!sess->srv_rdma_addr)) {
-				ibtrs_err(sess, "Failed to allocate queue_depth=%d\n",
-					  queue_depth);
+				ibtrs_err(sess, "Failed to allocate "
+					  "queue_depth=%d\n", queue_depth);
 				return -ENOMEM;
 			}
 		}
@@ -2380,10 +2385,11 @@ static int ibtrs_rdma_conn_rejected(struct ibtrs_clt_con *con,
 			ibtrs_err(sess,
 				  "Connect rejected: status %d (%s), ibtrs "
 				  "errno %d\n", status, rej_msg, errno);
-	} else
+	} else {
 		ibtrs_err(sess,
 			  "Connect rejected but with malformed message: "
 			  "status %d (%s)\n", status, rej_msg);
+	}
 
 	return -ECONNRESET;
 }
@@ -2393,19 +2399,22 @@ static void ibtrs_rdma_error_recovery(struct ibtrs_clt_con *con)
 	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
 
 	if (ibtrs_clt_change_state_from_to(sess,
-				IBTRS_CLT_CONNECTED, IBTRS_CLT_RECONNECTING)) {
+					   IBTRS_CLT_CONNECTED,
+					   IBTRS_CLT_RECONNECTING)) {
 		/*
 		 * Normal scenario, reconnect if we were successfully connected
 		 */
 		queue_delayed_work(ibtrs_wq, &sess->reconnect_dwork, 0);
-	} else
+	} else {
 		/*
 		 * Error can happen just on establishing new connection,
 		 * so notify waiter with error state, waiter is responsible
 		 * for cleaning the rest and reconnect if needed.
 		 */
 		ibtrs_clt_change_state_from_to(sess,
-				IBTRS_CLT_CONNECTING, IBTRS_CLT_CONNECTING_ERR);
+					       IBTRS_CLT_CONNECTING,
+					       IBTRS_CLT_CONNECTING_ERR);
+	}
 }
 
 static int ibtrs_clt_rdma_cm_handler(struct rdma_cm_id *cm_id,
@@ -2497,7 +2506,7 @@ static void ibtrs_clt_info_req_done(struct ib_cq *cq, struct ib_wc *wc)
 static int process_info_rsp(struct ibtrs_clt_sess *sess,
 			    const struct ibtrs_msg_info_rsp *msg)
 {
-	unsigned addr_num;
+	unsigned int addr_num;
 	int i;
 
 	addr_num = le16_to_cpu(msg->addr_num);
@@ -2507,9 +2516,9 @@ static int process_info_rsp(struct ibtrs_clt_sess *sess,
 	 */
 	if (unlikely(ilog2(addr_num - 1) + ilog2(sess->chunk_size - 1) >
 		     IB_IMM_SIZE_BITS)) {
-		ibtrs_err(sess, "RDMA immediate size (%db) not enough to encode "
-			  "%d buffers of size %dB\n", IB_IMM_SIZE_BITS, addr_num,
-			  sess->chunk_size);
+		ibtrs_err(sess, "RDMA immediate size (%db) not enough to "
+			  "encode %d buffers of size %dB\n", IB_IMM_SIZE_BITS,
+			  addr_num, sess->chunk_size);
 		return -EINVAL;
 	}
 	if (unlikely(addr_num > sess->queue_depth)) {
@@ -2620,8 +2629,8 @@ static int ibtrs_send_sess_info(struct ibtrs_clt_sess *sess)
 
 	/* Wait for state change */
 	wait_event_interruptible_timeout(sess->state_wq,
-			   sess->state != IBTRS_CLT_CONNECTING,
-			   msecs_to_jiffies(IBTRS_CONNECT_TIMEOUT_MS));
+				sess->state != IBTRS_CLT_CONNECTING,
+				msecs_to_jiffies(IBTRS_CONNECT_TIMEOUT_MS));
 	if (unlikely(sess->state != IBTRS_CLT_CONNECTED)) {
 		if (sess->state == IBTRS_CLT_CONNECTING_ERR)
 			err = -ECONNRESET;
@@ -2674,7 +2683,7 @@ static void ibtrs_clt_reconnect_work(struct work_struct *work)
 {
 	struct ibtrs_clt_sess *sess;
 	struct ibtrs_clt *clt;
-	unsigned delay_ms;
+	unsigned int delay_ms;
 	int err;
 
 	sess = container_of(to_delayed_work(work), struct ibtrs_clt_sess,
@@ -2714,9 +2723,9 @@ reconnect_again:
 static struct ibtrs_clt *alloc_clt(const char *sessname, size_t paths_num,
 				   short port, size_t pdu_sz,
 				   void *priv, link_clt_ev_fn *link_ev,
-				   unsigned max_segments,
-				   unsigned reconnect_delay_sec,
-				   unsigned max_reconnect_attempts)
+				   unsigned int max_segments,
+				   unsigned int reconnect_delay_sec,
+				   unsigned int max_reconnect_attempts)
 {
 	struct ibtrs_clt *clt;
 	int err;
@@ -2934,8 +2943,9 @@ int ibtrs_clt_remove_path_from_sysfs(struct ibtrs_clt_sess *sess,
 	 */
 	do {
 		ibtrs_clt_close_conns(sess, true);
-	} while (!(changed = ibtrs_clt_change_state_get_old(
-			   sess, IBTRS_CLT_DEAD, &old_state)) &&
+	} while (!(changed = ibtrs_clt_change_state_get_old(sess,
+							    IBTRS_CLT_DEAD,
+							    &old_state)) &&
 		   old_state != IBTRS_CLT_DEAD);
 
 	/*
@@ -2952,7 +2962,7 @@ int ibtrs_clt_remove_path_from_sysfs(struct ibtrs_clt_sess *sess,
 
 void ibtrs_clt_set_max_reconnect_attempts(struct ibtrs_clt *clt, int value)
 {
-	clt->max_reconnect_attempts = (unsigned)value;
+	clt->max_reconnect_attempts = (unsigned int)value;
 }
 
 int ibtrs_clt_get_max_reconnect_attempts(const struct ibtrs_clt *clt)
@@ -3039,7 +3049,8 @@ static int ibtrs_clt_write_req(struct ibtrs_clt_io_req *req)
 						req->usr_len, imm, msg);
 	else
 		ret = ibtrs_post_send_rdma_more(req->con, req, buf,
-					req->usr_len + sizeof(*msg), imm);
+						req->usr_len + sizeof(*msg),
+						imm);
 	if (unlikely(ret)) {
 		ibtrs_err(sess, "Write request failed: %d\n", ret);
 		ibtrs_clt_decrease_inflight(&sess->stats);
@@ -3068,8 +3079,8 @@ int ibtrs_clt_write(struct ibtrs_clt *clt, ibtrs_conf_fn *conf,
 		if (unlikely(sess->state != IBTRS_CLT_CONNECTED))
 			continue;
 		if (unlikely(usr_len > IO_MSG_SIZE)) {
-			ibtrs_wrn_rl(sess, "Write request failed, user message size"
-				     " is %zu B big, max size is %d B\n",
+			ibtrs_wrn_rl(sess, "Write request failed, user message"
+				     " size is %zu B big, max size is %d B\n",
 				     usr_len, IO_MSG_SIZE);
 			err = -EMSGSIZE;
 			break;
@@ -3115,7 +3126,8 @@ static int ibtrs_clt_read_req(struct ibtrs_clt_io_req *req)
 		count = ib_dma_map_sg(ibdev->dev, req->sglist, req->sg_cnt,
 				      req->dir);
 		if (unlikely(!count)) {
-			ibtrs_wrn(sess, "Read request failed, dma map failed\n");
+			ibtrs_wrn(sess, "Read request failed, "
+				  "dma map failed\n");
 			return -EINVAL;
 		}
 	}
@@ -3198,8 +3210,8 @@ int ibtrs_clt_read(struct ibtrs_clt *clt, ibtrs_conf_fn *conf,
 			     sizeof(struct ibtrs_msg_req_rdma_write) +
 			     sg_cnt * sizeof(struct ibtrs_sg_desc) >
 			     sess->max_req_size)) {
-			ibtrs_wrn_rl(sess, "Read request failed, user message size"
-				     " is %zu B big, max size is %d B\n",
+			ibtrs_wrn_rl(sess, "Read request failed, user message"
+				     " size is %zu B big, max size is %d B\n",
 				     usr_len, IO_MSG_SIZE);
 			err = -EMSGSIZE;
 			break;
@@ -3269,7 +3281,7 @@ int ibtrs_clt_create_path_from_sysfs(struct ibtrs_clt *clt,
 		return PTR_ERR(sess);
 
 	/*
-	 * It is totally safe to add path in CONNECTING state: comming
+	 * It is totally safe to add path in CONNECTING state: coming
 	 * IO will never grab it.  Also it is very important to add
 	 * path before init, since init fires LINK_CONNECTED event.
 	 */

@@ -120,7 +120,7 @@ u32 rq_to_ibnbd_flags(struct request *rq)
 		ibnbd_flags = 0;
 	}
 
-	if (op_is_sync((rq->cmd_flags)))
+	if (op_is_sync(rq->cmd_flags))
 		ibnbd_flags |= IBNBD_F_SYNC;
 
 	if (op_is_flush(rq->cmd_flags))
