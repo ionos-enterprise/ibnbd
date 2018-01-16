@@ -1,0 +1,367 @@
+pb-linux-4.19 (5.5.0-1) stretch buster; urgency=medium
+
+  * rebase on 5.5.0-rc2
+
+ -- Gioh Kim <gi-oh.kim@cloud.ionos.com>  Thu, 29 Nov 2018 16:24:26 +0100
+
+linux-pserver-future (4.4.73-1.9) jessie stretch; urgency=medium
+
+  * IB/mlx4: dump to log structs related to CQ overrun
+  * ipoib: limit drain cq to avoid memory corruption
+
+ -- Gioh Kim <gi-oh.kim@profitbricks.com>  Mon, 27 Nov 2017 11:28:57 +0100
+
+linux-pserver-future (4.4.73-1.8) jessie stretch; urgency=medium
+
+  * config: disable CONFIG_EDAC_GHES
+  * md: allow last device to be forcibly removed from RAID1/RAID10.
+
+ -- Gioh Kim <gi-oh.kim@profitbricks.com>  Tue, 21 Nov 2017 12:53:40 +0100
+
+linux-pserver-future (4.4.73-1.7) jessie stretch; urgency=medium
+
+  * IB/ipoib: Fix memory corruption during ipoib cm connection establishment
+
+ -- Gioh Kim <gi-oh.kim@profitbricks.com>  Mon, 30 Oct 2017 14:27:44 +0100
+
+linux-pserver-future (4.4.73-1.6) jessie stretch; urgency=medium
+
+  * md - suspend on/off in sysfs (with auto resume)
+
+ -- Gioh Kim <gi-oh.kim@profitbricks.com>  Tue, 24 Oct 2017 15:55:28 +0200
+
+linux-pserver-future (4.4.73-1.5) jessie stretch; urgency=medium
+
+  * config: Enable OPENVSWITCH and NF_CONNTRACK_ZONES
+  * debian: update maintainer to Gioh
+  * config: Enable CONFIG_X86_X2APIC
+  * config: Enable CONFIG_GENERIC_CPU
+  * kvm: nVMX: Don't allow L2 to access the hardware CR8
+  * IB/ipoib: Suppress the retry related completion errors
+  * config: enable EDAC drivers for Intel processor
+  * config: enable CONFIG_ACPI_APEI
+  * config: enable CONFIG_MEMCG
+  * config: enable CONFIG_CFS_BANDWIDTH
+
+ -- Gioh Kim <gi-oh.kim@profitbricks.com>  Thu, 12 Oct 2017 13:45:56 +0200
+
+linux-pserver-future (4.4.73-1.4) jessie stretch; urgency=medium
+
+  * rebase on stable 4.4.73
+  * import+update debian dir and .config from future 4.4.62-1.4
+  * import MLNX_OFED_LINUX-3.3-1.0.4.0
+  * IPoIB: Free ipoib neigh on path record failure so path rec queries are retrie
+  * IB/ipoib: Add NDP issue debugging functionality
+  * IB/ipoib: Add more logging for qp state validate work
+  * rdma_cm: add APM support to rdma_cm. (rdma_enable_apm)
+  * rdma_cm/APM: check id_priv state after holding the handler lock
+  * cma: export function to set service level
+  * cma: resolve to first active ib_port
+  * mlx4: redo tx checksum offload in line with docs
+  * skbuff: shrink and move struct skb_gso_cb in skb->cb[]
+  * block, md: add a statistics table for io latency
+  * config: enable config for additional disk statistic
+  * md: register new md sysfs file 'uuid' read-only
+  * md: introduce raid sync statistic
+  * config: enable MD_PB_SYNC_STAT
+  * md/raid1: allow read-only rdevs by read-only assembly
+  * md/raid1: introduce new bitmap reload
+  * md: add 'disable' sysfs entry
+  * md: don't allow reshape of RAID-1
+  * md/raid1: abort delayed writes when device fails.
+  * md/raid1: fix: IO can block resync indefinitely
+  * md/failfast: add failfast flag for md to be used by some personalities.
+  * md: Use REQ_FAILFAST_* on metadata writes where appropriate
+  * md/raid1 add failfast handling for reads.
+  * md/raid1: add failfast handling for writes.
+  * md/raid1: avoid reusing a resync bio after error handling
+  * vhost: Support up to 256 memory regions
+  * kvm: remove the SPAM log on MSR rw
+  * KVM: SVM: do not drop VMCB.SAVE.CPL to 0 if SS is not present
+  * block: fix race between opening blkext device and freeing it
+  * block: fix module reference leak on put_disk() call for cgroups throttle
+  * block: add call to split trace point
+  * blk-mq: Fix NULL pointer updating nr_requests
+  * blk-mq: fix hang caused by freeze/unfreeze sequence
+  * blk-mq: don't complete un-started request in timeout handler
+  * percpu-refcount: init ->confirm_switch member properly
+  * percpu_ref: remove unnecessary RCU grace period for staggered atomic switching confirmation
+  * percpu_ref: reorganize __percpu_ref_switch_to_atomic() and relocate percpu_ref_switch_to_atomic()
+  * percpu_ref: unify staggered atomic switching wait behavior
+  * percpu_ref: restructure operation mode switching
+  * percpu_ref: allow operation mode switching operations to be called concurrently
+  * debian: enable the building for debian stretch
+  * debian: add postrm script to do cleanup after pkg remove
+  * md: kick out device if superblock load fails on EIO/EINVAL
+  * config: enable CONFIG_EDAC_DECODE_MCE=y
+  * config: enable CONFIG_EDAC_MM_EDAC and CONFIG_EDAC_AMD64
+
+ -- Gioh Kim <gi-oh.kim@profitbricks.com>  Thu, 24 Aug 2017 14:43:30 +0200
+
+linux-pserver-future (4.4.62-1.4) jessie; urgency=medium
+
+  * rebase on stable 4.4.62
+  * import+update debian dir and .config from future 4.4.50-1.4
+  * import MLNX_OFED_LINUX-3.3-1.0.4.0
+  * IPoIB: Free ipoib neigh on path record failure so path rec queries are retrie
+  * IB/ipoib: Add NDP issue debugging functionality
+  * IB/ipoib: Add more logging for qp state validate work
+  * rdma_cm: add APM support to rdma_cm. (rdma_enable_apm)
+  * rdma_cm/APM: check id_priv state after holding the handler lock
+  * cma: export function to set service level
+  * cma: resolve to first active ib_port
+  * mlx4: redo tx checksum offload in line with docs
+  * skbuff: shrink and move struct skb_gso_cb in skb->cb[]
+  * block, md: add a statistics table for io latency
+  * config: enable config for additional disk statistic
+  * md: register new md sysfs file 'uuid' read-only
+  * md: introduce raid sync statistic
+  * config: enable MD_PB_SYNC_STAT
+  * md/raid1: allow read-only rdevs by read-only assembly
+  * md/raid1: introduce new bitmap reload
+  * md: add 'disable' sysfs entry
+  * md: don't allow reshape of RAID-1
+  * md/raid1: abort delayed writes when device fails.
+  * md/raid1: fix: IO can block resync indefinitely
+  * md/failfast: add failfast flag for md to be used by some personalities.
+  * md: Use REQ_FAILFAST_* on metadata writes where appropriate
+  * md/raid1 add failfast handling for reads.
+  * md/raid1: add failfast handling for writes.
+  * md/raid1: avoid reusing a resync bio after error handling
+  * vhost: Support up to 256 memory regions
+  * kvm: remove the SPAM log on MSR rw
+  * KVM: SVM: do not drop VMCB.SAVE.CPL to 0 if SS is not present
+  * block: fix race between opening blkext device and freeing it
+  * block: fix module reference leak on put_disk() call for cgroups throttle
+  * block: add call to split trace point
+  * blk-mq: Fix NULL pointer updating nr_requests
+  * blk-mq: fix hang caused by freeze/unfreeze sequence
+  * blk-mq: don't complete un-started request in timeout handler
+  * percpu-refcount: init ->confirm_switch member properly
+  * percpu_ref: remove unnecessary RCU grace period for staggered atomic switching confirmation
+  * percpu_ref: reorganize __percpu_ref_switch_to_atomic() and relocate percpu_ref_switch_to_atomic()
+  * percpu_ref: unify staggered atomic switching wait behavior
+  * percpu_ref: restructure operation mode switching
+  * percpu_ref: allow operation mode switching operations to be called concurrently
+  * config: default io-scheduler & multiqueue
+  * config: disable CONFIG_DM_MQ_DEFAULT
+  * config: disable CONFIG_SCSI_MQ_DEFAULT
+
+ -- Michael Wang <yun.wang@profitbricks.com>  Mon, 19 Jun 2017 14:26:43 +0200
+
+linux-pserver-future (4.4.50-1.4) jessie; urgency=medium
+
+  * rebase on stable 4.4.50
+  * import+update debian dir and .config from future 4.4.36-2.2
+  * import MLNX_OFED_LINUX-3.3-1.0.4.0
+  * IPoIB: Free ipoib neigh on path record failure so path rec queries are retrie
+  * IB/ipoib: Add NDP issue debugging functionality
+  * IB/ipoib: Add more logging for qp state validate work
+  * rdma_cm: add APM support to rdma_cm. (rdma_enable_apm)
+  * cma: export function to set service level
+  * cma: resolve to first active ib_port
+  * mlx4: redo tx checksum offload in line with docs
+  * block, md: add a statistics table for io latency
+  * config: enable config for additional disk statistic
+  * md: register new md sysfs file 'uuid' read-only
+  * md: introduce raid sync statistic
+  * config: enable MD_PB_SYNC_STAT
+  * md/raid1: allow read-only rdevs by read-only assembly
+  * md/raid1: introduce new bitmap reload
+  * md: add 'disable' sysfs entry
+  * md: don't allow reshape of RAID-1
+  * md/raid1: abort delayed writes when device fails.
+  * md/raid1: fix: IO can block resync indefinitely
+  * md/failfast: add failfast flag for md to be used by some personalities.
+  * md: Use REQ_FAILFAST_* on metadata writes where appropriate
+  * md/raid1 add failfast handling for reads.
+  * md/raid1: add failfast handling for writes.
+  * vhost: Support up to 256 memory regions
+  * kvm: remove the SPAM log on MSR rw
+  * block: fix race between opening blkext device and freeing it
+  * block: fix module reference leak on put_disk() call for cgroups throttle
+  * block: add call to split trace point
+  * block: fix deadlock between freeze_array() and wait_barrier()
+  * blk-mq: Fix NULL pointer updating nr_requests
+  * blk-mq: fix hang caused by freeze/unfreeze sequence
+  * percpu-refcount: init ->confirm_switch member properly
+  * percpu_ref: remove unnecessary RCU grace period for staggered atomic switching confirmation
+  * percpu_ref: reorganize __percpu_ref_switch_to_atomic() and relocate percpu_ref_switch_to_atomic()
+  * percpu_ref: unify staggered atomic switching wait behavior
+  * percpu_ref: restructure operation mode switching
+  * percpu_ref: allow operation mode switching operations to be called concurrently
+  * blk: Ensure users for current->bio_list can see the full list
+  * skbuff: shrink and move struct skb_gso_cb in skb->cb[]
+  * md/raid1: avoid reusing a resync bio after error handling
+  * sysfs: be careful of error returns from ops->show()
+
+ -- Michael Wang <yun.wang@profitbricks.com>  Tue, 11 Apr 2017 12:23:43 +0200
+
+linux-pserver-future (4.4.36-2.2) jessie; urgency=medium
+
+  [ Jack Wang ]
+  * block: optimize generic_make_request
+
+ -- Gioh Kim <gi-oh.kim@profitbricks.com>  Tue, 14 Feb 2017 15:00:29 +0100
+
+linux-pserver-future (4.4.36-2.1) jessie; urgency=medium
+
+  * config: disable hardware IOMMU
+  * block: fix deadlock between freeze_array() and wait_barrier()
+  * deb: fix perf package python dependency
+
+ -- Jack Wang <jinpu.wang@profitbricks.com>  Wed, 08 Feb 2017 09:52:20 +0100
+
+linux-pserver-future (4.4.36-1.1) jessie; urgency=medium
+
+  [ Michael Wang ]
+  * rebase on stable 4.4.36
+  * import+update debian dir and .config from future 4.4.28-1.2
+  * import MLNX_OFED_LINUX-3.3-1.0.4.0
+  * IPoIB: Free ipoib neigh on path record failure so path rec queries are retrie
+  * IB/ipoib: Add NDP issue debugging functionality
+  * IB/ipoib: Add more logging for qp state validate work
+  * rdma_cm: add APM support to rdma_cm. (rdma_enable_apm)
+  * cma: export function to set service level
+  * cma: resolve to first active ib_port
+  * md: register new md sysfs file 'uuid' read-only
+  * md: introduce raid sync statistic
+  * config: enable MD_PB_SYNC_STAT
+  * md/raid1: allow read-only rdevs by read-only assembly
+  * md/raid1: introduce new bitmap reload
+  * md: add 'disable' sysfs entry
+  * md: don't allow reshape of RAID-1
+  * md/raid1: abort delayed writes when device fails.
+  * md/raid1: fix: IO can block resync indefinitely
+  * md/failfast: add failfast flag for md to be used by some personalities.
+  * md: Use REQ_FAILFAST_* on metadata writes where appropriate
+  * md/raid1 add failfast handling for reads.
+  * md/raid1: add failfast handling for writes.
+  * block, md: add a statistics table for io latency
+  * config: enable config for additional disk statistic
+  * vhost: Support up to 256 memory regions
+  * kvm: remove the SPAM log on MSR rw
+  * block: fix race between opening blkext device and freeing it
+  * block: fix module reference leak on put_disk() call for cgroups throttle
+  * block: add call to split trace point
+  * blk-mq: Fix NULL pointer updating nr_requests
+  * blk-mq: fix hang caused by freeze/unfreeze sequence
+  * percpu-refcount: init ->confirm_switch member properly
+  * percpu_ref: remove unnecessary RCU grace period for staggered atomic switching confirmation
+  * percpu_ref: reorganize __percpu_ref_switch_to_atomic() and relocate percpu_ref_switch_to_atomic()
+  * percpu_ref: unify staggered atomic switching wait behavior
+  * percpu_ref: restructure operation mode switching
+  * percpu_ref: allow operation mode switching operations to be called concurrently
+
+ -- Michael Wang <yun.wang@profitbricks.com>  Tue, 06 Dec 2016 10:58:13 +0100
+
+linux-pserver-future (4.4.28-1.2) jessie; urgency=medium
+
+  [ Michael Wang ]
+  * rebase on stable 4.4.28
+  * import+update debian dir and .config from future 4.4.21-1.2
+  * import MLNX_OFED_LINUX-3.3-1.0.4.0
+  * IPoIB: Free ipoib neigh on path record failure so path rec queries are retrie
+  * IB/ipoib: Add NDP issue debugging functionality
+  * IB/ipoib: Add more logging for qp state validate work
+  * rdma_cm: add APM support to rdma_cm. (rdma_enable_apm)
+  * cma: export function to set service level
+  * md: register new md sysfs file 'uuid' read-only
+  * md: introduce raid sync statistic
+  * config: enable MD_PB_SYNC_STAT
+  * md/raid1: allow read-only rdevs by read-only assembly
+  * md/raid1: introduce new bitmap reload
+  * md: add 'disable' sysfs entry
+  * md: don't allow reshape of RAID-1
+  * md/raid1: abort delayed writes when device fails.
+  * md/raid1: fix: IO can block resync indefinitely
+  * md/failfast: add failfast flag for md to be used by some personalities.
+  * md: Use REQ_FAILFAST_* on metadata writes where appropriate
+  * md/raid1 add failfast handling for reads.
+  * md/raid1: add failfast handling for writes.
+  * block, md: add a statistics table for io latency
+  * config: enable config for additional disk statistic
+  * vhost: Support up to 256 memory regions
+  * kvm: remove the SPAM log on MSR rw
+  * block: fix race between opening blkext device and freeing it
+  * block: fix module reference leak on put_disk() call for cgroups throttle
+  * block: add call to split trace point
+  * blk-mq: Fix NULL pointer updating nr_requests
+  * blk-mq: fix hang caused by freeze/unfreeze sequence
+  * percpu-refcount: init ->confirm_switch member properly
+  * percpu_ref: remove unnecessary RCU grace period for staggered atomic switching confirmation
+  * percpu_ref: reorganize __percpu_ref_switch_to_atomic() and relocate percpu_ref_switch_to_atomic()
+  * percpu_ref: unify staggered atomic switching wait behavior
+  * percpu_ref: restructure operation mode switching
+  * percpu_ref: allow operation mode switching operations to be called concurrently
+
+ -- Michael Wang <yun.wang@profitbricks.com>  Fri, 11 Nov 2016 10:22:01 +0100
+
+linux-pserver-future (4.4.21-1.2) jessie; urgency=medium
+
+  [ Michael Wang ]
+  * rebase on stable 4.4.21
+  * import+update debian dir and .config from future 4.4.14-1
+  * import MLNX_OFED_LINUX-3.2-1.0.1.1
+  * IPoIB: Free ipoib neigh on path record failure so path rec queries are retrie
+  * IB/ipoib: Add NDP issue debugging functionality
+  * IB/ipoib: Add more logging for qp state validate work
+  * rdma_cm: add APM support to rdma_cm. (rdma_enable_apm)
+  * cma: export function to set service level
+  * md: register new md sysfs file 'uuid' read-only
+  * md: introduce raid sync statistic
+  * config: enable MD_PB_SYNC_STAT
+  * md/raid1: allow read-only rdevs by read-only assembly
+  * md/raid1: introduce new bitmap reload
+  * md: add 'disable' sysfs entry
+  * md: don't allow reshape of RAID-1
+  * block, md: add a statistics table for io latency
+  * config: enable config for additional disk statistic
+  * vhost: Support up to 256 memory regions
+  * block: fix race between opening blkext device and freeing it
+  * block: fix module reference leak on put_disk() call for cgroups throttle
+  * block: add call to split trace point
+  * blk-mq: Fix NULL pointer updating nr_requests
+  * blk-mq: fix hang caused by freeze/unfreeze sequence
+  * percpu-refcount: init ->confirm_switch member properly
+  * percpu_ref: remove unnecessary RCU grace period for staggered atomic switching confirmation
+  * percpu_ref: reorganize __percpu_ref_switch_to_atomic() and relocate percpu_ref_switch_to_atomic()
+  * percpu_ref: unify staggered atomic switching wait behavior
+  * percpu_ref: restructure operation mode switching
+  * percpu_ref: allow operation mode switching operations to be called concurrently
+
+ -- Michael Wang <yun.wang@profitbricks.com>  Mon, 10 Oct 2016 17:29:27 +0200
+
+linux-pserver-future (4.4.14-1.6) jessie; urgency=medium
+
+  [ Michael Wang ]
+  * rebase on stable 4.4.14
+  * import+update debian dir and .config from future 4.4.5-1
+  * import MLNX_OFED_LINUX-3.2-1.0.1.1
+  * IPoIB: Free ipoib neigh on path record failure so path rec queries are retrie
+  * IB/ipoib: Add NDP issue debugging functionality
+  * IB/ipoib: Add more logging for qp state validate work
+  * rdma_cm: add APM support to rdma_cm. (rdma_enable_apm)
+  * md: register new md sysfs file 'uuid' read-only
+  * md: introduce raid sync statistic
+  * config: enable MD_PB_SYNC_STAT
+  * md/raid1: allow read-only rdevs by read-only assembly
+  * md/raid1: introduce new bitmap reload
+  * md: add 'disable' sysfs entry
+  * md: don't allow reshape of RAID-1
+  * block, md: add a statistics table for io latency
+  * config: enable config for additional disk statistic
+  * vhost: Support up to 256 memory regions
+  * block: fix race between opening blkext device and freeing it
+  * block: fix module reference leak on put_disk() call for cgroups throttle
+  * block: add call to split trace point
+  * blk-mq: Fix NULL pointer updating nr_requests
+  * blk-mq: fix hang caused by freeze/unfreeze sequence
+  * percpu-refcount: init ->confirm_switch member properly
+  * percpu_ref: remove unnecessary RCU grace period for staggered atomic switching confirmation
+  * percpu_ref: reorganize __percpu_ref_switch_to_atomic() and relocate percpu_ref_switch_to_atomic()
+  * percpu_ref: unify staggered atomic switching wait behavior
+  * percpu_ref: restructure operation mode switching
+  * percpu_ref: allow operation mode switching operations to be called concurrently
+
+ -- Michael Wang <yun.wang@profitbricks.com>  Wed, 14 Sep 2016 09:28:21 +0200

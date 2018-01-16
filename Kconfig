@@ -32,3 +32,14 @@ source "lib/Kconfig"
 source "lib/Kconfig.debug"
 
 source "Documentation/Kconfig"
+choice
+    prompt "Select target platform"
+    depends on X86_64
+
+config PB_PSERVER
+    bool "PSERVER"
+
+config PB_STORAGE
+    bool "STORAGE"
+
+endchoice
