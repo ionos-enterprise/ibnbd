@@ -1,0 +1,38 @@
+#!/usr/bin/make -f
+#
+# Copyright (c) 2012 Holger Levsen
+# GPL3 licenced
+
+# Uncomment this to turn on verbose mode.
+#export DH_VERBOSE=1
+
+ifneq (,$(filter parallel=%,$(DEB_BUILD_OPTIONS)))
+	NUMJOBS = $(patsubst parallel=%,%,$(filter parallel=%,$(DEB_BUILD_OPTIONS)))
+	MAKEFLAGS += -j$(NUMJOBS)
+endif
+
+KVERS:=$(shell make -s kernelversion)
+PSERVER_LOCALVERSION=$(shell grep ^CONFIG_LOCALVERSION ./arch/x86/configs/pserver_defconfig | cut -d"=" -f2 | tr -d '"')
+STORAGE_LOCALVERSION=$(shell grep ^CONFIG_LOCALVERSION ./arch/x86/configs/storage_defconfig | cut -d"=" -f2 | tr -d '"')
+PSERVER_FLAVOUR=$(KVERS)$(PSERVER_LOCALVERSION)
+STORAGE_FLAVOUR=$(KVERS)$(STORAGE_LOCALVERSION)
+
+%:
+	dh $@ --parallel
+
+override_dh_auto_clean:
+
+override_dh_auto_build:
+
+# disable dh_auto_test that run 'make test'
+override_dh_auto_test:
+
+override_dh_auto_install:
+	$(MAKE) pserver_defconfig
+	FLAVOUR=$(PSERVER_FLAVOUR) $(MAKE) -f debian/rules.flavour install
+	# TODO: porting storage drivers: scst/srpt, pm8001, mpt3sas and megaraid_sas drivers.
+	#$(MAKE) storage_defconfig
+	#FLAVOUR=$(STORAGE_FLAVOUR) $(MAKE) -f debian/rules.flavour install
+	FLAVOUR=$(KVERS) $(MAKE) -f debian/rules.flavour install_common
+
+override_dh_strip:
