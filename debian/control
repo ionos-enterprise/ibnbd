@@ -1,0 +1,81 @@
+Source: pb-linux-4.19
+Section: admin
+Priority: extra
+Maintainer: Gioh Kim <gi-oh.kim@profitbricks.com>
+Uploaders: Elmar Gerdes <elmar.gerdes@profitbricks.com>,
+           Jack Wang <jinpu.wang@profitbricks.com>,
+	   Alexandr Iarygin <alexandr.iarygin@profitbricks.com>
+Build-Depends: bc,
+               binutils-dev,
+               bison,
+               cpio,
+               debhelper (>= 7.0.50~),
+               figlet,
+               flex,
+               gawk,
+               libaudit-dev,
+               libdw-dev,
+               libelf-dev,
+               libnuma-dev,
+               libpci-dev,
+               libunwind8-dev,
+               makedumpfile,
+               kmod,
+               openssl,
+               pkg-config,
+               python-dev,
+               rsync
+Standards-Version: 3.9.1
+Homepage: https://gitlab.pb.local/kernel/pb-linux-4.19
+
+Package: linux-image-5.5-pserver
+Architecture: amd64
+Depends: linux-image-5.5.0-pserver (= ${binary:Version})
+Description: Latest linux image for Profitbricks kernel
+ To be installed on Profitbricks kernel,
+ includes the kernel and modules.
+
+Package: linux-image-5.5.0-pserver
+Architecture: amd64
+Depends: initramfs-tools, ${misc:Depends}
+Description: Linux image for Profitbricks kernel
+ To be installed on Profitbricks kernel,
+ includes the kernel and modules.
+
+Package: linux-image-5.5.0-pserver-dbg
+Architecture: amd64
+Section: debug
+Priority: extra
+Depends: ${misc:Depends}
+Description: Debugging symbols for Profitbricks kernel
+ This package provides the detached debugging symbols for the
+ Profitbricks Linux kernel and modules.
+
+Package: linux-headers-5.5-pserver
+Architecture: amd64
+Depends: linux-headers-5.5.0-pserver (= ${binary:Version})
+Replaces: pb-linux-source-5.5
+Conflicts: pb-linux-source-5.5
+Description: Latest linux headers for Profitbricks kernel
+ To (re-)build kernel modules for Profitbricks kernel.
+
+Package: linux-headers-5.5.0-pserver
+Architecture: amd64
+Depends: ${misc:Depends}, ${shlibs:Depends}, libelf-dev
+Replaces: pb-linux-source-5.5.0
+Conflicts: pb-linux-source-5.5.0
+Description: Linux headers for Profitbricks servers
+ To (re-)build kernel modules for Profitbricks servers.
+
+
+Package: pb-linux-perf-5.5.0
+Architecture: amd64
+Depends: ${misc:Depends}, ${shlibs:Depends}, linux-base
+Description: Linux perf for Profitbricks servers
+ Contains the perf tool.
+
+Package: pb-linux-source-5.5.0
+Architecture: amd64
+Depends: ${misc:Depends}
+Description: Linux source for Profitbricks
+ To (re-)build kernel modules for Profitbricks servers.
