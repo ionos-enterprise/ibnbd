@@ -1,0 +1,169 @@
+#!/usr/bin/make -f
+#
+# Copyright (c) 2012 Holger Levsen
+# GPL3 licenced
+
+# Uncomment this to turn on verbose mode.
+#export DH_VERBOSE=1
+
+# cowbuilder uses ARCH=amd64 which is not a valid kernel ARCH
+unexport ARCH
+
+ifneq (,$(filter parallel=%,$(DEB_BUILD_OPTIONS)))
+	NUMJOBS = $(patsubst parallel=%,%,$(filter parallel=%,$(DEB_BUILD_OPTIONS)))
+	MAKEFLAGS += -j$(NUMJOBS)
+endif
+
+PKG := linux-image-$(FLAVOUR)
+DEBUG_PACKAGE := $(PKG)-dbg
+KSRC := $(CURDIR)
+KVERS:=$(FLAVOUR)
+KARCH:=x86
+SRC_PKG := pb-linux-source-$(FLAVOUR)
+HEADERS_PKG := linux-headers-$(FLAVOUR)
+PERF_PKG := pb-linux-perf-$(FLAVOUR)
+
+INSTALL_PATH:=./debian/linux-image-$(FLAVOUR)/boot
+INSTALL_MOD_PATH:=./debian/linux-image-$(FLAVOUR)
+MODULES_PATH:=$(INSTALL_MOD_PATH)/lib/modules/$(KVERS)
+
+SOURCES_LOCAL_PATH:=/usr/src/linux-$(KVERS)
+SOURCES_INSTALL_PATH:=./debian/$(SRC_PKG)$(SOURCES_LOCAL_PATH)
+SOURCES_SYMLINK_PATH:=./debian/$(SRC_PKG)/usr/src/linux-source-$(FLAVOUR)
+PERF_INSTALL_PATH:=./debian/$(PERF_PKG)
+
+# before we get rid of source pkg, headers path have to be compatible
+HEADERS_LOCAL_PATH:=/usr/src/linux-$(FLAVOUR)
+HEADERS_INSTALL_PATH:=./debian/$(HEADERS_PKG)$(HEADERS_LOCAL_PATH)
+HEADERS_SYMLINK_PATH:=./debian/$(HEADERS_PKG)/usr/src/linux-source-$(FLAVOUR)
+
+# set KBUILD_BUILD_VERSION
+# help uname to print the correct kernel version
+KBUILD_BUILD_VERSION=KBUILD_BUILD_VERSION='$(shell dpkg-parsechangelog | sed -n "s/^Version: *//p")'
+KBUILD_ENV=$(KBUILD_BUILD_VERSION)
+
+install:
+	@echo ""
+	@echo "Making oldconfig ..."
+	$(MAKE) oldconfig
+	@echo ""
+	@echo "Compiling kernel ..."
+	$(KBUILD_ENV) $(MAKE) bzImage modules
+	@echo ""
+	@echo "Creating install directories ..."
+	mkdir -p $(INSTALL_PATH)
+	@echo ""
+	@echo "Installing the kernel image ..."
+	# don't use 'make install' as it might run a custom install script
+	install -m 0644 arch/$(KARCH)/boot/bzImage $(INSTALL_PATH)/vmlinuz-$(KVERS)
+	install -m 0644 System.map $(INSTALL_PATH)/System.map-$(KVERS)
+	install -m 0644 .config $(INSTALL_PATH)/config-$(KVERS)
+	@echo ""
+	@echo "Make modules_install ..."
+	$(MAKE) INSTALL_PATH=$(INSTALL_PATH) \
+		INSTALL_MOD_PATH=$(INSTALL_MOD_PATH) \
+		modules_install
+	ln -sfT $(SOURCES_LOCAL_PATH) $(MODULES_PATH)/build
+	ln -sfT $(SOURCES_LOCAL_PATH) $(MODULES_PATH)/source
+	#
+	# -dbg package
+	#
+	@echo ""
+	@echo "Creating debug package ..."
+	mkdir -p $(CURDIR)/debian/$(DEBUG_PACKAGE)/usr/lib/debug/
+	objcopy $(KSRC)/vmlinux $(CURDIR)/debian/$(DEBUG_PACKAGE)/usr/lib/debug/vmlinux-$(KVERS)
+	chmod a-x $(CURDIR)/debian/$(DEBUG_PACKAGE)/usr/lib/debug/vmlinux*
+	#
+	# strip modules
+	#
+	@echo ""
+	@echo "Copy modules ..."
+	mkdir -p $(CURDIR)/debian/$(PKG)/lib/modules/$(KVERS)/
+	for f in $$(find $(CURDIR)/debian/$(PKG)/lib/modules/ -name "*.ko"); do \
+		MOD_SPATH="$$(echo $${f#$(CURDIR)/debian/$(PKG)/lib/modules/$(KVERS)/})"; \
+		mkdir -p $$(dirname $(CURDIR)/debian/$(DEBUG_PACKAGE)/usr/lib/debug/lib/modules/$(KVERS)/$$MOD_SPATH); \
+		objcopy $$f $(CURDIR)/debian/$(DEBUG_PACKAGE)/usr/lib/debug/lib/modules/$(KVERS)/$$MOD_SPATH; \
+		strip --remove-section=.comment --remove-section=.note --strip-debug $$f; \
+		objcopy --add-gnu-debuglink $(CURDIR)/debian/$(DEBUG_PACKAGE)/usr/lib/debug/lib/modules/$(KVERS)/$$MOD_SPATH $$f; \
+	done
+	#
+	# create headers package
+	#
+	@echo ""
+	@echo "Creating headers package ..."
+	mkdir -p $(HEADERS_INSTALL_PATH)
+	pwd
+	rsync -r --exclude "debian/" \
+		--exclude ".git*" \
+		--exclude "*.ko" \
+		--exclude "*.o" \
+		--exclude ".tmp*" \
+		--exclude "*.cmd" \
+		--exclude vmlinux \
+		--exclude "*.c" \
+		--exclude "Documentation/" \
+		--exclude "*.a" \
+		--exclude "*.bin" \
+		--exclude "*.elf" \
+		. $(HEADERS_INSTALL_PATH)/
+	rsync -r --exclude ".git*" \
+		--exclude "*.o" \
+		--exclude "*.cmd" \
+		./scripts/ $(HEADERS_INSTALL_PATH)/scripts/
+	bash -c "cd `dirname $(HEADERS_INSTALL_PATH)`; ln -s `basename $(HEADERS_INSTALL_PATH)` `basename $(HEADERS_SYMLINK_PATH)`"
+	echo "$(HEADERS_PKG) binary: unstripped-binary-or-object" > $(CURDIR)/debian/$(HEADERS_PKG).lintian-overrides
+	echo "$(HEADERS_PKG) binary: statically-linked-binary" >> $(CURDIR)/debian/$(HEADERS_PKG).lintian-overrides
+	echo "$(HEADERS_PKG) binary: shlib-without-PT_GNU_STACK-section" >> $(CURDIR)/debian/$(HEADERS_PKG).lintian-overrides
+	#
+	# prepare postinst
+	#
+	@echo ""
+	@echo "Preparing postinst ..."
+	cp debian/linux-image-FLAVOUR.postinst debian/linux-image-$(FLAVOUR).postinst
+	cp debian/linux-image-FLAVOUR.postrm debian/linux-image-$(FLAVOUR).postrm
+	figlet-figlet -w 90 $(KVERS)
+	sed -i -s "s_##KVERS##_$(KVERS)_g" debian/linux-image-$$FLAVOUR.postinst
+	sed -i -s "s_##KVERS##_$(KVERS)_g" debian/linux-image-$$FLAVOUR.postrm
+
+install_common:
+	#
+	# linux-perf
+	#
+	@echo ""
+	@echo "Installing perf ..."
+	$(MAKE) -C tools/perf prefix=/usr WERROR=0 DESTDIR=../../$(PERF_INSTALL_PATH) install
+	mv $(PERF_INSTALL_PATH)/usr/bin/perf $(PERF_INSTALL_PATH)/usr/bin/perf_4.19
+	mv $(PERF_INSTALL_PATH)/usr/libexec $(PERF_INSTALL_PATH)/usr/lib
+	mkdir -p $(PERF_INSTALL_PATH)/usr/include/perf_4.19
+	mv $(PERF_INSTALL_PATH)/usr/lib/perf/include/bpf $(PERF_INSTALL_PATH)/usr/include/perf_4.19
+	mkdir -p $(PERF_INSTALL_PATH)/usr/share/doc/linux-perf-4.19
+	mv $(PERF_INSTALL_PATH)/usr/lib/perf/examples/bpf $(PERF_INSTALL_PATH)/usr/share/doc/linux-perf-4.19/
+	mv $(PERF_INSTALL_PATH)/usr/share/perf-core $(PERF_INSTALL_PATH)/usr/share/perf_4.19-core
+	rm -rf $(PERF_INSTALL_PATH)/usr/lib/perf/
+	mv $(PERF_INSTALL_PATH)/usr/lib/libexec/perf-core $(PERF_INSTALL_PATH)/usr/lib/perf_4.19-core
+	rm -rf $(PERF_INSTALL_PATH)/usr/lib/libexec
+	echo "$(PERF_PKG) binary: unstripped-binary-or-object" > $(CURDIR)/debian/$(PERF_PKG).lintian-overrides
+	echo "$(PERF_PKG) binary: non-standard-toplevel-dir" >> $(CURDIR)/debian/$(PERF_PKG).lintian-overrides
+	echo "$(PERF_PKG) binary: python-script-but-no-python-dep" >> $(CURDIR)/debian/$(PERF_PKG).lintian-overrides
+	echo "$(PERF_PKG) binary: missing-dep-for-interpreter" >> $(CURDIR)/debian/$(PERF_PKG).lintian-overrides
+	#
+	# create source package
+	#
+	@echo ""
+	@echo "Creating source package ..."
+	mkdir -p $(SOURCES_INSTALL_PATH)
+	pwd
+	rsync -r --exclude "debian/" \
+		--exclude ".git*" \
+		--exclude "*.ko" \
+		--exclude "*.o" \
+		--exclude ".tmp*" \
+		--exclude "*.cmd" \
+		--exclude vmlinux \
+		. $(SOURCES_INSTALL_PATH)/
+	bash -c "cd `dirname $(SOURCES_INSTALL_PATH)`; ln -s `basename $(SOURCES_INSTALL_PATH)` `basename $(SOURCES_SYMLINK_PATH)`"
+	bash -c "cd `dirname $(SOURCES_INSTALL_PATH)`; ln -s `basename $(SOURCES_INSTALL_PATH)` `basename $(SOURCES_INSTALL_PATH)-pserver`"
+	bash -c "cd `dirname $(SOURCES_INSTALL_PATH)`; ln -s `basename $(SOURCES_INSTALL_PATH)` `basename $(SOURCES_INSTALL_PATH)-storage`"
+	echo "$(SRC_PKG) binary: unstripped-binary-or-object" > $(CURDIR)/debian/$(SRC_PKG).lintian-overrides
+	echo "$(SRC_PKG) binary: statically-linked-binary" >> $(CURDIR)/debian/$(SRC_PKG).lintian-overrides
+	echo "$(SRC_PKG) binary: shlib-without-PT_GNU_STACK-section" >> $(CURDIR)/debian/$(SRC_PKG).lintian-overrides
