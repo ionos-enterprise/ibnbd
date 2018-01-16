@@ -232,14 +232,14 @@ ssize_t ibtrs_clt_stats_rdma_to_str(struct ibtrs_clt_stats *stats,
 		sum.dir[READ].size_total  += r->dir[READ].size_total;
 		sum.dir[WRITE].cnt	  += r->dir[WRITE].cnt;
 		sum.dir[WRITE].size_total += r->dir[WRITE].size_total;
-		sum.failover_cnt	  += r->failover_cnt;
 		sum.inflight		  += r->inflight;
+		sum.failover_cnt	  += r->failover_cnt;
 	}
 
-	return scnprintf(page, len, "%llu %llu %llu %llu %llu %u\n",
+	return scnprintf(page, len, "%llu %llu %llu %llu %u %llu\n",
 			 sum.dir[READ].cnt, sum.dir[READ].size_total,
 			 sum.dir[WRITE].cnt, sum.dir[WRITE].size_total,
-			 sum.failover_cnt, sum.inflight);
+			 sum.inflight, sum.failover_cnt);
 }
 
 int ibtrs_clt_stats_sg_list_distr_to_str(struct ibtrs_clt_stats *stats,
