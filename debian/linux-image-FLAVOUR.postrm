@@ -1,0 +1,20 @@
+#!/bin/sh
+
+set -e
+
+# FIXME: The maintainer scripts should use run-parts to run hooks for initramfs-tools, GRUB, whatever
+#        Unfortunately you still need to call update-initramfs directly in squeeze
+
+#
+# update initrd images
+#
+if [ -f /boot/initrd.img-##KVERS## ] ; then
+	INITRAMFS_TOOLS_KERNEL_HOOK=1 update-initramfs -d -k ##KVERS##
+fi
+
+#
+# update grub
+#
+update-grub || true
+
+#DEBHELPER#
