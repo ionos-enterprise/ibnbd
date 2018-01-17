@@ -2890,7 +2890,8 @@ EXPORT_SYMBOL(ibtrs_clt_close);
 int ibtrs_clt_reconnect_from_sysfs(struct ibtrs_clt_sess *sess)
 {
 	enum ibtrs_clt_state old_state;
-	bool changed, reconnected = false;
+	int err = -EBUSY;
+	bool changed;
 
 	changed = ibtrs_clt_change_state_get_old(sess, IBTRS_CLT_RECONNECTING,
 						 &old_state);
@@ -2905,10 +2906,10 @@ int ibtrs_clt_reconnect_from_sysfs(struct ibtrs_clt_sess *sess)
 		 * right now or work is pending.
 		 */
 		flush_delayed_work(&sess->reconnect_dwork);
-		reconnected = true;
+		err = ibtrs_clt_sess_is_connected(sess) ? 0 : -ENOTCONN;
 	}
 
-	return (reconnected ? 0 : -EBUSY);
+	return err;
 }
 
 int ibtrs_clt_disconnect_from_sysfs(struct ibtrs_clt_sess *sess)
