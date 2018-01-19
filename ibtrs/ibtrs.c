@@ -368,12 +368,12 @@ static void schedule_hb(struct ibtrs_sess *sess)
 void ibtrs_send_hb_ack(struct ibtrs_sess *sess)
 {
 	struct ibtrs_con *usr_con = sess->con[0];
+	u32 imm;
 	int err;
 
-	err = ibtrs_post_rdma_write_imm_empty(usr_con,
-					      sess->hb_cqe,
-					      IBTRS_HB_ACK_IMM,
-					      IB_SEND_SIGNALED);
+	imm = ibtrs_to_imm(IBTRS_HB_ACK_IMM, 0);
+	err = ibtrs_post_rdma_write_imm_empty(usr_con, sess->hb_cqe,
+					      imm, IB_SEND_SIGNALED);
 	if (unlikely(err)) {
 		sess->hb_err_handler(usr_con, err);
 		return;
@@ -385,6 +385,7 @@ static void hb_work(struct work_struct *work)
 {
 	struct ibtrs_con *usr_con;
 	struct ibtrs_sess *sess;
+	u32 imm;
 	int err;
 
 	sess = container_of(to_delayed_work(work), typeof(*sess), hb_dwork);
@@ -399,10 +400,9 @@ static void hb_work(struct work_struct *work)
 		schedule_hb(sess);
 		return;
 	}
-	err = ibtrs_post_rdma_write_imm_empty(usr_con,
-					      sess->hb_cqe,
-					      IBTRS_HB_IMM,
-					      IB_SEND_SIGNALED);
+	imm = ibtrs_to_imm(IBTRS_HB_MSG_IMM, 0);
+	err = ibtrs_post_rdma_write_imm_empty(usr_con, sess->hb_cqe,
+					      imm, IB_SEND_SIGNALED);
 	if (unlikely(err)) {
 		sess->hb_err_handler(usr_con, err);
 		return;

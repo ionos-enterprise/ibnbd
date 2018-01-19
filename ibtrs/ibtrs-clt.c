@@ -1080,7 +1080,7 @@ static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 {
 	struct ibtrs_clt_con *con = cq->cq_context;
 	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
-	u32 imm, msg_id;
+	u32 imm_type, imm_payload;
 	int err;
 
 	if (unlikely(wc->status != IB_WC_SUCCESS)) {
@@ -1113,20 +1113,22 @@ static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 			ibtrs_rdma_error_recovery(con);
 			break;
 		}
+		ibtrs_from_imm(be32_to_cpu(wc->ex.imm_data),
+			       &imm_type, &imm_payload);
+		if (likely(imm_type == IBTRS_IO_RSP_IMM)) {
+			u32 msg_id;
 
-		imm = be32_to_cpu(wc->ex.imm_data);
-		if (imm == IBTRS_HB_IMM) {
+			ibtrs_from_io_rsp_imm(imm_payload, &msg_id, &err);
+			process_io_rsp(sess, msg_id, err);
+		} else if (imm_type == IBTRS_HB_MSG_IMM) {
 			WARN_ON(con->c.cid);
 			ibtrs_send_hb_ack(&sess->s);
-			break;
-		} else if (imm == IBTRS_HB_ACK_IMM) {
+		} else if (imm_type == IBTRS_HB_ACK_IMM) {
 			WARN_ON(con->c.cid);
 			sess->s.hb_missed_cnt = 0;
-			break;
+		} else {
+			ibtrs_wrn(sess, "Unknown IMM type %u\n", imm_type);
 		}
-		msg_id = imm >> 16;
-		err = (imm << 16) >> 16;
-		process_io_rsp(sess, msg_id, err);
 		break;
 	default:
 		ibtrs_wrn(sess, "Unexpected WC type: %s\n",
@@ -1384,7 +1386,7 @@ static int alloc_tags(struct ibtrs_clt *clt)
 
 		tag = GET_TAG(clt, i);
 		tag->mem_id = i;
-		tag->mem_off = i << (IB_IMM_SIZE_BITS - chunk_bits);
+		tag->mem_off = i << (MAX_IMM_PAYL_BITS - chunk_bits);
 	}
 
 	return 0;
@@ -2516,9 +2518,9 @@ static int process_info_rsp(struct ibtrs_clt_sess *sess,
 	 * the offset inside the memory chunk.
 	 */
 	if (unlikely(ilog2(addr_num - 1) + ilog2(sess->chunk_size - 1) >
-		     IB_IMM_SIZE_BITS)) {
+		     MAX_IMM_PAYL_BITS)) {
 		ibtrs_err(sess, "RDMA immediate size (%db) not enough to "
-			  "encode %d buffers of size %dB\n", IB_IMM_SIZE_BITS,
+			  "encode %d buffers of size %dB\n",  MAX_IMM_PAYL_BITS,
 			  addr_num, sess->chunk_size);
 		return -EINVAL;
 	}
@@ -3036,6 +3038,7 @@ static int ibtrs_clt_write_req(struct ibtrs_clt_io_req *req)
 
 	/* ibtrs message on server side will be after user data and message */
 	imm = req->tag->mem_off + req->data_len + req->usr_len;
+	imm = ibtrs_to_io_req_imm(imm);
 	buf_id = req->tag->mem_id;
 	req->sg_size = tsize;
 	buf = sess->srv_rdma_addr[buf_id];
@@ -3166,6 +3169,7 @@ static int ibtrs_clt_read_req(struct ibtrs_clt_io_req *req)
 	 * user message
 	 */
 	imm = req->tag->mem_off + req->data_len + req->usr_len;
+	imm = ibtrs_to_io_req_imm(imm);
 	buf_id = req->tag->mem_id;
 
 	req->sg_size  = sizeof(*msg);

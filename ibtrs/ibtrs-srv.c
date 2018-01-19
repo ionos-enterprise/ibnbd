@@ -438,7 +438,7 @@ static int rdma_write_sg(struct ibtrs_srv_op *id)
 	wr->wr.opcode = IB_WR_RDMA_WRITE_WITH_IMM;
 	wr->wr.next = NULL;
 	wr->wr.send_flags = flags;
-	wr->wr.ex.imm_data = cpu_to_be32(id->msg_id << 16);
+	wr->wr.ex.imm_data = cpu_to_be32(ibtrs_to_io_rsp_imm(id->msg_id, 0));
 
 	err = ib_post_send(id->con->c.qp, &id->tx_wr[0].wr, &bad_wr);
 	if (unlikely(err))
@@ -463,7 +463,7 @@ static int send_io_resp_imm(struct ibtrs_srv_con *con, int msg_id, s16 errno)
 	 */
 	flags = atomic_inc_return(&con->wr_cnt) % srv->queue_depth ?
 			0 : IB_SEND_SIGNALED;
-	imm = (msg_id << 16) | (u16)errno;
+	imm = ibtrs_to_io_rsp_imm(msg_id, errno);
 	err = ibtrs_post_rdma_write_imm_empty(&con->c, &io_comp_cqe,
 					      imm, flags);
 	if (unlikely(err))
@@ -539,7 +539,7 @@ static int map_cont_bufs(struct ibtrs_srv_sess *sess)
 		sess->rdma_addr[i] = addr;
 	}
 	chunk_bits = ilog2(srv->queue_depth - 1) + 1;
-	sess->mem_bits = (IB_IMM_SIZE_BITS - chunk_bits);
+	sess->mem_bits = (MAX_IMM_PAYL_BITS - chunk_bits);
 
 	return 0;
 
@@ -937,8 +937,7 @@ static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 	struct ibtrs_srv_con *con = cq->cq_context;
 	struct ibtrs_srv_sess *sess = to_srv_sess(con->c.sess);
 	struct ibtrs_srv *srv = sess->srv;
-	u32 imm, msg_id, off;
-	void *data;
+	u32 imm_type, imm_payload;
 	int err;
 
 	if (unlikely(wc->status != IB_WC_SUCCESS)) {
@@ -974,29 +973,32 @@ static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 			close_sess(sess);
 			break;
 		}
-		imm = be32_to_cpu(wc->ex.imm_data);
-		if (imm == IBTRS_HB_IMM) {
+		ibtrs_from_imm(be32_to_cpu(wc->ex.imm_data),
+			       &imm_type, &imm_payload);
+		if (likely(imm_type == IBTRS_IO_REQ_IMM)) {
+			u32 msg_id, off;
+			void *data;
+
+			msg_id = imm_payload >> sess->mem_bits;
+			off = imm_payload & ((1 << sess->mem_bits) - 1);
+			if (unlikely(msg_id > srv->queue_depth ||
+				     off > rcv_buf_size)) {
+				ibtrs_err(sess, "Wrong msg_id %u, off %u\n",
+					  msg_id, off);
+				close_sess(sess);
+				return;
+			}
+			data = page_address(srv->chunks[msg_id]) + off;
+			process_io_req(con, data, msg_id, off);
+		} else if (imm_type == IBTRS_HB_MSG_IMM) {
 			WARN_ON(con->c.cid);
 			ibtrs_send_hb_ack(&sess->s);
-			break;
-		} else if (imm == IBTRS_HB_ACK_IMM) {
+		} else if (imm_type == IBTRS_HB_ACK_IMM) {
 			WARN_ON(con->c.cid);
 			sess->s.hb_missed_cnt = 0;
-			break;
+		} else {
+			ibtrs_wrn(sess, "Unknown IMM type %u\n", imm_type);
 		}
-
-		msg_id = imm >> sess->mem_bits;
-		off = imm & ((1 << sess->mem_bits) - 1);
-
-		if (unlikely(msg_id > srv->queue_depth ||
-			     off > rcv_buf_size)) {
-			ibtrs_err(sess, "Processing I/O failed, contiguous "
-				  "buf addr is out of reserved area\n");
-			close_sess(sess);
-			return;
-		}
-		data = page_address(srv->chunks[msg_id]) + off;
-		process_io_req(con, data, msg_id, off);
 		break;
 	default:
 		ibtrs_wrn(sess, "Unexpected WC type: %s\n",
@@ -1790,10 +1792,10 @@ static int check_module_params(void)
 	 * offset inside the memory chunk
 	 */
 	if (ilog2(sess_queue_depth - 1) + ilog2(rcv_buf_size - 1) >
-	    IB_IMM_SIZE_BITS) {
+	    MAX_IMM_PAYL_BITS) {
 		pr_err("RDMA immediate size (%db) not enough to encode "
 		       "%d buffers of size %dB. Reduce 'sess_queue_depth' "
-		       "or 'max_io_size' parameters.\n", IB_IMM_SIZE_BITS,
+		       "or 'max_io_size' parameters.\n", MAX_IMM_PAYL_BITS,
 		       sess_queue_depth, rcv_buf_size);
 		return -EINVAL;
 	}

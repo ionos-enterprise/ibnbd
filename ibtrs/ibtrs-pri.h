@@ -55,6 +55,18 @@
 #define IBTRS_VER_STRING __stringify(IBTRS_VER_MAJOR) "." \
 			 __stringify(IBTRS_VER_MINOR)
 
+enum ibtrs_imm_consts {
+	MAX_IMM_TYPE_BITS = 4,
+	MAX_IMM_TYPE_MASK = ((1 << MAX_IMM_TYPE_BITS) - 1),
+	MAX_IMM_PAYL_BITS = 28,
+	MAX_IMM_PAYL_MASK = ((1 << MAX_IMM_PAYL_BITS) - 1),
+
+	IBTRS_IO_REQ_IMM = 0, /* client to server */
+	IBTRS_IO_RSP_IMM = 1, /* server to client */
+	IBTRS_HB_MSG_IMM = 2,
+	IBTRS_HB_ACK_IMM = 3,
+};
+
 enum {
 	SERVICE_CON_QUEUE_DEPTH = 512,
 
@@ -79,10 +91,6 @@ enum {
 	 * max_desc = (max_req_size - IO_MSG_SIZE) / sizeof(desc)
 	 */
 	IO_MSG_SIZE = 512,
-	IB_IMM_SIZE_BITS = 32,
-
-	IBTRS_HB_ACK_IMM = UINT_MAX,
-	IBTRS_HB_IMM  = UINT_MAX - 1,
 
 	IBTRS_HB_INTERVAL_MS = 5000,
 	IBTRS_HB_MISSED_MAX = 5,
@@ -426,6 +434,40 @@ static inline void copy_from_kvec(void *data, const struct kvec *vec,
 		data += len;
 		copy -= len;
 	}
+}
+
+static inline u32 ibtrs_to_imm(u32 type, u32 payload)
+{
+	BUILD_BUG_ON(32 != MAX_IMM_PAYL_BITS + MAX_IMM_TYPE_BITS);
+	return ((type & MAX_IMM_TYPE_MASK) << MAX_IMM_PAYL_BITS) |
+		(payload & MAX_IMM_PAYL_MASK);
+}
+
+static inline void ibtrs_from_imm(u32 imm, u32 *type, u32 *payload)
+{
+	*payload = (imm & MAX_IMM_PAYL_MASK);
+	*type = (imm >> MAX_IMM_PAYL_BITS);
+}
+
+static inline u32 ibtrs_to_io_req_imm(u32 addr)
+{
+	return ibtrs_to_imm(IBTRS_IO_REQ_IMM, addr);
+}
+
+static inline u32 ibtrs_to_io_rsp_imm(u32 msg_id, int errno)
+{
+	u32 payload;
+
+	/* 9 bits for errno, 19 bits for msg_id */
+	payload = (abs(errno) & 0x1ff) << 19 | (msg_id & 0x7ffff);
+	return ibtrs_to_imm(IBTRS_IO_RSP_IMM, payload);
+}
+
+static inline void ibtrs_from_io_rsp_imm(u32 payload, u32 *msg_id, int *errno)
+{
+	/* 9 bits for errno, 19 bits for msg_id */
+	*msg_id = (payload & 0x7ffff);
+	*errno = -(int)((payload >> 19) & 0x1ff);
 }
 
 #define STAT_STORE_FUNC(type, store, reset)				\
