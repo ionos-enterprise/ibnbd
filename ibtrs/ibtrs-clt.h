@@ -73,6 +73,11 @@ enum ibtrs_fast_reg {
 	IBTRS_FAST_MEM_FMR
 };
 
+enum ibtrs_mp_policy {
+	MP_POLICY_RR,
+	MP_POLICY_MIN_INFLIGHT,
+};
+
 struct ibtrs_clt_stats_reconnects {
 	int successful_cnt;
 	int fail_cnt;
@@ -188,6 +193,8 @@ struct ibtrs_clt_sess {
 	struct kobject		kobj;
 	struct kobject		kobj_stats;
 	struct ibtrs_clt_stats  stats;
+	struct list_head __percpu
+				*mp_skip_list_entry;
 };
 
 struct ibtrs_clt {
@@ -216,6 +223,7 @@ struct ibtrs_clt {
 	link_clt_ev_fn		*link_ev;
 	struct kobject		kobj;
 	struct kobject		kobj_paths;
+	enum ibtrs_mp_policy	mp_policy;
 };
 
 static inline struct ibtrs_clt_con *to_clt_con(struct ibtrs_con *c)

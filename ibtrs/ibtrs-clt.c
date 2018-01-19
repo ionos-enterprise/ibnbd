@@ -1151,12 +1151,37 @@ static int post_recv_sess(struct ibtrs_clt_sess *sess)
 	return 0;
 }
 
-/*
- * ibtrs_clt_state_lock() must be taken before calling this function.
+struct path_it {
+	int i;
+	struct list_head skip_list;
+	struct ibtrs_clt *clt;
+	struct ibtrs_clt_sess *(*next_path)(struct path_it *);
+};
+
+#define do_each_path(path, clt, it) {					\
+	path_it_init(it, clt);						\
+	ibtrs_clt_state_lock();						\
+	for ((it)->i = 0; ((path) = ((it)->next_path)(it)) &&		\
+			  (it)->i < (it)->clt->paths_num;		\
+	     (it)->i++)
+
+#define while_each_path(it)						\
+	path_it_deinit(it);						\
+	ibtrs_clt_state_unlock();					\
+	}
+
+/**
+ * get_next_path_rr() - Returns path in round-robin fashion.
+ *
+ * Related to @MP_POLICY_RR
+ *
+ * Locks:
+ *    ibtrs_clt_state_lock() must be hold.
  */
-static inline struct ibtrs_clt_sess *get_next_path(struct ibtrs_clt *clt)
+static struct ibtrs_clt_sess *get_next_path_rr(struct path_it *it)
 {
 	struct ibtrs_clt_sess __percpu * __rcu *ppcpu_path, *path;
+	struct ibtrs_clt *clt = it->clt;
 
 	ppcpu_path = this_cpu_ptr(clt->pcpu_path);
 	path = rcu_dereference(*ppcpu_path);
@@ -1171,8 +1196,68 @@ static inline struct ibtrs_clt_sess *get_next_path(struct ibtrs_clt *clt)
 	return path;
 }
 
-#define for_each_path_continue(path, i, clt)				\
-	for (i = 0; ((path) = get_next_path(clt)) && i < clt->paths_num; i++)
+/**
+ * get_next_path_min_inflight() - Returns path with minimal inflight count.
+ *
+ * Related to @MP_POLICY_MIN_INFLIGHT
+ *
+ * Locks:
+ *    ibtrs_clt_state_lock() must be hold.
+ */
+static struct ibtrs_clt_sess *get_next_path_min_inflight(struct path_it *it)
+{
+	struct ibtrs_clt_sess *min_path = NULL;
+	struct ibtrs_clt *clt = it->clt;
+	struct ibtrs_clt_sess *sess;
+	int min_inflight = INT_MAX;
+	int inflight;
+
+	list_for_each_entry_rcu(sess, &clt->paths_list, s.entry) {
+		if (unlikely(!list_empty(raw_cpu_ptr(sess->mp_skip_list_entry))))
+			continue;
+
+		inflight = atomic_read(&sess->stats.inflight);
+
+		if (inflight < min_inflight) {
+			min_inflight = inflight;
+			min_path = sess;
+		}
+	}
+
+	/*
+	 * add the path to the skip list, so that next time we can get
+	 * a different one
+	 */
+	if (min_path)
+		list_add(raw_cpu_ptr(min_path->mp_skip_list_entry),
+			 &it->skip_list);
+
+	return min_path;
+}
+
+static inline void path_it_init(struct path_it *it, struct ibtrs_clt *clt)
+{
+	INIT_LIST_HEAD(&it->skip_list);
+	it->clt = clt;
+	it->i = 0;
+
+	if (clt->mp_policy == MP_POLICY_RR)
+		it->next_path = get_next_path_rr;
+	else
+		it->next_path = get_next_path_min_inflight;
+}
+
+static inline void path_it_deinit(struct path_it *it)
+{
+	struct list_head *skip, *tmp;
+	/*
+	 * The skip_list is used only for the MIN_INFLIGHT policy.
+	 * We need to remove paths from it, so that next IO can insert
+	 * paths (->mp_skip_list_entry) into a skip_list again.
+	 */
+	list_for_each_safe(skip, tmp, &it->skip_list)
+		list_del_init(skip);
+}
 
 static inline void ibtrs_clt_init_req(struct ibtrs_clt_io_req *req,
 				      struct ibtrs_clt_sess *sess,
@@ -1238,10 +1323,10 @@ static int ibtrs_clt_failover_req(struct ibtrs_clt *clt,
 {
 	struct ibtrs_clt_sess *alive_sess;
 	struct ibtrs_clt_io_req *req;
-	int i, err = -ECONNABORTED;
+	int err = -ECONNABORTED;
+	struct path_it it;
 
-	ibtrs_clt_state_lock();
-	for_each_path_continue(alive_sess, i, clt) {
+	do_each_path(alive_sess, clt, &it) {
 		if (unlikely(alive_sess->state != IBTRS_CLT_CONNECTED))
 			continue;
 		req = ibtrs_clt_get_copy_req(alive_sess, fail_req);
@@ -1256,8 +1341,7 @@ static int ibtrs_clt_failover_req(struct ibtrs_clt *clt,
 		/* Success path */
 		ibtrs_clt_inc_failover_cnt(&alive_sess->stats);
 		break;
-	}
-	ibtrs_clt_state_unlock();
+	} while_each_path(&it);
 
 	return err;
 }
@@ -1699,6 +1783,7 @@ static struct ibtrs_clt_sess *alloc_sess(struct ibtrs_clt *clt,
 {
 	struct ibtrs_clt_sess *sess;
 	int err = -ENOMEM;
+	int cpu;
 
 	sess = kzalloc(sizeof(*sess), GFP_KERNEL);
 	if (unlikely(!sess))
@@ -1741,6 +1826,13 @@ static struct ibtrs_clt_sess *alloc_sess(struct ibtrs_clt *clt,
 		goto err_free_con;
 	}
 
+	sess->mp_skip_list_entry = alloc_percpu(typeof(*sess->mp_skip_list_entry));
+	if (unlikely(!sess->mp_skip_list_entry))
+		goto err_free_con;
+
+	for_each_possible_cpu(cpu)
+		INIT_LIST_HEAD(per_cpu_ptr(sess->mp_skip_list_entry, cpu));
+
 	return sess;
 
 err_free_con:
@@ -1754,6 +1846,7 @@ err:
 static void free_sess(struct ibtrs_clt_sess *sess)
 {
 	ibtrs_clt_free_stats(&sess->stats);
+	free_percpu(sess->mp_skip_list_entry);
 	kfree(sess->s.con);
 	kfree(sess->srv_rdma_addr);
 	kfree(sess);
@@ -2087,14 +2180,14 @@ static void ibtrs_clt_remove_path_from_arr(struct ibtrs_clt_sess *sess)
 
 	/*
 	 * Decrement paths number only after grace period, because
-	 * caller of for_each_path_continue() must firstly observe
-	 * list without path and only then decremented paths number.
+	 * caller of do_each_path() must firstly observe list without
+	 * path and only then decremented paths number.
 	 *
 	 * Otherwise there can be the following situation:
 	 *    o Two paths exist and IO is coming.
 	 *    o One path is removed:
 	 *      CPU#0                          CPU#1
-	 *      for_each_path_continue():      ibtrs_clt_remove_path_from_arr():
+	 *      do_each_path():                ibtrs_clt_remove_path_from_arr():
 	 *          path = get_next_path()
 	 *          ^^^                            list_del_rcu(path)
 	 *          [!CONNECTED path]              clt->paths_num--
@@ -2103,8 +2196,8 @@ static void ibtrs_clt_remove_path_from_arr(struct ibtrs_clt_sess *sess)
 	 *                    ^^^^^^^^^
 	 *                    sees 1
 	 *
-	 *      path is observed as !CONNECTED, but for_each_path_continue()
-	 *      loop ends, because expression i < clt->paths_num is false.
+	 *      path is observed as !CONNECTED, but do_each_path() loop
+	 *      ends, because expression i < clt->paths_num is false.
 	 */
 	clt->paths_num--;
 
@@ -2810,6 +2903,7 @@ static struct ibtrs_clt *alloc_clt(const char *sessname, size_t paths_num,
 	clt->max_reconnect_attempts = max_reconnect_attempts;
 	clt->priv = priv;
 	clt->link_ev = link_ev;
+	clt->mp_policy = MP_POLICY_MIN_INFLIGHT;
 	strlcpy(clt->sessname, sessname, sizeof(clt->sessname));
 	init_waitqueue_head(&clt->tags_wait);
 	mutex_init(&clt->paths_ev_mutex);
@@ -3125,14 +3219,15 @@ int ibtrs_clt_write(struct ibtrs_clt *clt, ibtrs_conf_fn *conf,
 	struct ibtrs_clt_io_req *req;
 	struct ibtrs_clt_sess *sess;
 
-	int i, err = -ECONNABORTED;
+	int err = -ECONNABORTED;
+	struct path_it it;
 	size_t usr_len;
 
 	usr_len = kvec_length(vec, nr);
-	ibtrs_clt_state_lock();
-	for_each_path_continue(sess, i, clt) {
+	do_each_path(sess, clt, &it) {
 		if (unlikely(sess->state != IBTRS_CLT_CONNECTED))
 			continue;
+
 		if (unlikely(usr_len > IO_MSG_SIZE)) {
 			ibtrs_wrn_rl(sess, "Write request failed, user message"
 				     " size is %zu B big, max size is %d B\n",
@@ -3149,8 +3244,7 @@ int ibtrs_clt_write(struct ibtrs_clt *clt, ibtrs_conf_fn *conf,
 		}
 		/* Success path */
 		break;
-	}
-	ibtrs_clt_state_unlock();
+	} while_each_path(&it);
 
 	return err;
 }
@@ -3255,14 +3349,15 @@ int ibtrs_clt_read(struct ibtrs_clt *clt, ibtrs_conf_fn *conf,
 	struct ibtrs_clt_io_req *req;
 	struct ibtrs_clt_sess *sess;
 
-	int i, err = -ECONNABORTED;
+	int err = -ECONNABORTED;
+	struct path_it it;
 	size_t usr_len;
 
 	usr_len = kvec_length(vec, nr);
-	ibtrs_clt_state_lock();
-	for_each_path_continue(sess, i, clt) {
+	do_each_path(sess, clt, &it) {
 		if (unlikely(sess->state != IBTRS_CLT_CONNECTED))
 			continue;
+
 		if (unlikely(usr_len > IO_MSG_SIZE ||
 			     sizeof(struct ibtrs_msg_req_rdma_write) +
 			     sg_cnt * sizeof(struct ibtrs_sg_desc) >
@@ -3282,8 +3377,7 @@ int ibtrs_clt_read(struct ibtrs_clt *clt, ibtrs_conf_fn *conf,
 		}
 		/* Success path */
 		break;
-	}
-	ibtrs_clt_state_unlock();
+	} while_each_path(&it);
 
 	return err;
 }

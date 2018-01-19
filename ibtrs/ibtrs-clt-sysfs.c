@@ -89,6 +89,58 @@ static struct kobj_attribute ibtrs_clt_max_reconnect_attempts_attr =
 	       ibtrs_clt_max_reconn_attempts_show,
 	       ibtrs_clt_max_reconn_attempts_store);
 
+static ssize_t ibtrs_clt_mp_policy_show(struct kobject *kobj,
+					struct kobj_attribute *attr,
+					char *page)
+{
+	struct ibtrs_clt *clt;
+
+	clt = container_of(kobj, struct ibtrs_clt, kobj);
+
+	switch (clt->mp_policy) {
+	case MP_POLICY_RR:
+		return sprintf(page, "round-robin (RR: %d)\n", clt->mp_policy);
+	case MP_POLICY_MIN_INFLIGHT:
+		return sprintf(page, "min-inflight (MI: %d)\n", clt->mp_policy);
+	default:
+		return sprintf(page, "Unknown (%d)\n", clt->mp_policy);
+	}
+}
+
+static ssize_t ibtrs_clt_mp_policy_store(struct kobject *kobj,
+					 struct kobj_attribute *attr,
+					 const char *buf,
+					 size_t count)
+{
+	struct ibtrs_clt *clt;
+	int value;
+	int ret;
+
+	clt = container_of(kobj, struct ibtrs_clt, kobj);
+
+	ret = kstrtoint(buf, 10, &value);
+	if (!ret && (value == MP_POLICY_RR || value == MP_POLICY_MIN_INFLIGHT)) {
+		clt->mp_policy = value;
+		return count;
+	}
+
+	if (!strncasecmp(buf, "round-robin", 11) ||
+	    !strncasecmp(buf, "rr", 2))
+		clt->mp_policy = MP_POLICY_RR;
+	else if (!strncasecmp(buf, "min-inflight", 12) ||
+		 !strncasecmp(buf, "mi", 2))
+		clt->mp_policy = MP_POLICY_MIN_INFLIGHT;
+	else
+		return -EINVAL;
+
+	return count;
+}
+
+static struct kobj_attribute ibtrs_clt_mp_policy_attr =
+	__ATTR(mp_policy, 0644,
+	       ibtrs_clt_mp_policy_show,
+	       ibtrs_clt_mp_policy_store);
+
 static ssize_t ibtrs_clt_state_show(struct kobject *kobj,
 				    struct kobj_attribute *attr, char *page)
 {
@@ -394,6 +446,7 @@ void ibtrs_clt_destroy_sess_files(struct ibtrs_clt_sess *sess,
 
 static struct attribute *ibtrs_clt_attrs[] = {
 	&ibtrs_clt_max_reconnect_attempts_attr.attr,
+	&ibtrs_clt_mp_policy_attr.attr,
 	&ibtrs_clt_add_path_attr.attr,
 	NULL,
 };
