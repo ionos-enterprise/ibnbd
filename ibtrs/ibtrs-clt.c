@@ -812,7 +812,6 @@ static int ibtrs_post_send_rdma(struct ibtrs_clt_con *con,
 	enum ib_send_flags flags;
 	struct ib_sge list[1];
 
-	pr_debug("called, imm: %x\n", imm);
 	if (unlikely(!req->sg_size)) {
 		ibtrs_wrn(sess, "Doing RDMA Write failed, no data supplied\n");
 		return -EINVAL;
@@ -926,8 +925,8 @@ static int ibtrs_post_send_rdma_desc_more(struct ibtrs_clt_con *con,
 last_one:
 	wr = &wrs[j];
 
-	ibtrs_set_rdma_desc_last(con, list, req, wr, offset, desc, m, n, addr,
-				 size, imm);
+	ibtrs_set_rdma_desc_last(con, list, req, wr, offset,
+				 desc, m, n, addr, size, imm);
 
 	ret = ib_post_send(con->c.qp, &wrs[0].wr, &bad_wr);
 	if (unlikely(ret))
@@ -1130,7 +1129,8 @@ static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 		process_io_rsp(sess, msg_id, err);
 		break;
 	default:
-		WARN(1, "Unknown wc->opcode %d", wc->opcode);
+		ibtrs_wrn(sess, "Unexpected WC type: %s\n",
+			  ib_wc_opcode_str(wc->opcode));
 		return;
 	}
 }
