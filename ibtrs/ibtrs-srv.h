@@ -119,13 +119,7 @@ struct ibtrs_srv_sess {
 	wait_queue_head_t	ids_waitq;
 	dma_addr_t		*rdma_addr;
 	bool			established;
-	u8			off_len; /* number of bits for offset in
-					  * one client buffer.
-					  * 32 - ilog2(sess->queue_depth)
-					  */
-	u32			off_mask; /* mask to get offset in client buf
-					   * out of the imm field
-					   */
+	unsigned int		mem_bits;
 	struct kobject		kobj;
 	struct kobject		kobj_stats;
 	struct ibtrs_srv_stats	stats;

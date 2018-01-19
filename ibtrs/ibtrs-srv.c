@@ -524,6 +524,7 @@ static void unmap_cont_bufs(struct ibtrs_srv_sess *sess)
 static int map_cont_bufs(struct ibtrs_srv_sess *sess)
 {
 	struct ibtrs_srv *srv = sess->srv;
+	unsigned int chunk_bits;
 	dma_addr_t addr;
 	int i, err;
 
@@ -537,8 +538,8 @@ static int map_cont_bufs(struct ibtrs_srv_sess *sess)
 		}
 		sess->rdma_addr[i] = addr;
 	}
-	sess->off_len = 31 - ilog2(srv->queue_depth - 1);
-	sess->off_mask = (1 << sess->off_len) - 1;
+	chunk_bits = ilog2(srv->queue_depth - 1) + 1;
+	sess->mem_bits = (IB_IMM_SIZE_BITS - chunk_bits);
 
 	return 0;
 
@@ -984,8 +985,8 @@ static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 			break;
 		}
 
-		msg_id = imm >> sess->off_len;
-		off = imm & sess->off_mask;
+		msg_id = imm >> sess->mem_bits;
+		off = imm & ((1 << sess->mem_bits) - 1);
 
 		if (unlikely(msg_id > srv->queue_depth ||
 			     off > rcv_buf_size)) {

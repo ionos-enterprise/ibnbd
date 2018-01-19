@@ -1364,6 +1364,7 @@ out:
 
 static int alloc_tags(struct ibtrs_clt *clt)
 {
+	unsigned int chunk_bits;
 	int err, i;
 
 	clt->tags_map = kcalloc(BITS_TO_LONGS(clt->queue_depth), sizeof(long),
@@ -1377,13 +1378,13 @@ static int alloc_tags(struct ibtrs_clt *clt)
 		err = -ENOMEM;
 		goto err_map;
 	}
+	chunk_bits = ilog2(clt->queue_depth - 1) + 1;
 	for (i = 0; i < clt->queue_depth; i++) {
 		struct ibtrs_tag *tag;
 
 		tag = GET_TAG(clt, i);
 		tag->mem_id = i;
-		tag->mem_id_mask = i << ((IB_IMM_SIZE_BITS - 1) -
-					 ilog2(clt->queue_depth - 1));
+		tag->mem_off = i << (IB_IMM_SIZE_BITS - chunk_bits);
 	}
 
 	return 0;
@@ -3034,7 +3035,7 @@ static int ibtrs_clt_write_req(struct ibtrs_clt_io_req *req)
 	msg->usr_len = cpu_to_le16(req->usr_len);
 
 	/* ibtrs message on server side will be after user data and message */
-	imm = req->tag->mem_id_mask + req->data_len + req->usr_len;
+	imm = req->tag->mem_off + req->data_len + req->usr_len;
 	buf_id = req->tag->mem_id;
 	req->sg_size = tsize;
 	buf = sess->srv_rdma_addr[buf_id];
@@ -3160,10 +3161,11 @@ static int ibtrs_clt_read_req(struct ibtrs_clt_io_req *req)
 		}
 		req->nmdesc = 0;
 	}
-	/* ibtrs message will be after the space reserved for disk data and
+	/*
+	 * ibtrs message will be after the space reserved for disk data and
 	 * user message
 	 */
-	imm = req->tag->mem_id_mask + req->data_len + req->usr_len;
+	imm = req->tag->mem_off + req->data_len + req->usr_len;
 	buf_id = req->tag->mem_id;
 
 	req->sg_size  = sizeof(*msg);
