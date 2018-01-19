@@ -162,7 +162,7 @@ static int ibtrs_srv_create_once_sysfs_root_folders(struct ibtrs_srv_sess *sess)
 		/* Just increase references if kobjs were already inited */
 		kobject_get(&srv->kobj_paths);
 		kobject_get(&srv->kobj);
-		goto mark_inited;
+		goto unlock;
 	}
 	err = kobject_init_and_add(&srv->kobj, &ktype, ibtrs_kobj,
 				   "%s", sess->s.sessname);
@@ -176,8 +176,6 @@ static int ibtrs_srv_create_once_sysfs_root_folders(struct ibtrs_srv_sess *sess)
 		pr_err("kobject_init_and_add(): %d\n", err);
 		goto put_kobj;
 	}
-mark_inited:
-	sess->root_sysfs_inited = true;
 unlock:
 	mutex_unlock(&srv->paths_mutex);
 
@@ -194,12 +192,8 @@ static void ibtrs_srv_destroy_once_sysfs_root_folders(struct ibtrs_srv_sess *ses
 	struct ibtrs_srv *srv = sess->srv;
 
 	mutex_lock(&srv->paths_mutex);
-	if (sess->root_sysfs_inited) {
-		sess->root_sysfs_inited = false;
-		WARN_ON(!srv->kobj.state_in_sysfs);
-		kobject_put(&srv->kobj_paths);
-		kobject_put(&srv->kobj);
-	}
+	kobject_put(&srv->kobj_paths);
+	kobject_put(&srv->kobj);
 	mutex_unlock(&srv->paths_mutex);
 }
 

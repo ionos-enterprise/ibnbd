@@ -1134,6 +1134,9 @@ static void put_srv(struct ibtrs_srv *srv)
 	if (refcount_dec_and_test(&srv->refcount)) {
 		struct ibtrs_srv_ctx *ctx = srv->ctx;
 
+		WARN_ON(srv->kobj.state_in_sysfs);
+		WARN_ON(srv->kobj_paths.state_in_sysfs);
+
 		mutex_lock(&ctx->srv_mutex);
 		list_del(&srv->ctx_list);
 		mutex_unlock(&ctx->srv_mutex);

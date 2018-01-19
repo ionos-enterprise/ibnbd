@@ -123,7 +123,6 @@ struct ibtrs_srv_sess {
 	struct kobject		kobj;
 	struct kobject		kobj_stats;
 	struct ibtrs_srv_stats	stats;
-	bool			root_sysfs_inited;
 };
 
 struct ibtrs_srv {
