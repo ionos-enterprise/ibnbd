@@ -123,6 +123,7 @@ struct ibtrs_srv_sess {
 	struct kobject		kobj;
 	struct kobject		kobj_stats;
 	struct ibtrs_srv_stats	stats;
+	bool			root_sysfs_inited;
 };
 
 struct ibtrs_srv {
@@ -182,9 +183,8 @@ ssize_t ibtrs_srv_reset_all_help(struct ibtrs_srv_stats *stats,
 int ibtrs_srv_create_sysfs_module_files(void);
 void ibtrs_srv_destroy_sysfs_module_files(void);
 
-int ibtrs_srv_create_once_sysfs_root_folders(struct ibtrs_srv *srv,
-					     const char *sessname);
-void ibtrs_srv_destroy_sysfs_root_folders(struct ibtrs_srv *srv);
+int ibtrs_srv_create_once_sysfs_root_folders(struct ibtrs_srv_sess *sess);
+void ibtrs_srv_destroy_once_sysfs_root_folders(struct ibtrs_srv_sess *sess);
 
 int ibtrs_srv_create_sess_files(struct ibtrs_srv_sess *sess);
 void ibtrs_srv_destroy_sess_files(struct ibtrs_srv_sess *sess);

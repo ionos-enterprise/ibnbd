@@ -221,20 +221,23 @@ void ibtrs_srv_destroy_sess_files(struct ibtrs_srv_sess *sess)
 	}
 }
 
-int ibtrs_srv_create_once_sysfs_root_folders(struct ibtrs_srv *srv,
-					     const char *sessname)
+int ibtrs_srv_create_once_sysfs_root_folders(struct ibtrs_srv_sess *sess)
 {
+	struct ibtrs_srv *srv = sess->srv;
 	int err = 0;
 
 	mutex_lock(&srv->paths_mutex);
-	if (srv->kobj.state_in_sysfs)
-		goto out;
-
+	if (srv->kobj.state_in_sysfs) {
+		/* Just increase references if kobjs were already inited */
+		kobject_get(&srv->kobj_paths);
+		kobject_get(&srv->kobj);
+		goto mark_inited;
+	}
 	err = kobject_init_and_add(&srv->kobj, &ktype, ibtrs_kobj,
-				   "%s", sessname);
+				   "%s", sess->s.sessname);
 	if (unlikely(err)) {
 		pr_err("kobject_init_and_add(): %d\n", err);
-		goto out;
+		goto unlock;
 	}
 	err = kobject_init_and_add(&srv->kobj_paths, &ktype,
 				   &srv->kobj, "paths");
@@ -242,7 +245,9 @@ int ibtrs_srv_create_once_sysfs_root_folders(struct ibtrs_srv *srv,
 		pr_err("kobject_init_and_add(): %d\n", err);
 		goto put_kobj;
 	}
-out:
+mark_inited:
+	sess->root_sysfs_inited = true;
+unlock:
 	mutex_unlock(&srv->paths_mutex);
 
 	return err;
@@ -250,17 +255,21 @@ out:
 put_kobj:
 	kobject_del(&srv->kobj);
 	kobject_put(&srv->kobj);
-	goto out;
+	goto unlock;
 }
 
-void ibtrs_srv_destroy_sysfs_root_folders(struct ibtrs_srv *srv)
+void ibtrs_srv_destroy_once_sysfs_root_folders(struct ibtrs_srv_sess *sess)
 {
-	if (srv->kobj.state_in_sysfs) {
-		kobject_del(&srv->kobj_paths);
+	struct ibtrs_srv *srv = sess->srv;
+
+	mutex_lock(&srv->paths_mutex);
+	if (sess->root_sysfs_inited) {
+		sess->root_sysfs_inited = false;
+		WARN_ON(!srv->kobj.state_in_sysfs);
 		kobject_put(&srv->kobj_paths);
-		kobject_del(&srv->kobj);
 		kobject_put(&srv->kobj);
 	}
+	mutex_unlock(&srv->paths_mutex);
 }
 
 int ibtrs_srv_create_sysfs_module_files(void)
