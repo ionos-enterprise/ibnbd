@@ -661,10 +661,6 @@ static int process_info_req(struct ibtrs_srv_con *con,
 	for (i = 0; i < srv->queue_depth; i++)
 		rsp->addr[i] = cpu_to_le64(sess->rdma_addr[i]);
 
-	err = ibtrs_srv_create_once_sysfs_root_folders(sess);
-	if (unlikely(err))
-		goto iu_free;
-
 	err = ibtrs_srv_create_sess_files(sess);
 	if (unlikely(err))
 		goto iu_free;
@@ -1178,7 +1174,6 @@ static void ibtrs_srv_close_work(struct work_struct *work)
 	ctx = sess->srv->ctx;
 
 	ibtrs_srv_destroy_sess_files(sess);
-	ibtrs_srv_destroy_once_sysfs_root_folders(sess);
 	ibtrs_srv_stop_hb(sess);
 
 	for (i = 0; i < sess->s.con_num; i++) {

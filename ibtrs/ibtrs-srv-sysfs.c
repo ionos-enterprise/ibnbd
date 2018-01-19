@@ -152,7 +152,7 @@ static struct attribute_group ibtrs_srv_stats_attr_group = {
 	.attrs = ibtrs_srv_stats_attrs,
 };
 
-int ibtrs_srv_create_once_sysfs_root_folders(struct ibtrs_srv_sess *sess)
+static int ibtrs_srv_create_once_sysfs_root_folders(struct ibtrs_srv_sess *sess)
 {
 	struct ibtrs_srv *srv = sess->srv;
 	int err = 0;
@@ -189,7 +189,7 @@ put_kobj:
 	goto unlock;
 }
 
-void ibtrs_srv_destroy_once_sysfs_root_folders(struct ibtrs_srv_sess *sess)
+static void ibtrs_srv_destroy_once_sysfs_root_folders(struct ibtrs_srv_sess *sess)
 {
 	struct ibtrs_srv *srv = sess->srv;
 
@@ -236,11 +236,15 @@ int ibtrs_srv_create_sess_files(struct ibtrs_srv_sess *sess)
 
 	sockaddr_to_str((struct sockaddr *)&sess->s.dst_addr, str, sizeof(str));
 
+	err = ibtrs_srv_create_once_sysfs_root_folders(sess);
+	if (unlikely(err))
+		return err;
+
 	err = kobject_init_and_add(&sess->kobj, &ktype, &srv->kobj_paths,
 				   "%s", str);
 	if (unlikely(err)) {
 		ibtrs_err(sess, "kobject_init_and_add(): %d\n", err);
-		return err;
+		goto destroy_root;
 	}
 	err = sysfs_create_group(&sess->kobj, &ibtrs_srv_sess_attr_group);
 	if (unlikely(err)) {
@@ -258,6 +262,8 @@ remove_group:
 put_kobj:
 	kobject_del(&sess->kobj);
 	kobject_put(&sess->kobj);
+destroy_root:
+	ibtrs_srv_destroy_once_sysfs_root_folders(sess);
 
 	return err;
 }
@@ -269,6 +275,8 @@ void ibtrs_srv_destroy_sess_files(struct ibtrs_srv_sess *sess)
 		kobject_put(&sess->kobj_stats);
 		kobject_del(&sess->kobj);
 		kobject_put(&sess->kobj);
+
+		ibtrs_srv_destroy_once_sysfs_root_folders(sess);
 	}
 }
 
