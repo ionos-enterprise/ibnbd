@@ -60,10 +60,7 @@ void ibtrs_clt_update_rdma_lat(struct ibtrs_clt_stats *stats, bool read,
 
 void ibtrs_clt_decrease_inflight(struct ibtrs_clt_stats *stats)
 {
-	struct ibtrs_clt_stats_pcpu *s;
-
-	s = this_cpu_ptr(stats->pcpu_stats);
-	s->rdma.inflight--;
+	atomic_dec(&stats->inflight);
 }
 
 void ibtrs_clt_update_wc_stats(struct ibtrs_clt_con *con)
@@ -217,14 +214,13 @@ ssize_t ibtrs_clt_stats_rdma_to_str(struct ibtrs_clt_stats *stats,
 		sum.dir[READ].size_total  += r->dir[READ].size_total;
 		sum.dir[WRITE].cnt	  += r->dir[WRITE].cnt;
 		sum.dir[WRITE].size_total += r->dir[WRITE].size_total;
-		sum.inflight		  += r->inflight;
 		sum.failover_cnt	  += r->failover_cnt;
 	}
 
 	return scnprintf(page, len, "%llu %llu %llu %llu %u %llu\n",
 			 sum.dir[READ].cnt, sum.dir[READ].size_total,
 			 sum.dir[WRITE].cnt, sum.dir[WRITE].size_total,
-			 sum.inflight, sum.failover_cnt);
+			 atomic_read(&stats->inflight), sum.failover_cnt);
 }
 
 int ibtrs_clt_stats_sg_list_distr_to_str(struct ibtrs_clt_stats *stats,
@@ -391,7 +387,7 @@ int ibtrs_clt_reset_all_stats(struct ibtrs_clt_stats *s, bool enable)
 		ibtrs_clt_reset_cpu_migr_stats(s, enable);
 		ibtrs_clt_reset_reconnects_stat(s, enable);
 		ibtrs_clt_reset_wc_comp_stats(s, enable);
-
+		atomic_set(&s->inflight, 0);
 		return 0;
 	}
 
@@ -418,7 +414,6 @@ static inline void ibtrs_clt_update_rdma_stats(struct ibtrs_clt_stats *stats,
 	s = this_cpu_ptr(stats->pcpu_stats);
 	s->rdma.dir[d].cnt++;
 	s->rdma.dir[d].size_total += size;
-	s->rdma.inflight++;
 }
 
 void ibtrs_clt_update_all_stats(struct ibtrs_clt_io_req *req, int dir)
@@ -435,6 +430,7 @@ void ibtrs_clt_update_all_stats(struct ibtrs_clt_io_req *req, int dir)
 				  req->sg_cnt);
 	len = req->usr_len + req->data_len;
 	ibtrs_clt_update_rdma_stats(stats, len, dir);
+	atomic_inc(&stats->inflight);
 }
 
 int ibtrs_clt_init_stats(struct ibtrs_clt_stats *stats)

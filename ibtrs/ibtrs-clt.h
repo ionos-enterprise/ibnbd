@@ -95,7 +95,6 @@ struct ibtrs_clt_stats_rdma {
 	} dir[2];
 
 	u64 failover_cnt;
-	u16 inflight;
 };
 
 struct ibtrs_clt_stats_rdma_lat {
@@ -126,6 +125,7 @@ struct ibtrs_clt_stats {
 	bool					enable_rdma_lat;
 	struct ibtrs_clt_stats_pcpu    __percpu	*pcpu_stats;
 	struct ibtrs_clt_stats_reconnects	reconnects;
+	atomic_t				inflight;
 };
 
 struct ibtrs_clt_con {
