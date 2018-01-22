@@ -954,12 +954,7 @@ err:
 
 static int wait_for_ibtrs_connection(struct ibnbd_clt_session *sess)
 {
-	int err;
-
-	err = wait_event_interruptible(sess->ibtrs_waitq, sess->ibtrs_ready);
-	if (unlikely(err))
-		return err;
-
+	wait_event(sess->ibtrs_waitq, sess->ibtrs_ready);
 	if (unlikely(IS_ERR_OR_NULL(sess->ibtrs)))
 		return -ECONNRESET;
 
@@ -999,11 +994,7 @@ again:
 			ibnbd_clt_put_sess(sess);
 		mutex_lock(&sess_lock);
 
-		if (unlikely(err == -ERESTARTSYS))
-			/* Wait was interrupted, propagate error */
-			sess = ERR_PTR(err);
-
-		else if (unlikely(err))
+		if (unlikely(err))
 			/* Session is dying, repeat the loop */
 			goto again;
 
