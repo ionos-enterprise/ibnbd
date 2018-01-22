@@ -972,6 +972,23 @@ static int wait_for_ibtrs_connection(struct ibnbd_clt_session *sess)
 	return 0;
 }
 
+static void wait_for_ibtrs_disconnection(struct ibnbd_clt_session *sess)
+__releases(&sess_lock)
+__acquires(&sess_lock)
+{
+	DEFINE_WAIT_FUNC(wait, autoremove_wake_function);
+
+	prepare_to_wait(&sess->ibtrs_waitq, &wait, TASK_UNINTERRUPTIBLE);
+	if (IS_ERR_OR_NULL(sess->ibtrs)) {
+		finish_wait(&sess->ibtrs_waitq, &wait);
+		return;
+	}
+	mutex_unlock(&sess_lock);
+	/* After unlock session can be freed, so careful */
+	schedule();
+	mutex_lock(&sess_lock);
+}
+
 static struct ibnbd_clt_session *__find_and_get_sess(const char *sessname)
 __releases(&sess_lock)
 __acquires(&sess_lock)
@@ -986,30 +1003,37 @@ again:
 
 		if (unlikely(sess->ibtrs_ready && IS_ERR_OR_NULL(sess->ibtrs)))
 			/*
-			 * IBTRS connection failed, session is dying.
+			 * No IBTRS connection, session is dying.
 			 */
 			continue;
 
-		if (unlikely(!ibnbd_clt_get_sess(sess)))
+		if (likely(ibnbd_clt_get_sess(sess))) {
 			/*
-			 * Ref is 0, session is dying.
+			 * Alive session is found, wait for IBTRS connection.
 			 */
-			continue;
+			mutex_unlock(&sess_lock);
+			err = wait_for_ibtrs_connection(sess);
+			if (unlikely(err))
+				ibnbd_clt_put_sess(sess);
+			mutex_lock(&sess_lock);
 
-		mutex_unlock(&sess_lock);
-		/*
-		 * Alive session is found, wait for IBTRS connection.
-		 */
-		err = wait_for_ibtrs_connection(sess);
-		if (unlikely(err))
-			ibnbd_clt_put_sess(sess);
-		mutex_lock(&sess_lock);
+			if (unlikely(err))
+				/* Session is dying, repeat the loop */
+				goto again;
 
-		if (unlikely(err))
-			/* Session is dying, repeat the loop */
+			return sess;
+		} else {
+			/*
+			 * Ref is 0, session is dying, wait for IBTRS disconnect
+			 * in order to avoid session names clashes.
+			 */
+			wait_for_ibtrs_disconnection(sess);
+			/*
+			 * IBTRS is disconnected and soon session will be freed,
+			 * so repeat a loop.
+			 */
 			goto again;
-
-		return sess;
+		}
 	}
 
 	return NULL;
