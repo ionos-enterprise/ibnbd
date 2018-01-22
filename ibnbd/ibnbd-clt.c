@@ -870,6 +870,14 @@ static void destroy_mq_tags(struct ibnbd_clt_session *sess)
 	blk_mq_free_tag_set(&sess->tag_set);
 }
 
+static inline void wake_up_ibtrs_waiters(struct ibnbd_clt_session *sess)
+{
+	/* paired with rmb() in wait_for_ibtrs_connection() */
+	smp_wmb();
+	sess->ibtrs_ready = true;
+	wake_up_all(&sess->ibtrs_waitq);
+}
+
 static void close_ibtrs(struct ibnbd_clt_session *sess)
 {
 	might_sleep();
@@ -877,6 +885,7 @@ static void close_ibtrs(struct ibnbd_clt_session *sess)
 	if (!IS_ERR_OR_NULL(sess->ibtrs)) {
 		ibtrs_clt_close(sess->ibtrs);
 		sess->ibtrs = NULL;
+		wake_up_ibtrs_waiters(sess);
 	}
 }
 
@@ -955,6 +964,8 @@ err:
 static int wait_for_ibtrs_connection(struct ibnbd_clt_session *sess)
 {
 	wait_event(sess->ibtrs_waitq, sess->ibtrs_ready);
+	/* paired with wmb() in wake_up_ibtrs_waiters() */
+	smp_rmb();
 	if (unlikely(IS_ERR_OR_NULL(sess->ibtrs)))
 		return -ECONNRESET;
 
@@ -1064,7 +1075,7 @@ find_and_get_or_create_sess(const char *sessname,
 				     MAX_RECONNECTS);
 	if (unlikely(IS_ERR(sess->ibtrs))) {
 		err = PTR_ERR(sess->ibtrs);
-		goto put_sess;
+		goto wake_up_and_put;
 	}
 	ibtrs_clt_query(sess->ibtrs, &attrs);
 	sess->max_io_size = attrs.max_io_size;
@@ -1078,19 +1089,20 @@ find_and_get_or_create_sess(const char *sessname,
 	if (unlikely(err))
 		goto close_ibtrs;
 
-	sess->ibtrs_ready = true;
-	wake_up_all(&sess->ibtrs_waitq);
+	wake_up_ibtrs_waiters(sess);
 
 	return sess;
 
 close_ibtrs:
 	close_ibtrs(sess);
 put_sess:
-	sess->ibtrs_ready = true;
-	wake_up_all(&sess->ibtrs_waitq);
 	ibnbd_clt_put_sess(sess);
 
 	return ERR_PTR(err);
+
+wake_up_and_put:
+	wake_up_ibtrs_waiters(sess);
+	goto put_sess;
 }
 
 static int ibnbd_client_open(struct block_device *block_device, fmode_t mode)
