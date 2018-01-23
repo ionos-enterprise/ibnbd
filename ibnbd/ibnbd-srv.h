@@ -40,7 +40,8 @@
 #include "ibnbd-log.h"
 
 struct ibnbd_srv_session {
-	struct list_head        list; /* for the global sess_list */
+	/* Entry inside global sess_list */
+	struct list_head        list;
 	struct ibtrs_srv	*ibtrs;
 	char			sessname[NAME_MAX];
 	int			queue_depth;
@@ -48,36 +49,37 @@ struct ibnbd_srv_session {
 
 	rwlock_t                index_lock ____cacheline_aligned;
 	struct idr              index_idr;
-	struct mutex		lock; /* protects sess_dev_list */
-	struct list_head        sess_dev_list; /* list of struct ibnbd_srv_sess_dev */
-	u8			ver; /* IBNBD protocol version */
+	/* List of struct ibnbd_srv_sess_dev */
+	struct list_head        sess_dev_list;
+	struct mutex		lock;
+	u8			ver;
 };
 
 struct ibnbd_srv_dev {
-	struct list_head                list; /* global dev_list */
-
+	/* Entry inside global dev_list */
+	struct list_head                list;
 	struct kobject                  dev_kobj;
 	struct kobject                  dev_sessions_kobj;
-
 	struct kref                     kref;
 	char				id[NAME_MAX];
-
-	struct mutex			lock; /* protects sess_dev_list and open_write_cnt */
-	struct list_head		sess_dev_list; /* list of struct ibnbd_srv_sess_dev */
+	/* List of ibnbd_srv_sess_dev structs */
+	struct list_head		sess_dev_list;
+	struct mutex			lock;
 	int				open_write_cnt;
 	enum ibnbd_io_mode		mode;
 };
 
+/* Structure which binds N devices and N sessions */
 struct ibnbd_srv_sess_dev {
-	struct list_head		dev_list; /* for struct ibnbd_srv_dev->sess_dev_list */
-	struct list_head		sess_list; /* for struct ibnbd_srv_session->sess_dev_list */
-
+	/* Entry inside ibnbd_srv_dev struct */
+	struct list_head		dev_list;
+	/* Entry inside ibnbd_srv_session struct */
+	struct list_head		sess_list;
 	struct ibnbd_dev		*ibnbd_dev;
 	struct ibnbd_srv_session        *sess;
 	struct ibnbd_srv_dev		*dev;
 	struct kobject                  kobj;
 	struct completion		*sysfs_release_compl;
-
 	u32                             device_id;
 	fmode_t                         open_flags;
 	struct kref			kref;
