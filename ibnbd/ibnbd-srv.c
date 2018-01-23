@@ -824,7 +824,6 @@ static int process_msg_open(struct ibtrs_srv *ibtrs,
 
 	list_add(&srv_sess_dev->sess_list, &srv_sess->sess_dev_list);
 
-	srv_sess_dev->is_visible = true;
 	ibnbd_info(srv_sess_dev, "Opened device '%s' in %s mode\n",
 		   srv_dev->id, ibnbd_io_mode_str(io_mode));
 

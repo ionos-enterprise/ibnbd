@@ -83,9 +83,7 @@ struct ibnbd_srv_sess_dev {
 	struct kref			kref;
 	struct completion               *destroy_comp;
 	char				pathname[NAME_MAX];
-	bool                            is_visible;
 };
 
-int ibnbd_srv_revalidate_dev(struct ibnbd_srv_dev *dev);
 
 #endif /* IBNBD_SRV_H */
