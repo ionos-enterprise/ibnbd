@@ -2138,6 +2138,31 @@ static void ibtrs_clt_remove_path_from_arr(struct ibtrs_clt_sess *sess)
 	mutex_unlock(&clt->paths_mutex);
 }
 
+static inline bool __ibtrs_clt_path_exists(struct ibtrs_clt *clt,
+					   struct ibtrs_addr *addr)
+{
+	struct ibtrs_clt_sess *sess;
+
+	list_for_each_entry(sess, &clt->paths_list, s.entry)
+		if (!sockaddr_cmp((struct sockaddr *)&sess->s.dst_addr,
+				  addr->dst))
+			return true;
+
+	return false;
+}
+
+static bool ibtrs_clt_path_exists(struct ibtrs_clt *clt,
+				  struct ibtrs_addr *addr)
+{
+	bool res;
+
+	mutex_lock(&clt->paths_mutex);
+	res = __ibtrs_clt_path_exists(clt, addr);
+	mutex_unlock(&clt->paths_mutex);
+
+	return res;
+}
+
 static void ibtrs_clt_add_path_to_arr(struct ibtrs_clt_sess *sess)
 {
 	struct ibtrs_clt *clt = sess->clt;
@@ -3269,19 +3294,10 @@ int ibtrs_clt_create_path_from_sysfs(struct ibtrs_clt *clt,
 				     struct ibtrs_addr *addr)
 {
 	struct ibtrs_clt_sess *sess;
-	int err = 0;
+	int err;
 
-	ibtrs_clt_state_lock();
-	list_for_each_entry_rcu(sess, &clt->paths_list, s.entry) {
-		if (!sockaddr_cmp((struct sockaddr *)&sess->s.dst_addr,
-				  addr->dst)) {
-			err = -EEXIST;
-			break;
-		}
-	}
-	ibtrs_clt_state_unlock();
-	if (unlikely(err))
-		return err;
+	if (ibtrs_clt_path_exists(clt, addr))
+		return -EEXIST;
 
 	sess = alloc_sess(clt, addr, nr_cons_per_session, clt->max_segments);
 	if (unlikely(IS_ERR(sess)))
