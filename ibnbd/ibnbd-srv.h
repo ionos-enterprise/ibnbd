@@ -87,5 +87,15 @@ struct ibnbd_srv_sess_dev {
 	char				pathname[NAME_MAX];
 };
 
+/* ibnbd-srv-sysfs.c */
+
+int ibnbd_srv_create_dev_sysfs(struct ibnbd_srv_dev *dev,
+			       struct block_device *bdev,
+			       const char *dir_name);
+void ibnbd_srv_destroy_dev_sysfs(struct ibnbd_srv_dev *dev);
+int ibnbd_srv_create_dev_session_sysfs(struct ibnbd_srv_sess_dev *sess_dev);
+void ibnbd_srv_destroy_dev_session_sysfs(struct ibnbd_srv_sess_dev *sess_dev);
+int ibnbd_srv_create_sysfs_files(void);
+void ibnbd_srv_destroy_sysfs_files(void);
 
 #endif /* IBNBD_SRV_H */

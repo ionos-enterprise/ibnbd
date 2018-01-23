@@ -40,7 +40,6 @@
 
 #include "ibnbd.h"
 #include "ibnbd-srv.h"
-#include "ibnbd-srv-sysfs.h"
 
 static struct kobject *ibnbd_srv_kobj;
 static struct kobject *ibnbd_srv_devices_kobj;
