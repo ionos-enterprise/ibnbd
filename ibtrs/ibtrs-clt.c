@@ -1745,6 +1745,7 @@ static struct ibtrs_clt_sess *alloc_sess(struct ibtrs_clt *clt,
 	sess->max_pages_per_mr = max_segments;
 	init_waitqueue_head(&sess->state_wq);
 	sess->state = IBTRS_CLT_CONNECTING;
+	atomic_set(&sess->connected_cnt, 0);
 	INIT_WORK(&sess->close_work, ibtrs_clt_close_work);
 	INIT_DELAYED_WORK(&sess->reconnect_dwork, ibtrs_clt_reconnect_work);
 	ibtrs_clt_init_hb(sess);
@@ -2064,6 +2065,18 @@ static void ibtrs_clt_stop_and_destroy_conns(struct ibtrs_clt_sess *sess,
 	fail_all_outstanding_reqs(sess, failover);
 	free_sess_io_bufs(sess);
 	ibtrs_clt_sess_down(sess);
+
+	/*
+	 * Wait for graceful shutdown, namely when peer side invokes
+	 * rdma_disconnect(). 'connected_cnt' is decremented only on
+	 * CM events, thus if other side had crashed and hb has detected
+	 * something is wrong, here we will stuck for exactly timeout ms,
+	 * since CM does not fire anything.  That is fine, we are not in
+	 * hurry.
+	 */
+	wait_event_timeout(sess->state_wq, !atomic_read(&sess->connected_cnt),
+			   msecs_to_jiffies(IBTRS_CONNECT_TIMEOUT_MS));
+
 	for (cid = 0; cid < sess->s.con_num; cid++) {
 		con = to_clt_con(sess->s.con[cid]);
 		if (!con)
@@ -2452,6 +2465,26 @@ static void ibtrs_rdma_error_recovery(struct ibtrs_clt_con *con)
 	}
 }
 
+static inline void flag_success_on_conn(struct ibtrs_clt_con *con)
+{
+	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
+
+	atomic_inc(&sess->connected_cnt);
+	con->cm_err = 1;
+}
+
+static inline void flag_error_on_conn(struct ibtrs_clt_con *con, int cm_err)
+{
+	if (con->cm_err == 1) {
+		struct ibtrs_clt_sess *sess;
+
+		sess = to_clt_sess(con->c.sess);
+		if (atomic_dec_and_test(&sess->connected_cnt))
+			wake_up(&sess->state_wq);
+	}
+	con->cm_err = cm_err;
+}
+
 static int ibtrs_clt_rdma_cm_handler(struct rdma_cm_id *cm_id,
 				     struct rdma_cm_event *ev)
 {
@@ -2473,7 +2506,7 @@ static int ibtrs_clt_rdma_cm_handler(struct rdma_cm_id *cm_id,
 			 * Report success and wake up. Here we abuse state_wq,
 			 * i.e. wake up without state change, but we set cm_err.
 			 */
-			con->cm_err = 1;
+			flag_success_on_conn(con);
 			wake_up(&sess->state_wq);
 			return 0;
 		}
@@ -2512,7 +2545,7 @@ static int ibtrs_clt_rdma_cm_handler(struct rdma_cm_id *cm_id,
 		 * cm error makes sense only on connection establishing,
 		 * in other cases we rely on normal procedure of reconnecting.
 		 */
-		con->cm_err = cm_err;
+		flag_error_on_conn(con, cm_err);
 		ibtrs_rdma_error_recovery(con);
 	}
 

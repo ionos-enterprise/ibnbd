@@ -179,6 +179,7 @@ struct ibtrs_clt_sess {
 	struct ibtrs_clt	*clt;
 	wait_queue_head_t	state_wq;
 	enum ibtrs_clt_state	state;
+	atomic_t		connected_cnt;
 	struct mutex		init_mutex;
 	struct ibtrs_clt_io_req	*reqs;
 	struct ib_fmr_pool	*fmr_pool;
