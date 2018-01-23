@@ -2163,14 +2163,21 @@ static bool ibtrs_clt_path_exists(struct ibtrs_clt *clt,
 	return res;
 }
 
-static void ibtrs_clt_add_path_to_arr(struct ibtrs_clt_sess *sess)
+static int ibtrs_clt_add_path_to_arr(struct ibtrs_clt_sess *sess,
+				     struct ibtrs_addr *addr)
 {
 	struct ibtrs_clt *clt = sess->clt;
+	int err = 0;
 
 	mutex_lock(&clt->paths_mutex);
-	list_add_tail_rcu(&sess->s.entry, &clt->paths_list);
-	clt->paths_num++;
+	if (!__ibtrs_clt_path_exists(clt, addr)) {
+		list_add_tail_rcu(&sess->s.entry, &clt->paths_list);
+		clt->paths_num++;
+	} else
+		err = -EEXIST;
 	mutex_unlock(&clt->paths_mutex);
+
+	return err;
 }
 
 static void ibtrs_clt_close_work(struct work_struct *work)
@@ -3308,7 +3315,9 @@ int ibtrs_clt_create_path_from_sysfs(struct ibtrs_clt *clt,
 	 * IO will never grab it.  Also it is very important to add
 	 * path before init, since init fires LINK_CONNECTED event.
 	 */
-	ibtrs_clt_add_path_to_arr(sess);
+	err = ibtrs_clt_add_path_to_arr(sess, addr);
+	if (unlikely(err))
+		goto free_sess;
 
 	err = init_sess(sess);
 	if (unlikely(err))
@@ -3323,6 +3332,7 @@ int ibtrs_clt_create_path_from_sysfs(struct ibtrs_clt *clt,
 close_sess:
 	ibtrs_clt_remove_path_from_arr(sess);
 	ibtrs_clt_close_conns(sess, true);
+free_sess:
 	free_sess(sess);
 
 	return err;
