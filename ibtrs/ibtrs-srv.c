@@ -264,31 +264,6 @@ static bool ibtrs_srv_change_state(struct ibtrs_srv_sess *sess,
 	return ibtrs_srv_change_state_get_old(sess, new_state, &old_state);
 }
 
-int ibtrs_srv_hca_port_to_str(struct ibtrs_srv_sess *sess,
-			      char *buf, size_t len)
-{
-	struct ibtrs_srv_con *usr_con = to_srv_con(sess->s.con[0]);
-	char str[16] = "n/a\n";
-	int sz = 4;
-
-	if (usr_con)
-		len = scnprintf(str, sizeof(str), "%u\n",
-				usr_con->c.cm_id->port_num);
-	strncpy(buf, str, len);
-
-	return sz;
-}
-
-const char *ibtrs_srv_get_sess_hca_name(struct ibtrs_srv_sess *sess)
-{
-	struct ibtrs_srv_con *usr_con = to_srv_con(sess->s.con[0]);
-
-	if (usr_con)
-		return sess->s.ib_dev->dev->name;
-
-	return "n/a";
-}
-
 static void free_id(struct ibtrs_srv_op *id)
 {
 	if (!id)

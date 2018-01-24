@@ -79,10 +79,13 @@ static ssize_t ibtrs_srv_hca_port_show(struct kobject *kobj,
 				       char *page)
 {
 	struct ibtrs_srv_sess *sess;
+	struct ibtrs_con *usr_con;
 
-	sess = container_of(kobj, struct ibtrs_srv_sess, kobj);
+	sess = container_of(kobj, typeof(*sess), kobj);
+	usr_con = sess->s.con[0];
 
-	return ibtrs_srv_hca_port_to_str(sess, page, PAGE_SIZE);
+	return scnprintf(page, PAGE_SIZE, "%u\n",
+			 usr_con->cm_id->port_num);
 }
 
 static struct kobj_attribute ibtrs_srv_hca_port_attr =
@@ -97,7 +100,7 @@ static ssize_t ibtrs_srv_hca_name_show(struct kobject *kobj,
 	sess = container_of(kobj, struct ibtrs_srv_sess, kobj);
 
 	return scnprintf(page, PAGE_SIZE, "%s\n",
-			 ibtrs_srv_get_sess_hca_name(sess));
+			 sess->s.ib_dev->dev->name);
 }
 
 static struct kobj_attribute ibtrs_srv_hca_name_attr =

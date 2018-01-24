@@ -142,10 +142,6 @@ struct ibtrs_srv_ctx {
 
 void ibtrs_srv_queue_close(struct ibtrs_srv_sess *sess);
 
-int ibtrs_srv_hca_port_to_str(struct ibtrs_srv_sess *sess,
-			      char *buf, size_t len);
-const char *ibtrs_srv_get_sess_hca_name(struct ibtrs_srv_sess *sess);
-
 /* ibtrs-srv-stats.c */
 
 void ibtrs_srv_update_rdma_stats(struct ibtrs_srv_stats *s, size_t size, int d);
