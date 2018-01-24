@@ -33,7 +33,8 @@
 #include <linux/uuid.h>
 #include <rdma/ib_verbs.h>
 #include <rdma/ib.h>
-#include <rdma/ibtrs.h>
+
+#include "ibtrs.h"
 
 #define IBTRS_VER_MAJOR 1
 #define IBTRS_VER_MINOR 0

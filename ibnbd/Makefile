@@ -1,3 +1,5 @@
+ccflags-y := -Idrivers/infiniband/ulp/ibtrs
+
 ibnbd-client-y := ibnbd-clt.o \
 		  ibnbd-clt-sysfs.o
 

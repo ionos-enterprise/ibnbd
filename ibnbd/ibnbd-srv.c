@@ -33,7 +33,6 @@
 #include <linux/module.h>
 #include <linux/blkdev.h>
 #include <linux/idr.h>
-#include <rdma/ibtrs.h>
 
 #include "ibnbd-srv.h"
 #include "ibnbd-srv-dev.h"

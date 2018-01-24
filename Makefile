@@ -1,7 +1,8 @@
 # Called as kbuild
 ifneq ($(KERNELRELEASE),)
 
-KBUILD_CFLAGS += -I$(PWD)/include
+# ibnbd requires public header of ibtrs API
+KBUILD_CFLAGS += -I$(PWD)/ibtrs
 
 export CONFIG_BLK_DEV_IBNBD        := m
 export CONFIG_BLK_DEV_IBNBD_CLIENT := m

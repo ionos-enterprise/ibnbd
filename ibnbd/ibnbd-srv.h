@@ -33,8 +33,8 @@
 #include <linux/types.h>
 #include <linux/idr.h>
 #include <linux/kref.h>
-#include <rdma/ibtrs.h>
 
+#include "ibtrs.h"
 #include "ibnbd.h"
 #include "ibnbd-proto.h"
 #include "ibnbd-log.h"
