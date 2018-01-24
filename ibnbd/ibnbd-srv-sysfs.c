@@ -38,7 +38,6 @@
 #include <linux/list.h>
 #include <linux/moduleparam.h>
 
-#include "ibnbd.h"
 #include "ibnbd-srv.h"
 
 static struct kobject *ibnbd_srv_kobj;

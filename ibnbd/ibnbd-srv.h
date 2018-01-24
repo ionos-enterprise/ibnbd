@@ -35,7 +35,6 @@
 #include <linux/kref.h>
 
 #include "ibtrs.h"
-#include "ibnbd.h"
 #include "ibnbd-proto.h"
 #include "ibnbd-log.h"
 

@@ -30,8 +30,21 @@
 #ifndef IBNBD_PROTO_H
 #define IBNBD_PROTO_H
 
+#include <linux/types.h>
+#include <linux/blkdev.h>
 #include <linux/limits.h>
-#include "ibnbd.h"
+#include <linux/inet.h>
+#include <linux/in.h>
+#include <linux/in6.h>
+#include <rdma/ib.h>
+
+#define IBNBD_VER_MAJOR 1
+#define IBNBD_VER_MINOR 0
+#define IBNBD_VER_STRING __stringify(IBNBD_VER_MAJOR) "." \
+			 __stringify(IBNBD_VER_MINOR)
+
+/* TODO: should be configurable */
+#define IBTRS_PORT 1234
 
 /**
  * enum ibnbd_msg_types - IBNBD message types
@@ -252,7 +265,108 @@ struct ibnbd_msg_io {
 	u32		bi_size;
 };
 
-const char *ibnbd_io_mode_str(enum ibnbd_io_mode mode);
-const char *ibnbd_access_mode_str(enum ibnbd_access_mode mode);
+static inline u32 ibnbd_to_bio_flags(u32 ibnbd_flags)
+{
+	u32 bio_flags;
+
+	switch (ibnbd_op(ibnbd_flags)) {
+	case IBNBD_OP_READ:
+		bio_flags = REQ_OP_READ;
+		break;
+	case IBNBD_OP_WRITE:
+		bio_flags = REQ_OP_WRITE;
+		break;
+	case IBNBD_OP_FLUSH:
+		bio_flags = REQ_OP_FLUSH | REQ_PREFLUSH;
+		break;
+	case IBNBD_OP_DISCARD:
+		bio_flags = REQ_OP_DISCARD;
+		break;
+	case IBNBD_OP_SECURE_ERASE:
+		bio_flags = REQ_OP_SECURE_ERASE;
+		break;
+	case IBNBD_OP_WRITE_SAME:
+		bio_flags = REQ_OP_WRITE_SAME;
+		break;
+	default:
+		WARN(1, "Unknown IBNBD type: %d (flags %d)\n",
+		     ibnbd_op(ibnbd_flags), ibnbd_flags);
+		bio_flags = 0;
+	}
+
+	if (ibnbd_flags & IBNBD_F_SYNC)
+		bio_flags |= REQ_SYNC;
+
+	if (ibnbd_flags & IBNBD_F_FUA)
+		bio_flags |= REQ_FUA;
+
+	return bio_flags;
+}
+
+static inline u32 rq_to_ibnbd_flags(struct request *rq)
+{
+	u32 ibnbd_flags;
+
+	switch (req_op(rq)) {
+	case REQ_OP_READ:
+		ibnbd_flags = IBNBD_OP_READ;
+		break;
+	case REQ_OP_WRITE:
+		ibnbd_flags = IBNBD_OP_WRITE;
+		break;
+	case REQ_OP_DISCARD:
+		ibnbd_flags = IBNBD_OP_DISCARD;
+		break;
+	case REQ_OP_SECURE_ERASE:
+		ibnbd_flags = IBNBD_OP_SECURE_ERASE;
+		break;
+	case REQ_OP_WRITE_SAME:
+		ibnbd_flags = IBNBD_OP_WRITE_SAME;
+		break;
+	case REQ_OP_FLUSH:
+		ibnbd_flags = IBNBD_OP_FLUSH;
+		break;
+	default:
+		WARN(1, "Unknown request type %d (flags %llu)\n",
+		     req_op(rq), (unsigned long long)rq->cmd_flags);
+		ibnbd_flags = 0;
+	}
+
+	if (op_is_sync(rq->cmd_flags))
+		ibnbd_flags |= IBNBD_F_SYNC;
+
+	if (op_is_flush(rq->cmd_flags))
+		ibnbd_flags |= IBNBD_F_FUA;
+
+	return ibnbd_flags;
+}
+
+static inline const char *ibnbd_io_mode_str(enum ibnbd_io_mode mode)
+{
+	switch (mode) {
+	case IBNBD_FILEIO:
+		return "fileio";
+	case IBNBD_BLOCKIO:
+		return "blockio";
+	case IBNBD_AUTOIO:
+		return "autoio";
+	default:
+		return "unknown";
+	}
+}
+
+static inline const char *ibnbd_access_mode_str(enum ibnbd_access_mode mode)
+{
+	switch (mode) {
+	case IBNBD_ACCESS_RO:
+		return "ro";
+	case IBNBD_ACCESS_RW:
+		return "rw";
+	case IBNBD_ACCESS_MIGRATION:
+		return "migration";
+	default:
+		return "unknown";
+	}
+}
 
 #endif /* IBNBD_PROTO_H */

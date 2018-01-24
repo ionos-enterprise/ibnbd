@@ -1,5 +1,5 @@
 config BLK_DEV_IBNBD
-	tristate
+	boolean
 
 config BLK_DEV_IBNBD_CLIENT
 	tristate "Network block device over Infiniband client support"

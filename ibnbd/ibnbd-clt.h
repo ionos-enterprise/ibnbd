@@ -37,7 +37,6 @@
 #include <linux/refcount.h>
 
 #include "ibtrs.h"
-#include "ibnbd.h"
 #include "ibnbd-proto.h"
 #include "ibnbd-log.h"
 
