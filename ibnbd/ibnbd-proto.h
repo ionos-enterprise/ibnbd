@@ -33,12 +33,6 @@
 #include <linux/limits.h>
 #include "ibnbd.h"
 
-#define GCC_DIAGNOSTIC_AWARE ((__GNUC__ > 6))
-#if GCC_DIAGNOSTIC_AWARE
-#pragma GCC diagnostic push
-#pragma GCC diagnostic warning "-Wpadded"
-#endif
-
 /**
  * enum ibnbd_msg_types - IBNBD message types
  * @IBNBD_MSG_SESS_INFO:	initial session info from client to server
@@ -257,10 +251,6 @@ struct ibnbd_msg_io {
 	u32		rw;
 	u32		bi_size;
 };
-
-#if GCC_DIAGNOSTIC_AWARE
-#pragma GCC diagnostic pop
-#endif
 
 const char *ibnbd_io_mode_str(enum ibnbd_io_mode mode);
 const char *ibnbd_access_mode_str(enum ibnbd_access_mode mode);
