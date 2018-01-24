@@ -31,6 +31,7 @@
 #define IBTRS_PRI_H
 
 #include <linux/uuid.h>
+#include <rdma/rdma_cm.h>
 #include <rdma/ib_verbs.h>
 #include <rdma/ib.h>
 

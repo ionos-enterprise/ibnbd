@@ -32,7 +32,6 @@
 
 #include <linux/module.h>
 #include <linux/mempool.h>
-#include <rdma/rdma_cm.h>
 
 #include "ibtrs-srv.h"
 #include "ibtrs-log.h"

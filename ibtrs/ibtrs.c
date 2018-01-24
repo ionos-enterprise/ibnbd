@@ -32,7 +32,6 @@
 
 #include <linux/module.h>
 #include <linux/inet.h>
-#include <rdma/rdma_cm.h>
 
 #include "ibtrs-pri.h"
 #include "ibtrs-log.h"

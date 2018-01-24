@@ -31,7 +31,6 @@
 #define pr_fmt(fmt) KBUILD_MODNAME " L" __stringify(__LINE__) ": " fmt
 
 #include <linux/module.h>
-#include <rdma/rdma_cm.h>
 #include <rdma/ib_fmr_pool.h>
 
 #include "ibtrs-clt.h"
