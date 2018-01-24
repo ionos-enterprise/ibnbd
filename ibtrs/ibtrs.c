@@ -45,6 +45,54 @@ MODULE_LICENSE("GPL");
 static LIST_HEAD(device_list);
 static DEFINE_MUTEX(device_list_mutex);
 
+struct ibtrs_iu *ibtrs_iu_alloc(u32 tag, size_t size, gfp_t gfp_mask,
+				struct ib_device *dma_dev,
+				enum dma_data_direction direction,
+				void (*done)(struct ib_cq *cq,
+					     struct ib_wc *wc))
+{
+	struct ibtrs_iu *iu;
+
+	iu = kmalloc(sizeof(*iu), gfp_mask);
+	if (unlikely(!iu))
+		return NULL;
+
+	iu->buf = kzalloc(size, gfp_mask);
+	if (unlikely(!iu->buf))
+		goto err1;
+
+	iu->dma_addr = ib_dma_map_single(dma_dev, iu->buf, size, direction);
+	if (unlikely(ib_dma_mapping_error(dma_dev, iu->dma_addr)))
+		goto err2;
+
+	iu->cqe.done  = done;
+	iu->size      = size;
+	iu->direction = direction;
+	iu->tag       = tag;
+
+	return iu;
+
+err2:
+	kfree(iu->buf);
+err1:
+	kfree(iu);
+
+	return NULL;
+}
+EXPORT_SYMBOL_GPL(ibtrs_iu_alloc);
+
+void ibtrs_iu_free(struct ibtrs_iu *iu, enum dma_data_direction dir,
+		   struct ib_device *ibdev)
+{
+	if (!iu)
+		return;
+
+	ib_dma_unmap_single(ibdev, iu->dma_addr, iu->size, dir);
+	kfree(iu->buf);
+	kfree(iu);
+}
+EXPORT_SYMBOL_GPL(ibtrs_iu_free);
+
 int ibtrs_iu_post_recv(struct ibtrs_con *con, struct ibtrs_iu *iu)
 {
 	struct ibtrs_sess *sess = con->sess;
