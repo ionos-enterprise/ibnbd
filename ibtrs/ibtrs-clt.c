@@ -93,12 +93,6 @@ MODULE_PARM_DESC(fmr_sg_cnt, "when sg_cnt is bigger than fmr_sg_cnt, enable"
 
 static struct workqueue_struct *ibtrs_wq;
 
-struct msg_work {
-	struct work_struct	work;
-	struct ibtrs_clt_con	*con;
-	void                    *msg;
-};
-
 static void ibtrs_rdma_error_recovery(struct ibtrs_clt_con *con);
 static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc);
 
