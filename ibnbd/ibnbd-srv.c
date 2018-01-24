@@ -32,12 +32,9 @@
 
 #include <linux/module.h>
 #include <linux/blkdev.h>
-#include <linux/idr.h>
 
 #include "ibnbd-srv.h"
 #include "ibnbd-srv-dev.h"
-#include "ibnbd.h"
-#include "ibnbd-proto.h"
 
 MODULE_AUTHOR("ibnbd@profitbricks.com");
 MODULE_VERSION(IBNBD_VER_STRING);

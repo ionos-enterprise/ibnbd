@@ -32,11 +32,10 @@
 
 #include <linux/module.h>
 #include <linux/blkdev.h>
-#include <linux/hdreg.h>		/* for hd_geometry */
+#include <linux/hdreg.h>
 #include <linux/scatterlist.h>
 #include <linux/idr.h>
 
-#include "ibnbd.h"
 #include "ibnbd-clt.h"
 
 MODULE_AUTHOR("ibnbd@profitbricks.com");

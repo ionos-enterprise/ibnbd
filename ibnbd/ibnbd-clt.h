@@ -30,10 +30,9 @@
 #ifndef IBNBD_CLT_H
 #define IBNBD_CLT_H
 
-#include <linux/blkdev.h>
-#include <linux/wait.h>			/* for wait_queue_head_t */
-#include <linux/in.h>			/* for sockaddr_in */
-#include <linux/inet.h>			/* for sockaddr_in */
+#include <linux/wait.h>
+#include <linux/in.h>
+#include <linux/inet.h>
 #include <linux/blk-mq.h>
 #include <linux/refcount.h>
 
