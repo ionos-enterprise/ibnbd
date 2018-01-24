@@ -1,0 +1,20 @@
+config INFINIBAND_IBTRS
+	tristate
+	depends on INFINIBAND_ADDR_TRANS
+
+config INFINIBAND_IBTRS_CLIENT
+	tristate "IBTRS client module"
+	depends on INFINIBAND_ADDR_TRANS
+	select INFINIBAND_IBTRS
+	help
+	  IBTRS client allows for simplified data transfer and connection
+	  establishment over RDMA (InfiniBand, RoCE, iWarp). Uses BIO-like
+	  READ/WRITE semantics and provides multipath capabilities.
+
+config INFINIBAND_IBTRS_SERVER
+	tristate "IBTRS server module"
+	depends on INFINIBAND_ADDR_TRANS
+	select INFINIBAND_IBTRS
+	help
+	  IBTRS server module processing connection and IO requests received
+	  from the IBTRS client module.
