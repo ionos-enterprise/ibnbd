@@ -264,8 +264,8 @@ static bool ibtrs_srv_change_state(struct ibtrs_srv_sess *sess,
 	return ibtrs_srv_change_state_get_old(sess, new_state, &old_state);
 }
 
-int ibtrs_srv_current_hca_port_to_str(struct ibtrs_srv_sess *sess,
-				      char *buf, size_t len)
+int ibtrs_srv_hca_port_to_str(struct ibtrs_srv_sess *sess,
+			      char *buf, size_t len)
 {
 	struct ibtrs_srv_con *usr_con = to_srv_con(sess->s.con[0]);
 	char str[16] = "n/a\n";

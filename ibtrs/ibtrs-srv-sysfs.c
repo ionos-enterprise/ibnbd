@@ -74,19 +74,19 @@ static struct kobj_attribute ibtrs_srv_disconnect_attr =
 	__ATTR(disconnect, 0644,
 	       ibtrs_srv_disconnect_show, ibtrs_srv_disconnect_store);
 
-static ssize_t ibtrs_srv_current_hca_port_show(struct kobject *kobj,
-					       struct kobj_attribute *attr,
-					       char *page)
+static ssize_t ibtrs_srv_hca_port_show(struct kobject *kobj,
+				       struct kobj_attribute *attr,
+				       char *page)
 {
 	struct ibtrs_srv_sess *sess;
 
 	sess = container_of(kobj, struct ibtrs_srv_sess, kobj);
 
-	return ibtrs_srv_current_hca_port_to_str(sess, page, PAGE_SIZE);
+	return ibtrs_srv_hca_port_to_str(sess, page, PAGE_SIZE);
 }
 
-static struct kobj_attribute ibtrs_srv_current_hca_port_attr =
-	__ATTR(current_hca_port, 0444, ibtrs_srv_current_hca_port_show, NULL);
+static struct kobj_attribute ibtrs_srv_hca_port_attr =
+	__ATTR(hca_port, 0444, ibtrs_srv_hca_port_show, NULL);
 
 static ssize_t ibtrs_srv_hca_name_show(struct kobject *kobj,
 				       struct kobj_attribute *attr,
@@ -105,7 +105,7 @@ static struct kobj_attribute ibtrs_srv_hca_name_attr =
 
 static struct attribute *ibtrs_srv_sess_attrs[] = {
 	&ibtrs_srv_hca_name_attr.attr,
-	&ibtrs_srv_current_hca_port_attr.attr,
+	&ibtrs_srv_hca_port_attr.attr,
 	&ibtrs_srv_disconnect_attr.attr,
 	NULL,
 };
