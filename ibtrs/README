@@ -1,0 +1,238 @@
+****************************
+InfiniBand Transport (IBTRS)
+****************************
+
+IBTRS (InfiniBand Transport) is a reliable high speed transport library
+which provides support to establish optimal number of connections
+between client and server machines using RDMA (InfiniBand, RoCE, iWarp)
+transport. It is optimized to transfer (read/write) IO blocks.
+
+In its core interface it follows the BIO semantics of providing the
+possibility to either write data from an sg list to the remote side
+or to request ("read") data transfer from the remote side into a given
+sg list.
+
+IBTRS provides I/O fail-over and load-balancing capabilities by using
+multipath I/O (see "add_path" and "mp_policy" configuration entries).
+
+IBTRS is used by the IBNBD (Infiniband Network Block Device) modules.
+
+======================
+Client Sysfs Interface
+======================
+
+This chapter describes only the most important files of sysfs interface
+on client side.
+
+Entries under /sys/kernel/ibtrs_client/
+=======================================
+
+When a user of IBTRS API creates a new session, a directory entry with
+the name of that session is created.
+
+Entries under /sys/kernel/ibtrs_client/<session-name>/
+======================================================
+
+add_path (RW)
+-------------
+
+Adds a new path (connection) to an existing session. Expected format is the
+following:
+
+  <[source addr,]destination addr>
+
+  *addr ::= [ ip:<ipv4|ipv6> | gid:<gid> ]
+
+max_reconnect_attempts (RW)
+---------------------------
+
+Maximum number reconnect attempts the client should make before giving up
+after connection breaks unexpectedly.
+
+mp_policy (RW)
+--------------
+
+Multipath policy specifies which path should be selected on each IO:
+
+   round-robin (0):
+       select path in per CPU round-robin manner.
+
+   min-inflight (1):
+       select path with minimum inflights.
+
+Entries under /sys/kernel/ibtrs_client/<session-name>/paths/
+============================================================
+
+
+Each path belonging to a given session is listed here by its destination
+address. When a new path is added to a session by writing to the "add_path"
+entry, a directory with the corresponding destination address is created.
+
+Entries under /sys/kernel/ibtrs_client/<session-name>/paths/<dest-addr>/
+========================================================================
+
+state (R)
+---------
+
+Contains "connected" if the session is connected to the peer and fully
+functional.  Otherwise the file contains "disconnected"
+
+reconnect (RW)
+--------------
+
+Write "1" to the file in order to reconnect the path.
+Operation is blocking and returns 0 if reconnect was successfull.
+
+disconnect (RW)
+---------------
+
+Write "1" to the file in order to disconnect the path.
+Operation blocks until IBTRS path is disconnected.
+
+remove_path (RW)
+----------------
+
+Write "1" to the file in order to disconnected and remove the path
+from the session.  Operation blocks until the path is disconnected
+and removed from the session.
+
+Entries under /sys/kernel/ibtrs_client/<session-name>/paths/<dest-addr>/stats/
+==============================================================================
+
+Write "0" to any file in that directory to reset corresponding statistics.
+
+reset_all (RW)
+--------------
+
+Read will return usage help, write 0 will clear all the statistics.
+
+sg_entries (RW)
+---------------
+
+Data to be transfered via RDMA is passed to IBTRS as scather-gather
+list. A scather-gather list can contain multiple entries.
+Scather-gather list with less entries require less processing power
+and can therefore transfered faster. The file sg_entries outputs a
+per-CPU distribution table for the number of entries in the
+scather-gather lists, that were passed to the IBTRS API function
+ibtrs_clt_request (READ or WRITE).
+
+cpu_migration (RW)
+------------------
+
+IBTRS expects that each HCA IRQ is pinned to a separate CPU. If it's
+not the case, the processing of an I/O response could be processed on a
+different CPU than where it was originally submitted.  This file shows
+how many interrupts where generated on a non expected CPU.
+"from:" is the CPU on which the IRQ was expected, but not generated.
+"to:" is the CPU on which the IRQ was generated, but not expected.
+
+reconnects (RW)
+---------------
+
+Contains 2 unsigned int values, the first one records number of successful
+reconnects in the path lifetime, the second one records number of failed
+reconnects in the path lifetime.
+
+rdma_lat (RW)
+-------------
+
+Latency distribution of IBTRS requests.
+The format is:
+   1 ms: <CNT-LAT-READ> <CNT-LAT-WRITE>
+   2 ms: <CNT-LAT-READ> <CNT-LAT-WRITE>
+   4 ms: <CNT-LAT-READ> <CNT-LAT-WRITE>
+   8 ms: <CNT-LAT-READ> <CNT-LAT-WRITE>
+  16 ms: <CNT-LAT-READ> <CNT-LAT-WRITE>
+  ...
+  65536 ms: <CNT-LAT-READ> <CNT-LAT-WRITE>
+  >= 65536 ms: <CNT-LAT-READ> <CNT-LAT-WRITE>
+  maximum ms: <CNT-LAT-READ> <CNT-LAT-WRITE>
+
+wc_completion (RW)
+------------------
+
+Contains 2 unsigned int values, the first one records max number of work
+requests processed in work_completion in session lifetime, the second
+one records average number of work requests processed in work_completion
+in session lifetime.
+
+rdma (RW)
+---------
+
+Contains statistics regarding rdma operations and inflight operations.
+The output consists of 6 values:
+
+<read-count> <read-total-size> <write-count> <write-total-size> \
+<inflights> <failovered>
+
+======================
+Server Sysfs Interface
+======================
+
+Entries under /sys/kernel/ibtrs_server/
+=======================================
+
+When a user of IBTRS API creates a new session on a client side, a
+directory entry with the name of that session is created in here.
+
+Entries under /sys/kernel/ibtrs_server/<session-name>/paths/
+============================================================
+
+When new path is created by writing to "add_path" entry on client side,
+a directory entry with source address is created on server.
+
+Entries under /sys/kernel/ibtrs_server/<session-name>/paths/<source-addr>/
+==========================================================================
+
+disconnect (RW)
+---------------
+
+When "1" is written to the file, the IBTRS session is being disconnected.
+Oprations is non-blocking and returns control immediately to the caller.
+
+hca_name (R)
+------------
+
+Contains the the name of HCA the connection established on.
+
+hca_port (R)
+------------
+
+Contains the port number of active port traffic is going through.
+
+Entries under /sys/kernel/ibtrs_server/<session-name>/paths/<source-addr>/stats/
+================================================================================
+
+When "0" is written to a file in this directory, the corresponding counters
+will be reset.
+
+reset_all (RW)
+--------------
+
+Read will return usage help, write 0 will clear all the counters about
+stats.
+
+rdma (RW)
+---------
+
+Contains statistics regarding rdma operations and inflight operations.
+The output consists of 5 values:
+
+<read-count> <read-total-size> <write-count> <write-total-size> <inflights>
+
+wc_completion (RW)
+------------------
+
+Contains 3 values, the first one is int, records max number of work
+requests processed in work_completion in session lifetime, the second
+one long int records total number of work requests processed in
+work_completion in session lifetime and the 3rd one long int records
+total number of calls to the cq completion handler. Devision of 2nd
+number through 3rd gives the average number of completions processed
+in completion handler.
+
+Contact
+-------
+
+Mailing list: "IBNBD/IBTRS Storage Team" <ibnbd@profitbricks.com>
