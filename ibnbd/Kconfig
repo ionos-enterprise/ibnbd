@@ -3,8 +3,8 @@ config BLK_DEV_IBNBD
 
 config BLK_DEV_IBNBD_CLIENT
 	tristate "Network block device over Infiniband client support"
+	depends on INFINIBAND_IBTRS_CLIENT
 	select BLK_DEV_IBNBD
-	select INFINIBAND_IBTRS_CLIENT
 	help
 	  Saying Y here will allow your computer to be a client for network
 	  block devices over Infiniband, i.e. it will be able to use block
@@ -21,8 +21,8 @@ config BLK_DEV_IBNBD_CLIENT
 
 config BLK_DEV_IBNBD_SERVER
 	tristate "Network block device over Infiniband server support"
+	depends on INFINIBAND_IBTRS_SERVER
 	select BLK_DEV_IBNBD
-	select INFINIBAND_IBTRS_SERVER
 	help
 	  Saying Y here will allow your computer to be a server for network
 	  block devices over Infiniband, i.e. it will be able to use block

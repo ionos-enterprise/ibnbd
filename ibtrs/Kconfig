@@ -4,6 +4,7 @@ config INFINIBAND_IBTRS
 
 config INFINIBAND_IBTRS_CLIENT
 	tristate "InfiniBand IBTRS client"
+	depends on INFINIBAND_ADDR_TRANS
 	select INFINIBAND_IBTRS
 	help
 	  Support for the simplified data transfer over InfiniBand.
@@ -11,6 +12,7 @@ config INFINIBAND_IBTRS_CLIENT
 
 config INFINIBAND_IBTRS_SERVER
 	tristate "InfiniBand IBTRS server"
+	depends on INFINIBAND_ADDR_TRANS
 	select INFINIBAND_IBTRS
 	help
 	  Support for the simplified data transfer over InfiniBand.
