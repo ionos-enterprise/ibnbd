@@ -55,9 +55,6 @@
  * @IBNBD_MSG_IO:		block IO request operation
  * @IBNBD_MSG_CLOSE:		close (unmap) device request
  * @IBNBD_MSG_CLOSE_RSP:	response to an @IBNBD_MSG_CLOSE
- *
- * Note: DO NOT REORDER THE MEMBERS OF THIS ENUM!
- * If necessary, add new members after the last one.
  */
 enum ibnbd_msg_type {
 	IBNBD_MSG_SESS_INFO,
@@ -98,12 +95,9 @@ enum ibnbd_io_mode {
  * struct ibnbd_msg_sess_info - initial session info from client to server
  * @hdr:		message header
  * @ver:		IBNBD protocol version
- *
- * Note: DO NOT CHANGE THE ORDER OF THE MEMBERS BEFORE 'ver'
  */
 struct ibnbd_msg_sess_info {
 	struct ibnbd_msg_hdr hdr;
-
 	u8		ver;
 	u8		reserved[31];
 };
@@ -112,12 +106,9 @@ struct ibnbd_msg_sess_info {
  * struct ibnbd_msg_sess_info_rsp - initial session info from server to client
  * @hdr:		message header
  * @ver:		IBNBD protocol version
- *
- * Note: DO NOT CHANGE THE ORDER OF THE MEMBERS BEFORE 'ver'
  */
 struct ibnbd_msg_sess_info_rsp {
 	struct ibnbd_msg_hdr hdr;
-
 	u8		ver;
 	u8		reserved[31];
 };
@@ -184,6 +175,22 @@ struct ibnbd_msg_open_rsp {
 	u8			__padding[10];
 };
 
+/**
+ * struct ibnbd_msg_io - message for I/O read/write
+ * @hdr:	message header
+ * @device_id:	device_id on server side to find the right device
+ * @sector:	bi_sector attribute from struct bio
+ * @rw:		bitmask, valid values are defined in enum ibnbd_io_flags
+ * @bi_size:   number of bytes for I/O read/write
+ */
+struct ibnbd_msg_io {
+	struct ibnbd_msg_hdr hdr;
+	__le32		device_id;
+	__le64		sector;
+	__le32		rw;
+	__le32		bi_size;
+};
+
 #define IBNBD_OP_BITS  8
 #define IBNBD_OP_MASK  ((1 << IBNBD_OP_BITS) - 1)
 
@@ -245,22 +252,6 @@ static inline bool ibnbd_flags_supported(u32 flags)
 
 	return true;
 }
-
-/**
- * struct ibnbd_msg_io - message for I/O read/write
- * @hdr:	message header
- * @device_id:	device_id on server side to find the right device
- * @sector:	bi_sector attribute from struct bio
- * @rw:		bitmask, valid values are defined in enum ibnbd_io_flags
- * @bi_size:   number of bytes for I/O read/write
- */
-struct ibnbd_msg_io {
-	struct ibnbd_msg_hdr hdr;
-	__le32		device_id;
-	__le64		sector;
-	__le32		rw;
-	__le32		bi_size;
-};
 
 static inline u32 ibnbd_to_bio_flags(u32 ibnbd_flags)
 {
