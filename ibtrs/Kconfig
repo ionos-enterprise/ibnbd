@@ -3,17 +3,18 @@ config INFINIBAND_IBTRS
 	depends on INFINIBAND_ADDR_TRANS
 
 config INFINIBAND_IBTRS_CLIENT
-	tristate "InfiniBand IBTRS client"
+	tristate "IBTRS client module"
 	depends on INFINIBAND_ADDR_TRANS
 	select INFINIBAND_IBTRS
 	help
-	  Support for the simplified data transfer over InfiniBand.
-	  The IBTRS protocol is defined by the ProfitBricks GmbH.
+	  IBTRS client allows for simplified data transfer and connection
+	  establishment over RDMA (InfiniBand, RoCE, iWarp). Uses BIO-like
+	  READ/WRITE semantics and provides multipath capabilities.
 
 config INFINIBAND_IBTRS_SERVER
-	tristate "InfiniBand IBTRS server"
+	tristate "IBTRS server module"
 	depends on INFINIBAND_ADDR_TRANS
 	select INFINIBAND_IBTRS
 	help
-	  Support for the simplified data transfer over InfiniBand.
-	  The IBTRS protocol is defined by the ProfitBricks GmbH.
+	  IBTRS server module processing connection and IO requests received
+	  from the IBTRS client module.

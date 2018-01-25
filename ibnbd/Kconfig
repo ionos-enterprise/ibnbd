@@ -2,37 +2,21 @@ config BLK_DEV_IBNBD
 	boolean
 
 config BLK_DEV_IBNBD_CLIENT
-	tristate "Network block device over Infiniband client support"
+	tristate "Network block device driver on top of IBTRS transport"
 	depends on INFINIBAND_IBTRS_CLIENT
 	select BLK_DEV_IBNBD
 	help
-	  Saying Y here will allow your computer to be a client for network
-	  block devices over Infiniband, i.e. it will be able to use block
-	  devices exported by servers (mount file systems on them etc.).
-	  Communication between client and server works over Infiniband
-	  networking, but to the client program this is hidden: it looks
-	  like a regular local file access to a block device special file
-	  such as /dev/ibnbd0.
-
-	  To compile this driver as a module, choose M here: the
-	  module will be called ibnbd_client.
+	  IBNBD client allows for mapping of a remote block devices over
+	  IBTRS protocol from a target system where IBNBD server is running.
 
 	  If unsure, say N.
 
 config BLK_DEV_IBNBD_SERVER
-	tristate "Network block device over Infiniband server support"
+	tristate "Network block device over RDMA Infiniband server support"
 	depends on INFINIBAND_IBTRS_SERVER
 	select BLK_DEV_IBNBD
 	help
-	  Saying Y here will allow your computer to be a server for network
-	  block devices over Infiniband, i.e. it will be able to use block
-	  devices exported by servers (mount file systems on them etc.).
-	  Communication between client and server works over Infiniband
-	  networking, but to the client program this is hidden:
-	  it looks like a regular local file access to a block device
-	  special file such as /dev/ibnbd0.
-
-	  To compile this driver as a module, choose M here: the
-	  module will be called ibnbd_client.
+	  IBNBD server allows for exporting local block devices to a remote client
+	  over IBTRS protocol.
 
 	  If unsure, say N.
