@@ -584,7 +584,6 @@ static void ibnbd_srv_fill_msg_open_rsp(struct ibnbd_msg_open_rsp *rsp,
 	struct ibnbd_dev *ibnbd_dev = sess_dev->ibnbd_dev;
 
 	rsp->hdr.type = cpu_to_le16(IBNBD_MSG_OPEN_RSP);
-	rsp->result = 0;
 	rsp->device_id =
 		cpu_to_le32(sess_dev->device_id);
 	rsp->nsectors =

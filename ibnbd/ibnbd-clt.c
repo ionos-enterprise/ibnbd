@@ -609,10 +609,6 @@ static void msg_open_conf(struct work_struct *work)
 
 	if (errno) {
 		ibnbd_err(dev, "Opening failed, server responded: %d\n", errno);
-	} else if (rsp->result) {
-		errno = le32_to_cpu(rsp->result);
-		ibnbd_err(dev, "Server failed to open device for mapping: %d\n",
-			  errno);
 	} else {
 		errno = process_msg_open_rsp(dev, rsp);
 		if (unlikely(errno)) {

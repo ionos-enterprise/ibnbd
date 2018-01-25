@@ -151,7 +151,6 @@ struct ibnbd_msg_close {
 /**
  * struct ibnbd_msg_open_rsp - response message to IBNBD_MSG_OPEN
  * @hdr:		message header
- * @result:		0 on success or negative error code on failure
  * @nsectors:		number of sectors
  * @device_id:		device_id on server side to identify the device
  * @queue_flags:	queue_flags of the device on server side
@@ -169,9 +168,8 @@ struct ibnbd_msg_close {
  */
 struct ibnbd_msg_open_rsp {
 	struct ibnbd_msg_hdr	hdr;
-	__le32			result;
-	__le64			nsectors;
 	__le32			device_id;
+	__le64			nsectors;
 	__le32			max_hw_sectors;
 	__le32			max_write_same_sectors;
 	__le32			max_discard_sectors;
@@ -183,7 +181,7 @@ struct ibnbd_msg_open_rsp {
 	__le16			secure_discard;
 	u8			rotational;
 	u8			io_mode;
-	u8			__padding[6];
+	u8			__padding[10];
 };
 
 #define IBNBD_OP_BITS  8
