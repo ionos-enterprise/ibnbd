@@ -278,13 +278,13 @@ struct ibtrs_sg_desc {
 };
 
 /**
- * struct ibtrs_msg_req_rdma_write - RDMA data transfer request from client
+ * struct ibtrs_msg_rdma_read - RDMA data transfer request from client
  * @type:		always @IBTRS_MSG_READ
  * @usr_len:		length of user payload
  * @sg_cnt:		number of @desc entries
  * @desc:		RDMA bufferst where the server can write the result to
  */
-struct ibtrs_msg_req_rdma_write {
+struct ibtrs_msg_rdma_read {
 	__le16			type;
 	__le16			usr_len;
 	__le32			sg_cnt;

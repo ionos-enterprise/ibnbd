@@ -3242,7 +3242,7 @@ static int ibtrs_clt_read_req(struct ibtrs_clt_io_req *req)
 {
 	struct ibtrs_clt_con *con = req->con;
 	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
-	struct ibtrs_msg_req_rdma_write *msg;
+	struct ibtrs_msg_rdma_read *msg;
 	struct ibtrs_ib_dev *ibdev;
 	struct scatterlist *sg;
 
@@ -3348,7 +3348,7 @@ int ibtrs_clt_read(struct ibtrs_clt *clt, ibtrs_conf_fn *conf,
 			continue;
 
 		if (unlikely(usr_len > IO_MSG_SIZE ||
-			     sizeof(struct ibtrs_msg_req_rdma_write) +
+			     sizeof(struct ibtrs_msg_rdma_read) +
 			     sg_cnt * sizeof(struct ibtrs_sg_desc) >
 			     sess->max_req_size)) {
 			ibtrs_wrn_rl(sess, "Read request failed, user message"

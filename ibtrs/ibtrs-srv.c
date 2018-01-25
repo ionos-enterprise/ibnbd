@@ -349,7 +349,7 @@ static int rdma_write_sg(struct ibtrs_srv_op *id)
 	size_t sg_cnt;
 	int err, i, offset;
 
-	sg_cnt = le32_to_cpu(id->req->sg_cnt);
+	sg_cnt = le32_to_cpu(id->msg->sg_cnt);
 	if (unlikely(!sg_cnt))
 		return -EINVAL;
 
@@ -360,7 +360,7 @@ static int rdma_write_sg(struct ibtrs_srv_op *id)
 		wr		= &id->tx_wr[i];
 		list		= &id->tx_sg[i];
 		list->addr	= id->data_dma_addr + offset;
-		list->length	= le32_to_cpu(id->req->desc[i].len);
+		list->length	= le32_to_cpu(id->msg->desc[i].len);
 
 		/* WR will fail with length error
 		 * if this is 0
@@ -376,8 +376,8 @@ static int rdma_write_sg(struct ibtrs_srv_op *id)
 		wr->wr.wr_cqe	= &io_comp_cqe;
 		wr->wr.sg_list	= list;
 		wr->wr.num_sge	= 1;
-		wr->remote_addr	= le64_to_cpu(id->req->desc[i].addr);
-		wr->rkey	= le32_to_cpu(id->req->desc[i].key);
+		wr->remote_addr	= le64_to_cpu(id->msg->desc[i].addr);
+		wr->rkey	= le32_to_cpu(id->msg->desc[i].key);
 
 		if (i < (sg_cnt - 1)) {
 			wr->wr.next	= &id->tx_wr[i + 1].wr;
@@ -451,7 +451,7 @@ void ibtrs_srv_resp_rdma(struct ibtrs_srv_op *id, int status)
 			     ibtrs_srv_state_str(sess->state));
 		goto out;
 	}
-	if (status || id->dir == WRITE || !id->req->sg_cnt)
+	if (status || id->dir == WRITE || !id->msg->sg_cnt)
 		err = send_io_resp_imm(con, id->msg_id, status);
 	else
 		err = rdma_write_sg(id);
@@ -742,7 +742,7 @@ static int post_recv_sess(struct ibtrs_srv_sess *sess)
 }
 
 static void process_read(struct ibtrs_srv_con *con,
-			 struct ibtrs_msg_req_rdma_write *req,
+			 struct ibtrs_msg_rdma_read *msg,
 			 u32 buf_id, u32 off)
 {
 	struct ibtrs_srv_sess *sess = to_srv_sess(con->c.sess);
@@ -760,7 +760,7 @@ static void process_read(struct ibtrs_srv_con *con,
 			     ibtrs_srv_state_str(sess->state));
 		return;
 	}
-	sg_cnt = le32_to_cpu(req->sg_cnt);
+	sg_cnt = le32_to_cpu(msg->sg_cnt);
 	ibtrs_srv_get_ops_ids(sess);
 	ibtrs_srv_update_rdma_stats(&sess->stats, off, READ);
 	id = sess->ops_ids[buf_id];
@@ -771,7 +771,7 @@ static void process_read(struct ibtrs_srv_con *con,
 	id->con		= con;
 	id->dir		= READ;
 	id->msg_id	= buf_id;
-	id->req		= req;
+	id->msg		= msg;
 	if (sg_cnt) {
 		id->tx_wr = kcalloc(sg_cnt, sizeof(*id->tx_wr), GFP_KERNEL);
 		id->tx_sg = kcalloc(sg_cnt, sizeof(*id->tx_sg), GFP_KERNEL);
@@ -784,7 +784,7 @@ static void process_read(struct ibtrs_srv_con *con,
 			goto send_err_msg;
 		}
 	}
-	usr_len = le16_to_cpu(req->usr_len);
+	usr_len = le16_to_cpu(msg->usr_len);
 	data_len = off - usr_len;
 	data = page_address(srv->chunks[buf_id]);
 	id->data_dma_addr = sess->rdma_addr[buf_id];
