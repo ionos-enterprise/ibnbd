@@ -579,4 +579,4 @@ int ibtrs_addr_to_sockaddr(const char *str, size_t len, short port,
 
 	return ret;
 }
-EXPORT_SYMBOL_GPL(ibtrs_addr_to_sockaddr);
+EXPORT_SYMBOL(ibtrs_addr_to_sockaddr);
