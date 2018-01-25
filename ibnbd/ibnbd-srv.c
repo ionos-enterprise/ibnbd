@@ -148,19 +148,17 @@ static int process_rdma(struct ibtrs_srv *sess,
 			struct ibtrs_srv_op *id, void *data, u32 datalen,
 			const void *usr, size_t usrlen)
 {
+	const struct ibnbd_msg_io *msg = usr;
 	struct ibnbd_io_private *priv;
 	struct ibnbd_srv_sess_dev *sess_dev;
-	const struct ibnbd_msg_io *msg;
-	int err;
 	u32 dev_id;
+	int err;
 
 	priv = kmalloc(sizeof(*priv), GFP_KERNEL);
 	if (unlikely(!priv))
 		return -ENOMEM;
 
-	msg = (struct ibnbd_msg_io *)(usr);
-
-	dev_id = msg->device_id;
+	dev_id = le32_to_cpu(msg->device_id);
 
 	sess_dev = ibnbd_get_sess_dev(dev_id, srv_sess);
 	if (unlikely(IS_ERR(sess_dev))) {
@@ -174,8 +172,9 @@ static int process_rdma(struct ibtrs_srv *sess,
 	priv->sess_dev = sess_dev;
 	priv->id = id;
 
-	err = ibnbd_dev_submit_io(sess_dev->ibnbd_dev, msg->sector, data,
-				  datalen, msg->bi_size, msg->rw, priv);
+	err = ibnbd_dev_submit_io(sess_dev->ibnbd_dev, le64_to_cpu(msg->sector),
+				  data, datalen, le32_to_cpu(msg->bi_size),
+				  le32_to_cpu(msg->rw), priv);
 	if (unlikely(err)) {
 		ibnbd_err(sess_dev,
 			  "Submitting I/O to device failed, err: %d\n", err);
@@ -383,11 +382,14 @@ static int ibnbd_srv_rdma_ev(struct ibtrs_srv *ibtrs, void *priv,
 	struct ibnbd_srv_session *srv_sess = priv;
 	const struct ibnbd_msg_hdr *hdr = usr;
 	int ret = 0;
+	u16 type;
 
 	if (unlikely(WARN_ON(!srv_sess)))
 		return -ENODEV;
 
-	switch (hdr->type) {
+	type = le16_to_cpu(hdr->type);
+
+	switch (type) {
 	case IBNBD_MSG_IO:
 		return process_rdma(ibtrs, srv_sess, id, data, datalen, usr,
 				    usrlen);
@@ -405,7 +407,7 @@ static int ibnbd_srv_rdma_ev(struct ibtrs_srv *ibtrs, void *priv,
 		break;
 	default:
 		pr_warn("Received unexpected message type %d with dir %d from"
-			" session %s\n", hdr->type, dir, srv_sess->sessname);
+			" session %s\n", type, dir, srv_sess->sessname);
 		return -EINVAL;
 	}
 
@@ -581,36 +583,34 @@ static void ibnbd_srv_fill_msg_open_rsp(struct ibnbd_msg_open_rsp *rsp,
 {
 	struct ibnbd_dev *ibnbd_dev = sess_dev->ibnbd_dev;
 
-	rsp->hdr.type		= IBNBD_MSG_OPEN_RSP;
-	rsp->result		= 0;
-	rsp->device_id		= sess_dev->device_id;
-	rsp->nsectors		= get_capacity(ibnbd_dev->bdev->bd_disk);
+	rsp->hdr.type = cpu_to_le16(IBNBD_MSG_OPEN_RSP);
+	rsp->result = 0;
+	rsp->device_id =
+		cpu_to_le32(sess_dev->device_id);
+	rsp->nsectors =
+		cpu_to_le64(get_capacity(ibnbd_dev->bdev->bd_disk));
 	rsp->logical_block_size	=
-		ibnbd_dev_get_logical_bsize(ibnbd_dev);
-	rsp->physical_block_size = ibnbd_dev_get_phys_bsize(ibnbd_dev);
-	rsp->max_segments	= ibnbd_dev_get_max_segs(ibnbd_dev);
-	rsp->max_hw_sectors	= ibnbd_dev_get_max_hw_sects(ibnbd_dev);
+		cpu_to_le16(ibnbd_dev_get_logical_bsize(ibnbd_dev));
+	rsp->physical_block_size =
+		cpu_to_le16(ibnbd_dev_get_phys_bsize(ibnbd_dev));
+	rsp->max_segments =
+		cpu_to_le16(ibnbd_dev_get_max_segs(ibnbd_dev));
+	rsp->max_hw_sectors =
+		cpu_to_le32(ibnbd_dev_get_max_hw_sects(ibnbd_dev));
 	rsp->max_write_same_sectors =
-		ibnbd_dev_get_max_write_same_sects(ibnbd_dev);
+		cpu_to_le32(ibnbd_dev_get_max_write_same_sects(ibnbd_dev));
 	rsp->max_discard_sectors =
-		ibnbd_dev_get_max_discard_sects(ibnbd_dev);
+		cpu_to_le32(ibnbd_dev_get_max_discard_sects(ibnbd_dev));
 	rsp->discard_granularity =
-		ibnbd_dev_get_discard_granularity(ibnbd_dev);
-	rsp->discard_alignment	= ibnbd_dev_get_discard_alignment(ibnbd_dev);
-	rsp->secure_discard	= ibnbd_dev_get_secure_discard(ibnbd_dev);
-	rsp->rotational	= !blk_queue_nonrot(bdev_get_queue(ibnbd_dev->bdev));
-	rsp->io_mode	= ibnbd_dev->mode;
-
-	pr_debug("nsectors = %llu, logical_block_size = %d, "
-		 "physical_block_size = %d, max_segments = %d, "
-		 "max_hw_sectors = %d, max_write_same_sects = %d, "
-		 "max_discard_sectors = %d, rotational = %d, io_mode = %d\n",
-		 rsp->nsectors, rsp->logical_block_size,
-		 rsp->physical_block_size,
-		 rsp->max_segments, rsp->max_hw_sectors,
-		 rsp->max_write_same_sectors,
-		 rsp->max_discard_sectors, rsp->rotational,
-		 rsp->io_mode);
+		cpu_to_le32(ibnbd_dev_get_discard_granularity(ibnbd_dev));
+	rsp->discard_alignment =
+		cpu_to_le32(ibnbd_dev_get_discard_alignment(ibnbd_dev));
+	rsp->secure_discard =
+		cpu_to_le16(ibnbd_dev_get_secure_discard(ibnbd_dev));
+	rsp->rotational =
+		!blk_queue_nonrot(bdev_get_queue(ibnbd_dev->bdev));
+	rsp->io_mode =
+		ibnbd_dev->mode;
 }
 
 static struct ibnbd_srv_sess_dev *
@@ -678,7 +678,7 @@ static int process_msg_sess_info(struct ibtrs_srv *ibtrs,
 		 " server version: %d)\n", srv_sess->sessname,
 		 srv_sess->ver, sess_info_msg->ver, IBNBD_VER_MAJOR);
 
-	rsp->hdr.type = IBNBD_MSG_SESS_INFO_RSP;
+	rsp->hdr.type = cpu_to_le16(IBNBD_MSG_SESS_INFO_RSP);
 	rsp->ver = srv_sess->ver;
 
 	return 0;

@@ -50,16 +50,16 @@
  * enum ibnbd_msg_types - IBNBD message types
  * @IBNBD_MSG_SESS_INFO:	initial session info from client to server
  * @IBNBD_MSG_SESS_INFO_RSP:	initial session info from server to client
- * @IBNBD_MSG_OPEN:		open connection to ibnbd server instance
+ * @IBNBD_MSG_OPEN:		open (map) device request
  * @IBNBD_MSG_OPEN_RSP:		response to an @IBNBD_MSG_OPEN
- * @IBNBD_MSG_READ:		request block device read operation
- * @IBNBD_MSG_REVAL:		notify client about changed device size
+ * @IBNBD_MSG_IO:		block IO request operation
+ * @IBNBD_MSG_CLOSE:		close (unmap) device request
+ * @IBNBD_MSG_CLOSE_RSP:	response to an @IBNBD_MSG_CLOSE
  *
  * Note: DO NOT REORDER THE MEMBERS OF THIS ENUM!
  * If necessary, add new members after the last one.
  */
 enum ibnbd_msg_type {
-	__IBNBD_MSG_MIN,
 	IBNBD_MSG_SESS_INFO,
 	IBNBD_MSG_SESS_INFO_RSP,
 	IBNBD_MSG_OPEN,
@@ -67,7 +67,6 @@ enum ibnbd_msg_type {
 	IBNBD_MSG_IO,
 	IBNBD_MSG_CLOSE,
 	IBNBD_MSG_CLOSE_RSP,
-	__IBNBD_MSG_MAX
 };
 
 /**
@@ -75,8 +74,8 @@ enum ibnbd_msg_type {
  * @type:	Message type, valid values see: enum ibnbd_msg_types
  */
 struct ibnbd_msg_hdr {
-	u16		type;
-	u16		__padding;
+	__le16		type;
+	__le16		__padding;
 };
 
 enum ibnbd_access_mode {
@@ -146,7 +145,7 @@ struct ibnbd_msg_open {
  */
 struct ibnbd_msg_close {
 	struct ibnbd_msg_hdr hdr;
-	u32		device_id;
+	__le32		device_id;
 };
 
 /**
@@ -170,18 +169,18 @@ struct ibnbd_msg_close {
  */
 struct ibnbd_msg_open_rsp {
 	struct ibnbd_msg_hdr	hdr;
-	s32			result;
-	u64			nsectors;
-	u32			device_id;
-	u32			max_hw_sectors;
-	u32			max_write_same_sectors;
-	u32			max_discard_sectors;
-	u32			discard_granularity;
-	u32			discard_alignment;
-	u16			physical_block_size;
-	u16			logical_block_size;
-	u16			max_segments;
-	u16			secure_discard;
+	__le32			result;
+	__le64			nsectors;
+	__le32			device_id;
+	__le32			max_hw_sectors;
+	__le32			max_write_same_sectors;
+	__le32			max_discard_sectors;
+	__le32			discard_granularity;
+	__le32			discard_alignment;
+	__le16			physical_block_size;
+	__le16			logical_block_size;
+	__le16			max_segments;
+	__le16			secure_discard;
 	u8			rotational;
 	u8			io_mode;
 	u8			__padding[6];
@@ -259,10 +258,10 @@ static inline bool ibnbd_flags_supported(u32 flags)
  */
 struct ibnbd_msg_io {
 	struct ibnbd_msg_hdr hdr;
-	u32		device_id;
-	u64		sector;
-	u32		rw;
-	u32		bi_size;
+	__le32		device_id;
+	__le64		sector;
+	__le32		rw;
+	__le32		bi_size;
 };
 
 static inline u32 ibnbd_to_bio_flags(u32 ibnbd_flags)

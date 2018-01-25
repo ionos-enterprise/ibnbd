@@ -102,30 +102,28 @@ static inline bool ibnbd_clt_get_dev(struct ibnbd_clt_dev *dev)
 static void ibnbd_clt_set_dev_attr(struct ibnbd_clt_dev *dev,
 				   const struct ibnbd_msg_open_rsp *rsp)
 {
-	dev->device_id			= rsp->device_id;
-	dev->nsectors			= rsp->nsectors;
-	dev->logical_block_size		= rsp->logical_block_size;
-	dev->physical_block_size	= rsp->physical_block_size;
-	dev->max_write_same_sectors	= rsp->max_write_same_sectors;
-	dev->max_discard_sectors	= rsp->max_discard_sectors;
-	dev->discard_granularity	= rsp->discard_granularity;
-	dev->discard_alignment		= rsp->discard_alignment;
-	dev->secure_discard		= rsp->secure_discard;
-	dev->rotational			= rsp->rotational;
-	dev->remote_io_mode		= rsp->io_mode;
+	struct ibnbd_clt_session *sess = dev->sess;
 
-	if (dev->remote_io_mode == IBNBD_FILEIO) {
-		dev->max_hw_sectors = dev->sess->max_io_size /
-			rsp->logical_block_size;
-		dev->max_segments = BMAX_SEGMENTS;
-	} else {
-		dev->max_hw_sectors = dev->sess->max_io_size /
-			rsp->logical_block_size <
-			rsp->max_hw_sectors ?
-			dev->sess->max_io_size /
-			rsp->logical_block_size : rsp->max_hw_sectors;
-		dev->max_segments = min_t(u16, rsp->max_segments,
-					  BMAX_SEGMENTS);
+	dev->device_id		    = le32_to_cpu(rsp->device_id);
+	dev->nsectors		    = le64_to_cpu(rsp->nsectors);
+	dev->logical_block_size	    = le16_to_cpu(rsp->logical_block_size);
+	dev->physical_block_size    = le16_to_cpu(rsp->physical_block_size);
+	dev->max_write_same_sectors = le32_to_cpu(rsp->max_write_same_sectors);
+	dev->max_discard_sectors    = le32_to_cpu(rsp->max_discard_sectors);
+	dev->discard_granularity    = le32_to_cpu(rsp->discard_granularity);
+	dev->discard_alignment	    = le32_to_cpu(rsp->discard_alignment);
+	dev->secure_discard	    = le16_to_cpu(rsp->secure_discard);
+	dev->rotational		    = rsp->rotational;
+	dev->remote_io_mode	    = rsp->io_mode;
+
+	dev->max_hw_sectors = sess->max_io_size / dev->logical_block_size;
+	dev->max_segments = BMAX_SEGMENTS;
+
+	if (dev->remote_io_mode == IBNBD_BLOCKIO) {
+		dev->max_hw_sectors = min_t(u32, dev->max_hw_sectors,
+					    le32_to_cpu(rsp->max_hw_sectors));
+		dev->max_segments = min_t(u16, dev->max_segments,
+					  le16_to_cpu(rsp->max_segments));
 	}
 }
 
@@ -161,12 +159,14 @@ static int process_msg_open_rsp(struct ibnbd_clt_dev *dev,
 		goto out;
 	}
 	if (dev->dev_state == DEV_STATE_MAPPED_DISCONNECTED) {
+		u64 nsectors = le64_to_cpu(rsp->nsectors);
+
 		/*
 		 * If the device was remapped and the size changed in the
 		 * meantime we need to revalidate it
 		 */
-		if (dev->nsectors != rsp->nsectors)
-			ibnbd_clt_revalidate_disk(dev, (size_t)rsp->nsectors);
+		if (dev->nsectors != nsectors)
+			ibnbd_clt_revalidate_disk(dev, nsectors);
 		ibnbd_info(dev, "Device online, device remapped successfully\n");
 	}
 	ibnbd_clt_set_dev_attr(dev, rsp);
@@ -584,8 +584,8 @@ static int send_msg_close(struct ibnbd_clt_dev *dev, u32 device_id, bool wait)
 
 	sg_mark_end(&iu->sglist[0]);
 
-	msg.hdr.type	= IBNBD_MSG_CLOSE;
-	msg.device_id	= device_id;
+	msg.hdr.type	= cpu_to_le16(IBNBD_MSG_CLOSE);
+	msg.device_id	= cpu_to_le32(device_id);
 
 	ibnbd_clt_get_dev(dev);
 	err = send_usr_msg(sess->ibtrs, WRITE, iu, &vec, 1, 0, NULL, 0,
@@ -610,17 +610,19 @@ static void msg_open_conf(struct work_struct *work)
 	if (errno) {
 		ibnbd_err(dev, "Opening failed, server responded: %d\n", errno);
 	} else if (rsp->result) {
-		errno = rsp->result;
+		errno = le32_to_cpu(rsp->result);
 		ibnbd_err(dev, "Server failed to open device for mapping: %d\n",
 			  errno);
 	} else {
 		errno = process_msg_open_rsp(dev, rsp);
-		if (unlikely(errno))
+		if (unlikely(errno)) {
+			u32 device_id = le32_to_cpu(rsp->device_id);
 			/*
 			 * If server thinks its fine, but we fail to process
 			 * then be nice and send a close to server.
 			 */
-			(void)send_msg_close(dev, rsp->device_id, NO_WAIT);
+			(void)send_msg_close(dev, device_id, NO_WAIT);
+		}
 	}
 	kfree(rsp);
 	wake_up_iu_comp(iu, errno);
@@ -670,9 +672,9 @@ static int send_msg_open(struct ibnbd_clt_dev *dev, bool wait)
 
 	sg_init_one(iu->sglist, rsp, sizeof(*rsp));
 
-	msg.hdr.type		= IBNBD_MSG_OPEN;
-	msg.access_mode		= dev->access_mode;
-	msg.io_mode		= dev->io_mode;
+	msg.hdr.type	= cpu_to_le16(IBNBD_MSG_OPEN);
+	msg.access_mode	= dev->access_mode;
+	msg.io_mode	= dev->io_mode;
 	strlcpy(msg.dev_name, dev->pathname, sizeof(msg.dev_name));
 
 	ibnbd_clt_get_dev(dev);
@@ -716,7 +718,7 @@ static int send_msg_sess_info(struct ibnbd_clt_session *sess, bool wait)
 
 	sg_init_one(iu->sglist, rsp, sizeof(*rsp));
 
-	msg.hdr.type = IBNBD_MSG_SESS_INFO;
+	msg.hdr.type = cpu_to_le16(IBNBD_MSG_SESS_INFO);
 	msg.ver      = IBNBD_VER_MAJOR;
 
 	ibnbd_clt_get_sess(sess);
@@ -1182,17 +1184,17 @@ static int ibnbd_client_xfer_request(struct ibnbd_clt_dev *dev,
 
 	iu->rq		= rq;
 	iu->dev		= dev;
-	msg.sector	= blk_rq_pos(rq);
-	msg.bi_size	= blk_rq_bytes(rq);
-	msg.rw		= rq_to_ibnbd_flags(rq);
+	msg.sector	= cpu_to_le64(blk_rq_pos(rq));
+	msg.bi_size	= cpu_to_le32(blk_rq_bytes(rq));
+	msg.rw		= cpu_to_le32(rq_to_ibnbd_flags(rq));
 
 	sg_cnt = blk_rq_map_sg(dev->queue, rq, iu->sglist);
 	if (sg_cnt == 0)
 		/* Do not forget to mark the end */
 		sg_mark_end(&iu->sglist[0]);
 
-	msg.hdr.type		= IBNBD_MSG_IO;
-	msg.device_id		= dev->device_id;
+	msg.hdr.type	= cpu_to_le16(IBNBD_MSG_IO);
+	msg.device_id	= cpu_to_le32(dev->device_id);
 
 	vec = (struct kvec) {
 		.iov_base = &msg,
