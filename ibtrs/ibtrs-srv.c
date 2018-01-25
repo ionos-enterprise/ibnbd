@@ -47,6 +47,9 @@ static int max_io_size = DEFAULT_MAX_IO_SIZE;
 #define MAX_REQ_SIZE PAGE_SIZE
 static int rcv_buf_size = DEFAULT_MAX_IO_SIZE + MAX_REQ_SIZE;
 
+#define MAX_SG_COUNT  ((MAX_REQ_SIZE - sizeof(struct ibtrs_msg_rdma_read)) \
+			/ sizeof(struct ibtrs_sg_desc))
+
 static int max_io_size_set(const char *val, const struct kernel_param *kp)
 {
 	int err, ival;
@@ -299,6 +302,7 @@ static int ibtrs_srv_alloc_ops_ids(struct ibtrs_srv_sess *sess)
 		ibtrs_err(sess, "Allocation failed\n");
 		goto err;
 	}
+
 	for (i = 0; i < srv->queue_depth; ++i) {
 		id = kzalloc(sizeof(*id), GFP_KERNEL);
 		if (unlikely(!id)) {
@@ -306,6 +310,18 @@ static int ibtrs_srv_alloc_ops_ids(struct ibtrs_srv_sess *sess)
 			goto err;
 		}
 		sess->ops_ids[i] = id;
+		id->tx_wr = kcalloc(MAX_SG_COUNT, sizeof(*id->tx_wr),
+				    GFP_KERNEL);
+		if (unlikely(!id->tx_wr)) {
+			ibtrs_err(sess, "Allocation failed\n");
+			goto err;
+		}
+		id->tx_sg = kcalloc(MAX_SG_COUNT, sizeof(*id->tx_sg),
+				    GFP_KERNEL);
+		if (unlikely(!id->tx_sg)) {
+			ibtrs_err(sess, "Allocation failed\n");
+			goto err;
+		}
 	}
 	init_waitqueue_head(&sess->ids_waitq);
 	atomic_set(&sess->ids_inflight, 0);
@@ -750,7 +766,7 @@ static void process_read(struct ibtrs_srv_con *con,
 	struct ibtrs_srv_ctx *ctx = srv->ctx;
 	struct ibtrs_srv_op *id;
 
-	size_t usr_len, data_len, sg_cnt;
+	size_t usr_len, data_len;
 	void *data;
 	int ret;
 
@@ -760,30 +776,13 @@ static void process_read(struct ibtrs_srv_con *con,
 			     ibtrs_srv_state_str(sess->state));
 		return;
 	}
-	sg_cnt = le32_to_cpu(msg->sg_cnt);
 	ibtrs_srv_get_ops_ids(sess);
 	ibtrs_srv_update_rdma_stats(&sess->stats, off, READ);
 	id = sess->ops_ids[buf_id];
-	kfree(id->tx_wr);
-	kfree(id->tx_sg);
-	id->tx_wr	= NULL;
-	id->tx_sg	= NULL;
 	id->con		= con;
 	id->dir		= READ;
 	id->msg_id	= buf_id;
 	id->msg		= msg;
-	if (sg_cnt) {
-		id->tx_wr = kcalloc(sg_cnt, sizeof(*id->tx_wr), GFP_KERNEL);
-		id->tx_sg = kcalloc(sg_cnt, sizeof(*id->tx_sg), GFP_KERNEL);
-		if (!id->tx_wr || !id->tx_sg) {
-			ibtrs_err_rl(sess, "Processing read request failed, "
-				     "work request or scatter gather "
-				     "allocation failed for msg_id %d\n",
-				     buf_id);
-			ret = -ENOMEM;
-			goto send_err_msg;
-		}
-	}
 	usr_len = le16_to_cpu(msg->usr_len);
 	data_len = off - usr_len;
 	data = page_address(srv->chunks[buf_id]);
