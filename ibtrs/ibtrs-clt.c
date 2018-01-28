@@ -1813,12 +1813,6 @@ static struct ibtrs_clt_sess *alloc_sess(struct ibtrs_clt *clt,
 	INIT_DELAYED_WORK(&sess->reconnect_dwork, ibtrs_clt_reconnect_work);
 	ibtrs_clt_init_hb(sess);
 
-	err = ibtrs_clt_init_stats(&sess->stats);
-	if (unlikely(err)) {
-		pr_err("Failed to initialize statistics\n");
-		goto err_free_con;
-	}
-
 	sess->mp_skip_list_entry = alloc_percpu(typeof(*sess->mp_skip_list_entry));
 	if (unlikely(!sess->mp_skip_list_entry))
 		goto err_free_con;
@@ -1826,8 +1820,14 @@ static struct ibtrs_clt_sess *alloc_sess(struct ibtrs_clt *clt,
 	for_each_possible_cpu(cpu)
 		INIT_LIST_HEAD(per_cpu_ptr(sess->mp_skip_list_entry, cpu));
 
+	err = ibtrs_clt_init_stats(&sess->stats);
+	if (unlikely(err))
+		goto err_free_percpu;
+
 	return sess;
 
+err_free_percpu:
+	free_percpu(sess->mp_skip_list_entry);
 err_free_con:
 	kfree(sess->s.con);
 err_free_sess:
