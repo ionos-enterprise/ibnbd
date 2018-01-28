@@ -1206,7 +1206,7 @@ static struct ibtrs_clt_sess *get_next_path_min_inflight(struct path_it *it)
 	int inflight;
 
 	list_for_each_entry_rcu(sess, &clt->paths_list, s.entry) {
-		if (unlikely(!list_empty(raw_cpu_ptr(sess->mp_skip_list_entry))))
+		if (unlikely(!list_empty(raw_cpu_ptr(sess->mp_skip_entry))))
 			continue;
 
 		inflight = atomic_read(&sess->stats.inflight);
@@ -1222,8 +1222,7 @@ static struct ibtrs_clt_sess *get_next_path_min_inflight(struct path_it *it)
 	 * a different one
 	 */
 	if (min_path)
-		list_add(raw_cpu_ptr(min_path->mp_skip_list_entry),
-			 &it->skip_list);
+		list_add(raw_cpu_ptr(min_path->mp_skip_entry), &it->skip_list);
 
 	return min_path;
 }
@@ -1246,7 +1245,7 @@ static inline void path_it_deinit(struct path_it *it)
 	/*
 	 * The skip_list is used only for the MIN_INFLIGHT policy.
 	 * We need to remove paths from it, so that next IO can insert
-	 * paths (->mp_skip_list_entry) into a skip_list again.
+	 * paths (->mp_skip_entry) into a skip_list again.
 	 */
 	list_for_each_safe(skip, tmp, &it->skip_list)
 		list_del_init(skip);
@@ -1813,12 +1812,12 @@ static struct ibtrs_clt_sess *alloc_sess(struct ibtrs_clt *clt,
 	INIT_DELAYED_WORK(&sess->reconnect_dwork, ibtrs_clt_reconnect_work);
 	ibtrs_clt_init_hb(sess);
 
-	sess->mp_skip_list_entry = alloc_percpu(typeof(*sess->mp_skip_list_entry));
-	if (unlikely(!sess->mp_skip_list_entry))
+	sess->mp_skip_entry = alloc_percpu(typeof(*sess->mp_skip_entry));
+	if (unlikely(!sess->mp_skip_entry))
 		goto err_free_con;
 
 	for_each_possible_cpu(cpu)
-		INIT_LIST_HEAD(per_cpu_ptr(sess->mp_skip_list_entry, cpu));
+		INIT_LIST_HEAD(per_cpu_ptr(sess->mp_skip_entry, cpu));
 
 	err = ibtrs_clt_init_stats(&sess->stats);
 	if (unlikely(err))
@@ -1827,7 +1826,7 @@ static struct ibtrs_clt_sess *alloc_sess(struct ibtrs_clt *clt,
 	return sess;
 
 err_free_percpu:
-	free_percpu(sess->mp_skip_list_entry);
+	free_percpu(sess->mp_skip_entry);
 err_free_con:
 	kfree(sess->s.con);
 err_free_sess:
@@ -1839,7 +1838,7 @@ err:
 static void free_sess(struct ibtrs_clt_sess *sess)
 {
 	ibtrs_clt_free_stats(&sess->stats);
-	free_percpu(sess->mp_skip_list_entry);
+	free_percpu(sess->mp_skip_entry);
 	kfree(sess->s.con);
 	kfree(sess->srv_rdma_addr);
 	kfree(sess);

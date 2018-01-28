@@ -194,7 +194,7 @@ struct ibtrs_clt_sess {
 	struct kobject		kobj_stats;
 	struct ibtrs_clt_stats  stats;
 	struct list_head __percpu
-				*mp_skip_list_entry;
+				*mp_skip_entry;
 };
 
 struct ibtrs_clt {
