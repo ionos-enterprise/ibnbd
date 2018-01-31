@@ -3012,9 +3012,6 @@ void ibtrs_clt_close(struct ibtrs_clt *clt)
 	ibtrs_clt_destroy_sysfs_root_files(clt);
 	ibtrs_clt_destroy_sysfs_root_folders(clt);
 
-	/* Wait for possible free works scheduled from sysfs */
-	flush_workqueue(ibtrs_wq);
-
 	/* Now it is save to iterate over all paths without locks */
 	list_for_each_entry_safe(sess, tmp, &clt->paths_list, s.entry) {
 		ibtrs_clt_destroy_sess_files(sess, NULL);
