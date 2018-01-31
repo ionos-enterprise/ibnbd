@@ -15,8 +15,8 @@
  * along with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef IBTRS_4_4_96_COMPAT_H
-#define IBTRS_4_4_96_COMPAT_H
+#ifndef IBTRS_4_4_112_COMPAT_H
+#define IBTRS_4_4_112_COMPAT_H
 
 #include <rdma/ib_verbs.h>
 #include <rdma/rdma_cm.h>
@@ -1064,4 +1064,4 @@ typedef uuid_be uuid_t;
 #include "compat.h"
 
 #endif /* ifndef COMPAT */
-#endif /* IBTRS_4_4_96_COMPAT_H */
+#endif /* IBTRS_4_4_112_COMPAT_H */
