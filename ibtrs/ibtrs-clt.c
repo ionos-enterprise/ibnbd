@@ -3012,7 +3012,7 @@ void ibtrs_clt_close(struct ibtrs_clt *clt)
 	ibtrs_clt_destroy_sysfs_root_files(clt);
 	ibtrs_clt_destroy_sysfs_root_folders(clt);
 
-	/* Now it is save to iterate over all paths without locks */
+	/* Now it is safe to iterate over all paths without locks */
 	list_for_each_entry_safe(sess, tmp, &clt->paths_list, s.entry) {
 		ibtrs_clt_destroy_sess_files(sess, NULL);
 		ibtrs_clt_close_conns(sess, true);
