@@ -43,12 +43,12 @@ MODULE_LICENSE("GPL");
 
 #define DEFAULT_MAX_IO_SIZE_KB 128
 #define DEFAULT_MAX_IO_SIZE (DEFAULT_MAX_IO_SIZE_KB * 1024)
-static int max_io_size = DEFAULT_MAX_IO_SIZE;
 #define MAX_REQ_SIZE PAGE_SIZE
-static int rcv_buf_size = DEFAULT_MAX_IO_SIZE + MAX_REQ_SIZE;
+#define MAX_SG_COUNT ((MAX_REQ_SIZE - sizeof(struct ibtrs_msg_rdma_read)) \
+		      / sizeof(struct ibtrs_sg_desc))
 
-#define MAX_SG_COUNT  ((MAX_REQ_SIZE - sizeof(struct ibtrs_msg_rdma_read)) \
-			/ sizeof(struct ibtrs_sg_desc))
+static int max_io_size = DEFAULT_MAX_IO_SIZE;
+static int rcv_buf_size = DEFAULT_MAX_IO_SIZE + MAX_REQ_SIZE;
 
 static int max_io_size_set(const char *val, const struct kernel_param *kp)
 {
@@ -298,30 +298,24 @@ static int ibtrs_srv_alloc_ops_ids(struct ibtrs_srv_sess *sess)
 
 	sess->ops_ids = kcalloc(srv->queue_depth, sizeof(*sess->ops_ids),
 				GFP_KERNEL);
-	if (unlikely(!sess->ops_ids)) {
-		ibtrs_err(sess, "Allocation failed\n");
+	if (unlikely(!sess->ops_ids))
 		goto err;
-	}
 
 	for (i = 0; i < srv->queue_depth; ++i) {
 		id = kzalloc(sizeof(*id), GFP_KERNEL);
-		if (unlikely(!id)) {
-			ibtrs_err(sess, "Allocation failed\n");
+		if (unlikely(!id))
 			goto err;
-		}
+
 		sess->ops_ids[i] = id;
 		id->tx_wr = kcalloc(MAX_SG_COUNT, sizeof(*id->tx_wr),
 				    GFP_KERNEL);
-		if (unlikely(!id->tx_wr)) {
-			ibtrs_err(sess, "Allocation failed\n");
+		if (unlikely(!id->tx_wr))
 			goto err;
-		}
+
 		id->tx_sg = kcalloc(MAX_SG_COUNT, sizeof(*id->tx_sg),
 				    GFP_KERNEL);
-		if (unlikely(!id->tx_sg)) {
-			ibtrs_err(sess, "Allocation failed\n");
+		if (unlikely(!id->tx_sg))
 			goto err;
-		}
 	}
 	init_waitqueue_head(&sess->ids_waitq);
 	atomic_set(&sess->ids_inflight, 0);
