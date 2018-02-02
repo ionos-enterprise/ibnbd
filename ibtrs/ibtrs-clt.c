@@ -920,22 +920,18 @@ static int ibtrs_post_send_rdma_desc(struct ibtrs_clt_con *con,
 {
 	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
 	struct ibtrs_sg_desc *desc = req->desc;
+	struct ib_sge *sge = req->sge;
 	enum ib_send_flags flags;
-	struct ib_sge *list;
 	size_t num_sge;
 	int ret, i;
 
 	num_sge = 1 + n;
-	list = kmalloc_array(num_sge, sizeof(*list), GFP_ATOMIC);
-	if (!list)
-		return -ENOMEM;
-
 	if (num_sge < sess->max_sge) {
 		for (i = 0; i < n; i++, desc++)
-			ibtrs_set_sge_with_desc(&list[i], desc);
-		list[i].addr   = req->iu->dma_addr;
-		list[i].length = size;
-		list[i].lkey   = sess->s.ib_dev->lkey;
+			ibtrs_set_sge_with_desc(&sge[i], desc);
+		sge[i].addr   = req->iu->dma_addr;
+		sge[i].length = size;
+		sge[i].lkey   = sess->s.ib_dev->lkey;
 
 		/*
 		 * From time to time we have to post signalled sends,
@@ -943,16 +939,15 @@ static int ibtrs_post_send_rdma_desc(struct ibtrs_clt_con *con,
 		 */
 		flags = atomic_inc_return(&con->io_cnt) % sess->queue_depth ?
 				0 : IB_SEND_SIGNALED;
-		ret = ibtrs_iu_post_rdma_write_imm(&con->c, req->iu, list,
-						   num_sge,
+		ret = ibtrs_iu_post_rdma_write_imm(&con->c, req->iu,
+						   sge, num_sge,
 						   sess->srv_rdma_buf_rkey,
 						   addr, imm, flags);
 	} else {
-		ret = ibtrs_post_send_rdma_desc_more(con, list, req, n,
+		ret = ibtrs_post_send_rdma_desc_more(con, sge, req, n,
 						     addr, size, imm);
 	}
 
-	kfree(list);
 	return ret;
 }
 
@@ -964,23 +959,19 @@ static int ibtrs_post_send_rdma_more(struct ibtrs_clt_con *con,
 	struct ib_device *ibdev = sess->s.ib_dev->dev;
 	enum ib_send_flags flags;
 	struct scatterlist *sg;
-	struct ib_sge *list;
+	struct ib_sge *sge = req->sge;
 	size_t num_sge;
 	int i, ret;
 
 	num_sge = 1 + req->sg_cnt;
-	list = kmalloc_array(num_sge, sizeof(*list), GFP_ATOMIC);
-	if (!list)
-		return -ENOMEM;
-
 	for_each_sg(req->sglist, sg, req->sg_cnt, i) {
-		list[i].addr   = ib_sg_dma_address(ibdev, sg);
-		list[i].length = ib_sg_dma_len(ibdev, sg);
-		list[i].lkey   = sess->s.ib_dev->lkey;
+		sge[i].addr   = ib_sg_dma_address(ibdev, sg);
+		sge[i].length = ib_sg_dma_len(ibdev, sg);
+		sge[i].lkey   = sess->s.ib_dev->lkey;
 	}
-	list[i].addr   = req->iu->dma_addr;
-	list[i].length = size;
-	list[i].lkey   = sess->s.ib_dev->lkey;
+	sge[i].addr   = req->iu->dma_addr;
+	sge[i].length = size;
+	sge[i].lkey   = sess->s.ib_dev->lkey;
 
 	/*
 	 * From time to time we have to post signalled sends,
@@ -988,10 +979,9 @@ static int ibtrs_post_send_rdma_more(struct ibtrs_clt_con *con,
 	 */
 	flags = atomic_inc_return(&con->io_cnt) % sess->queue_depth ?
 			0 : IB_SEND_SIGNALED;
-	ret = ibtrs_iu_post_rdma_write_imm(&con->c, req->iu, list, num_sge,
+	ret = ibtrs_iu_post_rdma_write_imm(&con->c, req->iu, sge, num_sge,
 					   sess->srv_rdma_buf_rkey,
 					   addr, imm, flags);
-	kfree(list);
 
 	return ret;
 }
@@ -1378,6 +1368,7 @@ static void free_sess_reqs(struct ibtrs_clt_sess *sess)
 			kfree(req->fmr_list);
 		kfree(req->map_page);
 		kfree(req->desc);
+		kfree(req->sge);
 		ibtrs_iu_free(req->iu, DMA_TO_DEVICE,
 			      sess->s.ib_dev->dev);
 	}
@@ -1388,6 +1379,7 @@ static void free_sess_reqs(struct ibtrs_clt_sess *sess)
 static int alloc_sess_reqs(struct ibtrs_clt_sess *sess)
 {
 	struct ibtrs_clt_io_req *req;
+	struct ibtrs_clt *clt = sess->clt;
 	void *mr_list;
 	int i;
 
@@ -1416,9 +1408,15 @@ static int alloc_sess_reqs(struct ibtrs_clt_sess *sess)
 					      sizeof(void *), GFP_KERNEL);
 		if (unlikely(!req->map_page))
 			goto out;
+
 		req->desc = kmalloc_array(sess->max_pages_per_mr,
 					    sizeof(*req->desc), GFP_KERNEL);
 		if (unlikely(!req->desc))
+			goto out;
+
+		req->sge = kmalloc_array(clt->max_segments + 1,
+					 sizeof(*req->sge), GFP_KERNEL);
+		if (unlikely(!req->sge))
 			goto out;
 	}
 
