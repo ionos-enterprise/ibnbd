@@ -152,6 +152,7 @@ struct ibtrs_clt_io_req {
 	void			*priv;
 	bool			in_use;
 	struct ibtrs_clt_con	*con;
+	struct ibtrs_sg_desc	*desc;
 	union {
 		struct ib_pool_fmr	**fmr_list;
 		struct ibtrs_fr_desc	**fr_list;

@@ -825,10 +825,10 @@ static void ibtrs_set_rdma_desc_last(struct ibtrs_clt_con *con,
 				     struct ib_sge *list,
 				     struct ibtrs_clt_io_req *req,
 				     struct ib_rdma_wr *wr, int offset,
-				     struct ibtrs_sg_desc *desc, int m,
-				     int n, u64 addr, u32 size, u32 imm)
+				     int m, int n, u64 addr, u32 size, u32 imm)
 {
 	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
+	struct ibtrs_sg_desc *desc = req->desc;
 	enum ib_send_flags flags;
 	int i;
 
@@ -860,10 +860,10 @@ static void ibtrs_set_rdma_desc_last(struct ibtrs_clt_con *con,
 static int ibtrs_post_send_rdma_desc_more(struct ibtrs_clt_con *con,
 					  struct ib_sge *list,
 					  struct ibtrs_clt_io_req *req,
-					  struct ibtrs_sg_desc *desc, int n,
-					  u64 addr, u32 size, u32 imm)
+					  int n, u64 addr, u32 size, u32 imm)
 {
 	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
+	struct ibtrs_sg_desc *desc = req->desc;
 	size_t max_sge, num_sge, num_wr;
 	struct ib_send_wr *bad_wr;
 	struct ib_rdma_wr *wrs, *wr;
@@ -904,7 +904,7 @@ last_one:
 	wr = &wrs[j];
 
 	ibtrs_set_rdma_desc_last(con, list, req, wr, offset,
-				 desc, m, n, addr, size, imm);
+				 m, n, addr, size, imm);
 
 	ret = ib_post_send(con->c.qp, &wrs[0].wr, &bad_wr);
 	if (unlikely(ret))
@@ -916,10 +916,10 @@ last_one:
 
 static int ibtrs_post_send_rdma_desc(struct ibtrs_clt_con *con,
 				     struct ibtrs_clt_io_req *req,
-				     struct ibtrs_sg_desc *desc, int n,
-				     u64 addr, u32 size, u32 imm)
+				     int n, u64 addr, u32 size, u32 imm)
 {
 	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
+	struct ibtrs_sg_desc *desc = req->desc;
 	enum ib_send_flags flags;
 	struct ib_sge *list;
 	size_t num_sge;
@@ -948,7 +948,7 @@ static int ibtrs_post_send_rdma_desc(struct ibtrs_clt_con *con,
 						   sess->srv_rdma_buf_rkey,
 						   addr, imm, flags);
 	} else {
-		ret = ibtrs_post_send_rdma_desc_more(con, list, req, desc, n,
+		ret = ibtrs_post_send_rdma_desc_more(con, list, req, n,
 						     addr, size, imm);
 	}
 
@@ -1377,6 +1377,7 @@ static void free_sess_reqs(struct ibtrs_clt_sess *sess)
 		else if (sess->fast_reg_mode == IBTRS_FAST_MEM_FMR)
 			kfree(req->fmr_list);
 		kfree(req->map_page);
+		kfree(req->desc);
 		ibtrs_iu_free(req->iu, DMA_TO_DEVICE,
 			      sess->s.ib_dev->dev);
 	}
@@ -1414,6 +1415,10 @@ static int alloc_sess_reqs(struct ibtrs_clt_sess *sess)
 		req->map_page = kmalloc_array(sess->max_pages_per_mr,
 					      sizeof(void *), GFP_KERNEL);
 		if (unlikely(!req->map_page))
+			goto out;
+		req->desc = kmalloc_array(sess->max_pages_per_mr,
+					    sizeof(*req->desc), GFP_KERNEL);
+		if (unlikely(!req->desc))
 			goto out;
 	}
 
@@ -3113,29 +3118,22 @@ static int ibtrs_clt_rdma_write_desc(struct ibtrs_clt_con *con,
 				     struct ibtrs_msg_rdma_write *msg)
 {
 	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
-	struct ibtrs_sg_desc *desc;
 	int ret;
 
-	desc = kmalloc_array(sess->max_pages_per_mr, sizeof(*desc), GFP_ATOMIC);
-	if (unlikely(!desc))
-		return -ENOMEM;
-
-	ret = ibtrs_fast_reg_map_data(con, desc, req);
+	ret = ibtrs_fast_reg_map_data(con, req->desc, req);
 	if (unlikely(ret < 0)) {
 		ibtrs_err_rl(sess,
 			     "Write request failed, fast reg. data mapping"
 			     " failed, err: %d\n", ret);
-		kfree(desc);
 		return ret;
 	}
-	ret = ibtrs_post_send_rdma_desc(con, req, desc, ret, buf,
+	ret = ibtrs_post_send_rdma_desc(con, req, ret, buf,
 					u_msg_len + sizeof(*msg), imm);
 	if (unlikely(ret)) {
 		ibtrs_err(sess, "Write request failed, posting work"
 			  " request failed, err: %d\n", ret);
 		ibtrs_unmap_fast_reg_data(con, req);
 	}
-	kfree(desc);
 	return ret;
 }
 
