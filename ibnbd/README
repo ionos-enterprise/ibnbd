@@ -52,7 +52,7 @@ Example:
 
   > Usage: echo "sessname=<name of the ibtrs session> path=<[srcaddr,]dstaddr>
   > [path=<[srcaddr,]dstaddr>] device_path=<full path on remote side>
-  > [access_mode=<ro|rw|migration>] [input_mode=<mq|rq>]
+  > [access_mode=<ro|rw|migration>]
   > [io_mode=<fileio|blockio>]" > map_device
   >
   > addr ::= [ ip:<ipv4> | ip:<ipv6> | gid:<gid> ]
@@ -69,7 +69,6 @@ Expected format is the following:
     path=<[srcaddr,]dstaddr> [path=<[srcaddr,]dstaddr> ...]
     device_path=<full path on remote side>
     [access_mode=<ro|rw|migration>]
-    [input_mode=<mq|rq>]
     [io_mode=<fileio|blockio>]
 
 Where:
@@ -119,12 +118,6 @@ access_mode: the access_mode parameter specifies if the device is to be
 	     mode is desired.
 
              By default "rw" is used.
-
-input_mode: the input_mode parameter specifies the internal I/O
-            processing mode of the block device on the client.  Accepts
-            "mq" and "rq".
-
-            By default "mq" mode is used.
 
 io_mode:  the io_mode parameter specifies if the device on the server
           will be opened as block device "blockio" or as file "fileio".

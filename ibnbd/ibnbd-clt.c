@@ -197,43 +197,11 @@ out:
 	return ret;
 }
 
-static void ibnbd_blk_delay_work(struct work_struct *work)
-{
-	struct ibnbd_clt_dev *dev;
-
-	dev = container_of(work, struct ibnbd_clt_dev, rq_delay_work.work);
-	spin_lock_irq(dev->queue->queue_lock);
-	blk_start_queue(dev->queue);
-	spin_unlock_irq(dev->queue->queue_lock);
-}
-
-/**
- * What is the difference between this and original blk_delay_queue() ?
- * Here the stop queue flag is cleared, so we are like MQ.
- */
-static void ibnbd_blk_delay_queue(struct ibnbd_clt_dev *dev,
-				  unsigned long msecs)
-{
-	int cpu = get_cpu();
-
-	kblockd_schedule_delayed_work_on(cpu, &dev->rq_delay_work,
-					 msecs_to_jiffies(msecs));
-	put_cpu();
-}
-
 static inline void ibnbd_clt_dev_requeue(struct ibnbd_queue *q)
 {
-	struct ibnbd_clt_dev *dev = q->dev;
-
-	if (dev->queue_mode == BLK_MQ) {
-		if (WARN_ON(!q->hctx))
-			return;
-		blk_mq_delay_queue(q->hctx, 0);
-	} else if (dev->queue_mode == BLK_RQ) {
-		ibnbd_blk_delay_queue(q->dev, 0);
-	} else {
-		WARN(1, "We support requeueing only for RQ or MQ");
-	}
+	if (WARN_ON(!q->hctx))
+		return;
+	blk_mq_delay_queue(q->hctx, 0);
 }
 
 enum {
@@ -433,22 +401,9 @@ static void ibnbd_softirq_done_fn(struct request *rq)
 	struct ibnbd_clt_session *sess	= dev->sess;
 	struct ibnbd_iu *iu;
 
-	switch (dev->queue_mode) {
-	case BLK_MQ:
-		iu = blk_mq_rq_to_pdu(rq);
-		ibnbd_put_tag(sess, iu->tag);
-		blk_mq_end_request(rq, iu->status);
-		break;
-	case BLK_RQ:
-		iu = rq->special;
-		blk_end_request_all(rq, iu->status);
-		break;
-	default:
-		WARN(true, "dev->queue_mode , contains unexpected"
-		     " value: %d. Memory Corruption? Inflight I/O stalled!\n",
-		     dev->queue_mode);
-		return;
-	}
+	iu = blk_mq_rq_to_pdu(rq);
+	ibnbd_put_tag(sess, iu->tag);
+	blk_mq_end_request(rq, iu->status);
 }
 
 static void msg_io_conf(void *priv, int errno)
@@ -459,26 +414,11 @@ static void msg_io_conf(void *priv, int errno)
 
 	iu->status = errno ? BLK_STS_IOERR : BLK_STS_OK;
 
-	switch (dev->queue_mode) {
-	case BLK_MQ:
-		if (softirq_enable) {
-			blk_mq_complete_request(rq);
-		} else {
-			ibnbd_put_tag(dev->sess, iu->tag);
-			blk_mq_end_request(rq, iu->status);
-		}
-		break;
-	case BLK_RQ:
-		if (softirq_enable)
-			blk_complete_request(rq);
-		else
-			blk_end_request_all(rq, iu->status);
-		break;
-	default:
-		WARN(true, "dev->queue_mode , contains unexpected"
-		     " value: %d. Memory Corruption? Inflight I/O stalled!\n",
-		     dev->queue_mode);
-		return;
+	if (softirq_enable) {
+		blk_mq_complete_request(rq);
+	} else {
+		ibnbd_put_tag(dev->sess, iu->tag);
+		blk_mq_end_request(rq, iu->status);
 	}
 
 	if (errno)
@@ -1267,8 +1207,6 @@ static void ibnbd_clt_dev_kick_mq_queue(struct ibnbd_clt_dev *dev,
 {
 	struct ibnbd_queue *q = hctx->driver_data;
 
-	if (WARN_ON(dev->queue_mode != BLK_MQ))
-		return;
 	blk_mq_stop_hw_queue(hctx);
 
 	if (delay != IBNBD_DELAY_IFBUSY)
@@ -1278,21 +1216,6 @@ static void ibnbd_clt_dev_kick_mq_queue(struct ibnbd_clt_dev *dev,
 		 * the queue ourselves.
 		 */
 		blk_mq_delay_queue(hctx, IBNBD_DELAY_10ms);
-}
-
-static void ibnbd_clt_dev_kick_queue(struct ibnbd_clt_dev *dev, int delay)
-{
-	if (WARN_ON(dev->queue_mode != BLK_RQ))
-		return;
-	blk_stop_queue(dev->queue);
-
-	if (delay != IBNBD_DELAY_IFBUSY)
-		ibnbd_blk_delay_queue(dev, delay);
-	else if (unlikely(!ibnbd_clt_dev_add_to_requeue(dev, dev->hw_queues)))
-		/* If session is not busy we have to restart
-		 * the queue ourselves.
-		 */
-		ibnbd_blk_delay_queue(dev, IBNBD_DELAY_10ms);
 }
 
 static blk_status_t ibnbd_queue_rq(struct blk_mq_hw_ctx *hctx,
@@ -1373,73 +1296,6 @@ static int minor_to_index(int minor)
 	return minor >> IBNBD_PART_BITS;
 }
 
-static int ibnbd_rq_prep_fn(struct request_queue *q, struct request *rq)
-{
-	struct ibnbd_clt_dev *dev = q->queuedata;
-	struct ibnbd_iu *iu;
-
-	iu = ibnbd_get_iu(dev->sess, IBTRS_TAG_NOWAIT, IBTRS_IO_CON);
-	if (likely(iu)) {
-		rq->special = iu;
-		rq->rq_flags |= RQF_DONTPREP;
-
-		return BLKPREP_OK;
-	}
-
-	ibnbd_clt_dev_kick_queue(dev, IBNBD_DELAY_IFBUSY);
-	return BLKPREP_DEFER;
-}
-
-static void ibnbd_rq_unprep_fn(struct request_queue *q, struct request *rq)
-{
-	struct ibnbd_clt_dev *dev = q->queuedata;
-
-	if (WARN_ON(!rq->special))
-		return;
-	ibnbd_put_iu(dev->sess, rq->special);
-	rq->special = NULL;
-	rq->rq_flags &= ~RQF_DONTPREP;
-}
-
-static void ibnbd_clt_request(struct request_queue *q)
-__must_hold(q->queue_lock)
-{
-	int err;
-	struct request *req;
-	struct ibnbd_iu *iu;
-	struct ibnbd_clt_dev *dev = q->queuedata;
-
-	while ((req = blk_fetch_request(q)) != NULL) {
-		spin_unlock_irq(q->queue_lock);
-
-		if (unlikely(!ibnbd_clt_dev_is_mapped(dev))) {
-			err = -EIO;
-			goto next;
-		}
-
-		iu = req->special;
-		if (WARN_ON(!iu)) {
-			err = -EIO;
-			goto next;
-		}
-
-		sg_init_table(iu->sglist, dev->max_segments);
-		err = ibnbd_client_xfer_request(dev, req, iu);
-next:
-		if (unlikely(err == -EAGAIN || err == -ENOMEM)) {
-			ibnbd_rq_unprep_fn(q, req);
-			spin_lock_irq(q->queue_lock);
-			blk_requeue_request(q, req);
-			ibnbd_clt_dev_kick_queue(dev, IBNBD_DELAY_10ms);
-			break;
-		} else if (err) {
-			blk_end_request_all(req, err);
-		}
-
-		spin_lock_irq(q->queue_lock);
-	}
-}
-
 static int setup_mq_dev(struct ibnbd_clt_dev *dev)
 {
 	dev->queue = blk_mq_init_queue(&dev->sess->tag_set);
@@ -1450,26 +1306,6 @@ static int setup_mq_dev(struct ibnbd_clt_dev *dev)
 		return PTR_ERR(dev->queue);
 	}
 	ibnbd_init_mq_hw_queues(dev);
-	return 0;
-}
-
-static int setup_rq_dev(struct ibnbd_clt_dev *dev)
-{
-	dev->queue = blk_init_queue(ibnbd_clt_request, NULL);
-	if (IS_ERR_OR_NULL(dev->queue)) {
-		if (IS_ERR(dev->queue)) {
-			ibnbd_err(dev, "Initializing request queue failed, "
-				  "err: %ld\n", PTR_ERR(dev->queue));
-			return PTR_ERR(dev->queue);
-		}
-		ibnbd_err(dev, "Initializing request queue failed\n");
-		return -ENOMEM;
-	}
-
-	blk_queue_prep_rq(dev->queue, ibnbd_rq_prep_fn);
-	blk_queue_softirq_done(dev->queue, ibnbd_softirq_done_fn);
-	blk_queue_unprep_rq(dev->queue, ibnbd_rq_unprep_fn);
-
 	return 0;
 }
 
@@ -1507,10 +1343,10 @@ static void ibnbd_clt_setup_gen_disk(struct ibnbd_clt_dev *dev, int idx)
 	dev->gd->private_data	= dev;
 	snprintf(dev->gd->disk_name, sizeof(dev->gd->disk_name), "ibnbd%d",
 		 idx);
-	pr_debug("disk_name=%s, capacity=%zu, queue_mode=%s\n",
+	pr_debug("disk_name=%s, capacity=%zu\n",
 		 dev->gd->disk_name,
-		 dev->nsectors * (dev->logical_block_size / KERNEL_SECTOR_SIZE),
-		 ibnbd_queue_mode_str(dev->queue_mode));
+		 dev->nsectors * (dev->logical_block_size / KERNEL_SECTOR_SIZE)
+		 );
 
 	set_capacity(dev->gd, dev->nsectors * (dev->logical_block_size /
 					       KERNEL_SECTOR_SIZE));
@@ -1538,17 +1374,7 @@ static int ibnbd_client_setup_device(struct ibnbd_clt_session *sess,
 
 	dev->size = dev->nsectors * dev->logical_block_size;
 
-	switch (dev->queue_mode) {
-	case BLK_MQ:
-		err = setup_mq_dev(dev);
-		break;
-	case BLK_RQ:
-		err = setup_rq_dev(dev);
-		break;
-	default:
-		err = -EINVAL;
-	}
-
+	err = setup_mq_dev(dev);
 	if (err)
 		return err;
 
@@ -1568,20 +1394,17 @@ static int ibnbd_client_setup_device(struct ibnbd_clt_session *sess,
 
 static struct ibnbd_clt_dev *init_dev(struct ibnbd_clt_session *sess,
 				      enum ibnbd_access_mode access_mode,
-				      enum ibnbd_queue_mode queue_mode,
 				      enum ibnbd_io_mode io_mode,
 				      const char *pathname)
 {
 	int ret;
 	struct ibnbd_clt_dev *dev;
-	size_t nr;
 
 	dev = kzalloc_node(sizeof(*dev), GFP_KERNEL, NUMA_NO_NODE);
 	if (!dev)
 		return ERR_PTR(-ENOMEM);
 
-	nr = (queue_mode == BLK_MQ ? nr_cpu_ids : 1);
-	dev->hw_queues = kcalloc(nr, sizeof(*dev->hw_queues), GFP_KERNEL);
+	dev->hw_queues = kcalloc(nr_cpu_ids, sizeof(*dev->hw_queues), GFP_KERNEL);
 	if (unlikely(!dev->hw_queues)) {
 		pr_err("Failed to initialize device '%s' from session"
 		       " %s, allocating hw_queues failed.", pathname,
@@ -1589,8 +1412,7 @@ static struct ibnbd_clt_dev *init_dev(struct ibnbd_clt_session *sess,
 		ret = -ENOMEM;
 		goto out_alloc;
 	}
-	if (queue_mode == BLK_RQ)
-		ibnbd_init_hw_queue(dev, dev->hw_queues, NULL);
+
 	mutex_lock(&ida_lock);
 	ret = ida_simple_get(&index_ida, 0, minor_to_index(1 << MINORBITS),
 			     GFP_KERNEL);
@@ -1604,10 +1426,8 @@ static struct ibnbd_clt_dev *init_dev(struct ibnbd_clt_session *sess,
 	dev->clt_device_id	= ret;
 	dev->sess		= sess;
 	dev->access_mode	= access_mode;
-	dev->queue_mode		= queue_mode;
 	dev->io_mode		= io_mode;
 	strlcpy(dev->pathname, pathname, sizeof(dev->pathname));
-	INIT_DELAYED_WORK(&dev->rq_delay_work, ibnbd_blk_delay_work);
 	mutex_init(&dev->lock);
 	refcount_set(&dev->refcount, 1);
 	dev->dev_state = DEV_STATE_INIT;
@@ -1693,7 +1513,6 @@ struct ibnbd_clt_dev *ibnbd_clt_map_device(const char *sessname,
 					   size_t path_cnt,
 					   const char *pathname,
 					   enum ibnbd_access_mode access_mode,
-					   enum ibnbd_queue_mode queue_mode,
 					   enum ibnbd_io_mode io_mode)
 {
 	struct ibnbd_clt_session *sess;
@@ -1707,7 +1526,7 @@ struct ibnbd_clt_dev *ibnbd_clt_map_device(const char *sessname,
 	if (unlikely(IS_ERR(sess)))
 		return ERR_CAST(sess);
 
-	dev = init_dev(sess, access_mode, queue_mode, io_mode, pathname);
+	dev = init_dev(sess, access_mode, io_mode, pathname);
 	if (unlikely(IS_ERR(dev))) {
 		pr_err("map_device: failed to map device '%s' from session %s,"
 		       " can't initialize device, err: %ld\n", pathname,

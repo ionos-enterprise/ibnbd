@@ -51,11 +51,6 @@ enum ibnbd_clt_dev_state {
 	DEV_STATE_UNMAPPED,
 };
 
-enum ibnbd_queue_mode {
-	BLK_MQ,
-	BLK_RQ
-};
-
 struct ibnbd_iu_comp {
 	wait_queue_head_t wait;
 	int errno;
@@ -120,13 +115,11 @@ struct ibnbd_clt_dev {
 	struct ibnbd_clt_session	*sess;
 	struct request_queue	*queue;
 	struct ibnbd_queue	*hw_queues;
-	struct delayed_work	rq_delay_work;
 	u32			device_id;
 	/* local Idr index - used to track minor number allocations. */
 	u32			clt_device_id;
 	struct mutex		lock;
 	enum ibnbd_clt_dev_state	dev_state;
-	enum ibnbd_queue_mode	queue_mode;
 	enum ibnbd_io_mode	io_mode; /* user requested */
 	enum ibnbd_io_mode	remote_io_mode; /* server really used */
 	char			pathname[NAME_MAX];
@@ -152,18 +145,6 @@ struct ibnbd_clt_dev {
 	struct work_struct	unmap_on_rmmod_work;
 };
 
-static inline const char *ibnbd_queue_mode_str(enum ibnbd_queue_mode mode)
-{
-	switch (mode) {
-	case BLK_RQ:
-		return "rq";
-	case BLK_MQ:
-		return "mq";
-	default:
-		return "unknown";
-	}
-}
-
 /* ibnbd-clt.c */
 
 struct ibnbd_clt_dev *ibnbd_clt_map_device(const char *sessname,
@@ -171,7 +152,6 @@ struct ibnbd_clt_dev *ibnbd_clt_map_device(const char *sessname,
 					   size_t path_cnt,
 					   const char *pathname,
 					   enum ibnbd_access_mode access_mode,
-					   enum ibnbd_queue_mode queue_mode,
 					   enum ibnbd_io_mode io_mode);
 int ibnbd_clt_unmap_device(struct ibnbd_clt_dev *dev, bool force,
 			   const struct attribute *sysfs_self);
