@@ -1722,7 +1722,7 @@ static int check_module_params(void)
 	 * Check if IB immediate data size is enough to hold the mem_id and the
 	 * offset inside the memory chunk
 	 */
-	if (ilog2(sess_queue_depth - 1) + ilog2(max_chunk_size - 1) >
+	if ((ilog2(sess_queue_depth-1)+1) + (ilog2(max_chunk_size-1)+1) >
 	    MAX_IMM_PAYL_BITS) {
 		pr_err("RDMA immediate size (%db) not enough to encode "
 		       "%d buffers of size %dB. Reduce 'sess_queue_depth' "

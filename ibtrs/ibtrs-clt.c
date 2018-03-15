@@ -2656,7 +2656,7 @@ static int process_info_rsp(struct ibtrs_clt_sess *sess,
 	 * Check if IB immediate data size is enough to hold the mem_id and
 	 * the offset inside the memory chunk.
 	 */
-	if (unlikely(ilog2(addr_num - 1) + ilog2(sess->chunk_size - 1) >
+	if (unlikely((ilog2(addr_num-1)+1) + (ilog2(sess->chunk_size-1)+1) >
 		     MAX_IMM_PAYL_BITS)) {
 		ibtrs_err(sess, "RDMA immediate size (%db) not enough to "
 			  "encode %d buffers of size %dB\n",  MAX_IMM_PAYL_BITS,
