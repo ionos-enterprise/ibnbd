@@ -92,6 +92,11 @@ struct ibtrs_srv_op {
 	struct ib_sge			*tx_sg;
 };
 
+struct ibtrs_srv_mr {
+	struct ib_mr	*mr;
+	struct sg_table	sgt;
+};
+
 struct ibtrs_srv_sess {
 	struct ibtrs_sess	s;
 	struct ibtrs_srv	*srv;
@@ -102,6 +107,8 @@ struct ibtrs_srv_sess {
 	struct ibtrs_srv_op	**ops_ids;
 	atomic_t		ids_inflight;
 	wait_queue_head_t	ids_waitq;
+	struct ibtrs_srv_mr	*mrs;
+	unsigned int		mrs_num;
 	dma_addr_t		*rdma_addr;
 	bool			established;
 	unsigned int		mem_bits;

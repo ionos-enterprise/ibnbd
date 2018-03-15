@@ -458,6 +458,17 @@ static void unmap_cont_bufs(struct ibtrs_srv_sess *sess)
 	struct ibtrs_srv *srv = sess->srv;
 	int i;
 
+	for (i = 0; i < sess->mrs_num; i++) {
+		struct ibtrs_srv_mr *srv_mr;
+
+		srv_mr = &sess->mrs[i];
+		ib_dereg_mr(srv_mr->mr);
+		ib_dma_unmap_sg(sess->s.ib_dev->dev, srv_mr->sgt.sgl,
+				srv_mr->sgt.nents, DMA_BIDIRECTIONAL);
+		sg_free_table(&srv_mr->sgt);
+	}
+	kfree(sess->mrs);
+
 	for (i = 0; i < srv->queue_depth; i++)
 		ib_dma_unmap_page(sess->s.ib_dev->dev, sess->rdma_addr[i],
 				  max_chunk_size, DMA_BIDIRECTIONAL);
@@ -466,9 +477,85 @@ static void unmap_cont_bufs(struct ibtrs_srv_sess *sess)
 static int map_cont_bufs(struct ibtrs_srv_sess *sess)
 {
 	struct ibtrs_srv *srv = sess->srv;
+	int i, mri, err, mrs_num;
 	unsigned int chunk_bits;
+	int chunks_per_mr;
 	dma_addr_t addr;
-	int i, err;
+
+	/*
+	 * Here we map queue_depth chunks to MR.  Firstly we have to
+	 * figure out how many chunks can we map per MR.
+	 */
+
+	chunks_per_mr = sess->s.ib_dev->attrs.max_fast_reg_page_list_len;
+	mrs_num = DIV_ROUND_UP(srv->queue_depth, chunks_per_mr);
+	chunks_per_mr = DIV_ROUND_UP(srv->queue_depth, mrs_num);
+
+	sess->mrs = kcalloc(mrs_num, sizeof(*sess->mrs), GFP_KERNEL);
+	if (unlikely(!sess->mrs))
+		return -ENOMEM;
+
+	sess->mrs_num = mrs_num;
+
+	for (mri = 0; mri < mrs_num; mri++) {
+		struct ibtrs_srv_mr *srv_mr = &sess->mrs[mri];
+		struct sg_table *sgt = &srv_mr->sgt;
+		struct scatterlist *s;
+		struct ib_mr *mr;
+		int nr, chunks;
+
+		chunks = chunks_per_mr * mri;
+		chunks_per_mr = min_t(int, chunks_per_mr,
+				      srv->queue_depth - chunks);
+
+		err = sg_alloc_table(sgt, chunks_per_mr, GFP_KERNEL);
+		if (unlikely(err))
+			goto err;
+
+		for_each_sg(sgt->sgl, s, chunks_per_mr, i)
+			sg_set_page(s, srv->chunks[chunks + i],
+				    max_chunk_size, 0);
+
+		nr = ib_dma_map_sg(sess->s.ib_dev->dev, sgt->sgl,
+				   sgt->nents, DMA_BIDIRECTIONAL);
+		if (unlikely(nr < sgt->nents)) {
+			err = nr < 0 ? nr : -EINVAL;
+			goto free_sg;
+		}
+		mr = ib_alloc_mr(sess->s.ib_dev->pd, IB_MR_TYPE_MEM_REG,
+				 sgt->nents);
+		if (unlikely(IS_ERR(mr))) {
+			err = PTR_ERR(mr);
+			goto unmap_sg;
+		}
+		nr = ib_map_mr_sg(mr, sgt->sgl, sgt->nents,
+				  NULL, max_chunk_size);
+		if (unlikely(nr < sgt->nents)) {
+			err = nr < 0 ? nr : -EINVAL;
+			goto dereg_mr;
+		}
+		ib_update_fast_reg_key(mr, ib_inc_rkey(mr->rkey));
+
+		srv_mr->mr = mr;
+
+		continue;
+err:
+		while (mri--) {
+			srv_mr = &sess->mrs[mri];
+			sgt = &srv_mr->sgt;
+			mr = srv_mr->mr;
+dereg_mr:
+			ib_dereg_mr(mr);
+unmap_sg:
+			ib_dma_unmap_sg(sess->s.ib_dev->dev, sgt->sgl,
+					sgt->nents, DMA_BIDIRECTIONAL);
+free_sg:
+			sg_free_table(sgt);
+		}
+		kfree(sess->mrs);
+
+		return err;
+	}
 
 	for (i = 0; i < srv->queue_depth; i++) {
 		addr = ib_dma_map_page(sess->s.ib_dev->dev, srv->chunks[i],
@@ -569,6 +656,23 @@ static void ibtrs_srv_sess_down(struct ibtrs_srv_sess *sess)
 	mutex_unlock(&srv->paths_ev_mutex);
 }
 
+static void ibtrs_srv_reg_mr_done(struct ib_cq *cq, struct ib_wc *wc)
+{
+	struct ibtrs_srv_con *con = cq->cq_context;
+	struct ibtrs_srv_sess *sess = to_srv_sess(con->c.sess);
+
+	if (unlikely(wc->status != IB_WC_SUCCESS)) {
+		ibtrs_err(sess, "REG MR failed: %s\n",
+			  ib_wc_status_msg(wc->status));
+		close_sess(sess);
+		return;
+	}
+}
+
+static struct ib_cqe local_reg_cqe = {
+	.done = ibtrs_srv_reg_mr_done
+};
+
 static int post_recv_sess(struct ibtrs_srv_sess *sess);
 
 static int process_info_req(struct ibtrs_srv_con *con,
@@ -576,15 +680,22 @@ static int process_info_req(struct ibtrs_srv_con *con,
 {
 	struct ibtrs_srv_sess *sess = to_srv_sess(con->c.sess);
 	struct ibtrs_srv *srv = sess->srv;
+	struct ib_send_wr *reg_wr = NULL;
 	struct ibtrs_msg_info_rsp *rsp;
 	struct ibtrs_iu *tx_iu;
+	struct ib_reg_wr *rwr;
+	int i, mri, err;
 	size_t tx_sz;
-	int i, err;
 
 	err = post_recv_sess(sess);
 	if (unlikely(err)) {
 		ibtrs_err(sess, "post_recv_sess(), err: %d\n", err);
 		return err;
+	}
+	rwr = kcalloc(sess->mrs_num, sizeof(*rwr), GFP_KERNEL);
+	if (unlikely(!rwr)) {
+		ibtrs_err(sess, "No memory\n");
+		return -ENOMEM;
 	}
 	memcpy(sess->s.sessname, msg->sessname, sizeof(sess->s.sessname));
 
@@ -594,16 +705,40 @@ static int process_info_req(struct ibtrs_srv_con *con,
 			       DMA_TO_DEVICE, ibtrs_srv_info_rsp_done);
 	if (unlikely(!tx_iu)) {
 		ibtrs_err(sess, "ibtrs_iu_alloc(), err: %d\n", -ENOMEM);
-		return -ENOMEM;
+		err = -ENOMEM;
+		goto rwr_free;
 	}
 
 	rsp = tx_iu->buf;
 	rsp->type = cpu_to_le16(IBTRS_MSG_INFO_RSP);
 	rsp->sg_cnt = cpu_to_le16(srv->queue_depth);
+
+	/*
+	 * Map linerally chunks to sg
+	 * XXX REMOVE ASAP
+	 */
 	for (i = 0; i < srv->queue_depth; i++) {
 		rsp->desc[i].addr = cpu_to_le64(sess->rdma_addr[i]);
 		rsp->desc[i].key  = cpu_to_le32(sess->s.ib_dev->rkey);
 		rsp->desc[i].len  = cpu_to_le32(max_chunk_size);
+	}
+
+	for (mri = 0; mri < sess->mrs_num; mri++) {
+		struct ib_mr *mr = sess->mrs[mri].mr;
+
+		/*
+		 * Fill in reg MR request and chain them *backwards*
+		 */
+		rwr[mri].wr.next = mri ? &rwr[mri-1].wr : NULL;
+		rwr[mri].wr.opcode = IB_WR_REG_MR;
+		rwr[mri].wr.wr_cqe = &local_reg_cqe;
+		rwr[mri].wr.num_sge = 0;
+		rwr[mri].wr.send_flags = 0;
+		rwr[mri].mr = mr;
+		rwr[mri].key = mr->rkey;
+		rwr[mri].access = (IB_ACCESS_LOCAL_WRITE |
+				   IB_ACCESS_REMOTE_WRITE);
+		reg_wr = &rwr[mri].wr;
 	}
 
 	err = ibtrs_srv_create_sess_files(sess);
@@ -622,12 +757,14 @@ static int process_info_req(struct ibtrs_srv_con *con,
 	ibtrs_srv_sess_up(sess);
 
 	/* Send info response */
-	err = ibtrs_iu_post_send(&con->c, tx_iu, tx_sz, NULL);
+	err = ibtrs_iu_post_send(&con->c, tx_iu, tx_sz, reg_wr);
 	if (unlikely(err)) {
 		ibtrs_err(sess, "ibtrs_iu_post_send(), err: %d\n", err);
 iu_free:
 		ibtrs_iu_free(tx_iu, DMA_TO_DEVICE, sess->s.ib_dev->dev);
 	}
+rwr_free:
+	kfree(rwr);
 
 	return err;
 }
@@ -1710,8 +1847,9 @@ EXPORT_SYMBOL(ibtrs_srv_close);
 static int check_module_params(void)
 {
 	if (sess_queue_depth < 1 || sess_queue_depth > MAX_SESS_QUEUE_DEPTH) {
-		pr_err("Invalid sess_queue_depth parameter value %d\n",
-			sess_queue_depth);
+		pr_err("Invalid sess_queue_depth value %d, has to be"
+		       " >= %d, <= %d.\n",
+		       sess_queue_depth, 1, MAX_SESS_QUEUE_DEPTH);
 		return -EINVAL;
 	}
 	if (max_chunk_size < 4096 || !is_power_of_2(max_chunk_size)) {
