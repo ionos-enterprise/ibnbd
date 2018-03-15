@@ -109,7 +109,7 @@ struct ibtrs_srv_sess {
 	wait_queue_head_t	ids_waitq;
 	struct ibtrs_srv_mr	*mrs;
 	unsigned int		mrs_num;
-	dma_addr_t		*rdma_addr;
+	dma_addr_t		*dma_addr;
 	bool			established;
 	unsigned int		mem_bits;
 	struct kobject		kobj;

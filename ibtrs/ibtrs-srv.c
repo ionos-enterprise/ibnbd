@@ -455,7 +455,6 @@ EXPORT_SYMBOL(ibtrs_srv_set_sess_priv);
 
 static void unmap_cont_bufs(struct ibtrs_srv_sess *sess)
 {
-	struct ibtrs_srv *srv = sess->srv;
 	int i;
 
 	for (i = 0; i < sess->mrs_num; i++) {
@@ -468,10 +467,6 @@ static void unmap_cont_bufs(struct ibtrs_srv_sess *sess)
 		sg_free_table(&srv_mr->sgt);
 	}
 	kfree(sess->mrs);
-
-	for (i = 0; i < srv->queue_depth; i++)
-		ib_dma_unmap_page(sess->s.ib_dev->dev, sess->rdma_addr[i],
-				  max_chunk_size, DMA_BIDIRECTIONAL);
 }
 
 static int map_cont_bufs(struct ibtrs_srv_sess *sess)
@@ -480,7 +475,6 @@ static int map_cont_bufs(struct ibtrs_srv_sess *sess)
 	int i, mri, err, mrs_num;
 	unsigned int chunk_bits;
 	int chunks_per_mr;
-	dma_addr_t addr;
 
 	/*
 	 * Here we map queue_depth chunks to MR.  Firstly we have to
@@ -534,6 +528,11 @@ static int map_cont_bufs(struct ibtrs_srv_sess *sess)
 			err = nr < 0 ? nr : -EINVAL;
 			goto dereg_mr;
 		}
+
+		/* Eventually dma addr for each chunk can be cached */
+		for_each_sg(sgt->sgl, s, sgt->orig_nents, i)
+			sess->dma_addr[chunks + i] = sg_dma_address(s);
+
 		ib_update_fast_reg_key(mr, ib_inc_rkey(mr->rkey));
 
 		srv_mr->mr = mr;
@@ -557,27 +556,10 @@ free_sg:
 		return err;
 	}
 
-	for (i = 0; i < srv->queue_depth; i++) {
-		addr = ib_dma_map_page(sess->s.ib_dev->dev, srv->chunks[i],
-				       0, max_chunk_size, DMA_BIDIRECTIONAL);
-		if (unlikely(ib_dma_mapping_error(sess->s.ib_dev->dev, addr))) {
-			ibtrs_err(sess, "ib_dma_map_page() failed\n");
-			err = -EIO;
-			goto err_map;
-		}
-		sess->rdma_addr[i] = addr;
-	}
 	chunk_bits = ilog2(srv->queue_depth - 1) + 1;
 	sess->mem_bits = (MAX_IMM_PAYL_BITS - chunk_bits);
 
 	return 0;
-
-err_map:
-	while (i--)
-		ib_dma_unmap_page(sess->s.ib_dev->dev, sess->rdma_addr[i],
-				  max_chunk_size, DMA_BIDIRECTIONAL);
-
-	return err;
 }
 
 static void ibtrs_srv_hb_err_handler(struct ibtrs_con *c, int err)
@@ -679,12 +661,11 @@ static int process_info_req(struct ibtrs_srv_con *con,
 			    struct ibtrs_msg_info_req *msg)
 {
 	struct ibtrs_srv_sess *sess = to_srv_sess(con->c.sess);
-	struct ibtrs_srv *srv = sess->srv;
 	struct ib_send_wr *reg_wr = NULL;
 	struct ibtrs_msg_info_rsp *rsp;
 	struct ibtrs_iu *tx_iu;
 	struct ib_reg_wr *rwr;
-	int i, mri, err;
+	int mri, err;
 	size_t tx_sz;
 
 	err = post_recv_sess(sess);
@@ -700,7 +681,7 @@ static int process_info_req(struct ibtrs_srv_con *con,
 	memcpy(sess->s.sessname, msg->sessname, sizeof(sess->s.sessname));
 
 	tx_sz  = sizeof(*rsp);
-	tx_sz += sizeof(rsp->desc[0]) * srv->queue_depth;
+	tx_sz += sizeof(rsp->desc[0]) * sess->mrs_num;
 	tx_iu = ibtrs_iu_alloc(0, tx_sz, GFP_KERNEL, sess->s.ib_dev->dev,
 			       DMA_TO_DEVICE, ibtrs_srv_info_rsp_done);
 	if (unlikely(!tx_iu)) {
@@ -711,20 +692,14 @@ static int process_info_req(struct ibtrs_srv_con *con,
 
 	rsp = tx_iu->buf;
 	rsp->type = cpu_to_le16(IBTRS_MSG_INFO_RSP);
-	rsp->sg_cnt = cpu_to_le16(srv->queue_depth);
-
-	/*
-	 * Map linerally chunks to sg
-	 * XXX REMOVE ASAP
-	 */
-	for (i = 0; i < srv->queue_depth; i++) {
-		rsp->desc[i].addr = cpu_to_le64(sess->rdma_addr[i]);
-		rsp->desc[i].key  = cpu_to_le32(sess->s.ib_dev->rkey);
-		rsp->desc[i].len  = cpu_to_le32(max_chunk_size);
-	}
+	rsp->sg_cnt = cpu_to_le16(sess->mrs_num);
 
 	for (mri = 0; mri < sess->mrs_num; mri++) {
 		struct ib_mr *mr = sess->mrs[mri].mr;
+
+		rsp->desc[mri].addr = cpu_to_le64(mr->iova);
+		rsp->desc[mri].key  = cpu_to_le32(mr->rkey);
+		rsp->desc[mri].len  = cpu_to_le32(mr->length);
 
 		/*
 		 * Fill in reg MR request and chain them *backwards*
@@ -893,7 +868,7 @@ static void process_read(struct ibtrs_srv_con *con,
 	usr_len = le16_to_cpu(msg->usr_len);
 	data_len = off - usr_len;
 	data = page_address(srv->chunks[buf_id]);
-	id->data_dma_addr = sess->rdma_addr[buf_id];
+	id->data_dma_addr = sess->dma_addr[buf_id];
 	ret = ctx->rdma_ev(srv, srv->priv, id, READ, data, data_len,
 			   data + data_len, usr_len);
 
@@ -1277,7 +1252,7 @@ static void ibtrs_srv_close_work(struct work_struct *work)
 	sess->srv = NULL;
 	ibtrs_srv_change_state(sess, IBTRS_SRV_CLOSED);
 
-	kfree(sess->rdma_addr);
+	kfree(sess->dma_addr);
 	kfree(sess->s.con);
 	kfree(sess);
 }
@@ -1425,14 +1400,14 @@ static struct ibtrs_srv_sess *__alloc_sess(struct ibtrs_srv *srv,
 	if (unlikely(!sess))
 		goto err;
 
-	sess->rdma_addr = kcalloc(srv->queue_depth, sizeof(*sess->rdma_addr),
-				  GFP_KERNEL);
-	if (unlikely(!sess->rdma_addr))
+	sess->dma_addr = kcalloc(srv->queue_depth, sizeof(*sess->dma_addr),
+				 GFP_KERNEL);
+	if (unlikely(!sess->dma_addr))
 		goto err_free_sess;
 
 	sess->s.con = kcalloc(con_num, sizeof(*sess->s.con), GFP_KERNEL);
 	if (unlikely(!sess->s.con))
-		goto err_free_rdma_addr;
+		goto err_free_dma_addr;
 
 	sess->state = IBTRS_SRV_CONNECTING;
 	sess->srv = srv;
@@ -1445,7 +1420,7 @@ static struct ibtrs_srv_sess *__alloc_sess(struct ibtrs_srv *srv,
 	INIT_WORK(&sess->close_work, ibtrs_srv_close_work);
 	ibtrs_srv_init_hb(sess);
 
-	sess->s.ib_dev = ibtrs_ib_dev_find_get(cm_id, IB_PD_UNSAFE_GLOBAL_RKEY);
+	sess->s.ib_dev = ibtrs_ib_dev_find_get(cm_id, 0);
 	if (unlikely(!sess->s.ib_dev)) {
 		err = -ENOMEM;
 		ibtrs_wrn(sess, "Failed to alloc ibtrs_device\n");
@@ -1469,8 +1444,8 @@ err_put_dev:
 	ibtrs_ib_dev_put(sess->s.ib_dev);
 err_free_con:
 	kfree(sess->s.con);
-err_free_rdma_addr:
-	kfree(sess->rdma_addr);
+err_free_dma_addr:
+	kfree(sess->dma_addr);
 err_free_sess:
 	kfree(sess);
 
