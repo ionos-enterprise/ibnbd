@@ -1902,7 +1902,8 @@ static int create_con_cq_qp(struct ibtrs_clt_con *con)
 		 * Be careful not to close user connection before ib dev
 		 * is gracefully put.
 		 */
-		sess->s.ib_dev = ibtrs_ib_dev_find_get(con->c.cm_id);
+		sess->s.ib_dev = ibtrs_ib_dev_find_get(con->c.cm_id,
+						       IB_PD_UNSAFE_GLOBAL_RKEY);
 		if (unlikely(!sess->s.ib_dev)) {
 			ibtrs_wrn(sess, "ibtrs_ib_dev_find_get(): no memory\n");
 			return -ENOMEM;

@@ -319,7 +319,8 @@ int ibtrs_post_recv_empty(struct ibtrs_con *con, struct ib_cqe *cqe);
 int ibtrs_post_rdma_write_imm_empty(struct ibtrs_con *con, struct ib_cqe *cqe,
 				    u32 imm_data, enum ib_send_flags flags);
 
-struct ibtrs_ib_dev *ibtrs_ib_dev_find_get(struct rdma_cm_id *cm_id);
+struct ibtrs_ib_dev *ibtrs_ib_dev_find_get(struct rdma_cm_id *cm_id,
+					   enum ib_pd_flags flags);
 void ibtrs_ib_dev_put(struct ibtrs_ib_dev *dev);
 
 int ibtrs_cq_qp_create(struct ibtrs_sess *ibtrs_sess, struct ibtrs_con *con,

@@ -1333,7 +1333,7 @@ static struct ibtrs_srv_sess *__alloc_sess(struct ibtrs_srv *srv,
 	INIT_WORK(&sess->close_work, ibtrs_srv_close_work);
 	ibtrs_srv_init_hb(sess);
 
-	sess->s.ib_dev = ibtrs_ib_dev_find_get(cm_id);
+	sess->s.ib_dev = ibtrs_ib_dev_find_get(cm_id, IB_PD_UNSAFE_GLOBAL_RKEY);
 	if (unlikely(!sess->s.ib_dev)) {
 		err = -ENOMEM;
 		ibtrs_wrn(sess, "Failed to alloc ibtrs_device\n");

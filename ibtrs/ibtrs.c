@@ -227,11 +227,12 @@ static int ibtrs_query_device(struct ibtrs_ib_dev *ib_dev)
 	return ib_dev->dev->query_device(ib_dev->dev, &ib_dev->attrs, &uhw);
 }
 
-static int ibtrs_ib_dev_init(struct ibtrs_ib_dev *d, struct ib_device *dev)
+static int ibtrs_ib_dev_init(struct ibtrs_ib_dev *d, struct ib_device *dev,
+			     enum ib_pd_flags flags)
 {
 	int err;
 
-	d->pd = ib_alloc_pd(dev, IB_PD_UNSAFE_GLOBAL_RKEY);
+	d->pd = ib_alloc_pd(dev, flags);
 	if (IS_ERR(d->pd))
 		return PTR_ERR(d->pd);
 	d->dev = dev;
@@ -256,7 +257,8 @@ static void ibtrs_ib_dev_destroy(struct ibtrs_ib_dev *d)
 	}
 }
 
-struct ibtrs_ib_dev *ibtrs_ib_dev_find_get(struct rdma_cm_id *cm_id)
+struct ibtrs_ib_dev *ibtrs_ib_dev_find_get(struct rdma_cm_id *cm_id,
+					   enum ib_pd_flags flags)
 {
 	struct ibtrs_ib_dev *dev;
 	int err;
@@ -272,7 +274,7 @@ struct ibtrs_ib_dev *ibtrs_ib_dev_find_get(struct rdma_cm_id *cm_id)
 		goto out_err;
 
 	kref_init(&dev->ref);
-	err = ibtrs_ib_dev_init(dev, cm_id->device);
+	err = ibtrs_ib_dev_init(dev, cm_id->device, flags);
 	if (unlikely(err))
 		goto out_free;
 	list_add(&dev->entry, &device_list);
