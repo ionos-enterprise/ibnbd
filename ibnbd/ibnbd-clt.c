@@ -796,7 +796,8 @@ static int setup_mq_tags(struct ibnbd_clt_session *sess)
 
 static void destroy_mq_tags(struct ibnbd_clt_session *sess)
 {
-	blk_mq_free_tag_set(&sess->tag_set);
+	if (sess->tag_set.tags)
+		blk_mq_free_tag_set(&sess->tag_set);
 }
 
 static inline void wake_up_ibtrs_waiters(struct ibnbd_clt_session *sess)
@@ -1003,8 +1004,7 @@ find_and_get_or_create_sess(const char *sessname,
 	int err;
 
 	sess = find_and_get_sess(sessname);
-	if (IS_ERR(sess) || sess)
-		/* Either success or error path */
+	if (sess)
 		return sess;
 
 	sess = alloc_sess(sessname, paths, path_cnt);
@@ -1012,8 +1012,7 @@ find_and_get_or_create_sess(const char *sessname,
 		return sess;
 
 	found = find_and_get_or_insert_sess(sess);
-	if (IS_ERR(found) || found) {
-		/* Either success or error path */
+	if (unlikely(found)) {
 		free_sess(sess);
 
 		return found;
