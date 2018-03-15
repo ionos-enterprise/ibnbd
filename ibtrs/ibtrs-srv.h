@@ -86,7 +86,6 @@ struct ibtrs_srv_op {
 	struct ibtrs_srv_con		*con;
 	u32				msg_id;
 	u8				dir;
-	u64				data_dma_addr;
 	struct ibtrs_msg_rdma_read	*msg;
 	struct ib_rdma_wr		*tx_wr;
 	struct ib_sge			*tx_sg;

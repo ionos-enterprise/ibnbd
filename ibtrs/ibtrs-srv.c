@@ -324,6 +324,7 @@ static struct ib_cqe io_comp_cqe = {
 static int rdma_write_sg(struct ibtrs_srv_op *id)
 {
 	struct ibtrs_srv_sess *sess = to_srv_sess(id->con->c.sess);
+	dma_addr_t dma_addr = sess->dma_addr[id->msg_id];
 	struct ibtrs_srv *srv = sess->srv;
 	struct ib_rdma_wr *wr = NULL;
 	struct ib_send_wr *bad_wr;
@@ -341,7 +342,7 @@ static int rdma_write_sg(struct ibtrs_srv_op *id)
 
 		wr		= &id->tx_wr[i];
 		list		= &id->tx_sg[i];
-		list->addr	= id->data_dma_addr + offset;
+		list->addr	= dma_addr + offset;
 		list->length	= le32_to_cpu(id->msg->desc[i].len);
 
 		/* WR will fail with length error
@@ -868,7 +869,6 @@ static void process_read(struct ibtrs_srv_con *con,
 	usr_len = le16_to_cpu(msg->usr_len);
 	data_len = off - usr_len;
 	data = page_address(srv->chunks[buf_id]);
-	id->data_dma_addr = sess->dma_addr[buf_id];
 	ret = ctx->rdma_ev(srv, srv->priv, id, READ, data, data_len,
 			   data + data_len, usr_len);
 
