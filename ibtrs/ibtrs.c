@@ -130,7 +130,8 @@ int ibtrs_post_recv_empty(struct ibtrs_con *con, struct ib_cqe *cqe)
 }
 EXPORT_SYMBOL_GPL(ibtrs_post_recv_empty);
 
-int ibtrs_iu_post_send(struct ibtrs_con *con, struct ibtrs_iu *iu, size_t size)
+int ibtrs_iu_post_send(struct ibtrs_con *con, struct ibtrs_iu *iu, size_t size,
+		       struct ib_send_wr *head)
 {
 	struct ibtrs_sess *sess = con->sess;
 	struct ib_send_wr wr, *bad_wr;
@@ -151,14 +152,25 @@ int ibtrs_iu_post_send(struct ibtrs_con *con, struct ibtrs_iu *iu, size_t size)
 	wr.opcode     = IB_WR_SEND;
 	wr.send_flags = IB_SEND_SIGNALED;
 
-	return ib_post_send(con->qp, &wr, &bad_wr);
+	if (head) {
+		struct ib_send_wr *tail = head;
+
+		while (tail->next)
+			tail = tail->next;
+		tail->next = &wr;
+	}
+	else
+		head = &wr;
+
+	return ib_post_send(con->qp, head, &bad_wr);
 }
 EXPORT_SYMBOL_GPL(ibtrs_iu_post_send);
 
 int ibtrs_iu_post_rdma_write_imm(struct ibtrs_con *con, struct ibtrs_iu *iu,
 				 struct ib_sge *sge, unsigned int num_sge,
 				 u32 rkey, u64 rdma_addr, u32 imm_data,
-				 enum ib_send_flags flags)
+				 enum ib_send_flags flags,
+				 struct ib_send_wr *head)
 {
 	struct ib_send_wr *bad_wr;
 	struct ib_rdma_wr wr;
@@ -182,12 +194,23 @@ int ibtrs_iu_post_rdma_write_imm(struct ibtrs_con *con, struct ibtrs_iu *iu,
 		if (WARN_ON(sge[i].length == 0))
 			return -EINVAL;
 
-	return ib_post_send(con->qp, &wr.wr, &bad_wr);
+	if (head) {
+		struct ib_send_wr *tail = head;
+
+		while (tail->next)
+			tail = tail->next;
+		tail->next = &wr.wr;
+	}
+	else
+		head = &wr.wr;
+
+	return ib_post_send(con->qp, head, &bad_wr);
 }
 EXPORT_SYMBOL_GPL(ibtrs_iu_post_rdma_write_imm);
 
 int ibtrs_post_rdma_write_imm_empty(struct ibtrs_con *con, struct ib_cqe *cqe,
-				    u32 imm_data, enum ib_send_flags flags)
+				    u32 imm_data, enum ib_send_flags flags,
+				    struct ib_send_wr *head)
 {
 	struct ib_send_wr wr, *bad_wr;
 
@@ -197,7 +220,17 @@ int ibtrs_post_rdma_write_imm_empty(struct ibtrs_con *con, struct ib_cqe *cqe,
 	wr.opcode	= IB_WR_RDMA_WRITE_WITH_IMM;
 	wr.ex.imm_data	= cpu_to_be32(imm_data);
 
-	return ib_post_send(con->qp, &wr, &bad_wr);
+	if (head) {
+		struct ib_send_wr *tail = head;
+
+		while (tail->next)
+			tail = tail->next;
+		tail->next = &wr;
+	}
+	else
+		head = &wr;
+
+	return ib_post_send(con->qp, head, &bad_wr);
 }
 EXPORT_SYMBOL_GPL(ibtrs_post_rdma_write_imm_empty);
 
@@ -406,8 +439,8 @@ void ibtrs_send_hb_ack(struct ibtrs_sess *sess)
 	int err;
 
 	imm = ibtrs_to_imm(IBTRS_HB_ACK_IMM, 0);
-	err = ibtrs_post_rdma_write_imm_empty(usr_con, sess->hb_cqe,
-					      imm, IB_SEND_SIGNALED);
+	err = ibtrs_post_rdma_write_imm_empty(usr_con, sess->hb_cqe, imm,
+					      IB_SEND_SIGNALED, NULL);
 	if (unlikely(err)) {
 		sess->hb_err_handler(usr_con, err);
 		return;
@@ -435,8 +468,8 @@ static void hb_work(struct work_struct *work)
 		return;
 	}
 	imm = ibtrs_to_imm(IBTRS_HB_MSG_IMM, 0);
-	err = ibtrs_post_rdma_write_imm_empty(usr_con, sess->hb_cqe,
-					      imm, IB_SEND_SIGNALED);
+	err = ibtrs_post_rdma_write_imm_empty(usr_con, sess->hb_cqe, imm,
+					      IB_SEND_SIGNALED, NULL);
 	if (unlikely(err)) {
 		sess->hb_err_handler(usr_con, err);
 		return;

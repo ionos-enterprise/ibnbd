@@ -809,7 +809,7 @@ static int ibtrs_post_send_rdma(struct ibtrs_clt_con *con,
 			0 : IB_SEND_SIGNALED;
 	return ibtrs_iu_post_rdma_write_imm(&con->c, req->iu, list, 1,
 					    rbuf->rkey, rbuf->addr + off,
-					    imm, flags);
+					    imm, flags, NULL);
 }
 
 static void ibtrs_set_sge_with_desc(struct ib_sge *list,
@@ -943,9 +943,10 @@ static int ibtrs_post_send_rdma_desc(struct ibtrs_clt_con *con,
 		 */
 		flags = atomic_inc_return(&con->io_cnt) % sess->queue_depth ?
 				0 : IB_SEND_SIGNALED;
-		ret = ibtrs_iu_post_rdma_write_imm(&con->c, req->iu,
-						   sge, num_sge, rbuf->rkey,
-						   rbuf->addr, imm, flags);
+		ret = ibtrs_iu_post_rdma_write_imm(&con->c, req->iu, sge,
+						   num_sge, rbuf->rkey,
+						   rbuf->addr, imm,
+						   flags, NULL);
 	} else {
 		ret = ibtrs_post_send_rdma_desc_more(con, sge, req, n,
 						     rbuf, size, imm);
@@ -984,7 +985,8 @@ static int ibtrs_post_send_rdma_more(struct ibtrs_clt_con *con,
 	flags = atomic_inc_return(&con->io_cnt) % sess->queue_depth ?
 			0 : IB_SEND_SIGNALED;
 	ret = ibtrs_iu_post_rdma_write_imm(&con->c, req->iu, sge, num_sge,
-					   rbuf->rkey, rbuf->addr, imm, flags);
+					   rbuf->rkey, rbuf->addr, imm,
+					   flags, NULL);
 
 	return ret;
 }
@@ -2797,7 +2799,7 @@ static int ibtrs_send_sess_info(struct ibtrs_clt_sess *sess)
 	memcpy(msg->sessname, sess->s.sessname, sizeof(msg->sessname));
 
 	/* Send info request */
-	err = ibtrs_iu_post_send(&usr_con->c, tx_iu, sizeof(*msg));
+	err = ibtrs_iu_post_send(&usr_con->c, tx_iu, sizeof(*msg), NULL);
 	if (unlikely(err)) {
 		ibtrs_err(sess, "ibtrs_iu_post_send(), err: %d\n", err);
 		goto out;

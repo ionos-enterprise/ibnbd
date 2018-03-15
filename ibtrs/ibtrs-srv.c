@@ -406,8 +406,8 @@ static int send_io_resp_imm(struct ibtrs_srv_con *con, int msg_id, s16 errno)
 	flags = atomic_inc_return(&con->wr_cnt) % srv->queue_depth ?
 			0 : IB_SEND_SIGNALED;
 	imm = ibtrs_to_io_rsp_imm(msg_id, errno, false);
-	err = ibtrs_post_rdma_write_imm_empty(&con->c, &io_comp_cqe,
-					      imm, flags);
+	err = ibtrs_post_rdma_write_imm_empty(&con->c, &io_comp_cqe, imm,
+					      flags, NULL);
 	if (unlikely(err))
 		ibtrs_err_rl(sess, "ib_post_send(), err: %d\n", err);
 
@@ -622,7 +622,7 @@ static int process_info_req(struct ibtrs_srv_con *con,
 	ibtrs_srv_sess_up(sess);
 
 	/* Send info response */
-	err = ibtrs_iu_post_send(&con->c, tx_iu, tx_sz);
+	err = ibtrs_iu_post_send(&con->c, tx_iu, tx_sz, NULL);
 	if (unlikely(err)) {
 		ibtrs_err(sess, "ibtrs_iu_post_send(), err: %d\n", err);
 iu_free:

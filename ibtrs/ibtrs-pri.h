@@ -322,15 +322,18 @@ struct ibtrs_iu *ibtrs_iu_alloc(u32 tag, size_t size, gfp_t t,
 void ibtrs_iu_free(struct ibtrs_iu *iu, enum dma_data_direction dir,
 		   struct ib_device *dev);
 int ibtrs_iu_post_recv(struct ibtrs_con *con, struct ibtrs_iu *iu);
-int ibtrs_iu_post_send(struct ibtrs_con *con, struct ibtrs_iu *iu, size_t size);
+int ibtrs_iu_post_send(struct ibtrs_con *con, struct ibtrs_iu *iu, size_t size,
+		       struct ib_send_wr *head);
 int ibtrs_iu_post_rdma_write_imm(struct ibtrs_con *con, struct ibtrs_iu *iu,
 				 struct ib_sge *sge, unsigned int num_sge,
 				 u32 rkey, u64 rdma_addr, u32 imm_data,
-				 enum ib_send_flags flags);
+				 enum ib_send_flags flags,
+				 struct ib_send_wr *head);
 
 int ibtrs_post_recv_empty(struct ibtrs_con *con, struct ib_cqe *cqe);
 int ibtrs_post_rdma_write_imm_empty(struct ibtrs_con *con, struct ib_cqe *cqe,
-				    u32 imm_data, enum ib_send_flags flags);
+				    u32 imm_data, enum ib_send_flags flags,
+				    struct ib_send_wr *head);
 
 struct ibtrs_ib_dev *ibtrs_ib_dev_find_get(struct rdma_cm_id *cm_id,
 					   enum ib_pd_flags flags);
