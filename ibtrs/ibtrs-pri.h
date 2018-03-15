@@ -153,6 +153,18 @@ enum ibtrs_msg_types {
 };
 
 /**
+ * struct ibtrs_sg_desc - RDMA-Buffer entry description
+ * @addr:	Address of RDMA destination buffer
+ * @key:	Authorization rkey to write to the buffer
+ * @len:	Size of the buffer
+ */
+struct ibtrs_sg_desc {
+	__le64			addr;
+	__le32			key;
+	__le32			len;
+};
+
+/**
  * struct ibtrs_msg_conn_req - Client connection request to the server
  * @magic:	   IBTRS magic
  * @version:	   IBTRS protocol version
@@ -186,7 +198,6 @@ struct ibtrs_msg_conn_req {
  * @version:	   IBTRS protocol version
  * @errno:	   If rdma_accept() then 0, if rdma_reject() indicates error
  * @queue_depth:   max inflight messages (queue-depth) in this session
- * @rkey:	   remote key to allow client to access buffers
  * @max_io_size:   max io size server supports
  * @max_req_size:  max infiniband message size server supports
  * @uuid:	   Server UUID
@@ -198,11 +209,10 @@ struct ibtrs_msg_conn_rsp {
 	__le16		version;
 	__le16		errno;
 	__le16		queue_depth;
-	__le32		rkey;
 	__le32		max_io_size;
 	__le32		max_req_size;
 	uuid_t		uuid;
-	u8		reserved[20];
+	u8		reserved[24];
 };
 
 /**
@@ -219,14 +229,14 @@ struct ibtrs_msg_info_req {
 /**
  * struct ibtrs_msg_info_rsp
  * @type:		@IBTRS_MSG_INFO_RSP
- * @addr_num:		Number of rdma addresses
- * @addr:		RDMA addresses of buffers
+ * @sg_cnt:		Number of @desc entries
+ * @desc:		RDMA buffers where the client can write to server
  */
 struct ibtrs_msg_info_rsp {
 	__le16		type;
-	__le16		addr_num;
-	u8		reserved[4];
-	__le64		addr[];
+	__le16          sg_cnt;
+	u8              reserved[4];
+	struct ibtrs_sg_desc desc[];
 };
 
 /*
@@ -266,23 +276,11 @@ struct ibtrs_msg_user {
 };
 
 /**
- * struct ibtrs_sg_desc - RDMA-Buffer entry description
- * @addr:	Address of RDMA destination buffer
- * @key:	Authorization rkey to write to the buffer
- * @len:	Size of the buffer
- */
-struct ibtrs_sg_desc {
-	__le64			addr;
-	__le32			key;
-	__le32			len;
-};
-
-/**
  * struct ibtrs_msg_rdma_read - RDMA data transfer request from client
  * @type:		always @IBTRS_MSG_READ
  * @usr_len:		length of user payload
  * @sg_cnt:		number of @desc entries
- * @desc:		RDMA bufferst where the server can write the result to
+ * @desc:		RDMA buffers where the server can write the result to
  */
 struct ibtrs_msg_rdma_read {
 	__le16			type;

@@ -184,8 +184,6 @@ struct ibtrs_clt_sess {
 	struct work_struct	close_work;
 	unsigned		reconnect_attempts;
 	bool			established;
-	/* XXX REMOVE ASAP */
-	u32                     srv_rdma_buf_rkey_XXX;
 	struct ibtrs_rbuf	*rbufs;
 	u32			max_io_size;
 	u32			max_req_size;

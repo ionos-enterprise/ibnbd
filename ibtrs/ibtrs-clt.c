@@ -2465,8 +2465,6 @@ static int ibtrs_rdma_conn_established(struct ibtrs_clt_con *con,
 			}
 		}
 		sess->queue_depth = queue_depth;
-		/* XXX REMOVE ASAP */
-		sess->srv_rdma_buf_rkey_XXX = le32_to_cpu(msg->rkey);
 		sess->max_req_size = le32_to_cpu(msg->max_req_size);
 		sess->max_io_size = le32_to_cpu(msg->max_io_size);
 		sess->chunk_size = sess->max_io_size + sess->max_req_size;
@@ -2650,28 +2648,60 @@ static void ibtrs_clt_info_req_done(struct ib_cq *cq, struct ib_wc *wc)
 static int process_info_rsp(struct ibtrs_clt_sess *sess,
 			    const struct ibtrs_msg_info_rsp *msg)
 {
-	unsigned int addr_num;
-	int i;
+	unsigned int sg_cnt, total_len;
+	int i, sgi;
 
-	addr_num = le16_to_cpu(msg->addr_num);
+	sg_cnt = le16_to_cpu(msg->sg_cnt);
+	if (unlikely(!sg_cnt))
+		return -EINVAL;
 	/*
 	 * Check if IB immediate data size is enough to hold the mem_id and
 	 * the offset inside the memory chunk.
 	 */
-	if (unlikely((ilog2(addr_num-1)+1) + (ilog2(sess->chunk_size-1)+1) >
+	if (unlikely((ilog2(sg_cnt-1)+1) + (ilog2(sess->chunk_size-1)+1) >
 		     MAX_IMM_PAYL_BITS)) {
 		ibtrs_err(sess, "RDMA immediate size (%db) not enough to "
 			  "encode %d buffers of size %dB\n",  MAX_IMM_PAYL_BITS,
-			  addr_num, sess->chunk_size);
+			  sg_cnt, sess->chunk_size);
 		return -EINVAL;
 	}
-	if (unlikely(addr_num > sess->queue_depth)) {
-		ibtrs_err(sess, "Incorrect addr_num=%d\n", addr_num);
+	if (unlikely(!sg_cnt || (sess->queue_depth % sg_cnt))) {
+		ibtrs_err(sess, "Incorrect sg_cnt %d, is not multiple\n",
+			  sg_cnt);
 		return -EINVAL;
 	}
-	for (i = 0; i < msg->addr_num; i++) {
-		sess->rbufs[i].addr = le64_to_cpu(msg->addr[i]);
-		sess->rbufs[i].rkey = sess->srv_rdma_buf_rkey_XXX;
+	total_len = 0;
+	for (sgi = 0, i = 0; sgi < sg_cnt && i < sess->queue_depth; sgi++) {
+		const struct ibtrs_sg_desc *desc = &msg->desc[sgi];
+		u32 len, rkey;
+		u64 addr;
+
+		addr = le64_to_cpu(desc->addr);
+		rkey = le32_to_cpu(desc->key);
+		len  = le32_to_cpu(desc->len);
+
+		total_len += len;
+
+		if (unlikely(!len || (len % sess->chunk_size))) {
+			ibtrs_err(sess, "Incorrect [%d].len %d\n", sgi, len);
+			return -EINVAL;
+		}
+		for ( ; len && i < sess->queue_depth; i++) {
+			sess->rbufs[i].addr = addr;
+			sess->rbufs[i].rkey = rkey;
+
+			len  -= sess->chunk_size;
+			addr += sess->chunk_size;
+		}
+	}
+	/* Sanity check */
+	if (unlikely(sgi != sg_cnt || i != sess->queue_depth)) {
+		ibtrs_err(sess, "Incorrect sg vector, not fully mapped\n");
+		return -EINVAL;
+	}
+	if (unlikely(total_len != sess->chunk_size * sess->queue_depth)) {
+		ibtrs_err(sess, "Incorrect total_len %d\n", total_len);
+		return -EINVAL;
 	}
 
 	return 0;
@@ -2710,7 +2740,7 @@ static void ibtrs_clt_info_rsp_done(struct ib_cq *cq, struct ib_wc *wc)
 		goto out;
 	}
 	rx_sz  = sizeof(*msg);
-	rx_sz += sizeof(msg->addr[0]) * le16_to_cpu(msg->addr_num);
+	rx_sz += sizeof(msg->desc[0]) * le16_to_cpu(msg->sg_cnt);
 	if (unlikely(wc->byte_len < rx_sz)) {
 		ibtrs_err(sess, "Sess info response is malformed: size %d\n",
 			  wc->byte_len);

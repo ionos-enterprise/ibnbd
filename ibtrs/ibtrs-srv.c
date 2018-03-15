@@ -587,8 +587,8 @@ static int process_info_req(struct ibtrs_srv_con *con,
 	}
 	memcpy(sess->s.sessname, msg->sessname, sizeof(sess->s.sessname));
 
-	tx_sz  = sizeof(struct ibtrs_msg_info_rsp);
-	tx_sz += sizeof(u64) * srv->queue_depth;
+	tx_sz  = sizeof(*rsp);
+	tx_sz += sizeof(rsp->desc[0]) * srv->queue_depth;
 	tx_iu = ibtrs_iu_alloc(0, tx_sz, GFP_KERNEL, sess->s.ib_dev->dev,
 			       DMA_TO_DEVICE, ibtrs_srv_info_rsp_done);
 	if (unlikely(!tx_iu)) {
@@ -598,9 +598,12 @@ static int process_info_req(struct ibtrs_srv_con *con,
 
 	rsp = tx_iu->buf;
 	rsp->type = cpu_to_le16(IBTRS_MSG_INFO_RSP);
-	rsp->addr_num = cpu_to_le16(srv->queue_depth);
-	for (i = 0; i < srv->queue_depth; i++)
-		rsp->addr[i] = cpu_to_le64(sess->rdma_addr[i]);
+	rsp->sg_cnt = cpu_to_le16(srv->queue_depth);
+	for (i = 0; i < srv->queue_depth; i++) {
+		rsp->desc[i].addr = cpu_to_le64(sess->rdma_addr[i]);
+		rsp->desc[i].key  = cpu_to_le32(sess->s.ib_dev->rkey);
+		rsp->desc[i].len  = cpu_to_le32(max_chunk_size);
+	}
 
 	err = ibtrs_srv_create_sess_files(sess);
 	if (unlikely(err))
@@ -1160,7 +1163,6 @@ static int ibtrs_rdma_do_accept(struct ibtrs_srv_sess *sess,
 	msg.version = cpu_to_le16(IBTRS_VERSION);
 	msg.errno = 0;
 	msg.queue_depth = cpu_to_le16(srv->queue_depth);
-	msg.rkey = cpu_to_le32(sess->s.ib_dev->rkey);
 	msg.max_io_size = cpu_to_le32(max_chunk_size - MAX_REQ_SIZE);
 	msg.max_req_size = cpu_to_le32(MAX_REQ_SIZE);
 	uuid_copy(&msg.uuid, &sess->s.uuid);
