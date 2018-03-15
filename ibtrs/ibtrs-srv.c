@@ -43,53 +43,29 @@ MODULE_LICENSE("GPL");
 
 /* Must be power of 2, see mask from mr->page_size in ib_sg_to_pages() */
 #define DEFAULT_MAX_CHUNK_SIZE (128 << 10)
+#define DEFAULT_SESS_QUEUE_DEPTH 512
 #define MAX_REQ_SIZE PAGE_SIZE
 #define MAX_SG_COUNT ((MAX_REQ_SIZE - sizeof(struct ibtrs_msg_rdma_read)) \
 		      / sizeof(struct ibtrs_sg_desc))
 
+/* We guarantee to serve 10 paths at least */
+#define CHUNK_POOL_SZ 10
+
+static mempool_t *chunk_pool;
+static int retry_count = 7;
 static int max_chunk_size = DEFAULT_MAX_CHUNK_SIZE;
+static int sess_queue_depth = DEFAULT_SESS_QUEUE_DEPTH;
 
-static int max_chunk_size_set(const char *val, const struct kernel_param *kp)
-{
-	int err, ival;
-
-	err = kstrtoint(val, 0, &ival);
-	if (err)
-		return err;
-
-	if (ival < 4096 || (ival & (ival - 1))) {
-		pr_err("Invalid max chunk size value %d, has to be"
-		       " >= %d, <= %d and should be power of two.\n",
-		       ival, 4096, 16<<20);
-		return -EINVAL;
-	}
-	max_chunk_size = ival;
-
-	return 0;
-}
-
-static const struct kernel_param_ops max_chunk_size_ops = {
-	.set		= max_chunk_size_set,
-	.get		= param_get_int,
-};
-module_param_cb(max_chunk_size, &max_chunk_size_ops, &max_chunk_size, 0444);
+module_param_named(max_chunk_size, max_chunk_size, int, 0444);
 MODULE_PARM_DESC(max_chunk_size,
 		 "Max size for each IO request, when change the unit is in byte"
 		 " (default: " __stringify(DEFAULT_MAX_CHUNK_SIZE_KB) "KB)");
 
-#define DEFAULT_SESS_QUEUE_DEPTH 512
-static int sess_queue_depth = DEFAULT_SESS_QUEUE_DEPTH;
 module_param_named(sess_queue_depth, sess_queue_depth, int, 0444);
 MODULE_PARM_DESC(sess_queue_depth,
 		 "Number of buffers for pending I/O requests to allocate"
 		 " per session. Maximum: " __stringify(MAX_SESS_QUEUE_DEPTH)
 		 " (default: " __stringify(DEFAULT_SESS_QUEUE_DEPTH) ")");
-
-/* We guarantee to serve 10 paths at least */
-#define CHUNK_POOL_SIZE (DEFAULT_SESS_QUEUE_DEPTH * 10)
-static mempool_t *chunk_pool;
-
-static int retry_count = 7;
 
 static int retry_count_set(const char *val, const struct kernel_param *kp)
 {
@@ -1731,7 +1707,14 @@ EXPORT_SYMBOL(ibtrs_srv_close);
 static int check_module_params(void)
 {
 	if (sess_queue_depth < 1 || sess_queue_depth > MAX_SESS_QUEUE_DEPTH) {
-		pr_err("Invalid sess_queue_depth parameter value\n");
+		pr_err("Invalid sess_queue_depth parameter value %d\n",
+			sess_queue_depth);
+		return -EINVAL;
+	}
+	if (max_chunk_size < 4096 || !is_power_of_2(max_chunk_size)) {
+		pr_err("Invalid max_chunk_size value %d, has to be"
+		       " >= %d and should be power of two.\n",
+		       max_chunk_size, 4096);
 		return -EINVAL;
 	}
 
@@ -1773,7 +1756,7 @@ static int __init ibtrs_server_init(void)
 		       " err: %d\n", err);
 		return err;
 	}
-	chunk_pool = mempool_create_page_pool(CHUNK_POOL_SIZE,
+	chunk_pool = mempool_create_page_pool(sess_queue_depth * CHUNK_POOL_SZ,
 					      get_order(max_chunk_size));
 	if (unlikely(!chunk_pool)) {
 		pr_err("Failed preallocate pool of chunks\n");
