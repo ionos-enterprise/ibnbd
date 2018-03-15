@@ -166,6 +166,11 @@ struct ibtrs_clt_io_req {
 	unsigned long		start_time;
 };
 
+struct ibtrs_rbuf {
+	u64 addr;
+	u32 rkey;
+};
+
 struct ibtrs_clt_sess {
 	struct ibtrs_sess	s;
 	struct ibtrs_clt	*clt;
@@ -179,8 +184,9 @@ struct ibtrs_clt_sess {
 	struct work_struct	close_work;
 	unsigned		reconnect_attempts;
 	bool			established;
-	u64			*srv_rdma_addr;
-	u32			srv_rdma_buf_rkey;
+	/* XXX REMOVE ASAP */
+	u32                     srv_rdma_buf_rkey_XXX;
+	struct ibtrs_rbuf	*rbufs;
 	u32			max_io_size;
 	u32			max_req_size;
 	u32			chunk_size;

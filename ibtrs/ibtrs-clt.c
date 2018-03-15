@@ -784,7 +784,8 @@ unmap:
 
 static int ibtrs_post_send_rdma(struct ibtrs_clt_con *con,
 				struct ibtrs_clt_io_req *req,
-				u64 addr, u32 off, u32 imm)
+				struct ibtrs_rbuf *rbuf, u32 off,
+				u32 imm)
 {
 	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
 	enum ib_send_flags flags;
@@ -807,8 +808,8 @@ static int ibtrs_post_send_rdma(struct ibtrs_clt_con *con,
 	flags = atomic_inc_return(&con->io_cnt) % sess->queue_depth ?
 			0 : IB_SEND_SIGNALED;
 	return ibtrs_iu_post_rdma_write_imm(&con->c, req->iu, list, 1,
-					    sess->srv_rdma_buf_rkey,
-					    addr + off, imm, flags);
+					    rbuf->rkey, rbuf->addr + off,
+					    imm, flags);
 }
 
 static void ibtrs_set_sge_with_desc(struct ib_sge *list,
@@ -825,7 +826,8 @@ static void ibtrs_set_rdma_desc_last(struct ibtrs_clt_con *con,
 				     struct ib_sge *list,
 				     struct ibtrs_clt_io_req *req,
 				     struct ib_rdma_wr *wr, int offset,
-				     int m, int n, u64 addr, u32 size, u32 imm)
+				     int m, int n, struct ibtrs_rbuf *rbuf,
+				     u32 size, u32 imm)
 {
 	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
 	struct ibtrs_sg_desc *desc = req->desc;
@@ -842,8 +844,8 @@ static void ibtrs_set_rdma_desc_last(struct ibtrs_clt_con *con,
 	wr->wr.wr_cqe = &req->iu->cqe;
 	wr->wr.sg_list = &list[m];
 	wr->wr.num_sge = n - m + 1;
-	wr->remote_addr	= addr + offset;
-	wr->rkey = sess->srv_rdma_buf_rkey;
+	wr->remote_addr	= rbuf->addr + offset;
+	wr->rkey = rbuf->rkey;
 
 	/*
 	 * From time to time we have to post signalled sends,
@@ -860,7 +862,8 @@ static void ibtrs_set_rdma_desc_last(struct ibtrs_clt_con *con,
 static int ibtrs_post_send_rdma_desc_more(struct ibtrs_clt_con *con,
 					  struct ib_sge *list,
 					  struct ibtrs_clt_io_req *req,
-					  int n, u64 addr, u32 size, u32 imm)
+					  int n, struct ibtrs_rbuf *rbuf,
+					  u32 size, u32 imm)
 {
 	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
 	struct ibtrs_sg_desc *desc = req->desc;
@@ -892,8 +895,8 @@ static int ibtrs_post_send_rdma_desc_more(struct ibtrs_clt_con *con,
 		wr->wr.wr_cqe = &req->iu->cqe;
 		wr->wr.sg_list = &list[m];
 		wr->wr.num_sge = max_sge;
-		wr->remote_addr	= addr + offset;
-		wr->rkey = sess->srv_rdma_buf_rkey;
+		wr->remote_addr	= rbuf->addr + offset;
+		wr->rkey = rbuf->rkey;
 
 		offset += len;
 		wr->wr.next = &wrs[j + 1].wr;
@@ -904,7 +907,7 @@ last_one:
 	wr = &wrs[j];
 
 	ibtrs_set_rdma_desc_last(con, list, req, wr, offset,
-				 m, n, addr, size, imm);
+				 m, n, rbuf, size, imm);
 
 	ret = ib_post_send(con->c.qp, &wrs[0].wr, &bad_wr);
 	if (unlikely(ret))
@@ -916,7 +919,8 @@ last_one:
 
 static int ibtrs_post_send_rdma_desc(struct ibtrs_clt_con *con,
 				     struct ibtrs_clt_io_req *req,
-				     int n, u64 addr, u32 size, u32 imm)
+				     int n, struct ibtrs_rbuf *rbuf,
+				     u32 size, u32 imm)
 {
 	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
 	struct ibtrs_sg_desc *desc = req->desc;
@@ -940,12 +944,11 @@ static int ibtrs_post_send_rdma_desc(struct ibtrs_clt_con *con,
 		flags = atomic_inc_return(&con->io_cnt) % sess->queue_depth ?
 				0 : IB_SEND_SIGNALED;
 		ret = ibtrs_iu_post_rdma_write_imm(&con->c, req->iu,
-						   sge, num_sge,
-						   sess->srv_rdma_buf_rkey,
-						   addr, imm, flags);
+						   sge, num_sge, rbuf->rkey,
+						   rbuf->addr, imm, flags);
 	} else {
 		ret = ibtrs_post_send_rdma_desc_more(con, sge, req, n,
-						     addr, size, imm);
+						     rbuf, size, imm);
 	}
 
 	return ret;
@@ -953,7 +956,8 @@ static int ibtrs_post_send_rdma_desc(struct ibtrs_clt_con *con,
 
 static int ibtrs_post_send_rdma_more(struct ibtrs_clt_con *con,
 				     struct ibtrs_clt_io_req *req,
-				     u64 addr, u32 size, u32 imm)
+				     struct ibtrs_rbuf *rbuf,
+				     u32 size, u32 imm)
 {
 	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
 	struct ib_device *ibdev = sess->s.ib_dev->dev;
@@ -980,8 +984,7 @@ static int ibtrs_post_send_rdma_more(struct ibtrs_clt_con *con,
 	flags = atomic_inc_return(&con->io_cnt) % sess->queue_depth ?
 			0 : IB_SEND_SIGNALED;
 	ret = ibtrs_iu_post_rdma_write_imm(&con->c, req->iu, sge, num_sge,
-					   sess->srv_rdma_buf_rkey,
-					   addr, imm, flags);
+					   rbuf->rkey, rbuf->addr, imm, flags);
 
 	return ret;
 }
@@ -1843,7 +1846,7 @@ static void free_sess(struct ibtrs_clt_sess *sess)
 	ibtrs_clt_free_stats(&sess->stats);
 	free_percpu(sess->mp_skip_entry);
 	kfree(sess->s.con);
-	kfree(sess->srv_rdma_addr);
+	kfree(sess->rbufs);
 	kfree(sess);
 }
 
@@ -2451,20 +2454,19 @@ static int ibtrs_rdma_conn_established(struct ibtrs_clt_con *con,
 				  queue_depth);
 			return -ECONNRESET;
 		}
-		if (!sess->srv_rdma_addr || sess->queue_depth < queue_depth) {
-			kfree(sess->srv_rdma_addr);
-			sess->srv_rdma_addr =
-				kcalloc(queue_depth,
-					sizeof(*sess->srv_rdma_addr),
-					GFP_KERNEL);
-			if (unlikely(!sess->srv_rdma_addr)) {
+		if (!sess->rbufs || sess->queue_depth < queue_depth) {
+			kfree(sess->rbufs);
+			sess->rbufs = kcalloc(queue_depth, sizeof(*sess->rbufs),
+					      GFP_KERNEL);
+			if (unlikely(!sess->rbufs)) {
 				ibtrs_err(sess, "Failed to allocate "
 					  "queue_depth=%d\n", queue_depth);
 				return -ENOMEM;
 			}
 		}
 		sess->queue_depth = queue_depth;
-		sess->srv_rdma_buf_rkey = le32_to_cpu(msg->rkey);
+		/* XXX REMOVE ASAP */
+		sess->srv_rdma_buf_rkey_XXX = le32_to_cpu(msg->rkey);
 		sess->max_req_size = le32_to_cpu(msg->max_req_size);
 		sess->max_io_size = le32_to_cpu(msg->max_io_size);
 		sess->chunk_size = sess->max_io_size + sess->max_req_size;
@@ -2667,8 +2669,10 @@ static int process_info_rsp(struct ibtrs_clt_sess *sess,
 		ibtrs_err(sess, "Incorrect addr_num=%d\n", addr_num);
 		return -EINVAL;
 	}
-	for (i = 0; i < msg->addr_num; i++)
-		sess->srv_rdma_addr[i] = le64_to_cpu(msg->addr[i]);
+	for (i = 0; i < msg->addr_num; i++) {
+		sess->rbufs[i].addr = le64_to_cpu(msg->addr[i]);
+		sess->rbufs[i].rkey = sess->srv_rdma_buf_rkey_XXX;
+	}
 
 	return 0;
 }
@@ -3112,7 +3116,8 @@ int ibtrs_clt_get_max_reconnect_attempts(const struct ibtrs_clt *clt)
 }
 
 static int ibtrs_clt_rdma_write_desc(struct ibtrs_clt_con *con,
-				     struct ibtrs_clt_io_req *req, u64 buf,
+				     struct ibtrs_clt_io_req *req,
+				     struct ibtrs_rbuf *rbuf,
 				     size_t u_msg_len, u32 imm,
 				     struct ibtrs_msg_rdma_write *msg)
 {
@@ -3126,7 +3131,7 @@ static int ibtrs_clt_rdma_write_desc(struct ibtrs_clt_con *con,
 			     " failed, err: %d\n", ret);
 		return ret;
 	}
-	ret = ibtrs_post_send_rdma_desc(con, req, ret, buf,
+	ret = ibtrs_post_send_rdma_desc(con, req, ret, rbuf,
 					u_msg_len + sizeof(*msg), imm);
 	if (unlikely(ret)) {
 		ibtrs_err(sess, "Write request failed, posting work"
@@ -3142,9 +3147,9 @@ static int ibtrs_clt_write_req(struct ibtrs_clt_io_req *req)
 	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
 	struct ibtrs_msg_rdma_write *msg;
 
+	struct ibtrs_rbuf *rbuf;
 	int ret, count = 0;
 	u32 imm, buf_id;
-	u64 buf;
 
 	const size_t tsize = sizeof(*msg) + req->data_len + req->usr_len;
 
@@ -3171,7 +3176,7 @@ static int ibtrs_clt_write_req(struct ibtrs_clt_io_req *req)
 	imm = ibtrs_to_io_req_imm(imm);
 	buf_id = req->tag->mem_id;
 	req->sg_size = tsize;
-	buf = sess->srv_rdma_addr[buf_id];
+	rbuf = &sess->rbufs[buf_id];
 
 	/*
 	 * Update stats now, after request is successfully sent it is not
@@ -3180,10 +3185,10 @@ static int ibtrs_clt_write_req(struct ibtrs_clt_io_req *req)
 	ibtrs_clt_update_all_stats(req, WRITE);
 
 	if (count > fmr_sg_cnt)
-		ret = ibtrs_clt_rdma_write_desc(req->con, req, buf,
+		ret = ibtrs_clt_rdma_write_desc(req->con, req, rbuf,
 						req->usr_len, imm, msg);
 	else
-		ret = ibtrs_post_send_rdma_more(req->con, req, buf,
+		ret = ibtrs_post_send_rdma_more(req->con, req, rbuf,
 						req->usr_len + sizeof(*msg),
 						imm);
 	if (unlikely(ret)) {
@@ -3312,7 +3317,7 @@ static int ibtrs_clt_read_req(struct ibtrs_clt_io_req *req)
 	 */
 	ibtrs_clt_update_all_stats(req, READ);
 
-	ret = ibtrs_post_send_rdma(req->con, req, sess->srv_rdma_addr[buf_id],
+	ret = ibtrs_post_send_rdma(req->con, req, &sess->rbufs[buf_id],
 				   req->data_len, imm);
 	if (unlikely(ret)) {
 		ibtrs_err(sess, "Read request failed: %d\n", ret);
