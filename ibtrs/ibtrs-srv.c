@@ -41,16 +41,15 @@ MODULE_DESCRIPTION("IBTRS Server");
 MODULE_VERSION(IBTRS_VER_STRING);
 MODULE_LICENSE("GPL");
 
-#define DEFAULT_MAX_IO_SIZE_KB 128
-#define DEFAULT_MAX_IO_SIZE (DEFAULT_MAX_IO_SIZE_KB * 1024)
+/* Must be power of 2, see mask from mr->page_size in ib_sg_to_pages() */
+#define DEFAULT_MAX_CHUNK_SIZE (128 << 10)
 #define MAX_REQ_SIZE PAGE_SIZE
 #define MAX_SG_COUNT ((MAX_REQ_SIZE - sizeof(struct ibtrs_msg_rdma_read)) \
 		      / sizeof(struct ibtrs_sg_desc))
 
-static int max_io_size = DEFAULT_MAX_IO_SIZE;
-static int rcv_buf_size = DEFAULT_MAX_IO_SIZE + MAX_REQ_SIZE;
+static int max_chunk_size = DEFAULT_MAX_CHUNK_SIZE;
 
-static int max_io_size_set(const char *val, const struct kernel_param *kp)
+static int max_chunk_size_set(const char *val, const struct kernel_param *kp)
 {
 	int err, ival;
 
@@ -58,28 +57,25 @@ static int max_io_size_set(const char *val, const struct kernel_param *kp)
 	if (err)
 		return err;
 
-	if (ival < 4096 || ival + MAX_REQ_SIZE > (4096 * 1024) ||
-	    (ival + MAX_REQ_SIZE) % 512 != 0) {
-		pr_err("Invalid max io size value %d, has to be"
-		       " > %d, < %d\n", ival, 4096, 4194304);
+	if (ival < 4096 || (ival & (ival - 1))) {
+		pr_err("Invalid max chunk size value %d, has to be"
+		       " >= %d, <= %d and should be power of two.\n",
+		       ival, 4096, 16<<20);
 		return -EINVAL;
 	}
-
-	max_io_size = ival;
-	rcv_buf_size = max_io_size + MAX_REQ_SIZE;
-	pr_info("max io size changed to %d\n", ival);
+	max_chunk_size = ival;
 
 	return 0;
 }
 
-static const struct kernel_param_ops max_io_size_ops = {
-	.set		= max_io_size_set,
+static const struct kernel_param_ops max_chunk_size_ops = {
+	.set		= max_chunk_size_set,
 	.get		= param_get_int,
 };
-module_param_cb(max_io_size, &max_io_size_ops, &max_io_size, 0444);
-MODULE_PARM_DESC(max_io_size,
+module_param_cb(max_chunk_size, &max_chunk_size_ops, &max_chunk_size, 0444);
+MODULE_PARM_DESC(max_chunk_size,
 		 "Max size for each IO request, when change the unit is in byte"
-		 " (default: " __stringify(DEFAULT_MAX_IO_SIZE_KB) "KB)");
+		 " (default: " __stringify(DEFAULT_MAX_CHUNK_SIZE_KB) "KB)");
 
 #define DEFAULT_SESS_QUEUE_DEPTH 512
 static int sess_queue_depth = DEFAULT_SESS_QUEUE_DEPTH;
@@ -487,7 +483,7 @@ static void unmap_cont_bufs(struct ibtrs_srv_sess *sess)
 
 	for (i = 0; i < srv->queue_depth; i++)
 		ib_dma_unmap_page(sess->s.ib_dev->dev, sess->rdma_addr[i],
-				  rcv_buf_size, DMA_BIDIRECTIONAL);
+				  max_chunk_size, DMA_BIDIRECTIONAL);
 }
 
 static int map_cont_bufs(struct ibtrs_srv_sess *sess)
@@ -499,7 +495,7 @@ static int map_cont_bufs(struct ibtrs_srv_sess *sess)
 
 	for (i = 0; i < srv->queue_depth; i++) {
 		addr = ib_dma_map_page(sess->s.ib_dev->dev, srv->chunks[i],
-				       0, rcv_buf_size, DMA_BIDIRECTIONAL);
+				       0, max_chunk_size, DMA_BIDIRECTIONAL);
 		if (unlikely(ib_dma_mapping_error(sess->s.ib_dev->dev, addr))) {
 			ibtrs_err(sess, "ib_dma_map_page() failed\n");
 			err = -EIO;
@@ -515,7 +511,7 @@ static int map_cont_bufs(struct ibtrs_srv_sess *sess)
 err_map:
 	while (i--)
 		ib_dma_unmap_page(sess->s.ib_dev->dev, sess->rdma_addr[i],
-				  rcv_buf_size, DMA_BIDIRECTIONAL);
+				  max_chunk_size, DMA_BIDIRECTIONAL);
 
 	return err;
 }
@@ -930,7 +926,7 @@ static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 			msg_id = imm_payload >> sess->mem_bits;
 			off = imm_payload & ((1 << sess->mem_bits) - 1);
 			if (unlikely(msg_id > srv->queue_depth ||
-				     off > rcv_buf_size)) {
+				     off > max_chunk_size)) {
 				ibtrs_err(sess, "Wrong msg_id %u, off %u\n",
 					  msg_id, off);
 				close_sess(sess);
@@ -1189,7 +1185,7 @@ static int ibtrs_rdma_do_accept(struct ibtrs_srv_sess *sess,
 	msg.errno = 0;
 	msg.queue_depth = cpu_to_le16(srv->queue_depth);
 	msg.rkey = cpu_to_le32(sess->s.ib_dev->rkey);
-	msg.max_io_size = cpu_to_le32(max_io_size);
+	msg.max_io_size = cpu_to_le32(max_chunk_size - MAX_REQ_SIZE);
 	msg.max_req_size = cpu_to_le32(MAX_REQ_SIZE);
 	uuid_copy(&msg.uuid, &sess->s.uuid);
 
@@ -1739,15 +1735,16 @@ static int check_module_params(void)
 		return -EINVAL;
 	}
 
-	/* check if IB immediate data size is enough to hold the mem_id and the
+	/*
+	 * Check if IB immediate data size is enough to hold the mem_id and the
 	 * offset inside the memory chunk
 	 */
-	if (ilog2(sess_queue_depth - 1) + ilog2(rcv_buf_size - 1) >
+	if (ilog2(sess_queue_depth - 1) + ilog2(max_chunk_size - 1) >
 	    MAX_IMM_PAYL_BITS) {
 		pr_err("RDMA immediate size (%db) not enough to encode "
 		       "%d buffers of size %dB. Reduce 'sess_queue_depth' "
-		       "or 'max_io_size' parameters.\n", MAX_IMM_PAYL_BITS,
-		       sess_queue_depth, rcv_buf_size);
+		       "or 'max_chunk_size' parameters.\n", MAX_IMM_PAYL_BITS,
+		       sess_queue_depth, max_chunk_size);
 		return -EINVAL;
 	}
 
@@ -1763,9 +1760,12 @@ static int __init ibtrs_server_init(void)
 
 	pr_info("Loading module %s, version: %s "
 		"(retry_count: %d, cq_affinity_list: %s, "
-		"max_io_size: %d, sess_queue_depth: %d)\n",
+		"max_chunk_size: %d (pure IO %ld, headers %ld) , "
+		"sess_queue_depth: %d)\n",
 		KBUILD_MODNAME, IBTRS_VER_STRING, retry_count,
-		cq_affinity_list, max_io_size, sess_queue_depth);
+		cq_affinity_list, max_chunk_size,
+		max_chunk_size - MAX_REQ_SIZE, MAX_REQ_SIZE,
+		sess_queue_depth);
 
 	err = check_module_params();
 	if (err) {
@@ -1774,7 +1774,7 @@ static int __init ibtrs_server_init(void)
 		return err;
 	}
 	chunk_pool = mempool_create_page_pool(CHUNK_POOL_SIZE,
-					      get_order(rcv_buf_size));
+					      get_order(max_chunk_size));
 	if (unlikely(!chunk_pool)) {
 		pr_err("Failed preallocate pool of chunks\n");
 		return -ENOMEM;
