@@ -812,41 +812,6 @@ static int ibtrs_post_send_rdma(struct ibtrs_clt_con *con,
 					    imm, flags, NULL);
 }
 
-static int ibtrs_post_send_rdma_more(struct ibtrs_clt_con *con,
-				     struct ibtrs_clt_io_req *req,
-				     struct ibtrs_rbuf *rbuf,
-				     u32 size, u32 imm)
-{
-	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
-	enum ib_send_flags flags;
-	struct scatterlist *sg;
-	struct ib_sge *sge = req->sge;
-	size_t num_sge;
-	int i, ret;
-
-	num_sge = 1 + req->sg_cnt;
-	for_each_sg(req->sglist, sg, req->sg_cnt, i) {
-		sge[i].addr   = sg_dma_address(sg);
-		sge[i].length = sg_dma_len(sg);
-		sge[i].lkey   = sess->s.ib_dev->lkey;
-	}
-	sge[i].addr   = req->iu->dma_addr;
-	sge[i].length = size;
-	sge[i].lkey   = sess->s.ib_dev->lkey;
-
-	/*
-	 * From time to time we have to post signalled sends,
-	 * or send queue will fill up and only QP reset can help.
-	 */
-	flags = atomic_inc_return(&con->io_cnt) % sess->queue_depth ?
-			0 : IB_SEND_SIGNALED;
-	ret = ibtrs_iu_post_rdma_write_imm(&con->c, req->iu, sge, num_sge,
-					   rbuf->rkey, rbuf->addr, imm,
-					   flags, NULL);
-
-	return ret;
-}
-
 static inline unsigned long ibtrs_clt_get_raw_ms(void)
 {
 	struct timespec ts;
@@ -3004,6 +2969,41 @@ int ibtrs_clt_get_max_reconnect_attempts(const struct ibtrs_clt *clt)
 	return (int)clt->max_reconnect_attempts;
 }
 
+static int ibtrs_post_rdma_write_sg(struct ibtrs_clt_con *con,
+				    struct ibtrs_clt_io_req *req,
+				    struct ibtrs_rbuf *rbuf,
+				    u32 size, u32 imm)
+{
+	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
+	struct ib_sge *sge = req->sge;
+	enum ib_send_flags flags;
+	struct scatterlist *sg;
+	size_t num_sge;
+	int i;
+
+	for_each_sg(req->sglist, sg, req->sg_cnt, i) {
+		sge[i].addr   = sg_dma_address(sg);
+		sge[i].length = sg_dma_len(sg);
+		sge[i].lkey   = sess->s.ib_dev->lkey;
+	}
+	sge[i].addr   = req->iu->dma_addr;
+	sge[i].length = size;
+	sge[i].lkey   = sess->s.ib_dev->lkey;
+
+	num_sge = 1 + req->sg_cnt;
+
+	/*
+	 * From time to time we have to post signalled sends,
+	 * or send queue will fill up and only QP reset can help.
+	 */
+	flags = atomic_inc_return(&con->io_cnt) % sess->queue_depth ?
+			0 : IB_SEND_SIGNALED;
+
+	return ibtrs_iu_post_rdma_write_imm(&con->c, req->iu, sge, num_sge,
+					    rbuf->rkey, rbuf->addr, imm,
+					    flags, NULL);
+}
+
 static int ibtrs_clt_write_req(struct ibtrs_clt_io_req *req)
 {
 	struct ibtrs_clt_con *con = req->con;
@@ -3047,9 +3047,9 @@ static int ibtrs_clt_write_req(struct ibtrs_clt_io_req *req)
 	 */
 	ibtrs_clt_update_all_stats(req, WRITE);
 
-	ret = ibtrs_post_send_rdma_more(req->con, req, rbuf,
-					req->usr_len + sizeof(*msg),
-					imm);
+	ret = ibtrs_post_rdma_write_sg(req->con, req, rbuf,
+				       req->usr_len + sizeof(*msg),
+				       imm);
 	if (unlikely(ret)) {
 		ibtrs_err(sess, "Write request failed: %d\n", ret);
 		ibtrs_clt_decrease_inflight(&sess->stats);
