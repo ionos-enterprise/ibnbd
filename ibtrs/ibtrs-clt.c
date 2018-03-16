@@ -789,7 +789,7 @@ static int ibtrs_post_send_rdma(struct ibtrs_clt_con *con,
 {
 	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
 	enum ib_send_flags flags;
-	struct ib_sge list[1];
+	struct ib_sge sge;
 
 	if (unlikely(!req->sg_size)) {
 		ibtrs_wrn(sess, "Doing RDMA Write failed, no data supplied\n");
@@ -797,9 +797,9 @@ static int ibtrs_post_send_rdma(struct ibtrs_clt_con *con,
 	}
 
 	/* user data and user message in the first list element */
-	list[0].addr   = req->iu->dma_addr;
-	list[0].length = req->sg_size;
-	list[0].lkey   = sess->s.ib_dev->lkey;
+	sge.addr   = req->iu->dma_addr;
+	sge.length = req->sg_size;
+	sge.lkey   = sess->s.ib_dev->lkey;
 
 	/*
 	 * From time to time we have to post signalled sends,
@@ -807,7 +807,7 @@ static int ibtrs_post_send_rdma(struct ibtrs_clt_con *con,
 	 */
 	flags = atomic_inc_return(&con->io_cnt) % sess->queue_depth ?
 			0 : IB_SEND_SIGNALED;
-	return ibtrs_iu_post_rdma_write_imm(&con->c, req->iu, list, 1,
+	return ibtrs_iu_post_rdma_write_imm(&con->c, req->iu, &sge, 1,
 					    rbuf->rkey, rbuf->addr + off,
 					    imm, flags, NULL);
 }
@@ -826,9 +826,7 @@ static void complete_rdma_req(struct ibtrs_clt_io_req *req,
 {
 	struct ibtrs_clt_con *con = req->con;
 	struct ibtrs_clt_sess *sess;
-	enum dma_data_direction dir;
 	struct ibtrs_clt *clt;
-	void *priv;
 
 	if (WARN_ON(!req->in_use))
 		return;
@@ -851,11 +849,9 @@ static void complete_rdma_req(struct ibtrs_clt_io_req *req,
 
 	req->in_use = false;
 	req->con = NULL;
-	priv = req->priv;
-	dir = req->dir;
 
 	if (notify)
-		req->conf(priv, errno);
+		req->conf(req->priv, errno);
 }
 
 static void process_io_rsp(struct ibtrs_clt_sess *sess, u32 msg_id, s16 errno)
