@@ -580,8 +580,8 @@ static int ibtrs_map_sg_entry(struct ibtrs_map_state *state,
 	int ret;
 
 	ibdev = sess->s.ib_dev->dev;
-	dma_addr = ib_sg_dma_address(ibdev, sg);
-	dma_len = ib_sg_dma_len(ibdev, sg);
+	dma_addr = sg_dma_address(sg);
+	dma_len = sg_dma_len(sg);
 	if (!dma_len)
 		return 0;
 
@@ -961,7 +961,6 @@ static int ibtrs_post_send_rdma_more(struct ibtrs_clt_con *con,
 				     u32 size, u32 imm)
 {
 	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
-	struct ib_device *ibdev = sess->s.ib_dev->dev;
 	enum ib_send_flags flags;
 	struct scatterlist *sg;
 	struct ib_sge *sge = req->sge;
@@ -970,8 +969,8 @@ static int ibtrs_post_send_rdma_more(struct ibtrs_clt_con *con,
 
 	num_sge = 1 + req->sg_cnt;
 	for_each_sg(req->sglist, sg, req->sg_cnt, i) {
-		sge[i].addr   = ib_sg_dma_address(ibdev, sg);
-		sge[i].length = ib_sg_dma_len(ibdev, sg);
+		sge[i].addr   = sg_dma_address(sg);
+		sge[i].length = sg_dma_len(sg);
 		sge[i].lkey   = sess->s.ib_dev->lkey;
 	}
 	sge[i].addr   = req->iu->dma_addr;
@@ -3324,12 +3323,9 @@ static int ibtrs_clt_read_req(struct ibtrs_clt_io_req *req)
 		msg->sg_cnt = cpu_to_le16(ret);
 	} else {
 		for_each_sg(req->sglist, sg, req->sg_cnt, i) {
-			msg->desc[i].addr =
-				cpu_to_le64(ib_sg_dma_address(ibdev->dev, sg));
-			msg->desc[i].key =
-				cpu_to_le32(ibdev->rkey);
-			msg->desc[i].len =
-				cpu_to_le32(ib_sg_dma_len(ibdev->dev, sg));
+			msg->desc[i].addr = cpu_to_le64(sg_dma_address(sg));
+			msg->desc[i].key = cpu_to_le32(ibdev->rkey);
+			msg->desc[i].len = cpu_to_le32(sg_dma_len(sg));
 		}
 		req->nmdesc = 0;
 	}
