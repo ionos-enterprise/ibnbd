@@ -812,149 +812,6 @@ static int ibtrs_post_send_rdma(struct ibtrs_clt_con *con,
 					    imm, flags, NULL);
 }
 
-static void ibtrs_set_sge_with_desc(struct ib_sge *list,
-				    struct ibtrs_sg_desc *desc)
-{
-	list->addr   = le64_to_cpu(desc->addr);
-	list->length = le32_to_cpu(desc->len);
-	list->lkey   = le32_to_cpu(desc->key);
-	pr_debug("dma_addr %llu, key %u, dma_len %u\n",
-		 list->addr, list->lkey, list->length);
-}
-
-static void ibtrs_set_rdma_desc_last(struct ibtrs_clt_con *con,
-				     struct ib_sge *list,
-				     struct ibtrs_clt_io_req *req,
-				     struct ib_rdma_wr *wr, int offset,
-				     int m, int n, struct ibtrs_rbuf *rbuf,
-				     u32 size, u32 imm)
-{
-	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
-	struct ibtrs_sg_desc *desc = req->desc;
-	enum ib_send_flags flags;
-	int i;
-
-	for (i = m; i < n; i++, desc++)
-		ibtrs_set_sge_with_desc(&list[i], desc);
-
-	list[i].addr   = req->iu->dma_addr;
-	list[i].length = size;
-	list[i].lkey   = sess->s.ib_dev->lkey;
-
-	wr->wr.wr_cqe = &req->iu->cqe;
-	wr->wr.sg_list = &list[m];
-	wr->wr.num_sge = n - m + 1;
-	wr->remote_addr	= rbuf->addr + offset;
-	wr->rkey = rbuf->rkey;
-
-	/*
-	 * From time to time we have to post signalled sends,
-	 * or send queue will fill up and only QP reset can help.
-	 */
-	flags = atomic_inc_return(&con->io_cnt) % sess->queue_depth ?
-			0 : IB_SEND_SIGNALED;
-
-	wr->wr.opcode = IB_WR_RDMA_WRITE_WITH_IMM;
-	wr->wr.send_flags  = flags;
-	wr->wr.ex.imm_data = cpu_to_be32(imm);
-}
-
-static int ibtrs_post_send_rdma_desc_more(struct ibtrs_clt_con *con,
-					  struct ib_sge *list,
-					  struct ibtrs_clt_io_req *req,
-					  int n, struct ibtrs_rbuf *rbuf,
-					  u32 size, u32 imm)
-{
-	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
-	struct ibtrs_sg_desc *desc = req->desc;
-	size_t max_sge, num_sge, num_wr;
-	struct ib_send_wr *bad_wr;
-	struct ib_rdma_wr *wrs, *wr;
-	int j = 0, k, offset = 0, len = 0;
-	int m = 0;
-	int ret;
-
-	max_sge = sess->max_sge;
-	num_sge = 1 + n;
-	num_wr = DIV_ROUND_UP(num_sge, max_sge);
-
-	wrs = kcalloc(num_wr, sizeof(*wrs), GFP_ATOMIC);
-	if (!wrs)
-		return -ENOMEM;
-
-	if (num_wr == 1)
-		goto last_one;
-
-	for (; j < num_wr; j++) {
-		wr = &wrs[j];
-		for (k = 0; k < max_sge; k++, desc++) {
-			m = k + j * max_sge;
-			ibtrs_set_sge_with_desc(&list[m], desc);
-			len += le32_to_cpu(desc->len);
-		}
-		wr->wr.wr_cqe = &req->iu->cqe;
-		wr->wr.sg_list = &list[m];
-		wr->wr.num_sge = max_sge;
-		wr->remote_addr	= rbuf->addr + offset;
-		wr->rkey = rbuf->rkey;
-
-		offset += len;
-		wr->wr.next = &wrs[j + 1].wr;
-		wr->wr.opcode = IB_WR_RDMA_WRITE;
-	}
-
-last_one:
-	wr = &wrs[j];
-
-	ibtrs_set_rdma_desc_last(con, list, req, wr, offset,
-				 m, n, rbuf, size, imm);
-
-	ret = ib_post_send(con->c.qp, &wrs[0].wr, &bad_wr);
-	if (unlikely(ret))
-		ibtrs_err(sess, "Posting write request to QP failed,"
-			  " err: %d\n", ret);
-	kfree(wrs);
-	return ret;
-}
-
-static int ibtrs_post_send_rdma_desc(struct ibtrs_clt_con *con,
-				     struct ibtrs_clt_io_req *req,
-				     int n, struct ibtrs_rbuf *rbuf,
-				     u32 size, u32 imm)
-{
-	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
-	struct ibtrs_sg_desc *desc = req->desc;
-	struct ib_sge *sge = req->sge;
-	enum ib_send_flags flags;
-	size_t num_sge;
-	int ret, i;
-
-	num_sge = 1 + n;
-	if (num_sge < sess->max_sge) {
-		for (i = 0; i < n; i++, desc++)
-			ibtrs_set_sge_with_desc(&sge[i], desc);
-		sge[i].addr   = req->iu->dma_addr;
-		sge[i].length = size;
-		sge[i].lkey   = sess->s.ib_dev->lkey;
-
-		/*
-		 * From time to time we have to post signalled sends,
-		 * or send queue will fill up and only QP reset can help.
-		 */
-		flags = atomic_inc_return(&con->io_cnt) % sess->queue_depth ?
-				0 : IB_SEND_SIGNALED;
-		ret = ibtrs_iu_post_rdma_write_imm(&con->c, req->iu, sge,
-						   num_sge, rbuf->rkey,
-						   rbuf->addr, imm,
-						   flags, NULL);
-	} else {
-		ret = ibtrs_post_send_rdma_desc_more(con, sge, req, n,
-						     rbuf, size, imm);
-	}
-
-	return ret;
-}
-
 static int ibtrs_post_send_rdma_more(struct ibtrs_clt_con *con,
 				     struct ibtrs_clt_io_req *req,
 				     struct ibtrs_rbuf *rbuf,
@@ -1015,7 +872,7 @@ static void complete_rdma_req(struct ibtrs_clt_io_req *req,
 	sess = to_clt_sess(con->c.sess);
 	clt = sess->clt;
 
-	if (req->sg_cnt > fmr_sg_cnt)
+	if (req->dir == DMA_FROM_DEVICE && req->sg_cnt > fmr_sg_cnt)
 		ibtrs_unmap_fast_reg_data(req->con, req);
 	if (req->sg_cnt)
 		ib_dma_unmap_sg(sess->s.ib_dev->dev, req->sglist,
@@ -3147,32 +3004,6 @@ int ibtrs_clt_get_max_reconnect_attempts(const struct ibtrs_clt *clt)
 	return (int)clt->max_reconnect_attempts;
 }
 
-static int ibtrs_clt_rdma_write_desc(struct ibtrs_clt_con *con,
-				     struct ibtrs_clt_io_req *req,
-				     struct ibtrs_rbuf *rbuf,
-				     size_t u_msg_len, u32 imm,
-				     struct ibtrs_msg_rdma_write *msg)
-{
-	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
-	int ret;
-
-	ret = ibtrs_fast_reg_map_data(con, req->desc, req);
-	if (unlikely(ret < 0)) {
-		ibtrs_err_rl(sess,
-			     "Write request failed, fast reg. data mapping"
-			     " failed, err: %d\n", ret);
-		return ret;
-	}
-	ret = ibtrs_post_send_rdma_desc(con, req, ret, rbuf,
-					u_msg_len + sizeof(*msg), imm);
-	if (unlikely(ret)) {
-		ibtrs_err(sess, "Write request failed, posting work"
-			  " request failed, err: %d\n", ret);
-		ibtrs_unmap_fast_reg_data(con, req);
-	}
-	return ret;
-}
-
 static int ibtrs_clt_write_req(struct ibtrs_clt_io_req *req)
 {
 	struct ibtrs_clt_con *con = req->con;
@@ -3216,13 +3047,9 @@ static int ibtrs_clt_write_req(struct ibtrs_clt_io_req *req)
 	 */
 	ibtrs_clt_update_all_stats(req, WRITE);
 
-	if (count > fmr_sg_cnt)
-		ret = ibtrs_clt_rdma_write_desc(req->con, req, rbuf,
-						req->usr_len, imm, msg);
-	else
-		ret = ibtrs_post_send_rdma_more(req->con, req, rbuf,
-						req->usr_len + sizeof(*msg),
-						imm);
+	ret = ibtrs_post_send_rdma_more(req->con, req, rbuf,
+					req->usr_len + sizeof(*msg),
+					imm);
 	if (unlikely(ret)) {
 		ibtrs_err(sess, "Write request failed: %d\n", ret);
 		ibtrs_clt_decrease_inflight(&sess->stats);
