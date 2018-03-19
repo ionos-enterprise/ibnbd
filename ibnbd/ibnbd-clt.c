@@ -99,10 +99,13 @@ static inline bool ibnbd_clt_get_dev(struct ibnbd_clt_dev *dev)
 	return refcount_inc_not_zero(&dev->refcount);
 }
 
-static void ibnbd_clt_set_dev_attr(struct ibnbd_clt_dev *dev,
-				   const struct ibnbd_msg_open_rsp *rsp)
+static int ibnbd_clt_set_dev_attr(struct ibnbd_clt_dev *dev,
+				  const struct ibnbd_msg_open_rsp *rsp)
 {
 	struct ibnbd_clt_session *sess = dev->sess;
+
+	if (unlikely(!rsp->logical_block_size))
+		return -EINVAL;
 
 	dev->device_id		    = le32_to_cpu(rsp->device_id);
 	dev->nsectors		    = le64_to_cpu(rsp->nsectors);
@@ -125,6 +128,8 @@ static void ibnbd_clt_set_dev_attr(struct ibnbd_clt_dev *dev,
 		dev->max_segments = min_t(u16, dev->max_segments,
 					  le16_to_cpu(rsp->max_segments));
 	}
+
+	return 0;
 }
 
 static int ibnbd_clt_revalidate_disk(struct ibnbd_clt_dev *dev,
@@ -169,7 +174,9 @@ static int process_msg_open_rsp(struct ibnbd_clt_dev *dev,
 			ibnbd_clt_revalidate_disk(dev, nsectors);
 		ibnbd_info(dev, "Device online, device remapped successfully\n");
 	}
-	ibnbd_clt_set_dev_attr(dev, rsp);
+	err = ibnbd_clt_set_dev_attr(dev, rsp);
+	if (unlikely(err))
+		goto out;
 	dev->dev_state = DEV_STATE_MAPPED;
 
 out:
