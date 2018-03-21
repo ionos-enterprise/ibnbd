@@ -3304,8 +3304,9 @@ static int ibtrs_clt_read_req(struct ibtrs_clt_io_req *req)
 	/* put our message into req->buf after user message*/
 	msg = req->iu->buf + req->usr_len;
 	msg->type = cpu_to_le16(IBTRS_MSG_READ);
-	msg->sg_cnt = cpu_to_le32(count);
+	msg->sg_cnt = cpu_to_le16(count);
 	msg->usr_len = cpu_to_le16(req->usr_len);
+	msg->flags = 0;
 
 	if (count > fmr_sg_cnt) {
 		ret = ibtrs_fast_reg_map_data(req->con, msg->desc, req);
@@ -3317,7 +3318,7 @@ static int ibtrs_clt_read_req(struct ibtrs_clt_io_req *req)
 					req->dir);
 			return ret;
 		}
-		msg->sg_cnt = cpu_to_le32(ret);
+		msg->sg_cnt = cpu_to_le16(ret);
 	} else {
 		for_each_sg(req->sglist, sg, req->sg_cnt, i) {
 			msg->desc[i].addr =
@@ -3338,7 +3339,7 @@ static int ibtrs_clt_read_req(struct ibtrs_clt_io_req *req)
 	buf_id = req->tag->mem_id;
 
 	req->sg_size  = sizeof(*msg);
-	req->sg_size += le32_to_cpu(msg->sg_cnt) * sizeof(struct ibtrs_sg_desc);
+	req->sg_size += le16_to_cpu(msg->sg_cnt) * sizeof(struct ibtrs_sg_desc);
 	req->sg_size += req->usr_len;
 
 	/*

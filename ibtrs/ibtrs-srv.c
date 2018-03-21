@@ -331,7 +331,7 @@ static int rdma_write_sg(struct ibtrs_srv_op *id)
 	size_t sg_cnt;
 	int err, i, offset;
 
-	sg_cnt = le32_to_cpu(id->msg->sg_cnt);
+	sg_cnt = le16_to_cpu(id->msg->sg_cnt);
 	if (unlikely(!sg_cnt))
 		return -EINVAL;
 

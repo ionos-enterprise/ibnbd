@@ -153,6 +153,14 @@ enum ibtrs_msg_types {
 };
 
 /**
+ * enum ibtrs_msg_flags - IBTRS message flags.
+ * @IBTRS_NEED_INVAL:	Send invalidation in response.
+ */
+enum ibtrs_msg_flags {
+	IBTRS_MSG_NEED_INVAL_F = 1<<0
+};
+
+/**
  * struct ibtrs_sg_desc - RDMA-Buffer entry description
  * @addr:	Address of RDMA destination buffer
  * @key:	Authorization rkey to write to the buffer
@@ -285,7 +293,8 @@ struct ibtrs_msg_user {
 struct ibtrs_msg_rdma_read {
 	__le16			type;
 	__le16			usr_len;
-	__le32			sg_cnt;
+	__le16			flags;
+	__le16			sg_cnt;
 	struct ibtrs_sg_desc    desc[];
 };
 
