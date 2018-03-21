@@ -94,6 +94,8 @@ static struct workqueue_struct *ibtrs_wq;
 
 static void ibtrs_rdma_error_recovery(struct ibtrs_clt_con *con);
 static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc);
+static void complete_rdma_req(struct ibtrs_clt_io_req *req, int errno,
+			      bool notify, bool can_wait);
 
 static inline void ibtrs_clt_state_lock(void)
 {
@@ -689,6 +691,8 @@ out:
 
 static void ibtrs_clt_inv_rkey_done(struct ib_cq *cq, struct ib_wc *wc)
 {
+	struct ibtrs_clt_io_req *req =
+		container_of(wc->wr_cqe, typeof(*req), inv_cqe);
 	struct ibtrs_clt_con *con = cq->cq_context;
 	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
 
@@ -697,23 +701,27 @@ static void ibtrs_clt_inv_rkey_done(struct ib_cq *cq, struct ib_wc *wc)
 			  ib_wc_status_msg(wc->status));
 		ibtrs_rdma_error_recovery(con);
 	}
+	req->need_inv = false;
+	if (likely(req->need_inv_comp))
+		complete(&req->inv_comp);
+	else
+		/* Complete request from INV callback */
+		complete_rdma_req(req, req->inv_errno, true, false);
 }
 
-static struct ib_cqe local_inv_cqe = {
-	.done = ibtrs_clt_inv_rkey_done
-};
-
-static int ibtrs_inv_rkey(struct ibtrs_clt_con *con, u32 rkey)
+static int ibtrs_inv_rkey(struct ibtrs_clt_io_req *req)
 {
+	struct ibtrs_clt_con *con = req->con;
 	struct ib_send_wr *bad_wr;
 	struct ib_send_wr wr = {
 		.opcode		    = IB_WR_LOCAL_INV,
-		.wr_cqe		    = &local_inv_cqe,
+		.wr_cqe		    = &req->inv_cqe,
 		.next		    = NULL,
 		.num_sge	    = 0,
-		.send_flags	    = 0,
-		.ex.invalidate_rkey = rkey,
+		.send_flags	    = IB_SEND_SIGNALED,
+		.ex.invalidate_rkey = req->mr->rkey,
 	};
+	req->inv_cqe.done = ibtrs_clt_inv_rkey_done;
 
 	return ib_post_send(con->c.qp, &wr, &bad_wr);
 }
@@ -728,7 +736,7 @@ static void ibtrs_unmap_fast_reg_data(struct ibtrs_clt_con *con,
 		struct ibtrs_fr_desc **pfr;
 
 		for (i = req->nmdesc, pfr = req->fr_list; i > 0; i--, pfr++) {
-			ret = ibtrs_inv_rkey(con, (*pfr)->mr->rkey);
+			ret = ibtrs_inv_rkey(req);
 			if (ret < 0) {
 				ibtrs_err(sess,
 					  "Invalidating registered RDMA memory for"
@@ -821,12 +829,13 @@ static inline unsigned long ibtrs_clt_get_raw_ms(void)
 	return timespec_to_ns(&ts) / NSEC_PER_MSEC;
 }
 
-static void complete_rdma_req(struct ibtrs_clt_io_req *req,
-			      int errno, bool notify)
+static void complete_rdma_req(struct ibtrs_clt_io_req *req, int errno,
+			      bool notify, bool can_wait)
 {
 	struct ibtrs_clt_con *con = req->con;
 	struct ibtrs_clt_sess *sess;
 	struct ibtrs_clt *clt;
+	int err;
 
 	if (WARN_ON(!req->in_use))
 		return;
@@ -835,11 +844,50 @@ static void complete_rdma_req(struct ibtrs_clt_io_req *req,
 	sess = to_clt_sess(con->c.sess);
 	clt = sess->clt;
 
-	if (req->dir == DMA_FROM_DEVICE && req->sg_cnt > fmr_sg_cnt)
-		ibtrs_unmap_fast_reg_data(req->con, req);
-	if (req->sg_cnt)
+	if (req->sg_cnt) {
+		if (unlikely(req->dir == DMA_FROM_DEVICE && req->need_inv)) {
+			/*
+			 * We are here to invalidate RDMA read requests
+			 * ourselves.  In normal scenario server should
+			 * send INV for all requested RDMA reads, but
+			 * we are here, thus two things could happen:
+			 *
+			 *    1.  this is failover, when errno != 0
+			 *        and can_wait == 1,
+			 *
+			 *    2.  something totally bad happened and
+			 *        server forgot to send INV, so we
+			 *        should do that ourselves.
+			 */
+
+			if (likely(can_wait))
+				req->need_inv_comp = true;
+			else {
+				/* This should be IO path, so always notify */
+				WARN_ON(!notify);
+				/* Save errno for INV callback */
+				req->inv_errno = errno;
+			}
+
+			err = ibtrs_inv_rkey(req);
+			if (unlikely(err))
+				ibtrs_err(sess, "Send INV WR key=%#x: %d\n",
+					  req->mr->rkey, err);
+			else if (likely(can_wait))
+				wait_for_completion(&req->inv_comp);
+			else {
+				/*
+				 * Something went wrong, so request will be
+				 * completed from INV callback.
+				 */
+				WARN_ON_ONCE(1);
+
+				return;
+			}
+		}
 		ib_dma_unmap_sg(sess->s.ib_dev->dev, req->sglist,
 				req->sg_cnt, req->dir);
+	}
 	if (sess->stats.enable_rdma_lat)
 		ibtrs_clt_update_rdma_lat(&sess->stats,
 					  req->dir == DMA_FROM_DEVICE,
@@ -856,10 +904,13 @@ static void complete_rdma_req(struct ibtrs_clt_io_req *req,
 
 static void process_io_rsp(struct ibtrs_clt_sess *sess, u32 msg_id, s16 errno)
 {
+	struct ibtrs_clt_io_req *req;
+
 	if (WARN_ON(msg_id >= sess->queue_depth))
 		return;
 
-	complete_rdma_req(&sess->reqs[msg_id], errno, true);
+	req = &sess->reqs[msg_id];
+	complete_rdma_req(req, errno, true, false);
 }
 
 static struct ib_cqe io_comp_cqe = {
@@ -1082,7 +1133,11 @@ static inline void ibtrs_clt_init_req(struct ibtrs_clt_io_req *req,
 	req->dir = dir;
 	req->con = ibtrs_tag_to_clt_con(sess, tag);
 	req->conf = conf;
+	req->need_inv = false;
+	req->need_inv_comp = false;
+	req->inv_errno = 0;
 	copy_from_kvec(req->iu->buf, vec, usr_len);
+	reinit_completion(&req->inv_comp);
 	if (sess->stats.enable_rdma_lat)
 		req->start_time = ibtrs_clt_get_raw_ms();
 }
@@ -1172,7 +1227,7 @@ static void fail_all_outstanding_reqs(struct ibtrs_clt_sess *sess,
 			err = ibtrs_clt_failover_req(clt, req);
 
 		notify = (!failover || err);
-		complete_rdma_req(req, -ECONNABORTED, notify);
+		complete_rdma_req(req, -ECONNABORTED, notify, true);
 	}
 }
 
@@ -1250,6 +1305,8 @@ static int alloc_sess_reqs(struct ibtrs_clt_sess *sess)
 			req->mr = NULL;
 			goto out;
 		}
+
+		init_completion(&req->inv_comp);
 	}
 
 	return 0;

@@ -166,6 +166,11 @@ struct ibtrs_clt_io_req {
 	unsigned long		start_time;
 
 	struct ib_mr		*mr;
+	struct ib_cqe		inv_cqe;
+	struct completion	inv_comp;
+	int			inv_errno;
+	bool			need_inv_comp;
+	bool			need_inv;
 };
 
 struct ibtrs_rbuf {
