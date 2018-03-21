@@ -793,7 +793,7 @@ unmap:
 static int ibtrs_post_send_rdma(struct ibtrs_clt_con *con,
 				struct ibtrs_clt_io_req *req,
 				struct ibtrs_rbuf *rbuf, u32 off,
-				u32 imm)
+				u32 imm, struct ib_send_wr *wr)
 {
 	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
 	enum ib_send_flags flags;
@@ -817,7 +817,7 @@ static int ibtrs_post_send_rdma(struct ibtrs_clt_con *con,
 			0 : IB_SEND_SIGNALED;
 	return ibtrs_iu_post_rdma_write_imm(&con->c, req->iu, &sge, 1,
 					    rbuf->rkey, rbuf->addr + off,
-					    imm, flags, NULL);
+					    imm, flags, wr);
 }
 
 static inline unsigned long ibtrs_clt_get_raw_ms(void)
@@ -902,7 +902,8 @@ static void complete_rdma_req(struct ibtrs_clt_io_req *req, int errno,
 		req->conf(req->priv, errno);
 }
 
-static void process_io_rsp(struct ibtrs_clt_sess *sess, u32 msg_id, s16 errno)
+static void process_io_rsp(struct ibtrs_clt_sess *sess, u32 msg_id,
+			   s16 errno, bool w_inval)
 {
 	struct ibtrs_clt_io_req *req;
 
@@ -910,6 +911,8 @@ static void process_io_rsp(struct ibtrs_clt_sess *sess, u32 msg_id, s16 errno)
 		return;
 
 	req = &sess->reqs[msg_id];
+	/* Drop need_inv if server responsed with invalidation */
+	req->need_inv &= !w_inval;
 	complete_rdma_req(req, errno, true, false);
 }
 
@@ -922,6 +925,7 @@ static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 	struct ibtrs_clt_con *con = cq->cq_context;
 	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
 	u32 imm_type, imm_payload;
+	bool w_inval = false;
 	int err;
 
 	if (unlikely(wc->status != IB_WC_SUCCESS)) {
@@ -941,6 +945,14 @@ static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 		 * and hb
 		 */
 		break;
+	case IB_WC_RECV:
+		/*
+		 * Key invalidations from server side
+		 */
+		WARN_ON(!(wc->wc_flags & IB_WC_WITH_INVALIDATE));
+		WARN_ON(wc->wr_cqe != &io_comp_cqe);
+		break;
+
 	case IB_WC_RECV_RDMA_WITH_IMM:
 		/*
 		 * post_recv() RDMA write completions of IO reqs (read/write)
@@ -948,20 +960,16 @@ static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 		 */
 		if (WARN_ON(wc->wr_cqe != &io_comp_cqe))
 			return;
-		err = ibtrs_post_recv_empty(&con->c, &io_comp_cqe);
-		if (unlikely(err)) {
-			ibtrs_err(sess, "ibtrs_post_recv_empty(): %d\n", err);
-			ibtrs_rdma_error_recovery(con);
-			break;
-		}
+
 		ibtrs_from_imm(be32_to_cpu(wc->ex.imm_data),
 			       &imm_type, &imm_payload);
 		if (likely(imm_type == IBTRS_IO_RSP_IMM ||
 			   imm_type == IBTRS_IO_RSP_W_INV_IMM)) {
 			u32 msg_id;
 
+			w_inval = (imm_type == IBTRS_IO_RSP_W_INV_IMM);
 			ibtrs_from_io_rsp_imm(imm_payload, &msg_id, &err);
-			process_io_rsp(sess, msg_id, err);
+			process_io_rsp(sess, msg_id, err, w_inval);
 		} else if (imm_type == IBTRS_HB_MSG_IMM) {
 			WARN_ON(con->c.cid);
 			ibtrs_send_hb_ack(&sess->s);
@@ -970,6 +978,19 @@ static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 			sess->s.hb_missed_cnt = 0;
 		} else {
 			ibtrs_wrn(sess, "Unknown IMM type %u\n", imm_type);
+		}
+		if (w_inval)
+			/*
+			 * Post x2 empty WRs: first is for this RDMA with IMM,
+			 * second is for RECV with INV, which happened earlier.
+			 */
+			err = ibtrs_post_recv_empty_x2(&con->c, &io_comp_cqe);
+		else
+			err = ibtrs_post_recv_empty(&con->c, &io_comp_cqe);
+		if (unlikely(err)) {
+			ibtrs_err(sess, "ibtrs_post_recv_empty(): %d\n", err);
+			ibtrs_rdma_error_recovery(con);
+			break;
 		}
 		break;
 	default:
@@ -984,7 +1005,8 @@ static int post_recv_io(struct ibtrs_clt_con *con)
 	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
 	int err, i;
 
-	for (i = 0; i < sess->queue_depth; i++) {
+	/* For RDMA read completions + FR key invalidations */
+	for (i = 0; i < sess->queue_depth * 2; i++) {
 		err = ibtrs_post_recv_empty(&con->c, &io_comp_cqe);
 		if (unlikely(err))
 			return err;
@@ -1792,7 +1814,7 @@ static int create_con_cq_qp(struct ibtrs_clt_con *con)
 		 * is gracefully put.
 		 */
 		sess->s.ib_dev = ibtrs_ib_dev_find_get(con->c.cm_id,
-						       IB_PD_UNSAFE_GLOBAL_RKEY);
+				fmr_sg_cnt ? IB_PD_UNSAFE_GLOBAL_RKEY : 0);
 		if (unlikely(!sess->s.ib_dev)) {
 			ibtrs_wrn(sess, "ibtrs_ib_dev_find_get(): no memory\n");
 			return -ENOMEM;
@@ -3161,6 +3183,22 @@ int ibtrs_clt_write(struct ibtrs_clt *clt, ibtrs_conf_fn *conf,
 	return err;
 }
 
+static int ibtrs_map_sg_fr(struct ibtrs_clt_io_req *req, size_t count)
+{
+	int nr;
+
+	/* Align the MR to a 4K page size to match the block virt boundary */
+	nr = ib_map_mr_sg(req->mr, req->sglist, count, NULL, SZ_4K);
+	if (unlikely(nr < req->sg_cnt)) {
+		if (nr < 0)
+			return nr;
+		return -EINVAL;
+	}
+	ib_update_fast_reg_key(req->mr, ib_inc_rkey(req->mr->rkey));
+
+	return nr;
+}
+
 static int ibtrs_clt_read_req(struct ibtrs_clt_io_req *req)
 {
 	struct ibtrs_clt_con *con = req->con;
@@ -3168,6 +3206,9 @@ static int ibtrs_clt_read_req(struct ibtrs_clt_io_req *req)
 	struct ibtrs_msg_rdma_read *msg;
 	struct ibtrs_ib_dev *ibdev;
 	struct scatterlist *sg;
+
+	struct ib_reg_wr rwr;
+	struct ib_send_wr *wr = NULL;
 
 	int i, ret, count = 0;
 	u32 imm, buf_id;
@@ -3195,12 +3236,10 @@ static int ibtrs_clt_read_req(struct ibtrs_clt_io_req *req)
 	/* put our message into req->buf after user message*/
 	msg = req->iu->buf + req->usr_len;
 	msg->type = cpu_to_le16(IBTRS_MSG_READ);
-	msg->sg_cnt = cpu_to_le16(count);
 	msg->usr_len = cpu_to_le16(req->usr_len);
-	msg->flags = 0;
 
 	if (count > fmr_sg_cnt) {
-		ret = ibtrs_fast_reg_map_data(req->con, msg->desc, req);
+		ret = ibtrs_map_sg_fr(req, count);
 		if (ret < 0) {
 			ibtrs_err_rl(sess,
 				     "Read request failed, failed to map "
@@ -3209,8 +3248,31 @@ static int ibtrs_clt_read_req(struct ibtrs_clt_io_req *req)
 					req->dir);
 			return ret;
 		}
-		msg->sg_cnt = cpu_to_le16(ret);
+		memset(&rwr, 0, sizeof(rwr));
+		rwr.wr.next = NULL;
+		rwr.wr.opcode = IB_WR_REG_MR;
+		rwr.wr.wr_cqe = &fast_reg_cqe;
+		rwr.wr.num_sge = 0;
+		rwr.mr = req->mr;
+		rwr.key = req->mr->rkey;
+		rwr.access = (IB_ACCESS_LOCAL_WRITE |
+			      IB_ACCESS_REMOTE_WRITE);
+		wr = &rwr.wr;
+
+		msg->sg_cnt = cpu_to_le16(1);
+		msg->flags = cpu_to_le16(IBTRS_MSG_NEED_INVAL_F);
+
+		msg->desc[0].addr = cpu_to_le64(req->mr->iova);
+		msg->desc[0].key = cpu_to_le32(req->mr->rkey);
+		msg->desc[0].len = cpu_to_le32(req->mr->length);
+
+		/* Further invalidation is required */
+		req->need_inv = true;
+
 	} else {
+		msg->sg_cnt = cpu_to_le16(count);
+		msg->flags = 0;
+
 		for_each_sg(req->sglist, sg, req->sg_cnt, i) {
 			msg->desc[i].addr = cpu_to_le64(sg_dma_address(sg));
 			msg->desc[i].key = cpu_to_le32(ibdev->rkey);
@@ -3237,12 +3299,11 @@ static int ibtrs_clt_read_req(struct ibtrs_clt_io_req *req)
 	ibtrs_clt_update_all_stats(req, READ);
 
 	ret = ibtrs_post_send_rdma(req->con, req, &sess->rbufs[buf_id],
-				   req->data_len, imm);
+				   req->data_len, imm, wr);
 	if (unlikely(ret)) {
 		ibtrs_err(sess, "Read request failed: %d\n", ret);
 		ibtrs_clt_decrease_inflight(&sess->stats);
-		if (unlikely(count > fmr_sg_cnt))
-			ibtrs_unmap_fast_reg_data(req->con, req);
+		req->need_inv = false;
 		if (req->sg_cnt)
 			ib_dma_unmap_sg(ibdev->dev, req->sglist,
 					req->sg_cnt, req->dir);
