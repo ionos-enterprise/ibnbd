@@ -326,13 +326,17 @@ static int rdma_write_sg(struct ibtrs_srv_op *id)
 	struct ibtrs_srv_sess *sess = to_srv_sess(id->con->c.sess);
 	dma_addr_t dma_addr = sess->dma_addr[id->msg_id];
 	struct ibtrs_srv *srv = sess->srv;
+	struct ib_send_wr inv_wr, imm_wr;
 	struct ib_rdma_wr *wr = NULL;
 	struct ib_send_wr *bad_wr;
 	enum ib_send_flags flags;
 	size_t sg_cnt;
 	int err, i, offset;
+	bool need_inval;
+	u32 rkey = 0;
 
 	sg_cnt = le16_to_cpu(id->msg->sg_cnt);
+	need_inval = le16_to_cpu(id->msg->flags) & IBTRS_MSG_NEED_INVAL_F;
 	if (unlikely(!sg_cnt))
 		return -EINVAL;
 
@@ -361,13 +365,23 @@ static int rdma_write_sg(struct ibtrs_srv_op *id)
 		wr->wr.num_sge	= 1;
 		wr->remote_addr	= le64_to_cpu(id->msg->desc[i].addr);
 		wr->rkey	= le32_to_cpu(id->msg->desc[i].key);
+		if (rkey == 0)
+			rkey = wr->rkey;
+		else
+			/* Only one key is actually used */
+			WARN_ON_ONCE(rkey != wr->rkey);
 
-		if (i < (sg_cnt - 1)) {
-			wr->wr.next	= &id->tx_wr[i + 1].wr;
-			wr->wr.opcode	= IB_WR_RDMA_WRITE;
-			wr->wr.ex.imm_data	= 0;
-			wr->wr.send_flags	= 0;
-		}
+		if (i < (sg_cnt - 1))
+			wr->wr.next = &id->tx_wr[i + 1].wr;
+		else if (need_inval)
+			wr->wr.next = &inv_wr;
+		else
+			wr->wr.next = &imm_wr;
+
+		wr->wr.opcode = IB_WR_RDMA_WRITE;
+		wr->wr.ex.imm_data = 0;
+		wr->wr.send_flags  = 0;
+
 	}
 	/*
 	 * From time to time we have to post signalled sends,
@@ -376,12 +390,23 @@ static int rdma_write_sg(struct ibtrs_srv_op *id)
 	flags = atomic_inc_return(&id->con->wr_cnt) % srv->queue_depth ?
 			0 : IB_SEND_SIGNALED;
 
-	wr->wr.wr_cqe = &io_comp_cqe;
-	wr->wr.opcode = IB_WR_RDMA_WRITE_WITH_IMM;
-	wr->wr.next = NULL;
-	wr->wr.send_flags = flags;
-	wr->wr.ex.imm_data = cpu_to_be32(ibtrs_to_io_rsp_imm(id->msg_id,
-							     0, false));
+	if (need_inval) {
+		inv_wr.next = &imm_wr;
+		inv_wr.wr_cqe = &io_comp_cqe;
+		inv_wr.sg_list = NULL;
+		inv_wr.num_sge = 0;
+		inv_wr.opcode = IB_WR_SEND_WITH_INV;
+		inv_wr.send_flags = 0;
+		inv_wr.ex.invalidate_rkey = rkey;
+	}
+	imm_wr.next = NULL;
+	imm_wr.wr_cqe = &io_comp_cqe;
+	imm_wr.sg_list = NULL;
+	imm_wr.num_sge = 0;
+	imm_wr.opcode = IB_WR_RDMA_WRITE_WITH_IMM;
+	imm_wr.send_flags = flags;
+	imm_wr.ex.imm_data = cpu_to_be32(ibtrs_to_io_rsp_imm(id->msg_id,
+							     0, need_inval));
 
 	err = ib_post_send(id->con->c.qp, &id->tx_wr[0].wr, &bad_wr);
 	if (unlikely(err))
@@ -392,13 +417,42 @@ static int rdma_write_sg(struct ibtrs_srv_op *id)
 	return err;
 }
 
-static int send_io_resp_imm(struct ibtrs_srv_con *con, int msg_id, s16 errno)
+static int send_io_resp_imm(struct ibtrs_srv_con *con, struct ibtrs_srv_op *id,
+			    int errno)
 {
 	struct ibtrs_srv_sess *sess = to_srv_sess(con->c.sess);
+	struct ib_send_wr inv_wr, *wr = NULL;
 	struct ibtrs_srv *srv = sess->srv;
+	bool need_inval = false;
 	enum ib_send_flags flags;
 	u32 imm;
 	int err;
+
+	if (id->dir == READ) {
+		struct ibtrs_msg_rdma_read *rd_msg = id->msg;
+		size_t sg_cnt;
+
+		need_inval = le16_to_cpu(rd_msg->flags) & IBTRS_MSG_NEED_INVAL_F;
+		sg_cnt = le16_to_cpu(rd_msg->sg_cnt);
+
+		if (need_inval) {
+			if (likely(sg_cnt)) {
+				inv_wr.next = NULL;
+				inv_wr.wr_cqe = &io_comp_cqe;
+				inv_wr.sg_list = NULL;
+				inv_wr.num_sge = 0;
+				inv_wr.opcode = IB_WR_SEND_WITH_INV;
+				inv_wr.send_flags = 0;
+				/* Only one key is actually used */
+				inv_wr.ex.invalidate_rkey =
+					le32_to_cpu(rd_msg->desc[0].key);
+				wr = &inv_wr;
+			} else {
+				WARN_ON_ONCE(1);
+				need_inval = false;
+			}
+		}
+	}
 
 	/*
 	 * From time to time we have to post signalled sends,
@@ -406,9 +460,9 @@ static int send_io_resp_imm(struct ibtrs_srv_con *con, int msg_id, s16 errno)
 	 */
 	flags = atomic_inc_return(&con->wr_cnt) % srv->queue_depth ?
 			0 : IB_SEND_SIGNALED;
-	imm = ibtrs_to_io_rsp_imm(msg_id, errno, false);
+	imm = ibtrs_to_io_rsp_imm(id->msg_id, errno, need_inval);
 	err = ibtrs_post_rdma_write_imm_empty(&con->c, &io_comp_cqe, imm,
-					      flags, NULL);
+					      flags, wr);
 	if (unlikely(err))
 		ibtrs_err_rl(sess, "ib_post_send(), err: %d\n", err);
 
@@ -436,7 +490,7 @@ void ibtrs_srv_resp_rdma(struct ibtrs_srv_op *id, int status)
 		goto out;
 	}
 	if (status || id->dir == WRITE || !id->msg->sg_cnt)
-		err = send_io_resp_imm(con, id->msg_id, status);
+		err = send_io_resp_imm(con, id, status);
 	else
 		err = rdma_write_sg(id);
 	if (unlikely(err)) {
@@ -882,7 +936,7 @@ static void process_read(struct ibtrs_srv_con *con,
 	return;
 
 send_err_msg:
-	ret = send_io_resp_imm(con, buf_id, ret);
+	ret = send_io_resp_imm(con, id, ret);
 	if (ret < 0) {
 		ibtrs_err_rl(sess, "Sending err msg for failed RDMA-Write-Req"
 			     " failed, msg_id %d, err: %d\n", buf_id, ret);
@@ -931,7 +985,7 @@ static void process_write(struct ibtrs_srv_con *con,
 	return;
 
 send_err_msg:
-	ret = send_io_resp_imm(con, buf_id, ret);
+	ret = send_io_resp_imm(con, id, ret);
 	if (ret < 0) {
 		ibtrs_err_rl(sess, "Processing write request failed, sending"
 			     " I/O response failed, msg_id %d, err: %d\n",
