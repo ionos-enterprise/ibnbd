@@ -1086,7 +1086,8 @@ static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 		}
 		ibtrs_from_imm(be32_to_cpu(wc->ex.imm_data),
 			       &imm_type, &imm_payload);
-		if (likely(imm_type == IBTRS_IO_RSP_IMM)) {
+		if (likely(imm_type == IBTRS_IO_RSP_IMM ||
+			   imm_type == IBTRS_IO_RSP_W_INV_IMM)) {
 			u32 msg_id;
 
 			ibtrs_from_io_rsp_imm(imm_payload, &msg_id, &err);

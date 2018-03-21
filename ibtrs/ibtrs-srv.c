@@ -379,7 +379,8 @@ static int rdma_write_sg(struct ibtrs_srv_op *id)
 	wr->wr.opcode = IB_WR_RDMA_WRITE_WITH_IMM;
 	wr->wr.next = NULL;
 	wr->wr.send_flags = flags;
-	wr->wr.ex.imm_data = cpu_to_be32(ibtrs_to_io_rsp_imm(id->msg_id, 0));
+	wr->wr.ex.imm_data = cpu_to_be32(ibtrs_to_io_rsp_imm(id->msg_id,
+							     0, false));
 
 	err = ib_post_send(id->con->c.qp, &id->tx_wr[0].wr, &bad_wr);
 	if (unlikely(err))
@@ -404,7 +405,7 @@ static int send_io_resp_imm(struct ibtrs_srv_con *con, int msg_id, s16 errno)
 	 */
 	flags = atomic_inc_return(&con->wr_cnt) % srv->queue_depth ?
 			0 : IB_SEND_SIGNALED;
-	imm = ibtrs_to_io_rsp_imm(msg_id, errno);
+	imm = ibtrs_to_io_rsp_imm(msg_id, errno, false);
 	err = ibtrs_post_rdma_write_imm_empty(&con->c, &io_comp_cqe,
 					      imm, flags);
 	if (unlikely(err))
