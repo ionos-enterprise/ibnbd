@@ -48,32 +48,10 @@ module_param(nr_cons_per_session, ushort, 0444);
 MODULE_PARM_DESC(nr_cons_per_session, "Number of connections per session."
 		 " (default: nr_cpu_ids)");
 
-static int retry_count = 7;
-
-static int retry_count_set(const char *val, const struct kernel_param *kp)
-{
-	int err, ival;
-
-	err = kstrtoint(val, 0, &ival);
-	if (err)
-		return err;
-
-	if (ival < MIN_RTR_CNT || ival > MAX_RTR_CNT)
-		return -EINVAL;
-
-	retry_count = ival;
-
-	return 0;
-}
-
-static const struct kernel_param_ops retry_count_ops = {
-	.set		= retry_count_set,
-	.get		= param_get_int,
-};
-module_param_cb(retry_count, &retry_count_ops, &retry_count, 0644);
-
-MODULE_PARM_DESC(retry_count, "Number of times to send the message if the"
-		 " remote side didn't respond with Ack or Nack (default: 3,"
+static int retry_cnt = 7;
+module_param_named(retry_cnt, retry_cnt, int, 0644);
+MODULE_PARM_DESC(retry_cnt, "Number of times to send the message if the"
+		 " remote side didn't respond with Ack or Nack (default: 7,"
 		 " min: " __stringify(MIN_RTR_CNT) ", max: "
 		 __stringify(MAX_RTR_CNT) ")");
 
@@ -1652,7 +1630,7 @@ static int ibtrs_rdma_route_resolved(struct ibtrs_clt_con *con)
 	int err;
 
 	memset(&param, 0, sizeof(param));
-	param.retry_count = retry_count;
+	param.retry_count = clamp(retry_cnt, MIN_RTR_CNT, MAX_RTR_CNT);
 	param.rnr_retry_count = 7;
 	param.private_data = &msg;
 	param.private_data_len = sizeof(msg);
@@ -2786,9 +2764,9 @@ static int __init ibtrs_client_init(void)
 	int err;
 
 	pr_info("Loading module %s, version: %s "
-		"(retry_count: %d, noreg_cnt: %d)\n",
+		"(retry_cnt: %d, noreg_cnt: %d)\n",
 		KBUILD_MODNAME, IBTRS_VER_STRING,
-		retry_count, noreg_cnt);
+		retry_cnt, noreg_cnt);
 	err = check_module_params();
 	if (err) {
 		pr_err("Failed to load module, invalid module parameters,"
