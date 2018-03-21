@@ -1189,6 +1189,7 @@ static void free_sess_reqs(struct ibtrs_clt_sess *sess)
 			kfree(req->fr_list);
 		else if (sess->fast_reg_mode == IBTRS_FAST_MEM_FMR)
 			kfree(req->fmr_list);
+		ib_dereg_mr(req->mr);
 		kfree(req->map_page);
 		kfree(req->desc);
 		kfree(req->sge);
@@ -1203,8 +1204,8 @@ static int alloc_sess_reqs(struct ibtrs_clt_sess *sess)
 {
 	struct ibtrs_clt_io_req *req;
 	struct ibtrs_clt *clt = sess->clt;
+	int i, err = -ENOMEM;
 	void *mr_list;
-	int i;
 
 	sess->reqs = kcalloc(sess->queue_depth, sizeof(*sess->reqs),
 			     GFP_KERNEL);
@@ -1241,6 +1242,14 @@ static int alloc_sess_reqs(struct ibtrs_clt_sess *sess)
 					 sizeof(*req->sge), GFP_KERNEL);
 		if (unlikely(!req->sge))
 			goto out;
+
+		req->mr = ib_alloc_mr(sess->s.ib_dev->pd, IB_MR_TYPE_MEM_REG,
+				      clt->max_segments + 1);
+		if (unlikely(IS_ERR(req->mr))) {
+			err = PTR_ERR(req->mr);
+			req->mr = NULL;
+			goto out;
+		}
 	}
 
 	return 0;
@@ -1248,7 +1257,7 @@ static int alloc_sess_reqs(struct ibtrs_clt_sess *sess)
 out:
 	free_sess_reqs(sess);
 
-	return -ENOMEM;
+	return err;
 }
 
 static int alloc_tags(struct ibtrs_clt *clt)

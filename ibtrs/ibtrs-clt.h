@@ -164,6 +164,8 @@ struct ibtrs_clt_io_req {
 	enum dma_data_direction dir;
 	ibtrs_conf_fn		*conf;
 	unsigned long		start_time;
+
+	struct ib_mr		*mr;
 };
 
 struct ibtrs_rbuf {
