@@ -77,10 +77,10 @@ MODULE_PARM_DESC(retry_count, "Number of times to send the message if the"
 		 " min: " __stringify(MIN_RTR_CNT) ", max: "
 		 __stringify(MAX_RTR_CNT) ")");
 
-static int fmr_sg_cnt = 4;
-module_param_named(fmr_sg_cnt, fmr_sg_cnt, int, 0644);
-MODULE_PARM_DESC(fmr_sg_cnt, "when sg_cnt is bigger than fmr_sg_cnt, enable"
-		 " FMR (default: 4)");
+static int noreg_cnt = 4;
+module_param_named(noreg_cnt, noreg_cnt, int, 0644);
+MODULE_PARM_DESC(noreg_cnt, "Max number of SG entries when MR registration "
+		 "does not happen (default: 4)");
 
 static struct workqueue_struct *ibtrs_wq;
 
@@ -1183,7 +1183,7 @@ static int create_con_cq_qp(struct ibtrs_clt_con *con)
 		 * is gracefully put.
 		 */
 		sess->s.ib_dev = ibtrs_ib_dev_find_get(con->c.cm_id,
-				fmr_sg_cnt ? IB_PD_UNSAFE_GLOBAL_RKEY : 0);
+				noreg_cnt ? IB_PD_UNSAFE_GLOBAL_RKEY : 0);
 		if (unlikely(!sess->s.ib_dev)) {
 			ibtrs_wrn(sess, "ibtrs_ib_dev_find_get(): no memory\n");
 			return -ENOMEM;
@@ -2591,7 +2591,7 @@ static int ibtrs_clt_read_req(struct ibtrs_clt_io_req *req)
 	msg->type = cpu_to_le16(IBTRS_MSG_READ);
 	msg->usr_len = cpu_to_le16(req->usr_len);
 
-	if (count > fmr_sg_cnt) {
+	if (count > noreg_cnt || !ibdev->unsafe_rkey) {
 		ret = ibtrs_map_sg_fr(req, count);
 		if (ret < 0) {
 			ibtrs_err_rl(sess,
@@ -2775,10 +2775,6 @@ free_sess:
 
 static int check_module_params(void)
 {
-	if (fmr_sg_cnt > MAX_SEGMENTS || fmr_sg_cnt < 0) {
-		pr_err("invalid fmr_sg_cnt values\n");
-		return -EINVAL;
-	}
 	if (nr_cons_per_session == 0)
 		nr_cons_per_session = min_t(unsigned int, nr_cpu_ids, U16_MAX);
 
@@ -2790,9 +2786,9 @@ static int __init ibtrs_client_init(void)
 	int err;
 
 	pr_info("Loading module %s, version: %s "
-		"(retry_count: %d, fmr_sg_cnt: %d)\n",
+		"(retry_count: %d, noreg_cnt: %d)\n",
 		KBUILD_MODNAME, IBTRS_VER_STRING,
-		retry_count, fmr_sg_cnt);
+		retry_count, noreg_cnt);
 	err = check_module_params();
 	if (err) {
 		pr_err("Failed to load module, invalid module parameters,"
