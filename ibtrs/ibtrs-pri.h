@@ -37,7 +37,7 @@
 
 #include "ibtrs.h"
 
-#define IBTRS_VER_MAJOR 1
+#define IBTRS_VER_MAJOR 2
 #define IBTRS_VER_MINOR 0
 #define IBTRS_VER_STRING __stringify(IBTRS_VER_MAJOR) "." \
 			 __stringify(IBTRS_VER_MINOR)
@@ -88,7 +88,7 @@ enum {
 	IBTRS_HB_INTERVAL_MS = 5000,
 	IBTRS_HB_MISSED_MAX = 5,
 
-	IBTRS_MAGIC = 0x2BBD,
+	IBTRS_MAGIC = 0x1BBD,
 	IBTRS_VERSION = (IBTRS_VER_MAJOR << 8) | IBTRS_VER_MINOR,
 };
 
