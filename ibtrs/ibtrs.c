@@ -288,7 +288,8 @@ static int ibtrs_ib_dev_init(struct ibtrs_ib_dev *d, struct ib_device *dev,
 		return PTR_ERR(d->pd);
 	d->dev = dev;
 	d->lkey = d->pd->local_dma_lkey;
-	d->rkey = d->pd->unsafe_global_rkey;
+	if (flags & IB_PD_UNSAFE_GLOBAL_RKEY)
+		d->unsafe_rkey = d->pd->unsafe_global_rkey;
 
 	err = ibtrs_query_device(d);
 	if (unlikely(err))
@@ -304,7 +305,7 @@ static void ibtrs_ib_dev_destroy(struct ibtrs_ib_dev *d)
 		d->pd = NULL;
 		d->dev = NULL;
 		d->lkey = 0;
-		d->rkey = 0;
+		d->unsafe_rkey = 0;
 	}
 }
 

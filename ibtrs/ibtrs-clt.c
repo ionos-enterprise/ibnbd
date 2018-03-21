@@ -2628,7 +2628,7 @@ static int ibtrs_clt_read_req(struct ibtrs_clt_io_req *req)
 
 		for_each_sg(req->sglist, sg, req->sg_cnt, i) {
 			msg->desc[i].addr = cpu_to_le64(sg_dma_address(sg));
-			msg->desc[i].key = cpu_to_le32(ibdev->rkey);
+			msg->desc[i].key = cpu_to_le32(ibdev->unsafe_rkey);
 			msg->desc[i].len = cpu_to_le32(sg_dma_len(sg));
 		}
 	}

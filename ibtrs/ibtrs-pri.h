@@ -99,7 +99,7 @@ struct ibtrs_ib_dev {
 	struct ib_device	*dev;
 	struct ib_device_attr	attrs;
 	u32			lkey;
-	u32			rkey;
+	u32			unsafe_rkey;
 };
 
 struct ibtrs_con {
