@@ -31,25 +31,17 @@
 #define pr_fmt(fmt) KBUILD_MODNAME " L" __stringify(__LINE__) ": " fmt
 
 #include <linux/module.h>
-#include <rdma/ib_fmr_pool.h>
 
 #include "ibtrs-clt.h"
 #include "ibtrs-log.h"
 
-#define RECONNECT_SEED 8
 #define MAX_SEGMENTS 31
-
 #define IBTRS_CONNECT_TIMEOUT_MS 5000
 
 MODULE_AUTHOR("ibnbd@profitbricks.com");
 MODULE_DESCRIPTION("IBTRS Client");
 MODULE_VERSION(IBTRS_VER_STRING);
 MODULE_LICENSE("GPL");
-
-static bool use_fr;
-module_param(use_fr, bool, 0444);
-MODULE_PARM_DESC(use_fr, "use FRWR mode for memory registration if possible."
-		 " (default: 0)");
 
 static ushort nr_cons_per_session;
 module_param(nr_cons_per_session, ushort, 0444);
@@ -148,68 +140,6 @@ static inline bool ibtrs_clt_is_connected(const struct ibtrs_clt *clt)
 	return connected;
 }
 
-/**
- * struct ibtrs_fr_desc - fast registration work request arguments
- * @entry: Entry in ibtrs_fr_pool.free_list.
- * @mr:    Memory region.
- */
-struct ibtrs_fr_desc {
-	struct list_head		entry;
-	struct ib_mr			*mr;
-};
-
-/**
- * struct ibtrs_fr_pool - pool of fast registration descriptors
- *
- * An entry is available for allocation if and only if it occurs in @free_list.
- *
- * @size:      Number of descriptors in this pool.
- * @max_page_list_len: Maximum fast registration work request page list length.
- * @lock:      Protects free_list.
- * @free_list: List of free descriptors.
- * @desc:      Fast registration descriptor pool.
- */
-struct ibtrs_fr_pool {
-	int			size;
-	int			max_page_list_len;
-	spinlock_t		lock; /* protects free_list */
-	struct list_head	free_list;
-	struct ibtrs_fr_desc	desc[0];
-};
-
-/**
- * struct ibtrs_map_state - per-request DMA memory mapping state
- * @desc:	    Pointer to the element of the buffer descriptor array
- *		    that is being filled in.
- * @pages:	    Array with DMA addresses of pages being considered for
- *		    memory registration.
- * @base_dma_addr:  DMA address of the first page that has not yet been mapped.
- * @dma_len:	    Number of bytes that will be registered with the next
- *		    FMR or FR memory registration call.
- * @total_len:	    Total number of bytes in the sg-list being mapped.
- * @npages:	    Number of page addresses in the pages[] array.
- * @nmdesc:	    Number of FMR or FR memory descriptors used for mapping.
- * @ndesc:	    Number of buffer descriptors that have been filled in.
- */
-struct ibtrs_map_state {
-	union {
-		struct ib_pool_fmr	**next_fmr;
-		struct ibtrs_fr_desc	**next_fr;
-	};
-	struct ibtrs_sg_desc	*desc;
-	union {
-		u64			*pages;
-		struct scatterlist      *sg;
-	};
-	dma_addr_t		base_dma_addr;
-	u32			dma_len;
-	u32			total_len;
-	u32			npages;
-	u32			nmdesc;
-	u32			ndesc;
-	enum dma_data_direction dir;
-};
-
 static inline struct ibtrs_tag *
 __ibtrs_get_tag(struct ibtrs_clt *clt, enum ibtrs_clt_con_type con_type)
 {
@@ -302,392 +232,21 @@ static struct ibtrs_clt_con *ibtrs_tag_to_clt_con(struct ibtrs_clt_sess *sess,
 	return to_clt_con(sess->s.con[id]);
 }
 
-/**
- * ibtrs_destroy_fr_pool() - free the resources owned by a pool
- * @pool: Fast registration pool to be destroyed.
- */
-static void ibtrs_destroy_fr_pool(struct ibtrs_fr_pool *pool)
-{
-	struct ibtrs_fr_desc *d;
-	int i, err;
-
-	if (!pool)
-		return;
-
-	for (i = 0, d = &pool->desc[0]; i < pool->size; i++, d++) {
-		if (d->mr) {
-			err = ib_dereg_mr(d->mr);
-			if (err)
-				pr_err("Failed to deregister memory region,"
-				       " err: %d\n", err);
-		}
-	}
-	kfree(pool);
-}
-
-/**
- * ibtrs_create_fr_pool() - allocate and initialize a pool for fast registration
- * @device:            IB device to allocate fast registration descriptors for.
- * @pd:                Protection domain associated with the FR descriptors.
- * @pool_size:         Number of descriptors to allocate.
- * @max_page_list_len: Maximum fast registration work request page list length.
- */
-static struct ibtrs_fr_pool *ibtrs_create_fr_pool(struct ib_device *device,
-						  struct ib_pd *pd,
-						  int pool_size,
-						  int max_page_list_len)
-{
-	struct ibtrs_fr_pool *pool;
-	struct ibtrs_fr_desc *d;
-	struct ib_mr *mr;
-	int i, ret;
-
-	if (pool_size <= 0) {
-		pr_warn("Creating fr pool failed, invalid pool size %d\n",
-			pool_size);
-		ret = -EINVAL;
-		goto err;
-	}
-
-	pool = kzalloc(sizeof(*pool) + pool_size * sizeof(*d), GFP_KERNEL);
-	if (!pool) {
-		ret = -ENOMEM;
-		goto err;
-	}
-
-	pool->size = pool_size;
-	pool->max_page_list_len = max_page_list_len;
-	spin_lock_init(&pool->lock);
-	INIT_LIST_HEAD(&pool->free_list);
-
-	for (i = 0, d = &pool->desc[0]; i < pool->size; i++, d++) {
-		mr = ib_alloc_mr(pd, IB_MR_TYPE_MEM_REG, max_page_list_len);
-		if (IS_ERR(mr)) {
-			pr_warn("Failed to allocate fast region memory\n");
-			ret = PTR_ERR(mr);
-			goto destroy_pool;
-		}
-		d->mr = mr;
-		list_add_tail(&d->entry, &pool->free_list);
-	}
-
-	return pool;
-
-destroy_pool:
-	ibtrs_destroy_fr_pool(pool);
-err:
-	return ERR_PTR(ret);
-}
-
-/**
- * ibtrs_fr_pool_get() - obtain a descriptor suitable for fast registration
- * @pool: Pool to obtain descriptor from.
- */
-static struct ibtrs_fr_desc *ibtrs_fr_pool_get(struct ibtrs_fr_pool *pool)
-{
-	struct ibtrs_fr_desc *d = NULL;
-
-	spin_lock_bh(&pool->lock);
-	if (!list_empty(&pool->free_list)) {
-		d = list_first_entry(&pool->free_list, typeof(*d), entry);
-		list_del(&d->entry);
-	}
-	spin_unlock_bh(&pool->lock);
-
-	return d;
-}
-
-/**
- * ibtrs_fr_pool_put() - put an FR descriptor back in the free list
- * @pool: Pool the descriptor was allocated from.
- * @desc: Pointer to an array of fast registration descriptor pointers.
- * @n:    Number of descriptors to put back.
- *
- * Note: The caller must already have queued an invalidation request for
- * desc->mr->rkey before calling this function.
- */
-static void ibtrs_fr_pool_put(struct ibtrs_fr_pool *pool,
-			      struct ibtrs_fr_desc **desc, int n)
-{
-	int i;
-
-	spin_lock_bh(&pool->lock);
-	for (i = 0; i < n; i++)
-		list_add(&desc[i]->entry, &pool->free_list);
-	spin_unlock_bh(&pool->lock);
-}
-
-static void ibtrs_map_desc(struct ibtrs_map_state *state, dma_addr_t dma_addr,
-			   u32 dma_len, u32 rkey, u32 max_desc)
-{
-	struct ibtrs_sg_desc *desc = state->desc;
-
-	pr_debug("dma_addr %llu, key %u, dma_len %u\n",
-		 dma_addr, rkey, dma_len);
-	desc->addr = cpu_to_le64(dma_addr);
-	desc->key  = cpu_to_le32(rkey);
-	desc->len  = cpu_to_le32(dma_len);
-
-	state->total_len += dma_len;
-	if (state->ndesc < max_desc) {
-		state->desc++;
-		state->ndesc++;
-	} else {
-		state->ndesc = INT_MIN;
-		pr_err("Could not fit S/G list into buffer descriptor %d.\n",
-		       max_desc);
-	}
-}
-
-static int ibtrs_map_finish_fmr(struct ibtrs_map_state *state,
-				struct ibtrs_clt_con *con)
-{
-	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
-	struct ib_pool_fmr *fmr;
-	dma_addr_t dma_addr;
-	u64 io_addr = 0;
-
-	fmr = ib_fmr_pool_map_phys(sess->fmr_pool, state->pages,
-				   state->npages, io_addr);
-	if (IS_ERR(fmr)) {
-		ibtrs_wrn_rl(sess, "Failed to map FMR from FMR pool, "
-			     "err: %ld\n", PTR_ERR(fmr));
-		return PTR_ERR(fmr);
-	}
-
-	*state->next_fmr++ = fmr;
-	state->nmdesc++;
-	dma_addr = state->base_dma_addr & ~sess->mr_page_mask;
-	pr_debug("ndesc = %d, nmdesc = %d, npages = %d\n",
-		 state->ndesc, state->nmdesc, state->npages);
-	if (state->dir == DMA_TO_DEVICE)
-		ibtrs_map_desc(state, dma_addr, state->dma_len, fmr->fmr->lkey,
-			       sess->max_desc);
-	else
-		ibtrs_map_desc(state, dma_addr, state->dma_len, fmr->fmr->rkey,
-			       sess->max_desc);
-
-	return 0;
-}
-
 static void ibtrs_clt_fast_reg_done(struct ib_cq *cq, struct ib_wc *wc)
 {
-	struct ibtrs_clt_con *con = cq->cq_context;
-	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
+       struct ibtrs_clt_con *con = cq->cq_context;
+       struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
 
-	if (unlikely(wc->status != IB_WC_SUCCESS)) {
-		ibtrs_err(sess, "Failed IB_WR_REG_MR: %s\n",
-			  ib_wc_status_msg(wc->status));
-		ibtrs_rdma_error_recovery(con);
-	}
+       if (unlikely(wc->status != IB_WC_SUCCESS)) {
+               ibtrs_err(sess, "Failed IB_WR_REG_MR: %s\n",
+                         ib_wc_status_msg(wc->status));
+               ibtrs_rdma_error_recovery(con);
+       }
 }
 
 static struct ib_cqe fast_reg_cqe = {
-	.done = ibtrs_clt_fast_reg_done
+       .done = ibtrs_clt_fast_reg_done
 };
-
-/* TODO */
-static int ibtrs_map_finish_fr(struct ibtrs_map_state *state,
-			       struct ibtrs_clt_con *con, int sg_cnt,
-			       unsigned int *sg_offset_p)
-{
-	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
-	struct ibtrs_fr_desc *desc;
-	struct ib_send_wr *bad_wr;
-	struct ib_reg_wr wr;
-	struct ib_pd *pd;
-	u32 rkey;
-	int n;
-
-	pd = sess->s.ib_dev->pd;
-	if (sg_cnt == 1 && (pd->flags & IB_PD_UNSAFE_GLOBAL_RKEY)) {
-		unsigned int sg_offset = sg_offset_p ? *sg_offset_p : 0;
-
-		ibtrs_map_desc(state, sg_dma_address(state->sg) + sg_offset,
-			       sg_dma_len(state->sg) - sg_offset,
-			       pd->unsafe_global_rkey, sess->max_desc);
-		if (sg_offset_p)
-			*sg_offset_p = 0;
-		return 1;
-	}
-
-	desc = ibtrs_fr_pool_get(con->fr_pool);
-	if (!desc) {
-		ibtrs_wrn_rl(sess, "Failed to get descriptor from FR pool\n");
-		return -ENOMEM;
-	}
-
-	rkey = ib_inc_rkey(desc->mr->rkey);
-	ib_update_fast_reg_key(desc->mr, rkey);
-
-	memset(&wr, 0, sizeof(wr));
-	n = ib_map_mr_sg(desc->mr, state->sg, sg_cnt, sg_offset_p,
-			 sess->mr_page_size);
-	if (unlikely(n < 0)) {
-		ibtrs_fr_pool_put(con->fr_pool, &desc, 1);
-		return n;
-	}
-
-	wr.wr.next = NULL;
-	wr.wr.opcode = IB_WR_REG_MR;
-	wr.wr.wr_cqe = &fast_reg_cqe;
-	wr.wr.num_sge = 0;
-	wr.wr.send_flags = 0;
-	wr.mr = desc->mr;
-	wr.key = desc->mr->rkey;
-	wr.access = (IB_ACCESS_LOCAL_WRITE | IB_ACCESS_REMOTE_WRITE);
-
-	*state->next_fr++ = desc;
-	state->nmdesc++;
-
-	ibtrs_map_desc(state, state->base_dma_addr, state->dma_len,
-		       desc->mr->rkey, sess->max_desc);
-
-	return ib_post_send(con->c.qp, &wr.wr, &bad_wr);
-}
-
-static int ibtrs_finish_fmr_mapping(struct ibtrs_map_state *state,
-				    struct ibtrs_clt_con *con)
-{
-	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
-	struct ib_pd *pd = sess->s.ib_dev->pd;
-	int ret = 0;
-
-	if (state->npages == 0)
-		return 0;
-
-	if (state->npages == 1 && (pd->flags & IB_PD_UNSAFE_GLOBAL_RKEY))
-		ibtrs_map_desc(state, state->base_dma_addr, state->dma_len,
-			       pd->unsafe_global_rkey,
-			       sess->max_desc);
-	else
-		ret = ibtrs_map_finish_fmr(state, con);
-
-	if (ret == 0) {
-		state->npages = 0;
-		state->dma_len = 0;
-	}
-
-	return ret;
-}
-
-static int ibtrs_map_sg_entry(struct ibtrs_map_state *state,
-			      struct ibtrs_clt_con *con, struct scatterlist *sg,
-			      int sg_count)
-{
-	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
-	unsigned int dma_len, len;
-	struct ib_device *ibdev;
-	dma_addr_t dma_addr;
-	int ret;
-
-	ibdev = sess->s.ib_dev->dev;
-	dma_addr = sg_dma_address(sg);
-	dma_len = sg_dma_len(sg);
-	if (!dma_len)
-		return 0;
-
-	while (dma_len) {
-		unsigned int offset = dma_addr & ~sess->mr_page_mask;
-
-		if (state->npages == sess->max_pages_per_mr ||
-		    offset != 0) {
-			ret = ibtrs_finish_fmr_mapping(state, con);
-			if (ret)
-				return ret;
-		}
-
-		len = min_t(unsigned int, dma_len,
-			    sess->mr_page_size - offset);
-
-		if (!state->npages)
-			state->base_dma_addr = dma_addr;
-		state->pages[state->npages++] =
-			dma_addr & sess->mr_page_mask;
-		state->dma_len += len;
-		dma_addr += len;
-		dma_len -= len;
-	}
-
-	/*
-	 * If the last entry of the MR wasn't a full page, then we need to
-	 * close it out and start a new one -- we can only merge at page
-	 * boundaries.
-	 */
-	ret = 0;
-	if (len != sess->mr_page_size)
-		ret = ibtrs_finish_fmr_mapping(state, con);
-	return ret;
-}
-
-static int ibtrs_map_fr(struct ibtrs_map_state *state,
-			struct ibtrs_clt_con *con,
-			struct scatterlist *sg, int sg_count)
-{
-	unsigned int sg_offset = 0;
-
-	state->sg = sg;
-
-	while (sg_count) {
-		int i, n;
-
-		n = ibtrs_map_finish_fr(state, con, sg_count, &sg_offset);
-		if (unlikely(n < 0))
-			return n;
-
-		sg_count -= n;
-		for (i = 0; i < n; i++)
-			state->sg = sg_next(state->sg);
-	}
-
-	return 0;
-}
-
-static int ibtrs_map_fmr(struct ibtrs_map_state *state,
-			 struct ibtrs_clt_con *con,
-			 struct scatterlist *sg_first_entry,
-			 int sg_first_entry_index, int sg_count)
-{
-	int i, ret;
-	struct scatterlist *sg;
-
-	for (i = sg_first_entry_index, sg = sg_first_entry; i < sg_count;
-	     i++, sg = sg_next(sg)) {
-		ret = ibtrs_map_sg_entry(state, con, sg, sg_count);
-		if (ret)
-			return ret;
-	}
-	return 0;
-}
-
-static int ibtrs_map_sg(struct ibtrs_map_state *state,
-			struct ibtrs_clt_con *con,
-			struct ibtrs_clt_io_req *req)
-{
-	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
-	int ret = 0;
-
-	state->pages = req->map_page;
-	if (sess->fast_reg_mode == IBTRS_FAST_MEM_FR) {
-		state->next_fr = req->fr_list;
-		ret = ibtrs_map_fr(state, con, req->sglist, req->sg_cnt);
-		if (ret)
-			goto out;
-	} else if (sess->fast_reg_mode == IBTRS_FAST_MEM_FMR) {
-		state->next_fmr = req->fmr_list;
-		ret = ibtrs_map_fmr(state, con, req->sglist, 0,
-				    req->sg_cnt);
-		if (ret)
-			goto out;
-		ret = ibtrs_finish_fmr_mapping(state, con);
-		if (ret)
-			goto out;
-	}
-
-out:
-	req->nmdesc = state->nmdesc;
-	return ret;
-}
 
 static void ibtrs_clt_inv_rkey_done(struct ib_cq *cq, struct ib_wc *wc)
 {
@@ -724,70 +283,6 @@ static int ibtrs_inv_rkey(struct ibtrs_clt_io_req *req)
 	req->inv_cqe.done = ibtrs_clt_inv_rkey_done;
 
 	return ib_post_send(con->c.qp, &wr, &bad_wr);
-}
-
-static void ibtrs_unmap_fast_reg_data(struct ibtrs_clt_con *con,
-				      struct ibtrs_clt_io_req *req)
-{
-	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
-	int i, ret;
-
-	if (sess->fast_reg_mode == IBTRS_FAST_MEM_FR) {
-		struct ibtrs_fr_desc **pfr;
-
-		for (i = req->nmdesc, pfr = req->fr_list; i > 0; i--, pfr++) {
-			ret = ibtrs_inv_rkey(req);
-			if (ret < 0) {
-				ibtrs_err(sess,
-					  "Invalidating registered RDMA memory for"
-					  " rkey %#x failed, err: %d\n",
-					  (*pfr)->mr->rkey, ret);
-			}
-		}
-		if (req->nmdesc)
-			ibtrs_fr_pool_put(con->fr_pool, req->fr_list,
-					  req->nmdesc);
-	} else {
-		struct ib_pool_fmr **pfmr;
-
-		for (i = req->nmdesc, pfmr = req->fmr_list; i > 0; i--, pfmr++)
-			ib_fmr_pool_unmap(*pfmr);
-	}
-	req->nmdesc = 0;
-}
-
-/*
- * We have more scatter/gather entries, so use fast_reg_map
- * trying to merge as many entries as we can.
- */
-static int ibtrs_fast_reg_map_data(struct ibtrs_clt_con *con,
-				   struct ibtrs_sg_desc *desc,
-				   struct ibtrs_clt_io_req *req)
-{
-	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
-	struct ibtrs_map_state state;
-	int ret;
-
-	memset(&state, 0, sizeof(state));
-	state.desc	= desc;
-	state.dir	= req->dir;
-	ret = ibtrs_map_sg(&state, con, req);
-
-	if (unlikely(ret))
-		goto unmap;
-
-	if (unlikely(state.ndesc <= 0)) {
-		ibtrs_err(sess,
-			  "Could not fit S/G list into buffer descriptor %d\n",
-			  state.ndesc);
-		ret = -EIO;
-		goto unmap;
-	}
-
-	return state.ndesc;
-unmap:
-	ibtrs_unmap_fast_reg_data(con, req);
-	return ret;
 }
 
 static int ibtrs_post_send_rdma(struct ibtrs_clt_con *con,
@@ -1262,13 +757,7 @@ static void free_sess_reqs(struct ibtrs_clt_sess *sess)
 		return;
 	for (i = 0; i < sess->queue_depth; ++i) {
 		req = &sess->reqs[i];
-		if (sess->fast_reg_mode == IBTRS_FAST_MEM_FR)
-			kfree(req->fr_list);
-		else if (sess->fast_reg_mode == IBTRS_FAST_MEM_FMR)
-			kfree(req->fmr_list);
 		ib_dereg_mr(req->mr);
-		kfree(req->map_page);
-		kfree(req->desc);
 		kfree(req->sge);
 		ibtrs_iu_free(req->iu, DMA_TO_DEVICE,
 			      sess->s.ib_dev->dev);
@@ -1282,7 +771,6 @@ static int alloc_sess_reqs(struct ibtrs_clt_sess *sess)
 	struct ibtrs_clt_io_req *req;
 	struct ibtrs_clt *clt = sess->clt;
 	int i, err = -ENOMEM;
-	void *mr_list;
 
 	sess->reqs = kcalloc(sess->queue_depth, sizeof(*sess->reqs),
 			     GFP_KERNEL);
@@ -1295,24 +783,6 @@ static int alloc_sess_reqs(struct ibtrs_clt_sess *sess)
 					 sess->s.ib_dev->dev, DMA_TO_DEVICE,
 					 ibtrs_clt_rdma_done);
 		if (unlikely(!req->iu))
-			goto out;
-		mr_list = kmalloc_array(sess->max_pages_per_mr,
-					sizeof(void *), GFP_KERNEL);
-		if (unlikely(!mr_list))
-			goto out;
-		if (sess->fast_reg_mode == IBTRS_FAST_MEM_FR)
-			req->fr_list = mr_list;
-		else if (sess->fast_reg_mode == IBTRS_FAST_MEM_FMR)
-			req->fmr_list = mr_list;
-
-		req->map_page = kmalloc_array(sess->max_pages_per_mr,
-					      sizeof(void *), GFP_KERNEL);
-		if (unlikely(!req->map_page))
-			goto out;
-
-		req->desc = kmalloc_array(sess->max_pages_per_mr,
-					    sizeof(*req->desc), GFP_KERNEL);
-		if (unlikely(!req->desc))
 			goto out;
 
 		req->sge = kmalloc_array(clt->max_segments + 1,
@@ -1388,16 +858,6 @@ static void query_fast_reg_mode(struct ibtrs_clt_sess *sess)
 	int mr_page_shift;
 
 	ib_dev = sess->s.ib_dev;
-	if (ib_dev->dev->alloc_fmr && ib_dev->dev->dealloc_fmr &&
-	    ib_dev->dev->map_phys_fmr && ib_dev->dev->unmap_fmr) {
-		sess->fast_reg_mode = IBTRS_FAST_MEM_FMR;
-		ibtrs_info(sess, "Device %s supports FMR\n", ib_dev->dev->name);
-	}
-	if (ib_dev->attrs.device_cap_flags & IB_DEVICE_MEM_MGT_EXTENSIONS &&
-	    use_fr) {
-		sess->fast_reg_mode = IBTRS_FAST_MEM_FR;
-		ibtrs_info(sess, "Device %s supports FR\n", ib_dev->dev->name);
-	}
 
 	/*
 	 * Use the smallest page size supported by the HCA, down to a
@@ -1405,117 +865,12 @@ static void query_fast_reg_mode(struct ibtrs_clt_sess *sess)
 	 * out of smaller entries.
 	 */
 	mr_page_shift      = max(12, ffs(ib_dev->attrs.page_size_cap) - 1);
-	sess->mr_page_size = 1 << mr_page_shift;
-	sess->max_sge      = ib_dev->attrs.max_sge;
-	sess->mr_page_mask = ~((u64)sess->mr_page_size - 1);
 	max_pages_per_mr   = ib_dev->attrs.max_mr_size;
-	do_div(max_pages_per_mr, sess->mr_page_size);
-	sess->max_pages_per_mr = min_t(u64, sess->max_pages_per_mr,
-				       max_pages_per_mr);
-	if (sess->fast_reg_mode == IBTRS_FAST_MEM_FR) {
-		sess->max_pages_per_mr =
-			min_t(u32, sess->max_pages_per_mr,
-			      ib_dev->attrs.max_fast_reg_page_list_len);
-	}
-	sess->mr_max_size = sess->mr_page_size * sess->max_pages_per_mr;
-}
-
-static int alloc_con_fast_pool(struct ibtrs_clt_con *con)
-{
-	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
-	struct ibtrs_fr_pool *fr_pool;
-	int err = 0;
-
-	if (sess->fast_reg_mode == IBTRS_FAST_MEM_FR) {
-		fr_pool = ibtrs_create_fr_pool(sess->s.ib_dev->dev,
-					       sess->s.ib_dev->pd,
-					       sess->queue_depth,
-					       sess->max_pages_per_mr);
-		if (unlikely(IS_ERR(fr_pool))) {
-			err = PTR_ERR(fr_pool);
-			ibtrs_err(sess, "FR pool allocation failed, err: %d\n",
-				  err);
-			return err;
-		}
-		con->fr_pool = fr_pool;
-	}
-
-	return err;
-}
-
-static void free_con_fast_pool(struct ibtrs_clt_con *con)
-{
-	if (con->fr_pool) {
-		ibtrs_destroy_fr_pool(con->fr_pool);
-		con->fr_pool = NULL;
-	}
-}
-
-static int alloc_sess_fast_pool(struct ibtrs_clt_sess *sess)
-{
-	struct ib_fmr_pool_param fmr_param;
-	struct ib_fmr_pool *fmr_pool;
-	int err = 0;
-
-	if (sess->fast_reg_mode == IBTRS_FAST_MEM_FMR) {
-		memset(&fmr_param, 0, sizeof(fmr_param));
-		fmr_param.pool_size	    = sess->queue_depth *
-					      sess->max_pages_per_mr;
-		fmr_param.dirty_watermark   = fmr_param.pool_size / 4;
-		fmr_param.cache		    = 0;
-		fmr_param.max_pages_per_fmr = sess->max_pages_per_mr;
-		fmr_param.page_shift	    = ilog2(sess->mr_page_size);
-		fmr_param.access	    = (IB_ACCESS_LOCAL_WRITE |
-					       IB_ACCESS_REMOTE_WRITE);
-
-		fmr_pool = ib_create_fmr_pool(sess->s.ib_dev->pd, &fmr_param);
-		if (unlikely(IS_ERR(fmr_pool))) {
-			err = PTR_ERR(fmr_pool);
-			ibtrs_err(sess, "FMR pool allocation failed, err: %d\n",
-				  err);
-			return err;
-		}
-		sess->fmr_pool = fmr_pool;
-	}
-
-	return err;
-}
-
-static void free_sess_fast_pool(struct ibtrs_clt_sess *sess)
-{
-	if (sess->fmr_pool) {
-		ib_destroy_fmr_pool(sess->fmr_pool);
-		sess->fmr_pool = NULL;
-	}
-}
-
-static int alloc_sess_io_bufs(struct ibtrs_clt_sess *sess)
-{
-	int ret;
-
-	ret = alloc_sess_reqs(sess);
-	if (unlikely(ret)) {
-		ibtrs_err(sess, "alloc_sess_reqs(), err: %d\n", ret);
-		return ret;
-	}
-	ret = alloc_sess_fast_pool(sess);
-	if (unlikely(ret)) {
-		ibtrs_err(sess, "alloc_sess_fast_pool(), err: %d\n", ret);
-		goto free_reqs;
-	}
-
-	return 0;
-
-free_reqs:
-	free_sess_reqs(sess);
-
-	return ret;
-}
-
-static void free_sess_io_bufs(struct ibtrs_clt_sess *sess)
-{
-	free_sess_reqs(sess);
-	free_sess_fast_pool(sess);
+	do_div(max_pages_per_mr, (1ull << mr_page_shift));
+	sess->max_pages_per_mr =
+		min3(sess->max_pages_per_mr, (u32)max_pages_per_mr,
+		     ib_dev->attrs.max_fast_reg_page_list_len);
+	sess->max_sge = ib_dev->attrs.max_sge;
 }
 
 static bool __ibtrs_clt_change_state(struct ibtrs_clt_sess *sess,
@@ -1822,8 +1177,6 @@ static int create_con_cq_qp(struct ibtrs_clt_con *con)
 		sess->s.ib_dev_ref = 1;
 		query_fast_reg_mode(sess);
 	} else {
-		int num_wr;
-
 		/*
 		 * Here we assume that session members are correctly set.
 		 * This is always true if user connection (cid == 0) is
@@ -1837,11 +1190,10 @@ static int create_con_cq_qp(struct ibtrs_clt_con *con)
 		/* Shared between connections */
 		sess->s.ib_dev_ref++;
 		cq_size = sess->queue_depth;
-		num_wr = DIV_ROUND_UP(sess->max_pages_per_mr, sess->max_sge);
-		wr_queue_size = sess->s.ib_dev->attrs.max_qp_wr;
-		wr_queue_size = min_t(int, wr_queue_size,
-				      sess->queue_depth * num_wr *
-				      (use_fr ? 3 : 2) + 1);
+		wr_queue_size =
+			min_t(int, sess->s.ib_dev->attrs.max_qp_wr,
+			      /* QD * (REQ or RSP + FR REGS or INVS) + drain */
+			      sess->queue_depth * 2 + 1);
 	}
 	cq_vector = con->cpu % sess->s.ib_dev->dev->num_comp_vectors;
 	err = ibtrs_cq_qp_create(&sess->s, &con->c, sess->max_sge,
@@ -1854,12 +1206,6 @@ static int create_con_cq_qp(struct ibtrs_clt_con *con)
 
 	if (unlikely(err))
 		return err;
-
-	if (con->c.cid) {
-		err = alloc_con_fast_pool(con);
-		if (unlikely(err))
-			ibtrs_cq_qp_destroy(&con->c);
-	}
 
 	return err;
 }
@@ -1874,8 +1220,6 @@ static void destroy_con_cq_qp(struct ibtrs_clt_con *con)
 	 */
 
 	ibtrs_cq_qp_destroy(&con->c);
-	if (con->c.cid != 0)
-		free_con_fast_pool(con);
 	if (sess->s.ib_dev_ref && !--sess->s.ib_dev_ref) {
 		ibtrs_ib_dev_put(sess->s.ib_dev);
 		sess->s.ib_dev = NULL;
@@ -2048,7 +1392,7 @@ static void ibtrs_clt_stop_and_destroy_conns(struct ibtrs_clt_sess *sess,
 		stop_cm(con);
 	}
 	fail_all_outstanding_reqs(sess, failover);
-	free_sess_io_bufs(sess);
+	free_sess_reqs(sess);
 	ibtrs_clt_sess_down(sess);
 
 	/*
@@ -2239,8 +1583,7 @@ static int init_conns(struct ibtrs_clt_sess *sess)
 			goto destroy;
 		}
 	}
-	/* Allocate all session related buffers */
-	err = alloc_sess_io_bufs(sess);
+	err = alloc_sess_reqs(sess);
 	if (unlikely(err))
 		goto destroy;
 
@@ -2376,9 +1719,6 @@ static int ibtrs_rdma_conn_established(struct ibtrs_clt_con *con,
 		sess->max_req_size = le32_to_cpu(msg->max_req_size);
 		sess->max_io_size = le32_to_cpu(msg->max_io_size);
 		sess->chunk_size = sess->max_io_size + sess->max_req_size;
-		sess->max_desc  = sess->max_req_size;
-		sess->max_desc -= sizeof(u32) + sizeof(u32) + IO_MSG_SIZE;
-		sess->max_desc /= sizeof(struct ibtrs_sg_desc);
 
 		/*
 		 * Global queue depth and is always a minimum.  If while a
@@ -3278,7 +2618,6 @@ static int ibtrs_clt_read_req(struct ibtrs_clt_io_req *req)
 			msg->desc[i].key = cpu_to_le32(ibdev->rkey);
 			msg->desc[i].len = cpu_to_le32(sg_dma_len(sg));
 		}
-		req->nmdesc = 0;
 	}
 	/*
 	 * ibtrs message will be after the space reserved for disk data and
@@ -3438,10 +2777,9 @@ static int __init ibtrs_client_init(void)
 	int err;
 
 	pr_info("Loading module %s, version: %s "
-		"(use_fr: %d, retry_count: %d, "
-		"fmr_sg_cnt: %d)\n",
+		"(retry_count: %d, fmr_sg_cnt: %d)\n",
 		KBUILD_MODNAME, IBTRS_VER_STRING,
-		use_fr,	retry_count, fmr_sg_cnt);
+		retry_count, fmr_sg_cnt);
 	err = check_module_params();
 	if (err) {
 		pr_err("Failed to load module, invalid module parameters,"

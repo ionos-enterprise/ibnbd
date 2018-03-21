@@ -67,12 +67,6 @@ static inline const char *ibtrs_clt_state_str(enum ibtrs_clt_state state)
 	}
 }
 
-enum ibtrs_fast_reg {
-	IBTRS_FAST_MEM_NONE,
-	IBTRS_FAST_MEM_FR,
-	IBTRS_FAST_MEM_FMR
-};
-
 enum ibtrs_mp_policy {
 	MP_POLICY_RR,
 	MP_POLICY_MIN_INFLIGHT,
@@ -137,7 +131,6 @@ struct ibtrs_clt_con {
 	struct ibtrs_con	c;
 	unsigned		cpu;
 	atomic_t		io_cnt;
-	struct ibtrs_fr_pool	*fr_pool;
 	int			cm_err;
 };
 
@@ -154,13 +147,7 @@ struct ibtrs_clt_io_req {
 	struct ibtrs_clt_con	*con;
 	struct ibtrs_sg_desc	*desc;
 	struct ib_sge		*sge;
-	union {
-		struct ib_pool_fmr	**fmr_list;
-		struct ibtrs_fr_desc	**fr_list;
-	};
-	void			*map_page;
 	struct ibtrs_tag	*tag;
-	u16			nmdesc;
 	enum dma_data_direction dir;
 	ibtrs_conf_fn		*conf;
 	unsigned long		start_time;
@@ -186,7 +173,6 @@ struct ibtrs_clt_sess {
 	atomic_t		connected_cnt;
 	struct mutex		init_mutex;
 	struct ibtrs_clt_io_req	*reqs;
-	struct ib_fmr_pool	*fmr_pool;
 	struct delayed_work	reconnect_dwork;
 	struct work_struct	close_work;
 	unsigned		reconnect_attempts;
@@ -195,12 +181,7 @@ struct ibtrs_clt_sess {
 	u32			max_io_size;
 	u32			max_req_size;
 	u32			chunk_size;
-	u32			max_desc;
 	size_t			queue_depth;
-	enum ibtrs_fast_reg	fast_reg_mode;
-	u64			mr_page_mask;
-	u32			mr_page_size;
-	u32			mr_max_size;
 	u32			max_pages_per_mr;
 	int			max_sge;
 	struct kobject		kobj;
