@@ -331,6 +331,7 @@ int ibtrs_iu_post_rdma_write_imm(struct ibtrs_con *con, struct ibtrs_iu *iu,
 				 struct ib_send_wr *head);
 
 int ibtrs_post_recv_empty(struct ibtrs_con *con, struct ib_cqe *cqe);
+int ibtrs_post_recv_empty_x2(struct ibtrs_con *con, struct ib_cqe *cqe);
 int ibtrs_post_rdma_write_imm_empty(struct ibtrs_con *con, struct ib_cqe *cqe,
 				    u32 imm_data, enum ib_send_flags flags,
 				    struct ib_send_wr *head);
