@@ -280,6 +280,10 @@ static int ibtrs_post_send_rdma(struct ibtrs_clt_con *con,
 	 */
 	flags = atomic_inc_return(&con->io_cnt) % sess->queue_depth ?
 			0 : IB_SEND_SIGNALED;
+
+	ib_dma_sync_single_for_device(sess->s.ib_dev->dev, req->iu->dma_addr,
+				      req->sg_size, DMA_TO_DEVICE);
+
 	return ibtrs_iu_post_rdma_write_imm(&con->c, req->iu, &sge, 1,
 					    rbuf->rkey, rbuf->addr + off,
 					    imm, flags, wr);
@@ -1961,6 +1965,8 @@ static void ibtrs_clt_info_rsp_done(struct ib_cq *cq, struct ib_wc *wc)
 			  wc->byte_len);
 		goto out;
 	}
+	ib_dma_sync_single_for_cpu(sess->s.ib_dev->dev, iu->dma_addr,
+				   iu->size, DMA_FROM_DEVICE);
 	msg = iu->buf;
 	if (unlikely(le16_to_cpu(msg->type) != IBTRS_MSG_INFO_RSP)) {
 		ibtrs_err(sess, "Sess info response is malformed: type %d\n",
@@ -2022,6 +2028,9 @@ static int ibtrs_send_sess_info(struct ibtrs_clt_sess *sess)
 	msg = tx_iu->buf;
 	msg->type = cpu_to_le16(IBTRS_MSG_INFO_REQ);
 	memcpy(msg->sessname, sess->s.sessname, sizeof(msg->sessname));
+
+	ib_dma_sync_single_for_device(sess->s.ib_dev->dev, tx_iu->dma_addr,
+				      tx_iu->size, DMA_TO_DEVICE);
 
 	/* Send info request */
 	err = ibtrs_iu_post_send(&usr_con->c, tx_iu, sizeof(*msg), NULL);
@@ -2402,6 +2411,9 @@ static int ibtrs_post_rdma_write_sg(struct ibtrs_clt_con *con,
 	 */
 	flags = atomic_inc_return(&con->io_cnt) % sess->queue_depth ?
 			0 : IB_SEND_SIGNALED;
+
+	ib_dma_sync_single_for_device(sess->s.ib_dev->dev, req->iu->dma_addr,
+				      size, DMA_TO_DEVICE);
 
 	return ibtrs_iu_post_rdma_write_imm(&con->c, req->iu, sge, num_sge,
 					    rbuf->rkey, rbuf->addr, imm,

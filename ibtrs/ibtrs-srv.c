@@ -412,6 +412,9 @@ static int rdma_write_sg(struct ibtrs_srv_op *id)
 	imm_wr.ex.imm_data = cpu_to_be32(ibtrs_to_io_rsp_imm(id->msg_id,
 							     0, need_inval));
 
+	ib_dma_sync_single_for_device(sess->s.ib_dev->dev, dma_addr,
+				      offset, DMA_BIDIRECTIONAL);
+
 	err = ib_post_send(id->con->c.qp, &id->tx_wr[0].wr, &bad_wr);
 	if (unlikely(err))
 		ibtrs_err(sess,
@@ -794,6 +797,9 @@ static int process_info_req(struct ibtrs_srv_con *con,
 	 */
 	ibtrs_srv_sess_up(sess);
 
+	ib_dma_sync_single_for_device(sess->s.ib_dev->dev, tx_iu->dma_addr,
+				      tx_iu->size, DMA_TO_DEVICE);
+
 	/* Send info response */
 	err = ibtrs_iu_post_send(&con->c, tx_iu, tx_sz, reg_wr);
 	if (unlikely(err)) {
@@ -830,6 +836,8 @@ static void ibtrs_srv_info_req_done(struct ib_cq *cq, struct ib_wc *wc)
 			  wc->byte_len);
 		goto close;
 	}
+	ib_dma_sync_single_for_cpu(sess->s.ib_dev->dev, iu->dma_addr,
+				   iu->size, DMA_FROM_DEVICE);
 	msg = iu->buf;
 	if (unlikely(le32_to_cpu(msg->type) != IBTRS_MSG_INFO_REQ)) {
 		ibtrs_err(sess, "Sess info request is malformed: type %d\n",
@@ -1014,6 +1022,8 @@ static void process_io_req(struct ibtrs_srv_con *con, void *msg,
 	struct ibtrs_srv_sess *sess = to_srv_sess(con->c.sess);
 	unsigned int type;
 
+	ib_dma_sync_single_for_cpu(sess->s.ib_dev->dev, sess->dma_addr[id],
+				   max_chunk_size, DMA_BIDIRECTIONAL);
 	type = le16_to_cpu(le16_to_cpu(*(__le16 *)msg));
 
 	switch (type) {
