@@ -66,6 +66,8 @@ static void ibtrs_rdma_error_recovery(struct ibtrs_clt_con *con);
 static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc);
 static void complete_rdma_req(struct ibtrs_clt_io_req *req, int errno,
 			      bool notify, bool can_wait);
+static int ibtrs_clt_write_req(struct ibtrs_clt_io_req *req);
+static int ibtrs_clt_read_req(struct ibtrs_clt_io_req *req);
 
 #define cmpxchg_min(var, new) ({					\
 	typeof(var) old;						\
@@ -669,9 +671,6 @@ ibtrs_clt_get_copy_req(struct ibtrs_clt_sess *alive_sess,
 			   fail_req->data_len, fail_req->dir);
 	return req;
 }
-
-static int ibtrs_clt_write_req(struct ibtrs_clt_io_req *req);
-static int ibtrs_clt_read_req(struct ibtrs_clt_io_req *req);
 
 static int ibtrs_clt_failover_req(struct ibtrs_clt *clt,
 				  struct ibtrs_clt_io_req *fail_req)
