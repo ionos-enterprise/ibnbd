@@ -53,8 +53,8 @@ MODULE_LICENSE("GPL");
 
 static mempool_t *chunk_pool;
 static int retry_count = 7;
-static int max_chunk_size = DEFAULT_MAX_CHUNK_SIZE;
-static int sess_queue_depth = DEFAULT_SESS_QUEUE_DEPTH;
+static int __read_mostly max_chunk_size = DEFAULT_MAX_CHUNK_SIZE;
+static int __read_mostly sess_queue_depth = DEFAULT_SESS_QUEUE_DEPTH;
 
 module_param_named(max_chunk_size, max_chunk_size, int, 0444);
 MODULE_PARM_DESC(max_chunk_size,

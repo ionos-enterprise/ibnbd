@@ -55,7 +55,7 @@ MODULE_PARM_DESC(retry_cnt, "Number of times to send the message if the"
 		 " min: " __stringify(MIN_RTR_CNT) ", max: "
 		 __stringify(MAX_RTR_CNT) ")");
 
-static int noreg_cnt = 4;
+static int __read_mostly noreg_cnt = 4;
 module_param_named(noreg_cnt, noreg_cnt, int, 0644);
 MODULE_PARM_DESC(noreg_cnt, "Max number of SG entries when MR registration "
 		 "does not happen (default: 4)");
