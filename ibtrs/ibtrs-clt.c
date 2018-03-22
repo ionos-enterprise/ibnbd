@@ -67,16 +67,6 @@ static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc);
 static void complete_rdma_req(struct ibtrs_clt_io_req *req, int errno,
 			      bool notify, bool can_wait);
 
-static inline void ibtrs_clt_state_lock(void)
-{
-	rcu_read_lock();
-}
-
-static inline void ibtrs_clt_state_unlock(void)
-{
-	rcu_read_unlock();
-}
-
 #define cmpxchg_min(var, new) ({					\
 	typeof(var) old;						\
 									\
@@ -110,10 +100,10 @@ static inline bool ibtrs_clt_is_connected(const struct ibtrs_clt *clt)
 	struct ibtrs_clt_sess *sess;
 	bool connected = false;
 
-	ibtrs_clt_state_lock();
+	rcu_read_lock();
 	list_for_each_entry_rcu(sess, &clt->paths_list, s.entry)
 		connected |= ibtrs_clt_sess_is_connected(sess);
-	ibtrs_clt_state_unlock();
+	rcu_read_unlock();
 
 	return connected;
 }
@@ -522,14 +512,14 @@ struct path_it {
 
 #define do_each_path(path, clt, it) {					\
 	path_it_init(it, clt);						\
-	ibtrs_clt_state_lock();						\
+	rcu_read_lock();						\
 	for ((it)->i = 0; ((path) = ((it)->next_path)(it)) &&		\
 			  (it)->i < (it)->clt->paths_num;		\
 	     (it)->i++)
 
 #define while_each_path(it)						\
 	path_it_deinit(it);						\
-	ibtrs_clt_state_unlock();					\
+	rcu_read_unlock();						\
 	}
 
 /**
@@ -538,7 +528,7 @@ struct path_it {
  * Related to @MP_POLICY_RR
  *
  * Locks:
- *    ibtrs_clt_state_lock() must be hold.
+ *    rcu_read_lock() must be hold.
  */
 static struct ibtrs_clt_sess *get_next_path_rr(struct path_it *it)
 {
@@ -564,7 +554,7 @@ static struct ibtrs_clt_sess *get_next_path_rr(struct path_it *it)
  * Related to @MP_POLICY_MIN_INFLIGHT
  *
  * Locks:
- *    ibtrs_clt_state_lock() must be hold.
+ *    rcu_read_lock() must be hold.
  */
 static struct ibtrs_clt_sess *get_next_path_min_inflight(struct path_it *it)
 {
