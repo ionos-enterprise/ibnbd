@@ -2423,22 +2423,22 @@ static int ibtrs_rdma_conn_established(struct ibtrs_clt_con *con,
 	msg = ev->param.conn.private_data;
 	len = ev->param.conn.private_data_len;
 	if (unlikely(len < sizeof(*msg))) {
-		ibtrs_err(sess, "Invalid IBTRS connection response");
+		ibtrs_err(sess, "Invalid IBTRS connection response\n");
 		return -ECONNRESET;
 	}
 	if (unlikely(le16_to_cpu(msg->magic) != IBTRS_MAGIC)) {
-		ibtrs_err(sess, "Invalid IBTRS magic");
+		ibtrs_err(sess, "Invalid IBTRS magic\n");
 		return -ECONNRESET;
 	}
 	version = le16_to_cpu(msg->version);
 	if (unlikely(version >> 8 != IBTRS_VER_MAJOR)) {
-		ibtrs_err(sess, "Unsupported major IBTRS version: %d",
-			  version);
+		ibtrs_err(sess, "Unsupported major IBTRS version: %d, expected %d\n",
+			  version >> 8, IBTRS_VER_MAJOR);
 		return -ECONNRESET;
 	}
 	errno = le16_to_cpu(msg->errno);
 	if (unlikely(errno)) {
-		ibtrs_err(sess, "Invalid IBTRS message: errno %d",
+		ibtrs_err(sess, "Invalid IBTRS message: errno %d\n",
 			  errno);
 		return -ECONNRESET;
 	}

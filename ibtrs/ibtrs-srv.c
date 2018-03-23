@@ -1379,16 +1379,17 @@ static int ibtrs_rdma_connect(struct rdma_cm_id *cm_id,
 	int err;
 
 	if (unlikely(len < sizeof(*msg))) {
-		pr_err("Invalid IBTRS connection request");
+		pr_err("Invalid IBTRS connection request\n");
 		goto reject_w_econnreset;
 	}
 	if (unlikely(le16_to_cpu(msg->magic) != IBTRS_MAGIC)) {
-		pr_err("Invalid IBTRS magic");
+		pr_err("Invalid IBTRS magic\n");
 		goto reject_w_econnreset;
 	}
 	version = le16_to_cpu(msg->version);
 	if (unlikely(version >> 8 != IBTRS_VER_MAJOR)) {
-		pr_err("Unsupported major IBTRS version: %d", version);
+		pr_err("Unsupported major IBTRS version: %d, expected %d\n",
+		       version >> 8, IBTRS_VER_MAJOR);
 		goto reject_w_econnreset;
 	}
 	con_num = le16_to_cpu(msg->cid_num);
