@@ -1130,7 +1130,14 @@ static int ibnbd_client_xfer_request(struct ibnbd_clt_dev *dev,
 	msg.bi_size	= cpu_to_le32(blk_rq_bytes(rq));
 	msg.rw		= cpu_to_le32(rq_to_ibnbd_flags(rq));
 
-	sg_cnt = blk_rq_map_sg(dev->queue, rq, iu->sglist);
+	/* TODO: this is broken. Discard can consist of multiple segments, see blkdev.h */
+	if (req_op(rq) != REQ_OP_DISCARD)
+		sg_cnt = blk_rq_map_sg(dev->queue, rq, iu->sglist);
+	else {
+		WARN_ON_ONCE(max_t(unsigned short, rq->nr_phys_segments, 1) > 1);
+		sg_cnt = 0;
+	}
+
 	if (sg_cnt == 0)
 		/* Do not forget to mark the end */
 		sg_mark_end(&iu->sglist[0]);
