@@ -172,6 +172,13 @@ backport_blk_queue_write_cache(struct request_queue *q, bool wc, bool fua)
 	blk_queue_flush(q, REQ_FLUSH | (fua ? REQ_FUA : 0));
 }
 
+static inline void
+backport_blk_queue_max_discard_segments(struct request_queue *q,
+		unsigned short max_segments)
+{
+	return;
+}
+
 static inline blk_qc_t backport_submit_bio(struct bio *bio)
 {
 	return submit_bio(bio->bi_rw, bio);
@@ -243,6 +250,7 @@ backport_kernel_write(struct file *file, const void *buf, size_t count,
 #define blk_mq_free_tag_set backport_blk_mq_free_tag_set
 #define blk_mq_complete_request backport_blk_mq_complete_request
 #define blk_queue_write_cache backport_blk_queue_write_cache
+#define blk_queue_max_discard_segments backport_blk_queue_max_discard_segments
 #define blk_queue_secure_erase blk_queue_secdiscard
 #define submit_bio backport_submit_bio
 #define bioset_create backport_bioset_create
