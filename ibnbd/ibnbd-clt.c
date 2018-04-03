@@ -1119,7 +1119,7 @@ static int ibnbd_client_xfer_request(struct ibnbd_clt_dev *dev,
 	struct ibtrs_clt *ibtrs = dev->sess->ibtrs;
 	struct ibtrs_tag *tag = iu->tag;
 	struct ibnbd_msg_io msg;
-	unsigned int sg_cnt;
+	unsigned int sg_cnt = 0;
 	struct kvec vec;
 	size_t size;
 	int err;
@@ -1130,13 +1130,9 @@ static int ibnbd_client_xfer_request(struct ibnbd_clt_dev *dev,
 	msg.bi_size	= cpu_to_le32(blk_rq_bytes(rq));
 	msg.rw		= cpu_to_le32(rq_to_ibnbd_flags(rq));
 
-	/* TODO: this is broken. Discard can consist of multiple segments, see blkdev.h */
+	/* We only support discards with single segment for now. See queue limits. */
 	if (req_op(rq) != REQ_OP_DISCARD)
 		sg_cnt = blk_rq_map_sg(dev->queue, rq, iu->sglist);
-	else {
-		WARN_ON_ONCE(max_t(unsigned short, rq->nr_phys_segments, 1) > 1);
-		sg_cnt = 0;
-	}
 
 	if (sg_cnt == 0)
 		/* Do not forget to mark the end */
@@ -1329,6 +1325,9 @@ static void setup_request_queue(struct ibnbd_clt_dev *dev)
 	blk_queue_max_hw_sectors(dev->queue, dev->max_hw_sectors);
 	blk_queue_max_write_same_sectors(dev->queue,
 					 dev->max_write_same_sectors);
+
+	/* we don't support discards to "discontiguous" segments in on request */
+	blk_queue_max_discard_segments(dev->queue, 1);
 
 	blk_queue_max_discard_sectors(dev->queue, dev->max_discard_sectors);
 	dev->queue->limits.discard_granularity	= dev->discard_granularity;
