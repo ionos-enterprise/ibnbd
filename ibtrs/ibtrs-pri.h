@@ -75,15 +75,6 @@ enum {
 	 * to receive the RDMA addresses from the server.
 	 */
 	MAX_SESS_QUEUE_DEPTH = 4096,
-	/*
-	 * Size of user message atached to a request (@vec, @nr) is limited
-	 * by the IO_MSG_SIZE. max_req_size allocated by the server should
-	 * cover both: the user message and the ibtrs message attached
-	 * to an IO. ibtrs_msg_req_rdma_write attached to a read has variable
-	 * size: max number of descriptors we can send is limited by
-	 * max_desc = (max_req_size - IO_MSG_SIZE) / sizeof(desc)
-	 */
-	IO_MSG_SIZE = 512,
 
 	IBTRS_HB_INTERVAL_MS = 5000,
 	IBTRS_HB_MISSED_MAX = 5,

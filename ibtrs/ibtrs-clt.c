@@ -2486,18 +2486,21 @@ int ibtrs_clt_write(struct ibtrs_clt *clt, ibtrs_conf_fn *conf,
 	struct ibtrs_clt_sess *sess;
 
 	int err = -ECONNABORTED;
+	size_t usr_len, hdr_len;
 	struct path_it it;
-	size_t usr_len;
 
 	usr_len = kvec_length(vec, nr);
 	do_each_path(sess, clt, &it) {
 		if (unlikely(sess->state != IBTRS_CLT_CONNECTED))
 			continue;
 
-		if (unlikely(usr_len > IO_MSG_SIZE)) {
+		hdr_len = sizeof(struct ibtrs_msg_rdma_write);
+
+		if (unlikely(usr_len + hdr_len > sess->max_req_size)) {
 			ibtrs_wrn_rl(sess, "Write request failed, user message"
-				     " size is %zu B big, max size is %d B\n",
-				     usr_len, IO_MSG_SIZE);
+				     " size is %zu and header length %zu, but "
+				     "max size is %u\n", usr_len, hdr_len,
+				     sess->max_req_size);
 			err = -EMSGSIZE;
 			break;
 		}
@@ -2652,21 +2655,22 @@ int ibtrs_clt_read(struct ibtrs_clt *clt, ibtrs_conf_fn *conf,
 	struct ibtrs_clt_sess *sess;
 
 	int err = -ECONNABORTED;
+	size_t usr_len, hdr_len;
 	struct path_it it;
-	size_t usr_len;
 
 	usr_len = kvec_length(vec, nr);
 	do_each_path(sess, clt, &it) {
 		if (unlikely(sess->state != IBTRS_CLT_CONNECTED))
 			continue;
 
-		if (unlikely(usr_len > IO_MSG_SIZE ||
-			     sizeof(struct ibtrs_msg_rdma_read) +
-			     sg_cnt * sizeof(struct ibtrs_sg_desc) >
-			     sess->max_req_size)) {
+		hdr_len = sizeof(struct ibtrs_msg_rdma_read) +
+			  sg_cnt * sizeof(struct ibtrs_sg_desc);
+
+		if (unlikely(usr_len + hdr_len > sess->max_req_size)) {
 			ibtrs_wrn_rl(sess, "Read request failed, user message"
-				     " size is %zu B big, max size is %d B\n",
-				     usr_len, IO_MSG_SIZE);
+				     " size is %zu and header length %zu, but "
+				     "max size is %u\n", usr_len, hdr_len,
+				     sess->max_req_size);
 			err = -EMSGSIZE;
 			break;
 		}
