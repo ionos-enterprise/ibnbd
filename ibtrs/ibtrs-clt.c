@@ -2477,47 +2477,6 @@ static int ibtrs_clt_write_req(struct ibtrs_clt_io_req *req)
 	return ret;
 }
 
-int ibtrs_clt_write(struct ibtrs_clt *clt, ibtrs_conf_fn *conf,
-		    struct ibtrs_tag *tag, void *priv, const struct kvec *vec,
-		    size_t nr, size_t data_len, struct scatterlist *sg,
-		    unsigned int sg_cnt)
-{
-	struct ibtrs_clt_io_req *req;
-	struct ibtrs_clt_sess *sess;
-
-	int err = -ECONNABORTED;
-	size_t usr_len, hdr_len;
-	struct path_it it;
-
-	usr_len = kvec_length(vec, nr);
-	do_each_path(sess, clt, &it) {
-		if (unlikely(sess->state != IBTRS_CLT_CONNECTED))
-			continue;
-
-		hdr_len = sizeof(struct ibtrs_msg_rdma_write);
-
-		if (unlikely(usr_len + hdr_len > sess->max_req_size)) {
-			ibtrs_wrn_rl(sess, "Write request failed, user message"
-				     " size is %zu and header length %zu, but "
-				     "max size is %u\n", usr_len, hdr_len,
-				     sess->max_req_size);
-			err = -EMSGSIZE;
-			break;
-		}
-		req = ibtrs_clt_get_req(sess, conf, tag, priv, vec, usr_len,
-					sg, sg_cnt, data_len, DMA_TO_DEVICE);
-		err = ibtrs_clt_write_req(req);
-		if (unlikely(err)) {
-			req->in_use = false;
-			continue;
-		}
-		/* Success path */
-		break;
-	} while_each_path(&it);
-
-	return err;
-}
-
 static int ibtrs_map_sg_fr(struct ibtrs_clt_io_req *req, size_t count)
 {
 	int nr;
@@ -2646,37 +2605,48 @@ static int ibtrs_clt_read_req(struct ibtrs_clt_io_req *req)
 	return ret;
 }
 
-int ibtrs_clt_read(struct ibtrs_clt *clt, ibtrs_conf_fn *conf,
-		   struct ibtrs_tag *tag, void *priv, const struct kvec *vec,
-		   size_t nr, size_t data_len, struct scatterlist *sg,
-		   unsigned int sg_cnt)
+int ibtrs_clt_request(int dir, ibtrs_conf_fn *conf, struct ibtrs_clt *clt,
+		      struct ibtrs_tag *tag, void *priv, const struct kvec *vec,
+		      size_t nr, size_t data_len, struct scatterlist *sg,
+		      unsigned int sg_cnt)
 {
 	struct ibtrs_clt_io_req *req;
 	struct ibtrs_clt_sess *sess;
 
+	enum dma_data_direction dma_dir;
 	int err = -ECONNABORTED;
 	size_t usr_len, hdr_len;
 	struct path_it it;
 
 	usr_len = kvec_length(vec, nr);
+	if (dir == READ) {
+		hdr_len = sizeof(struct ibtrs_msg_rdma_read) +
+			  sg_cnt * sizeof(struct ibtrs_sg_desc);
+		dma_dir = DMA_FROM_DEVICE;
+	} else {
+		hdr_len = sizeof(struct ibtrs_msg_rdma_write);
+		dma_dir = DMA_TO_DEVICE;
+	}
+
 	do_each_path(sess, clt, &it) {
 		if (unlikely(sess->state != IBTRS_CLT_CONNECTED))
 			continue;
 
-		hdr_len = sizeof(struct ibtrs_msg_rdma_read) +
-			  sg_cnt * sizeof(struct ibtrs_sg_desc);
-
 		if (unlikely(usr_len + hdr_len > sess->max_req_size)) {
-			ibtrs_wrn_rl(sess, "Read request failed, user message"
-				     " size is %zu and header length %zu, but "
-				     "max size is %u\n", usr_len, hdr_len,
-				     sess->max_req_size);
+			ibtrs_wrn_rl(sess, "%s request failed, user message "
+				     "size is %zu and header length %zu, but "
+				     "max size is %u\n",
+				     dir == READ ? "Read" : "Write",
+				     usr_len, hdr_len, sess->max_req_size);
 			err = -EMSGSIZE;
 			break;
 		}
 		req = ibtrs_clt_get_req(sess, conf, tag, priv, vec, usr_len,
-					sg, sg_cnt, data_len, DMA_FROM_DEVICE);
-		err = ibtrs_clt_read_req(req);
+					sg, sg_cnt, data_len, dma_dir);
+		if (dir == READ)
+			err = ibtrs_clt_read_req(req);
+		else
+			err = ibtrs_clt_write_req(req);
 		if (unlikely(err)) {
 			req->in_use = false;
 			continue;
@@ -2686,19 +2656,6 @@ int ibtrs_clt_read(struct ibtrs_clt *clt, ibtrs_conf_fn *conf,
 	} while_each_path(&it);
 
 	return err;
-}
-
-int ibtrs_clt_request(int dir, ibtrs_conf_fn *conf, struct ibtrs_clt *clt,
-		      struct ibtrs_tag *tag, void *priv, const struct kvec *vec,
-		      size_t nr, size_t len, struct scatterlist *sg,
-		      unsigned int sg_len)
-{
-	if (dir == READ)
-		return ibtrs_clt_read(clt, conf, tag, priv, vec, nr, len, sg,
-				      sg_len);
-	else
-		return ibtrs_clt_write(clt, conf, tag, priv, vec, nr, len, sg,
-				       sg_len);
 }
 EXPORT_SYMBOL(ibtrs_clt_request);
 
