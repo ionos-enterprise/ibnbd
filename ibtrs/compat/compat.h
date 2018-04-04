@@ -19,8 +19,10 @@
 #define IBTRS_COMPAT_H
 
 #define sockaddr_to_str ORIGINAL_sockaddr_to_str
+#define ibtrs_invalidate_flag ORIGINAL_ibtrs_invalidate_flag
 #include "../ibtrs-pri.h"
 #undef sockaddr_to_str
+#undef ibtrs_invalidate_flag
 
 static inline void sockaddr_to_str(const struct sockaddr *addr,
 				   char *buf, size_t len)
@@ -46,6 +48,14 @@ static inline void sockaddr_to_str(const struct sockaddr *addr,
 	default:
 		return ORIGINAL_sockaddr_to_str(addr, buf, len);
 	}
+}
+
+/*
+ * Since in compat we do FMR instead of FR no need to invalidate keys.
+ */
+static inline u32 ibtrs_invalidate_flag(void)
+{
+	return 0;
 }
 
 #endif /* IBTRS_COMPAT_H */

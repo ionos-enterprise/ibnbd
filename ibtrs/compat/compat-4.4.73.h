@@ -21,7 +21,6 @@
 #include <rdma/ib_verbs.h>
 #include <rdma/rdma_cm.h>
 #include <rdma/ib_cm.h>
-#include <rdma/ib_fmr_pool.h>
 
 #include "4.4.73/irq_poll.h"
 
@@ -345,19 +344,6 @@ struct backport_ib_device {
 	u64			uverbs_exp_cmd_mask;
 };
 
-struct backport_ib_mr {
-	struct ib_mr			*mr;
-	struct ib_fast_reg_page_list	*frpl;
-	struct {
-		unsigned int		page_size;
-		unsigned int		sg_offset;
-		unsigned int		sg_nents;
-		struct scatterlist	*sg;
-	} map_mr_sg;
-
-	u32				rkey;
-};
-
 enum ib_poll_context {
        IB_POLL_DIRECT,         /* caller context, no hw completions */
        IB_POLL_SOFTIRQ,        /* poll from softirq context */
@@ -374,6 +360,39 @@ struct backport_ib_cq {
 		struct irq_poll		iop;
 		struct work_struct	work;
 	};
+};
+
+struct fmr_struct {
+	struct ib_fmr *fmr;
+	unsigned remap_count;
+	struct work_struct unmap_work;
+};
+
+struct fmr_per_mr {
+	u64		   iova;
+	u64		   length;
+	unsigned	   max_remaps;
+	unsigned	   max_pages;
+	unsigned	   page_size;
+	unsigned	   npages;
+	u64		   *pages;
+	struct fmr_struct  fmr[2];
+	struct fmr_struct  *active_fmr;
+	struct fmr_struct  *shadow_fmr;
+};
+
+struct backport_ib_mr {
+	/*
+	 * We keep preallocated FMRs for several page orders, starting
+	 * from 12.  Preallocation is needed, because ib_alloc_mr() does
+	 * not accept page_size, but ib_map_mr_sg() is called on hot path
+	 * where sleep is not allowed.
+	 */
+	struct fmr_per_mr *fmr_order[8];
+
+	u32		   rkey;
+	u64		   iova;
+	u64		   length;
 };
 
 struct backport_rdma_cm_id;
@@ -538,49 +557,40 @@ static inline int backport_ib_post_send(struct ib_qp *qp,
 					struct backport_ib_send_wr *send_wr,
 					struct backport_ib_send_wr **bad_send_wr)
 {
+	struct backport_ib_send_wr *wr = send_wr, *prev = NULL;
+	struct ib_rdma_wr *rdma_wr;
+
 	BUILD_BUG_ON(sizeof(struct ib_send_wr) !=
 		     sizeof(struct backport_ib_send_wr));
 
-	if (likely(send_wr->opcode == IB_WR_RDMA_WRITE ||
-		   send_wr->opcode == IB_WR_RDMA_WRITE_WITH_IMM)) {
-		struct backport_ib_send_wr *wr = send_wr;
-		struct ib_rdma_wr *rdma_wr;
+	if (unlikely(!send_wr))
+		return -EINVAL;
 
-		while (wr) {
+	while (wr) {
+		if (wr->opcode == IB_WR_RDMA_WRITE ||
+		    wr->opcode == IB_WR_RDMA_WRITE_WITH_IMM) {
 			rdma_wr = container_of(wr, typeof(*rdma_wr), wr);
 			wr->wr.rdma.remote_addr = rdma_wr->remote_addr;
 			wr->wr.rdma.rkey = rdma_wr->rkey;
-			wr = wr->next;
+			prev = wr;
+		} else if (wr->opcode == IB_WR_REG_MR) {
+			/*
+			 * We skip REG_MR requests, because we do FMR,
+			 * thus we do not care about signalling.
+			 */
+			WARN_ON(wr->send_flags & IB_SEND_SIGNALED);
+			if (prev)
+				prev->next = wr->next;
+			else
+				send_wr = wr->next;
+		} else {
+			prev = wr;
 		}
-	} else if (send_wr->opcode == IB_WR_REG_MR) {
-		struct backport_ib_send_wr *wr = send_wr;
-		struct backport_ib_mr *bmr;
-		struct ib_reg_wr *reg_wr;
-		unsigned int length;
-		u64 start;
-
-		while (wr) {
-			reg_wr = container_of(wr, typeof(*reg_wr), wr);
-			bmr = reg_wr->mr;
-
-			start = ib_sg_dma_address(qp->device, bmr->map_mr_sg.sg)
-				+ bmr->map_mr_sg.sg_offset;
-			length = ib_sg_dma_len(qp->device, bmr->map_mr_sg.sg)
-				- bmr->map_mr_sg.sg_offset;
-
-			wr->opcode                    = IB_WR_FAST_REG_MR;
-			wr->wr.fast_reg.iova_start    = start;
-			wr->wr.fast_reg.page_list     = bmr->frpl;
-			wr->wr.fast_reg.page_list_len = bmr->map_mr_sg.sg_nents;
-			wr->wr.fast_reg.page_shift    =
-				ilog2(bmr->map_mr_sg.page_size);
-			wr->wr.fast_reg.length        = length;
-			wr->wr.fast_reg.access_flags  = (IB_ACCESS_LOCAL_WRITE |
-							 IB_ACCESS_REMOTE_WRITE);
-			wr->wr.fast_reg.rkey          = bmr->mr->lkey;
-			wr = wr->next;
-		}
+		wr = wr->next;
 	}
+	/* Just return 0 if all REGs are skipped */
+	if (!send_wr)
+		return 0;
 
 	return ib_post_send(qp, (struct ib_send_wr *)send_wr,
 			    (struct ib_send_wr **)bad_send_wr);
@@ -731,13 +741,6 @@ backport_rdma_get_service_id(struct backport_rdma_cm_id *id,
 	return rdma_get_service_id((struct rdma_cm_id *)id, addr);
 }
 
-static inline struct ib_fmr_pool *
-backport_ib_create_fmr_pool(struct backport_ib_pd *bpd,
-			    struct ib_fmr_pool_param *params)
-{
-	return ib_create_fmr_pool(bpd->__pd, params);
-}
-
 enum ib_pd_flags {
        /*
         * Create a memory registration for all memory in the system and place
@@ -827,6 +830,172 @@ static inline void backport_ib_dealloc_pd(struct backport_ib_pd *bpd)
 	kfree(bpd);
 }
 
+static inline unsigned page_size_to_ind(size_t page_size)
+{
+	return ilog2(page_size) - 12;
+}
+
+static inline struct fmr_per_mr *get_fmr(struct backport_ib_mr *bmr,
+					 size_t page_size)
+{
+	unsigned ind = page_size_to_ind(page_size);
+
+	if (ind >= ARRAY_SIZE(bmr->fmr_order))
+		return NULL;
+
+	return bmr->fmr_order[ind];
+}
+
+static inline void set_fmr(struct backport_ib_mr *bmr,
+			   struct fmr_per_mr *fmr_mr,
+			   size_t page_size)
+{
+	unsigned ind = page_size_to_ind(page_size);
+
+	BUG_ON(ind >= ARRAY_SIZE(bmr->fmr_order));
+	BUG_ON(bmr->fmr_order[ind]);
+
+	bmr->fmr_order[ind] = fmr_mr;
+}
+
+static void unmap_fmr(struct fmr_struct *fmr)
+{
+	LIST_HEAD(fmr_list);
+	int err;
+
+	list_add_tail(&fmr->fmr->list, &fmr_list);
+	err = ib_unmap_fmr(&fmr_list);
+	if (unlikely(err))
+		pr_err("%s: ib_unmap_fmr() returned %d\n", __func__, err);
+
+	fmr->remap_count = 0;
+}
+
+static void unmap_fmr_work(struct work_struct *work)
+{
+	struct fmr_struct *fmr;
+
+	fmr = container_of(work, struct fmr_struct, unmap_work);
+	unmap_fmr(fmr);
+}
+
+static inline struct fmr_per_mr *alloc_fmr(struct ib_pd *pd,
+					   size_t page_size)
+{
+	struct ib_device_attr attr;
+	struct ib_fmr_attr fmr_attr;
+	struct fmr_per_mr *fmr_mr;
+	int max_remaps, max_pages, err;
+
+	err = ib_query_device(pd->device, &attr);
+	if (unlikely(err))
+		return ERR_PTR(err);
+	if (unlikely(!attr.max_map_per_fmr))
+		max_remaps = 32;
+	else
+		max_remaps = attr.max_map_per_fmr;
+
+	fmr_mr = kzalloc(sizeof(*fmr_mr), GFP_KERNEL);
+	if (unlikely(!fmr_mr))
+		return ERR_PTR(-ENOMEM);
+
+	/* XXX attr.max_fmr ? */
+        max_pages = attr.max_mr_size;
+	do_div(max_pages, page_size);
+	max_pages = min_t(u64, 512, max_pages);
+
+	fmr_mr->pages = kmalloc_array(max_pages, sizeof(*fmr_mr->pages),
+				      GFP_KERNEL);
+	if (unlikely(!fmr_mr->pages)) {
+		err = -ENOMEM;
+		goto err_free_fmr;
+	}
+
+	memset(&fmr_attr, 0, sizeof(fmr_attr));
+	fmr_attr.max_pages  = max_pages;
+	fmr_attr.max_maps   = max_remaps;
+	fmr_attr.page_shift = ilog2(page_size);
+
+	fmr_mr->fmr[0].fmr = ib_alloc_fmr(pd,
+					  IB_ACCESS_LOCAL_WRITE |
+					  IB_ACCESS_REMOTE_WRITE,
+					  &fmr_attr);
+	fmr_mr->fmr[1].fmr = ib_alloc_fmr(pd,
+					  IB_ACCESS_LOCAL_WRITE |
+					  IB_ACCESS_REMOTE_WRITE,
+					  &fmr_attr);
+	if (unlikely(IS_ERR(fmr_mr->fmr[0].fmr) ||
+		     IS_ERR(fmr_mr->fmr[1].fmr))) {
+		pr_err("%s: ib_alloc_fmr() failed!\n", __func__);
+		err = -EINVAL;
+		goto err_dealloc_fmr;
+	}
+	INIT_WORK(&fmr_mr->fmr[0].unmap_work, unmap_fmr_work);
+	INIT_WORK(&fmr_mr->fmr[1].unmap_work, unmap_fmr_work);
+
+	fmr_mr->max_pages = max_pages;
+	fmr_mr->max_remaps = max_remaps;
+	fmr_mr->active_fmr = &fmr_mr->fmr[0];
+	fmr_mr->shadow_fmr = &fmr_mr->fmr[1];
+
+	return fmr_mr;
+
+err_dealloc_fmr:
+	if (!IS_ERR(fmr_mr->fmr[0].fmr))
+		ib_dealloc_fmr(fmr_mr->fmr[0].fmr);
+	if (!IS_ERR(fmr_mr->fmr[1].fmr))
+		ib_dealloc_fmr(fmr_mr->fmr[1].fmr);
+	kfree(fmr_mr->pages);
+err_free_fmr:
+	kfree(fmr_mr);
+
+	return ERR_PTR(err);
+}
+
+static inline int alloc_and_set_fmr(struct ib_pd *pd,
+				    struct backport_ib_mr *bmr,
+				    size_t page_size)
+{
+	struct fmr_per_mr *fmr_mr;
+
+	if (get_fmr(bmr, page_size))
+		return -EINVAL;
+
+	fmr_mr = alloc_fmr(pd, page_size);
+	if (unlikely(IS_ERR(fmr_mr)))
+		return PTR_ERR(fmr_mr);
+
+	set_fmr(bmr, fmr_mr, page_size);
+
+	return 0;
+}
+
+static inline void dealloc_fmr(struct fmr_per_mr *fmr_mr)
+{
+	if (likely(fmr_mr)) {
+		flush_scheduled_work();
+		if (fmr_mr->fmr[0].remap_count)
+			unmap_fmr(&fmr_mr->fmr[0]);
+		if (fmr_mr->fmr[1].remap_count)
+			unmap_fmr(&fmr_mr->fmr[1]);
+		ib_dealloc_fmr(fmr_mr->fmr[0].fmr);
+		ib_dealloc_fmr(fmr_mr->fmr[1].fmr);
+		kfree(fmr_mr->pages);
+		kfree(fmr_mr);
+	}
+}
+
+static inline int backport_ib_dereg_mr(struct backport_ib_mr *bmr)
+{
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(bmr->fmr_order); i++)
+		     dealloc_fmr(bmr->fmr_order[i]);
+	kfree(bmr);
+
+	return 0;
+}
+
 enum ib_mr_type {
 	IB_MR_TYPE_MEM_REG,
 	IB_MR_TYPE_SIGNATURE,
@@ -837,64 +1006,122 @@ static inline struct backport_ib_mr *ib_alloc_mr(struct backport_ib_pd *bpd,
 						 enum ib_mr_type mr_type,
 						 u32 max_num_sg)
 {
-	struct ib_mr_init_attr mr_init_attr = {
-		.max_reg_descriptors = max_num_sg,
-		.flags = mr_type
-	};
 	struct backport_ib_mr *bmr;
-	struct ib_mr *mr;
 	int err;
+
+	BUG_ON(mr_type != IB_MR_TYPE_MEM_REG);
 
 	bmr = kzalloc(sizeof(*bmr), GFP_KERNEL);
 	if (unlikely(!bmr))
 		return ERR_PTR(-ENOMEM);
 
-	if (mr_type == IB_MR_TYPE_MEM_REG) {
-		struct ib_fast_reg_page_list *frpl;
+	/*
+	 * Here we are so naughty, that instead of doing FR we do FMR.
+	 */
 
-		mr = ib_alloc_fast_reg_mr(bpd->__pd, max_num_sg);
-		if (unlikely(IS_ERR(mr))) {
-			err = PTR_ERR(mr);
-			goto err_free_bmr;
-		}
-		frpl = ib_alloc_fast_reg_page_list(bpd->__pd->device,
-						   max_num_sg);
-		if (unlikely(IS_ERR(frpl))) {
-			err = PTR_ERR(frpl);
-			goto err_dereg_mr;
-		}
+	/*
+	 * For our humble IBTRS needs we preallocate FMRs for two orders:
+	 * 12 (client side) and 17 (server side)
+	 */
 
-		bmr->frpl = frpl;
-	} else {
-		mr = ib_create_mr(bpd->__pd, &mr_init_attr);
-		if (unlikely(IS_ERR(mr))) {
-			err = PTR_ERR(mr);
-			goto err_free_bmr;
-		}
-	}
-	bmr->mr = mr;
-	bmr->rkey = mr->rkey;
+	err = alloc_and_set_fmr(bpd->__pd, bmr, 1<<12);
+	if (unlikely(err))
+		goto err;
+
+	err = alloc_and_set_fmr(bpd->__pd, bmr, 1<<17);
+	if (unlikely(err))
+		goto err;
 
 	return bmr;
 
-err_dereg_mr:
-	ib_dereg_mr(mr);
-err_free_bmr:
-	kfree(bmr);
+err:
+	backport_ib_dereg_mr(bmr);
 
 	return ERR_PTR(err);
 }
 
-static inline int backport_ib_dereg_mr(struct backport_ib_mr *bmr)
+static int fmr_set_page(struct fmr_per_mr *fmr, u64 addr)
 {
-	int ret;
+	if (unlikely(fmr->npages == fmr->max_pages))
+		return -ENOMEM;
 
-	if (bmr->frpl)
-		ib_free_fast_reg_page_list(bmr->frpl);
-	ret = ib_dereg_mr(bmr->mr);
-	kfree(bmr);
+	fmr->pages[fmr->npages++] = addr;
 
-	return ret;
+	return 0;
+}
+
+/**
+ * ib_sg_to_pages() - Convert the largest prefix of a sg list
+ *
+ * Stolen from upstream kernel.
+ */
+static inline int
+ib_sg_to_pages(struct fmr_per_mr *fmr, struct scatterlist *sgl, int sg_nents,
+	       unsigned int *sg_offset_p,
+	       int (*set_page)(struct fmr_per_mr *, u64))
+{
+	struct scatterlist *sg;
+	u64 last_end_dma_addr = 0;
+	unsigned int sg_offset = sg_offset_p ? *sg_offset_p : 0;
+	unsigned int last_page_off = 0;
+	u64 page_mask = ~((u64)fmr->page_size - 1);
+	int i, ret;
+
+	if (unlikely(sg_nents <= 0 || sg_offset > sg_dma_len(&sgl[0])))
+		return -EINVAL;
+
+	fmr->iova = sg_dma_address(&sgl[0]) + sg_offset;
+	fmr->length = 0;
+
+	for_each_sg(sgl, sg, sg_nents, i) {
+		u64 dma_addr = sg_dma_address(sg) + sg_offset;
+		u64 prev_addr = dma_addr;
+		unsigned int dma_len = sg_dma_len(sg) - sg_offset;
+		u64 end_dma_addr = dma_addr + dma_len;
+		u64 page_addr = dma_addr & page_mask;
+
+		/*
+		 * For the second and later elements, check whether either the
+		 * end of element i-1 or the start of element i is not aligned
+		 * on a page boundary.
+		 */
+		if (i && (last_page_off != 0 || page_addr != dma_addr)) {
+			/* Stop mapping if there is a gap. */
+			if (last_end_dma_addr != dma_addr)
+				break;
+
+			/*
+			 * Coalesce this element with the last. If it is small
+			 * enough just update mr->length. Otherwise start
+			 * mapping from the next page.
+			 */
+			goto next_page;
+		}
+
+		do {
+			ret = set_page(fmr, page_addr);
+			if (unlikely(ret < 0)) {
+				sg_offset = prev_addr - sg_dma_address(sg);
+				fmr->length += prev_addr - dma_addr;
+				if (sg_offset_p)
+					*sg_offset_p = sg_offset;
+				return i || sg_offset ? i : ret;
+			}
+			prev_addr = page_addr;
+next_page:
+			page_addr += fmr->page_size;
+		} while (page_addr < end_dma_addr);
+
+		fmr->length += dma_len;
+		last_end_dma_addr = end_dma_addr;
+		last_page_off = end_dma_addr & ~page_mask;
+
+		sg_offset = 0;
+	}
+
+	if (sg_offset_p)
+		*sg_offset_p = 0;
+	return i;
 }
 
 static inline int ib_map_mr_sg(struct backport_ib_mr *bmr,
@@ -902,20 +1129,57 @@ static inline int ib_map_mr_sg(struct backport_ib_mr *bmr,
 			       int sg_nents,  unsigned int *sg_offset,
 			       unsigned int page_size)
 {
-	bmr->map_mr_sg.sg = sg;
-	bmr->map_mr_sg.sg_nents = sg_nents;
-	bmr->map_mr_sg.page_size = page_size;
-	bmr->map_mr_sg.sg_offset = *sg_offset;
-	*sg_offset = 0;
+	struct fmr_per_mr *fmr_mr;
+	struct fmr_struct *fmr;
+	int err;
 
-	return 0;
+	fmr_mr = get_fmr(bmr, page_size);
+	if (WARN_ON(!fmr_mr))
+		return -EINVAL;
+
+	if (fmr_mr->active_fmr->remap_count >= fmr_mr->max_remaps) {
+		schedule_work(&fmr_mr->active_fmr->unmap_work);
+		swap(fmr_mr->active_fmr, fmr_mr->shadow_fmr);
+		/* WTF? */
+		if (unlikely(fmr_mr->active_fmr->remap_count >=
+			     fmr_mr->max_remaps)) {
+			pr_err("%s: active FMR reached max remaps?\n", __func__);
+			return -EAGAIN;
+		}
+	}
+	fmr = fmr_mr->active_fmr;
+	fmr_mr->page_size = page_size;
+	fmr_mr->npages = 0;
+	err = ib_sg_to_pages(fmr_mr, sg, sg_nents, sg_offset, fmr_set_page);
+	if (unlikely(err < sg_nents)) {
+		pr_err("%s: ib_sg_to_pages(): %d, requested %d\n",
+		       __func__, err, sg_nents);
+		if (err < 0)
+			return err;
+		return -EINVAL;
+	}
+	/* We use 0 as iova to avoid problems with not aligned offsets */
+	err = ib_map_phys_fmr(fmr->fmr, fmr_mr->pages, fmr_mr->npages, 0 /*iova*/);
+	if (unlikely(err)) {
+		pr_err("%s: ib_map_phys_fmr(): %d\n", __func__, err);
+		return err;
+	}
+	fmr->remap_count++;
+
+	/* iova address space starts from 0, so get offset in first page */
+	bmr->iova = fmr_mr->iova & (page_size - 1);
+	bmr->rkey = fmr->fmr->rkey;
+	bmr->length = fmr_mr->length;
+
+	return sg_nents;
 }
 
 static inline void
 backport_ib_update_fast_reg_key(struct backport_ib_mr *bmr, u8 newkey)
 {
-	ib_update_fast_reg_key(bmr->mr, newkey);
-	bmr->rkey = bmr->mr->rkey;
+	/*
+	 * Since we do FMR, do nothing here
+	 */
 }
 
 static inline u64 backport_ib_dma_map_single(struct backport_ib_device *dev,
@@ -983,6 +1247,24 @@ static inline int backport_ib_dma_mapping_error(struct backport_ib_device *dev,
 						u64 dma_addr)
 {
 	return ib_dma_mapping_error((struct ib_device *)dev, dma_addr);
+}
+
+static inline void
+backport_ib_dma_sync_single_for_cpu(struct backport_ib_device *dev,
+				    u64 addr, size_t size,
+				    enum dma_data_direction dir)
+{
+	ib_dma_sync_single_for_cpu((struct ib_device *)dev,
+				   addr, size, dir);
+}
+
+static inline void
+backport_ib_dma_sync_single_for_device(struct backport_ib_device *dev,
+			      u64 addr, size_t size,
+			      enum dma_data_direction dir)
+{
+	ib_dma_sync_single_for_device((struct ib_device *)dev,
+				      addr, size, dir);
 }
 
 struct backport_ib_cq *ib_alloc_cq(struct backport_ib_device *dev,
@@ -1207,6 +1489,8 @@ typedef uuid_be uuid_t;
 #define ib_dma_unmap_page backport_ib_dma_unmap_page
 #define ib_dma_map_sg backport_ib_dma_map_sg
 #define ib_dma_unmap_sg backport_ib_dma_unmap_sg
+#define ib_dma_sync_single_for_device backport_ib_dma_sync_single_for_device
+#define ib_dma_sync_single_for_cpu backport_ib_dma_sync_single_for_cpu
 #define ib_sg_dma_len backport_ib_sg_dma_len
 #define ib_sg_dma_address backport_ib_sg_dma_address
 #define ib_post_send backport_ib_post_send
