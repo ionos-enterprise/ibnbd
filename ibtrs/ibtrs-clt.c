@@ -3260,14 +3260,14 @@ static int ibtrs_clt_read_req(struct ibtrs_clt_io_req *req)
 		wr = &rwr.wr;
 
 		msg->sg_cnt = cpu_to_le16(1);
-		msg->flags = cpu_to_le16(IBTRS_MSG_NEED_INVAL_F);
+		msg->flags = cpu_to_le16(ibtrs_invalidate_flag());
 
 		msg->desc[0].addr = cpu_to_le64(req->mr->iova);
 		msg->desc[0].key = cpu_to_le32(req->mr->rkey);
 		msg->desc[0].len = cpu_to_le32(req->mr->length);
 
 		/* Further invalidation is required */
-		req->need_inv = true;
+		req->need_inv = !!ibtrs_invalidate_flag();
 
 	} else {
 		msg->sg_cnt = cpu_to_le16(count);

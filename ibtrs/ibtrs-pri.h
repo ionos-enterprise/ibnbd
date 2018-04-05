@@ -439,6 +439,17 @@ static inline void copy_from_kvec(void *data, const struct kvec *vec,
 	}
 }
 
+/**
+ * ibtrs_invalidate_flag() - returns proper flags for invalidation
+ *
+ * NOTE: This function is needed for compat layer, so think twice before
+ *       rename or remove.
+ */
+static inline u32 ibtrs_invalidate_flag(void)
+{
+	return IBTRS_MSG_NEED_INVAL_F;
+}
+
 static inline u32 ibtrs_to_imm(u32 type, u32 payload)
 {
 	BUILD_BUG_ON(32 != MAX_IMM_PAYL_BITS + MAX_IMM_TYPE_BITS);
