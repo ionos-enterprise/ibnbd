@@ -495,13 +495,11 @@ static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 	}
 }
 
-static int post_recv_io(struct ibtrs_clt_con *con)
+static int post_recv_io(struct ibtrs_clt_con *con, size_t q_size)
 {
-	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
 	int err, i;
 
-	/* For RDMA read completions + FR key invalidations */
-	for (i = 0; i < sess->queue_depth * 2; i++) {
+	for (i = 0; i < q_size; i++) {
 		err = ibtrs_post_recv_empty(&con->c, &io_comp_cqe);
 		if (unlikely(err))
 			return err;
@@ -512,10 +510,22 @@ static int post_recv_io(struct ibtrs_clt_con *con)
 
 static int post_recv_sess(struct ibtrs_clt_sess *sess)
 {
+	size_t q_size;
 	int err, cid;
 
 	for (cid = 0; cid < sess->s.con_num; cid++) {
-		err = post_recv_io(to_clt_con(sess->s.con[cid]));
+		if (cid == 0)
+			q_size = SERVICE_CON_QUEUE_DEPTH;
+		else
+			q_size = sess->queue_depth;
+
+		/*
+		 * x2 for RDMA read responses + FR key invalidations,
+		 * RDMA writes do not require any FR registrations.
+		 */
+		q_size *= 2;
+
+		err = post_recv_io(to_clt_con(sess->s.con[cid]), q_size);
 		if (unlikely(err)) {
 			ibtrs_err(sess, "post_recv_io(), err: %d\n", err);
 			return err;

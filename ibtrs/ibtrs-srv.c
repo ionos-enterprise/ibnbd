@@ -872,13 +872,11 @@ static int post_recv_info_req(struct ibtrs_srv_con *con)
 	return 0;
 }
 
-static int post_recv_io(struct ibtrs_srv_con *con)
+static int post_recv_io(struct ibtrs_srv_con *con, size_t q_size)
 {
-	struct ibtrs_srv_sess *sess = to_srv_sess(con->c.sess);
-	struct ibtrs_srv *srv = sess->srv;
 	int i, err;
 
-	for (i = 0; i < srv->queue_depth; i++) {
+	for (i = 0; i < q_size; i++) {
 		err = ibtrs_post_recv_empty(&con->c, &io_comp_cqe);
 		if (unlikely(err))
 			return err;
@@ -889,10 +887,17 @@ static int post_recv_io(struct ibtrs_srv_con *con)
 
 static int post_recv_sess(struct ibtrs_srv_sess *sess)
 {
+	struct ibtrs_srv *srv = sess->srv;
+	size_t q_size;
 	int err, cid;
 
 	for (cid = 0; cid < sess->s.con_num; cid++) {
-		err = post_recv_io(to_srv_con(sess->s.con[cid]));
+		if (cid == 0)
+			q_size = SERVICE_CON_QUEUE_DEPTH;
+		else
+			q_size = srv->queue_depth;
+
+		err = post_recv_io(to_srv_con(sess->s.con[cid]), q_size);
 		if (unlikely(err)) {
 			ibtrs_err(sess, "post_recv_io(), err: %d\n", err);
 			return err;
