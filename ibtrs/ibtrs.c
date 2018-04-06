@@ -389,7 +389,7 @@ static int create_qp(struct ibtrs_con *con, struct ib_pd *pd,
 
 	init_attr.cap.max_send_wr = wr_queue_size;
 	init_attr.cap.max_recv_wr = wr_queue_size;
-	init_attr.cap.max_recv_sge = 2;
+	init_attr.cap.max_recv_sge = 1;
 	init_attr.event_handler = qp_event_handler;
 	init_attr.qp_context = con;
 	init_attr.cap.max_send_sge = max_send_sge;
