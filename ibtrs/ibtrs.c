@@ -368,7 +368,7 @@ static int create_cq(struct ibtrs_con *con, int cq_vector, u16 cq_size,
 	struct rdma_cm_id *cm_id = con->cm_id;
 	struct ib_cq *cq;
 
-	cq = ib_alloc_cq(cm_id->device, con, cq_size * 2 + 1,
+	cq = ib_alloc_cq(cm_id->device, con, cq_size,
 			 cq_vector, poll_ctx);
 	if (unlikely(IS_ERR(cq))) {
 		ibtrs_err(con, "Creating completion queue failed, errno: %ld\n",

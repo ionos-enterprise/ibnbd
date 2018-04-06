@@ -1403,11 +1403,25 @@ static int create_con(struct ibtrs_srv_sess *sess,
 	atomic_set(&con->wr_cnt, 0);
 
 	if (con->c.cid == 0) {
-		cq_size       = SERVICE_CON_QUEUE_DEPTH;
-		/* + 2 for drain and heartbeat */
-		wr_queue_size = SERVICE_CON_QUEUE_DEPTH + 2;
+		/*
+		 * All receive and all send (each requiring invalidate)
+		 * + 2 for drain and heartbeat
+		 */
+		cq_size = wr_queue_size = SERVICE_CON_QUEUE_DEPTH * 3 + 2;
 	} else {
-		cq_size       = srv->queue_depth;
+		/*
+		 * If we have all receive requests posted and
+		 * all write requests posted and each read request
+		 * requires an invalidate request + drain
+		 * and qp gets into error state.
+		 */
+		cq_size = srv->queue_depth * 3 + 1;
+		/*
+		 * In theory we might have queue_depth * 32
+		 * outstanding requests if an unsafe global key is used
+		 * and we have queue_depth read requests each consisting
+		 * of 32 different addresses.
+		 */
 		wr_queue_size = sess->s.ib_dev->attrs.max_qp_wr;
 	}
 

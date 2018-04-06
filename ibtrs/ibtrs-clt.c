@@ -1156,9 +1156,13 @@ static int create_con_cq_qp(struct ibtrs_clt_con *con)
 	 */
 
 	if (con->c.cid == 0) {
-		cq_size = SERVICE_CON_QUEUE_DEPTH;
-		/* + 2 for drain and heartbeat */
-		wr_queue_size = SERVICE_CON_QUEUE_DEPTH + 2;
+		/*
+		 * One completion for each receive and two for each send
+		 * (send request + registration)
+		 * + 2 for drain and heartbeat
+		 * in case qp gets into error state
+		 */
+		cq_size = wr_queue_size = SERVICE_CON_QUEUE_DEPTH * 3 + 2;
 		/* We must be the first here */
 		if (WARN_ON(sess->s.ib_dev))
 			return -EINVAL;
@@ -1189,11 +1193,10 @@ static int create_con_cq_qp(struct ibtrs_clt_con *con)
 
 		/* Shared between connections */
 		sess->s.ib_dev_ref++;
-		cq_size = sess->queue_depth;
-		wr_queue_size =
+		cq_size = wr_queue_size =
 			min_t(int, sess->s.ib_dev->attrs.max_qp_wr,
-			      /* QD * (REQ or RSP + FR REGS or INVS) + drain */
-			      sess->queue_depth * 2 + 1);
+			      /* QD * (REQ + RSP + FR REGS or INVS) + drain */
+			      sess->queue_depth * 3 + 1);
 	}
 	cq_vector = con->cpu % sess->s.ib_dev->dev->num_comp_vectors;
 	err = ibtrs_cq_qp_create(&sess->s, &con->c, sess->max_sge,
