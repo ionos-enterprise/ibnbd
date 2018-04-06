@@ -222,17 +222,11 @@ struct ibtrs_clt {
 
 static inline struct ibtrs_clt_con *to_clt_con(struct ibtrs_con *c)
 {
-	if (unlikely(!c))
-		return NULL;
-
 	return container_of(c, struct ibtrs_clt_con, c);
 }
 
 static inline struct ibtrs_clt_sess *to_clt_sess(struct ibtrs_sess *s)
 {
-	if (unlikely(!s))
-		return NULL;
-
 	return container_of(s, struct ibtrs_clt_sess, s);
 }
 

@@ -1370,10 +1370,9 @@ static void ibtrs_clt_stop_and_destroy_conns(struct ibtrs_clt_sess *sess)
 	 */
 
 	for (cid = 0; cid < sess->s.con_num; cid++) {
-		con = to_clt_con(sess->s.con[cid]);
-		if (!con)
+		if (!sess->s.con[cid])
 			break;
-
+		con = to_clt_con(sess->s.con[cid]);
 		stop_cm(con);
 	}
 	fail_all_outstanding_reqs(sess);
@@ -1392,10 +1391,9 @@ static void ibtrs_clt_stop_and_destroy_conns(struct ibtrs_clt_sess *sess)
 			   msecs_to_jiffies(IBTRS_CONNECT_TIMEOUT_MS));
 
 	for (cid = 0; cid < sess->s.con_num; cid++) {
-		con = to_clt_con(sess->s.con[cid]);
-		if (!con)
+		if (!sess->s.con[cid])
 			break;
-
+		con = to_clt_con(sess->s.con[cid]);
 		destroy_con_cq_qp(con);
 		destroy_cm(con);
 		destroy_con(con);

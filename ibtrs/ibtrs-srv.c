@@ -158,17 +158,11 @@ static void close_sess(struct ibtrs_srv_sess *sess);
 
 static inline struct ibtrs_srv_con *to_srv_con(struct ibtrs_con *c)
 {
-	if (unlikely(!c))
-		return NULL;
-
 	return container_of(c, struct ibtrs_srv_con, c);
 }
 
 static inline struct ibtrs_srv_sess *to_srv_sess(struct ibtrs_sess *s)
 {
-	if (unlikely(!s))
-		return NULL;
-
 	return container_of(s, struct ibtrs_srv_sess, s);
 }
 
@@ -1297,10 +1291,9 @@ static void ibtrs_srv_close_work(struct work_struct *work)
 	ibtrs_srv_stop_hb(sess);
 
 	for (i = 0; i < sess->s.con_num; i++) {
-		con = to_srv_con(sess->s.con[i]);
-		if (!con)
+		if (!sess->s.con[i])
 			continue;
-
+		con = to_srv_con(sess->s.con[i]);
 		rdma_disconnect(con->c.cm_id);
 		ib_drain_qp(con->c.qp);
 	}
@@ -1314,10 +1307,9 @@ static void ibtrs_srv_close_work(struct work_struct *work)
 	ibtrs_srv_free_ops_ids(sess);
 
 	for (i = 0; i < sess->s.con_num; i++) {
-		con = to_srv_con(sess->s.con[i]);
-		if (!con)
+		if (!sess->s.con[i])
 			continue;
-
+		con = to_srv_con(sess->s.con[i]);
 		ibtrs_cq_qp_destroy(&con->c);
 		rdma_destroy_id(con->c.cm_id);
 		kfree(con);
