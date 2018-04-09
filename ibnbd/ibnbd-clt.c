@@ -43,6 +43,12 @@ MODULE_DESCRIPTION("InfiniBand Network Block Device Client");
 MODULE_VERSION(IBNBD_VER_STRING);
 MODULE_LICENSE("GPL");
 
+/*
+ * This is for closing devices when unloading the module:
+ * we might be closing a lot (>256) of devices in parallel
+ * and it is better not to use the system_wq.
+ */
+static struct workqueue_struct *unload_wq;
 static int ibnbd_client_major;
 static DEFINE_IDA(index_ida);
 static DEFINE_MUTEX(ida_lock);
@@ -1738,12 +1744,12 @@ static void ibnbd_destroy_sessions(void)
 			 * procedure takes minutes.
 			 */
 			INIT_WORK(&dev->unmap_on_rmmod_work, unmap_device_work);
-			schedule_work(&dev->unmap_on_rmmod_work);
+			queue_work(unload_wq, &dev->unmap_on_rmmod_work);
 		}
 		ibnbd_clt_put_sess(sess);
 	}
 	/* Wait for all scheduled unmap works */
-	flush_scheduled_work();
+	flush_workqueue(unload_wq);
 	WARN_ON(!list_empty(&sess_list));
 }
 
@@ -1770,8 +1776,16 @@ static int __init ibnbd_client_init(void)
 		goto out_unregister_blk;
 	}
 
+	unload_wq = alloc_workqueue("ibnbd_unload_wq", WQ_MEM_RECLAIM, 0);
+	if (!unload_wq) {
+		pr_err("Failed to load module, alloc ibnbd_unload_wq failed\n");
+		goto out_destroy_sysfs_files;
+	}
+
 	return 0;
 
+out_destroy_sysfs_files:
+	ibnbd_clt_destroy_sysfs_files();
 out_unregister_blk:
 	unregister_blkdev(ibnbd_client_major, "ibnbd");
 out:
@@ -1784,6 +1798,7 @@ static void __exit ibnbd_client_exit(void)
 	ibnbd_destroy_sessions();
 	unregister_blkdev(ibnbd_client_major, "ibnbd");
 	ida_destroy(&index_ida);
+	destroy_workqueue(unload_wq);
 	pr_info("Module unloaded\n");
 }
 
