@@ -708,21 +708,26 @@ static void fail_all_outstanding_reqs(struct ibtrs_clt_sess *sess)
 {
 	struct ibtrs_clt *clt = sess->clt;
 	struct ibtrs_clt_io_req *req;
-	int i;
+	int i, err;
 
 	if (!sess->reqs)
 		return;
 	for (i = 0; i < sess->queue_depth; ++i) {
-		bool notify;
-		int err = 0;
-
 		req = &sess->reqs[i];
 		if (!req->in_use)
 			continue;
 
+		/*
+		 * Safely (without notification) complete failed request.
+		 * After completion this request is still usebale and can
+		 * be failovered to another path.
+		 */
+		complete_rdma_req(req, -ECONNABORTED, false, true);
+
 		err = ibtrs_clt_failover_req(clt, req);
-		notify = !!err;
-		complete_rdma_req(req, -ECONNABORTED, notify, true);
+		if (unlikely(err))
+			/* Failover failed, notify anyway */
+			req->conf(req->priv, err);
 	}
 }
 
