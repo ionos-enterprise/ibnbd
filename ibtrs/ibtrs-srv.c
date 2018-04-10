@@ -321,6 +321,9 @@ static struct ib_cqe io_comp_cqe = {
 	.done = ibtrs_srv_rdma_done
 };
 
+/**
+ * rdma_write_sg() - response on successful READ request
+ */
 static int rdma_write_sg(struct ibtrs_srv_op *id)
 {
 	struct ibtrs_srv_sess *sess = to_srv_sess(id->con->c.sess);
@@ -335,8 +338,9 @@ static int rdma_write_sg(struct ibtrs_srv_op *id)
 	bool need_inval;
 	u32 rkey = 0;
 
-	sg_cnt = le16_to_cpu(id->msg->sg_cnt);
-	need_inval = le16_to_cpu(id->msg->flags) & IBTRS_MSG_NEED_INVAL_F;
+	BUG_ON(id->dir != READ);
+	sg_cnt = le16_to_cpu(id->rd_msg->sg_cnt);
+	need_inval = le16_to_cpu(id->rd_msg->flags) & IBTRS_MSG_NEED_INVAL_F;
 	if (unlikely(!sg_cnt))
 		return -EINVAL;
 
@@ -347,7 +351,7 @@ static int rdma_write_sg(struct ibtrs_srv_op *id)
 		wr		= &id->tx_wr[i];
 		list		= &id->tx_sg[i];
 		list->addr	= dma_addr + offset;
-		list->length	= le32_to_cpu(id->msg->desc[i].len);
+		list->length	= le32_to_cpu(id->rd_msg->desc[i].len);
 
 		/* WR will fail with length error
 		 * if this is 0
@@ -363,8 +367,8 @@ static int rdma_write_sg(struct ibtrs_srv_op *id)
 		wr->wr.wr_cqe	= &io_comp_cqe;
 		wr->wr.sg_list	= list;
 		wr->wr.num_sge	= 1;
-		wr->remote_addr	= le64_to_cpu(id->msg->desc[i].addr);
-		wr->rkey	= le32_to_cpu(id->msg->desc[i].key);
+		wr->remote_addr	= le64_to_cpu(id->rd_msg->desc[i].addr);
+		wr->rkey	= le32_to_cpu(id->rd_msg->desc[i].key);
 		if (rkey == 0)
 			rkey = wr->rkey;
 		else
@@ -417,6 +421,10 @@ static int rdma_write_sg(struct ibtrs_srv_op *id)
 	return err;
 }
 
+/**
+ * send_io_resp_imm() - response with empty IMM on failed READ/WRITE requests or
+ *                      on successful WRITE request.
+ */
 static int send_io_resp_imm(struct ibtrs_srv_con *con, struct ibtrs_srv_op *id,
 			    int errno)
 {
@@ -429,7 +437,7 @@ static int send_io_resp_imm(struct ibtrs_srv_con *con, struct ibtrs_srv_op *id,
 	int err;
 
 	if (id->dir == READ) {
-		struct ibtrs_msg_rdma_read *rd_msg = id->msg;
+		struct ibtrs_msg_rdma_read *rd_msg = id->rd_msg;
 		size_t sg_cnt;
 
 		need_inval = le16_to_cpu(rd_msg->flags) & IBTRS_MSG_NEED_INVAL_F;
@@ -489,7 +497,7 @@ void ibtrs_srv_resp_rdma(struct ibtrs_srv_op *id, int status)
 			     ibtrs_srv_state_str(sess->state));
 		goto out;
 	}
-	if (status || id->dir == WRITE || !id->msg->sg_cnt)
+	if (status || id->dir == WRITE || !id->rd_msg->sg_cnt)
 		err = send_io_resp_imm(con, id, status);
 	else
 		err = rdma_write_sg(id);
@@ -919,7 +927,7 @@ static void process_read(struct ibtrs_srv_con *con,
 	id->con		= con;
 	id->dir		= READ;
 	id->msg_id	= buf_id;
-	id->msg		= msg;
+	id->rd_msg	= msg;
 	usr_len = le16_to_cpu(msg->usr_len);
 	data_len = off - usr_len;
 	data = page_address(srv->chunks[buf_id]);
