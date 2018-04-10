@@ -704,8 +704,7 @@ static int ibtrs_clt_failover_req(struct ibtrs_clt *clt,
 	return err;
 }
 
-static void fail_all_outstanding_reqs(struct ibtrs_clt_sess *sess,
-				      bool failover)
+static void fail_all_outstanding_reqs(struct ibtrs_clt_sess *sess)
 {
 	struct ibtrs_clt *clt = sess->clt;
 	struct ibtrs_clt_io_req *req;
@@ -721,10 +720,8 @@ static void fail_all_outstanding_reqs(struct ibtrs_clt_sess *sess,
 		if (!req->in_use)
 			continue;
 
-		if (failover)
-			err = ibtrs_clt_failover_req(clt, req);
-
-		notify = (!failover || err);
+		err = ibtrs_clt_failover_req(clt, req);
+		notify = !!err;
 		complete_rdma_req(req, -ECONNABORTED, notify, true);
 	}
 }
@@ -1338,8 +1335,7 @@ static void ibtrs_clt_sess_down(struct ibtrs_clt_sess *sess)
 	mutex_unlock(&clt->paths_ev_mutex);
 }
 
-static void ibtrs_clt_stop_and_destroy_conns(struct ibtrs_clt_sess *sess,
-					     bool failover)
+static void ibtrs_clt_stop_and_destroy_conns(struct ibtrs_clt_sess *sess)
 {
 	struct ibtrs_clt_con *con;
 	unsigned int cid;
@@ -1375,7 +1371,7 @@ static void ibtrs_clt_stop_and_destroy_conns(struct ibtrs_clt_sess *sess,
 
 		stop_cm(con);
 	}
-	fail_all_outstanding_reqs(sess, failover);
+	fail_all_outstanding_reqs(sess);
 	free_sess_reqs(sess);
 	ibtrs_clt_sess_down(sess);
 
@@ -1509,16 +1505,11 @@ static int ibtrs_clt_add_path_to_arr(struct ibtrs_clt_sess *sess,
 static void ibtrs_clt_close_work(struct work_struct *work)
 {
 	struct ibtrs_clt_sess *sess;
-	/*
-	 * Always try to do a failover, if only single path remains,
-	 * all requests will be completed with error.
-	 */
-	bool failover = true;
 
 	sess = container_of(work, struct ibtrs_clt_sess, close_work);
 
 	cancel_delayed_work_sync(&sess->reconnect_dwork);
-	ibtrs_clt_stop_and_destroy_conns(sess, failover);
+	ibtrs_clt_stop_and_destroy_conns(sess);
 	/*
 	 * Sounds stupid, huh?  No, it is not.  Consider this sequence:
 	 *
@@ -2115,7 +2106,7 @@ static void ibtrs_clt_reconnect_work(struct work_struct *work)
 	sess->reconnect_attempts++;
 
 	/* Stop everything */
-	ibtrs_clt_stop_and_destroy_conns(sess, true);
+	ibtrs_clt_stop_and_destroy_conns(sess);
 	ibtrs_clt_change_state(sess, IBTRS_CLT_CONNECTING);
 
 	err = init_sess(sess);
