@@ -35,6 +35,7 @@
 #include "ibtrs-log.h"
 
 static struct kobject *ibtrs_kobj;
+extern struct class *ibtrs_dev_class;
 
 static struct kobj_type ktype = {
 	.sysfs_ops	= &kobj_sysfs_ops,
@@ -140,39 +141,45 @@ static struct attribute_group ibtrs_srv_stats_attr_group = {
 	.attrs = ibtrs_srv_stats_attrs,
 };
 
+static void ibtrs_srv_dev_release(struct device *dev)
+{
+	/* Nobody plays with device references, so nop */
+}
+
 static int ibtrs_srv_create_once_sysfs_root_folders(struct ibtrs_srv_sess *sess)
 {
 	struct ibtrs_srv *srv = sess->srv;
 	int err = 0;
 
 	mutex_lock(&srv->paths_mutex);
-	if (srv->kobj.state_in_sysfs) {
-		/* Just increase references if kobjs were already inited */
-		kobject_get(&srv->kobj_paths);
-		kobject_get(&srv->kobj);
+	if (srv->dev_ref++) {
+		/*
+		 * Just increase device reference.  We can't use get_device()
+		 * because we need to unregister device when ref goes to 0,
+		 * not just to put it.
+		 */
 		goto unlock;
 	}
-	err = kobject_init_and_add(&srv->kobj, &ktype, ibtrs_kobj,
-				   "%s", sess->s.sessname);
+	srv->dev.class = ibtrs_dev_class;
+	srv->dev.release = ibtrs_srv_dev_release;
+	dev_set_name(&srv->dev, "%s", sess->s.sessname);
+
+	err = device_register(&srv->dev);
 	if (unlikely(err)) {
-		pr_err("kobject_init_and_add(): %d\n", err);
+		pr_err("device_register(): %d\n", err);
 		goto unlock;
 	}
 	err = kobject_init_and_add(&srv->kobj_paths, &ktype,
-				   &srv->kobj, "paths");
+				   &srv->dev.kobj, "paths");
 	if (unlikely(err)) {
 		pr_err("kobject_init_and_add(): %d\n", err);
-		goto put_kobj;
+		device_unregister(&srv->dev);
+		goto unlock;
 	}
 unlock:
 	mutex_unlock(&srv->paths_mutex);
 
 	return err;
-
-put_kobj:
-	kobject_del(&srv->kobj);
-	kobject_put(&srv->kobj);
-	goto unlock;
 }
 
 static void ibtrs_srv_destroy_once_sysfs_root_folders(struct ibtrs_srv_sess *sess)
@@ -180,8 +187,10 @@ static void ibtrs_srv_destroy_once_sysfs_root_folders(struct ibtrs_srv_sess *ses
 	struct ibtrs_srv *srv = sess->srv;
 
 	mutex_lock(&srv->paths_mutex);
-	kobject_put(&srv->kobj_paths);
-	kobject_put(&srv->kobj);
+	if (!--srv->dev_ref) {
+		kobject_put(&srv->kobj_paths);
+		device_unregister(&srv->dev);
+	}
 	mutex_unlock(&srv->paths_mutex);
 }
 

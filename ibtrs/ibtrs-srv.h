@@ -30,6 +30,7 @@
 #ifndef IBTRS_SRV_H
 #define IBTRS_SRV_H
 
+#include <linux/device.h>
 #include <linux/refcount.h>
 #include "ibtrs-pri.h"
 
@@ -129,7 +130,8 @@ struct ibtrs_srv {
 	void			*priv;
 	size_t			queue_depth;
 	struct page		**chunks;
-	struct kobject		kobj;
+	struct device		dev;
+	unsigned		dev_ref;
 	struct kobject		kobj_paths;
 };
 
