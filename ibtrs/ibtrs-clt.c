@@ -1496,8 +1496,18 @@ static int ibtrs_clt_add_path_to_arr(struct ibtrs_clt_sess *sess,
 
 	mutex_lock(&clt->paths_mutex);
 	if (!__ibtrs_clt_path_exists(clt, addr)) {
-		list_add_tail_rcu(&sess->s.entry, &clt->paths_list);
+
 		clt->paths_num++;
+
+		/*
+		 * Firstly increase paths_num, wait for GP and then
+		 * add path to the list.  Why?  Since we add path with
+		 * !CONNECTED state explanation is similar to what has
+		 * been written in ibtrs_clt_remove_path_from_arr().
+		 */
+		synchronize_rcu();
+
+		list_add_tail_rcu(&sess->s.entry, &clt->paths_list);
 	} else
 		err = -EEXIST;
 	mutex_unlock(&clt->paths_mutex);
