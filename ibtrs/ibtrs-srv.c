@@ -52,6 +52,8 @@ MODULE_LICENSE("GPL");
 #define CHUNK_POOL_SZ 10
 
 static mempool_t *chunk_pool;
+struct class *ibtrs_dev_class;
+
 static int retry_count = 7;
 static int __read_mostly max_chunk_size = DEFAULT_MAX_CHUNK_SIZE;
 static int __read_mostly sess_queue_depth = DEFAULT_SESS_QUEUE_DEPTH;
@@ -1961,10 +1963,16 @@ static int __init ibtrs_server_init(void)
 		pr_err("Failed preallocate pool of chunks\n");
 		return -ENOMEM;
 	}
-	ibtrs_wq = alloc_workqueue("ibtrs_server_wq", WQ_MEM_RECLAIM, 0);
-	if (!ibtrs_wq) {
-		pr_err("Failed to load module, alloc ibtrs_server_wq failed\n");
+	ibtrs_dev_class = class_create(THIS_MODULE, "ibtrs-server");
+	if (unlikely(IS_ERR(ibtrs_dev_class))) {
+		pr_err("Failed to create ibtrs-server dev class\n");
+		err = PTR_ERR(ibtrs_dev_class);
 		goto out_chunk_pool;
+	}
+	ibtrs_wq = alloc_workqueue("ibtrs_server_wq", WQ_MEM_RECLAIM, 0);
+	if (unlikely(!ibtrs_wq)) {
+		pr_err("Failed to load module, alloc ibtrs_server_wq failed\n");
+		goto out_dev_class;
 	}
 	err = ibtrs_srv_create_sysfs_module_files();
 	if (err) {
@@ -1977,6 +1985,8 @@ static int __init ibtrs_server_init(void)
 
 out_ibtrs_wq:
 	destroy_workqueue(ibtrs_wq);
+out_dev_class:
+	class_destroy(ibtrs_dev_class);
 out_chunk_pool:
 	mempool_destroy(chunk_pool);
 
@@ -1987,6 +1997,7 @@ static void __exit ibtrs_server_exit(void)
 {
 	ibtrs_srv_destroy_sysfs_module_files();
 	destroy_workqueue(ibtrs_wq);
+	class_destroy(ibtrs_dev_class);
 	mempool_destroy(chunk_pool);
 }
 
