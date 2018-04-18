@@ -43,27 +43,27 @@ static struct kobj_type ktype = {
 	.sysfs_ops = &kobj_sysfs_ops,
 };
 
-static ssize_t ibtrs_clt_max_reconn_attempts_show(struct kobject *kobj,
-						  struct kobj_attribute *attr,
-						  char *page)
+static ssize_t max_reconnect_attempts_show(struct device *dev,
+					   struct device_attribute *attr,
+					   char *page)
 {
 	struct ibtrs_clt *clt;
 
-	clt = container_of(kobj, struct ibtrs_clt, kobj);
+	clt = container_of(dev, struct ibtrs_clt, dev);
 
 	return sprintf(page, "%d\n", ibtrs_clt_get_max_reconnect_attempts(clt));
 }
 
-static ssize_t ibtrs_clt_max_reconn_attempts_store(struct kobject *kobj,
-						   struct kobj_attribute *attr,
-						   const char *buf,
-						   size_t count)
+static ssize_t max_reconnect_attempts_store(struct device *dev,
+					    struct device_attribute *attr,
+					    const char *buf,
+					    size_t count)
 {
 	struct ibtrs_clt *clt;
 	int value;
 	int ret;
 
-	clt = container_of(kobj, struct ibtrs_clt, kobj);
+	clt = container_of(dev, struct ibtrs_clt, dev);
 
 	ret = kstrtoint(buf, 10, &value);
 	if (unlikely(ret)) {
@@ -84,18 +84,15 @@ static ssize_t ibtrs_clt_max_reconn_attempts_store(struct kobject *kobj,
 	return count;
 }
 
-static struct kobj_attribute ibtrs_clt_max_reconnect_attempts_attr =
-	__ATTR(max_reconnect_attempts, 0644,
-	       ibtrs_clt_max_reconn_attempts_show,
-	       ibtrs_clt_max_reconn_attempts_store);
+static DEVICE_ATTR_RW(max_reconnect_attempts);
 
-static ssize_t ibtrs_clt_mp_policy_show(struct kobject *kobj,
-					struct kobj_attribute *attr,
-					char *page)
+static ssize_t mpath_policy_show(struct device *dev,
+				 struct device_attribute *attr,
+				 char *page)
 {
 	struct ibtrs_clt *clt;
 
-	clt = container_of(kobj, struct ibtrs_clt, kobj);
+	clt = container_of(dev, struct ibtrs_clt, dev);
 
 	switch (clt->mp_policy) {
 	case MP_POLICY_RR:
@@ -107,16 +104,16 @@ static ssize_t ibtrs_clt_mp_policy_show(struct kobject *kobj,
 	}
 }
 
-static ssize_t ibtrs_clt_mp_policy_store(struct kobject *kobj,
-					 struct kobj_attribute *attr,
-					 const char *buf,
-					 size_t count)
+static ssize_t mpath_policy_store(struct device *dev,
+				  struct device_attribute *attr,
+				  const char *buf,
+				  size_t count)
 {
 	struct ibtrs_clt *clt;
 	int value;
 	int ret;
 
-	clt = container_of(kobj, struct ibtrs_clt, kobj);
+	clt = container_of(dev, struct ibtrs_clt, dev);
 
 	ret = kstrtoint(buf, 10, &value);
 	if (!ret && (value == MP_POLICY_RR || value == MP_POLICY_MIN_INFLIGHT)) {
@@ -136,10 +133,7 @@ static ssize_t ibtrs_clt_mp_policy_store(struct kobject *kobj,
 	return count;
 }
 
-static struct kobj_attribute ibtrs_clt_mp_policy_attr =
-	__ATTR(mp_policy, 0644,
-	       ibtrs_clt_mp_policy_show,
-	       ibtrs_clt_mp_policy_store);
+static DEVICE_ATTR_RW(mpath_policy);
 
 static ssize_t ibtrs_clt_state_show(struct kobject *kobj,
 				    struct kobj_attribute *attr, char *page)
@@ -252,8 +246,8 @@ static struct kobj_attribute ibtrs_clt_remove_path_attr =
 	__ATTR(remove_path, 0644, ibtrs_clt_remove_path_show,
 	       ibtrs_clt_remove_path_store);
 
-static ssize_t ibtrs_clt_add_path_show(struct kobject *kobj,
-				       struct kobj_attribute *attr, char *page)
+static ssize_t add_path_show(struct device *dev,
+			     struct device_attribute *attr, char *page)
 {
 	return scnprintf(page, PAGE_SIZE, "Usage: echo"
 			 " [<source addr>,]<destination addr> > %s\n\n"
@@ -261,9 +255,9 @@ static ssize_t ibtrs_clt_add_path_show(struct kobject *kobj,
 			 attr->attr.name);
 }
 
-static ssize_t ibtrs_clt_add_path_store(struct kobject *kobj,
-					struct kobj_attribute *attr,
-					const char *buf, size_t count)
+static ssize_t add_path_store(struct device *dev,
+			      struct device_attribute *attr,
+			      const char *buf, size_t count)
 {
 	struct sockaddr_storage srcaddr, dstaddr;
 	struct ibtrs_addr addr = {
@@ -275,7 +269,7 @@ static ssize_t ibtrs_clt_add_path_store(struct kobject *kobj,
 	size_t len;
 	int err;
 
-	clt = container_of(kobj, struct ibtrs_clt, kobj);
+	clt = container_of(dev, struct ibtrs_clt, dev);
 
 	nl = strchr(buf, '\n');
 	if (nl)
@@ -293,9 +287,7 @@ static ssize_t ibtrs_clt_add_path_store(struct kobject *kobj,
 	return count;
 }
 
-static struct kobj_attribute ibtrs_clt_add_path_attr =
-	__ATTR(add_path, 0644, ibtrs_clt_add_path_show,
-	       ibtrs_clt_add_path_store);
+static DEVICE_ATTR_RW(add_path);
 
 STAT_ATTR(struct ibtrs_clt_sess, cpu_migration,
 	  ibtrs_clt_stats_migration_cnt_to_str,
@@ -475,9 +467,9 @@ void ibtrs_clt_destroy_sess_files(struct ibtrs_clt_sess *sess,
 }
 
 static struct attribute *ibtrs_clt_attrs[] = {
-	&ibtrs_clt_max_reconnect_attempts_attr.attr,
-	&ibtrs_clt_mp_policy_attr.attr,
-	&ibtrs_clt_add_path_attr.attr,
+	&dev_attr_max_reconnect_attempts.attr,
+	&dev_attr_mpath_policy.attr,
+	&dev_attr_add_path.attr,
 	NULL,
 };
 
@@ -487,33 +479,13 @@ static struct attribute_group ibtrs_clt_attr_group = {
 
 int ibtrs_clt_create_sysfs_root_folders(struct ibtrs_clt *clt)
 {
-	int err;
-
-	err = kobject_init_and_add(&clt->kobj, &ktype, ibtrs_kobj,
-				   "%s", clt->sessname);
-	if (unlikely(err)) {
-		pr_err("kobject_init_and_add(): %d\n", err);
-		return err;
-	}
-	err = kobject_init_and_add(&clt->kobj_paths, &ktype,
-				   &clt->kobj, "paths");
-	if (unlikely(err)) {
-		pr_err("kobject_init_and_add(): %d\n", err);
-		goto put_kobj;
-	}
-
-	return 0;
-
-put_kobj:
-	kobject_del(&clt->kobj);
-	kobject_put(&clt->kobj);
-
-	return err;
+	return kobject_init_and_add(&clt->kobj_paths, &ktype,
+				    &clt->dev.kobj, "paths");
 }
 
 int ibtrs_clt_create_sysfs_root_files(struct ibtrs_clt *clt)
 {
-	return sysfs_create_group(&clt->kobj, &ibtrs_clt_attr_group);
+	return sysfs_create_group(&clt->dev.kobj, &ibtrs_clt_attr_group);
 }
 
 void ibtrs_clt_destroy_sysfs_root_folders(struct ibtrs_clt *clt)
@@ -522,15 +494,11 @@ void ibtrs_clt_destroy_sysfs_root_folders(struct ibtrs_clt *clt)
 		kobject_del(&clt->kobj_paths);
 		kobject_put(&clt->kobj_paths);
 	}
-	if (clt->kobj.state_in_sysfs) {
-		kobject_del(&clt->kobj);
-		kobject_put(&clt->kobj);
-	}
 }
 
 void ibtrs_clt_destroy_sysfs_root_files(struct ibtrs_clt *clt)
 {
-	sysfs_remove_group(&clt->kobj, &ibtrs_clt_attr_group);
+	sysfs_remove_group(&clt->dev.kobj, &ibtrs_clt_attr_group);
 }
 
 int ibtrs_clt_create_sysfs_module_files(void)

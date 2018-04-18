@@ -220,7 +220,6 @@ struct ibtrs_clt {
 	void			*priv;
 	link_clt_ev_fn		*link_ev;
 	struct device		dev;
-	struct kobject		kobj;
 	struct kobject		kobj_paths;
 	enum ibtrs_mp_policy	mp_policy;
 };
