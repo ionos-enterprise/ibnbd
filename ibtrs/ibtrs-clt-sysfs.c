@@ -34,8 +34,6 @@
 #include "ibtrs-clt.h"
 #include "ibtrs-log.h"
 
-static struct kobject *ibtrs_kobj;
-
 #define MIN_MAX_RECONN_ATT -1
 #define MAX_MAX_RECONN_ATT 9999
 
@@ -499,19 +497,4 @@ void ibtrs_clt_destroy_sysfs_root_folders(struct ibtrs_clt *clt)
 void ibtrs_clt_destroy_sysfs_root_files(struct ibtrs_clt *clt)
 {
 	sysfs_remove_group(&clt->dev.kobj, &ibtrs_clt_attr_group);
-}
-
-int ibtrs_clt_create_sysfs_module_files(void)
-{
-	ibtrs_kobj = kobject_create_and_add(KBUILD_MODNAME, kernel_kobj);
-	if (unlikely(!ibtrs_kobj))
-		return -ENOMEM;
-
-	return 0;
-}
-
-void ibtrs_clt_destroy_sysfs_module_files(void)
-{
-	kobject_del(ibtrs_kobj);
-	kobject_put(ibtrs_kobj);
 }

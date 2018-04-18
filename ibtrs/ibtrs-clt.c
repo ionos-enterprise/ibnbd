@@ -2776,29 +2776,15 @@ static int __init ibtrs_client_init(void)
 	ibtrs_wq = alloc_workqueue("ibtrs_client_wq", WQ_MEM_RECLAIM, 0);
 	if (unlikely(!ibtrs_wq)) {
 		pr_err("Failed to load module, alloc ibtrs_client_wq failed\n");
-		err = -ENOMEM;
-		goto out_ibtrs_class;
-	}
-	err = ibtrs_clt_create_sysfs_module_files();
-	if (unlikely(err)) {
-		pr_err("Failed to load module, can't create sysfs files,"
-		       " err: %d\n", err);
-		goto out_ibtrs_wq;
+		class_destroy(ibtrs_dev_class);
+		return -ENOMEM;
 	}
 
 	return 0;
-
-out_ibtrs_wq:
-	destroy_workqueue(ibtrs_wq);
-out_ibtrs_class:
-	class_destroy(ibtrs_dev_class);
-
-	return err;
 }
 
 static void __exit ibtrs_client_exit(void)
 {
-	ibtrs_clt_destroy_sysfs_module_files();
 	destroy_workqueue(ibtrs_wq);
 	class_destroy(ibtrs_dev_class);
 }
