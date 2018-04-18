@@ -168,9 +168,6 @@ ssize_t ibtrs_srv_reset_all_help(struct ibtrs_srv_stats *stats,
 
 /* ibtrs-srv-sysfs.c */
 
-int ibtrs_srv_create_sysfs_module_files(void);
-void ibtrs_srv_destroy_sysfs_module_files(void);
-
 int ibtrs_srv_create_sess_files(struct ibtrs_srv_sess *sess);
 void ibtrs_srv_destroy_sess_files(struct ibtrs_srv_sess *sess);
 

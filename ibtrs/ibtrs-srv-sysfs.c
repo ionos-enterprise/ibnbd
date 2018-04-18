@@ -34,7 +34,6 @@
 #include "ibtrs-srv.h"
 #include "ibtrs-log.h"
 
-static struct kobject *ibtrs_kobj;
 extern struct class *ibtrs_dev_class;
 
 static struct kobj_type ktype = {
@@ -269,19 +268,4 @@ void ibtrs_srv_destroy_sess_files(struct ibtrs_srv_sess *sess)
 
 		ibtrs_srv_destroy_once_sysfs_root_folders(sess);
 	}
-}
-
-int ibtrs_srv_create_sysfs_module_files(void)
-{
-	ibtrs_kobj = kobject_create_and_add(KBUILD_MODNAME, kernel_kobj);
-	if (unlikely(!ibtrs_kobj))
-		return -ENOMEM;
-
-	return 0;
-}
-
-void ibtrs_srv_destroy_sysfs_module_files(void)
-{
-	kobject_del(ibtrs_kobj);
-	kobject_put(ibtrs_kobj);
 }
