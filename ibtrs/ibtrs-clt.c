@@ -61,6 +61,7 @@ MODULE_PARM_DESC(noreg_cnt, "Max number of SG entries when MR registration "
 		 "does not happen (default: 4)");
 
 static struct workqueue_struct *ibtrs_wq;
+static struct class *ibtrs_dev_class;
 
 static void ibtrs_rdma_error_recovery(struct ibtrs_clt_con *con);
 static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc);
@@ -2746,10 +2747,16 @@ static int __init ibtrs_client_init(void)
 		       " err: %d\n", err);
 		return err;
 	}
+	ibtrs_dev_class = class_create(THIS_MODULE, "ibtrs-client");
+	if (unlikely(IS_ERR(ibtrs_dev_class))) {
+		pr_err("Failed to create ibtrs-client dev class\n");
+		return PTR_ERR(ibtrs_dev_class);
+	}
 	ibtrs_wq = alloc_workqueue("ibtrs_client_wq", WQ_MEM_RECLAIM, 0);
 	if (!ibtrs_wq) {
 		pr_err("Failed to load module, alloc ibtrs_client_wq failed\n");
-		return -ENOMEM;
+		err = -ENOMEM;
+		goto out_ibtrs_class;
 	}
 	err = ibtrs_clt_create_sysfs_module_files();
 	if (err) {
@@ -2762,6 +2769,8 @@ static int __init ibtrs_client_init(void)
 
 out_ibtrs_wq:
 	destroy_workqueue(ibtrs_wq);
+out_ibtrs_class:
+	class_destroy(ibtrs_dev_class);
 
 	return err;
 }
@@ -2770,6 +2779,7 @@ static void __exit ibtrs_client_exit(void)
 {
 	ibtrs_clt_destroy_sysfs_module_files();
 	destroy_workqueue(ibtrs_wq);
+	class_destroy(ibtrs_dev_class);
 }
 
 module_init(ibtrs_client_init);
