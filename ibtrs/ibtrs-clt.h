@@ -30,6 +30,7 @@
 #ifndef IBTRS_CLT_H
 #define IBTRS_CLT_H
 
+#include <linux/device.h>
 #include "ibtrs-pri.h"
 
 /**
@@ -218,6 +219,7 @@ struct ibtrs_clt {
 	size_t			pdu_sz;
 	void			*priv;
 	link_clt_ev_fn		*link_ev;
+	struct device		dev;
 	struct kobject		kobj;
 	struct kobject		kobj_paths;
 	enum ibtrs_mp_policy	mp_policy;

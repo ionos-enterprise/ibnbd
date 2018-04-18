@@ -2145,6 +2145,11 @@ reconnect_again:
 	}
 }
 
+static void ibtrs_clt_dev_release(struct device *dev)
+{
+	/* Nobody plays with device references, so nop */
+}
+
 static struct ibtrs_clt *alloc_clt(const char *sessname, size_t paths_num,
 				   short port, size_t pdu_sz,
 				   void *priv, link_clt_ev_fn *link_ev,
@@ -2188,14 +2193,28 @@ static struct ibtrs_clt *alloc_clt(const char *sessname, size_t paths_num,
 	mutex_init(&clt->paths_ev_mutex);
 	mutex_init(&clt->paths_mutex);
 
+	clt->dev.class = ibtrs_dev_class;
+	clt->dev.release = ibtrs_clt_dev_release;
+	dev_set_name(&clt->dev, "%s", sessname);
+
+	err = device_register(&clt->dev);
+	if (unlikely(err))
+		goto percpu_free;
+
 	err = ibtrs_clt_create_sysfs_root_folders(clt);
-	if (unlikely(err)) {
-		free_percpu(clt->pcpu_path);
-		kfree(clt);
-		return ERR_PTR(err);
-	}
+	if (unlikely(err))
+		goto dev_unregister;
 
 	return clt;
+
+dev_unregister:
+	/* Nobody plays with dev refs, so dev.release() is nop */
+	device_unregister(&clt->dev);
+percpu_free:
+	free_percpu(clt->pcpu_path);
+	kfree(clt);
+
+	return ERR_PTR(err);
 }
 
 static void wait_for_inflight_tags(struct ibtrs_clt *clt)
@@ -2214,6 +2233,8 @@ static void free_clt(struct ibtrs_clt *clt)
 	wait_for_inflight_tags(clt);
 	free_tags(clt);
 	free_percpu(clt->pcpu_path);
+	/* Nobody plays with dev refs, so dev.release() is nop */
+	device_unregister(&clt->dev);
 	kfree(clt);
 }
 
