@@ -37,11 +37,13 @@
 #include <linux/genhd.h>
 #include <linux/list.h>
 #include <linux/moduleparam.h>
+#include <linux/device.h>
 
 #include "ibnbd-srv.h"
 
-static struct kobject *ibnbd_srv_kobj;
-static struct kobject *ibnbd_srv_devices_kobj;
+static struct device *ibnbd_dev;
+static struct class *ibnbd_dev_class;
+static struct kobject *ibnbd_devs_kobj;
 
 static struct attribute *ibnbd_srv_default_dev_attrs[] = {
 	NULL,
@@ -97,7 +99,7 @@ int ibnbd_srv_create_dev_sysfs(struct ibnbd_srv_dev *dev,
 	int ret;
 
 	ret = kobject_init_and_add(&dev->dev_kobj, &ibnbd_srv_dev_ktype,
-				   ibnbd_srv_devices_kobj, dir_name);
+				   ibnbd_devs_kobj, dir_name);
 	if (ret)
 		return ret;
 
@@ -239,26 +241,36 @@ int ibnbd_srv_create_sysfs_files(void)
 {
 	int err;
 
-	ibnbd_srv_kobj = kobject_create_and_add(KBUILD_MODNAME, kernel_kobj);
-	if (!ibnbd_srv_kobj)
-		return -ENOMEM;
+	ibnbd_dev_class = class_create(THIS_MODULE, "ibnbd-server");
+	if (unlikely(IS_ERR(ibnbd_dev_class)))
+		return PTR_ERR(ibnbd_dev_class);
 
-	ibnbd_srv_devices_kobj = kobject_create_and_add("devices",
-							ibnbd_srv_kobj);
-	if (!ibnbd_srv_devices_kobj) {
+	ibnbd_dev = device_create(ibnbd_dev_class, NULL,
+				  MKDEV(0, 0), NULL, "ctl");
+	if (unlikely(IS_ERR(ibnbd_dev))) {
+		err = PTR_ERR(ibnbd_dev);
+		goto cls_destroy;
+	}
+	ibnbd_devs_kobj = kobject_create_and_add("devices", &ibnbd_dev->kobj);
+	if (unlikely(!ibnbd_devs_kobj)) {
 		err = -ENOMEM;
-		goto err;
+		goto dev_destroy;
 	}
 
 	return 0;
 
-err:
-	kobject_put(ibnbd_srv_kobj);
+dev_destroy:
+	device_destroy(ibnbd_dev_class, MKDEV(0, 0));
+cls_destroy:
+	class_destroy(ibnbd_dev_class);
+
 	return err;
 }
 
 void ibnbd_srv_destroy_sysfs_files(void)
 {
-	kobject_put(ibnbd_srv_devices_kobj);
-	kobject_put(ibnbd_srv_kobj);
+	kobject_del(ibnbd_devs_kobj);
+	kobject_put(ibnbd_devs_kobj);
+	device_destroy(ibnbd_dev_class, MKDEV(0, 0));
+	class_destroy(ibnbd_dev_class);
 }
