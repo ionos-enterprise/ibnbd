@@ -2742,7 +2742,7 @@ static int __init ibtrs_client_init(void)
 		KBUILD_MODNAME, IBTRS_VER_STRING,
 		retry_cnt, noreg_cnt);
 	err = check_module_params();
-	if (err) {
+	if (unlikely(err)) {
 		pr_err("Failed to load module, invalid module parameters,"
 		       " err: %d\n", err);
 		return err;
@@ -2753,13 +2753,13 @@ static int __init ibtrs_client_init(void)
 		return PTR_ERR(ibtrs_dev_class);
 	}
 	ibtrs_wq = alloc_workqueue("ibtrs_client_wq", WQ_MEM_RECLAIM, 0);
-	if (!ibtrs_wq) {
+	if (unlikely(!ibtrs_wq)) {
 		pr_err("Failed to load module, alloc ibtrs_client_wq failed\n");
 		err = -ENOMEM;
 		goto out_ibtrs_class;
 	}
 	err = ibtrs_clt_create_sysfs_module_files();
-	if (err) {
+	if (unlikely(err)) {
 		pr_err("Failed to load module, can't create sysfs files,"
 		       " err: %d\n", err);
 		goto out_ibtrs_wq;
