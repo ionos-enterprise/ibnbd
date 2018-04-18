@@ -37,13 +37,15 @@
 #include <linux/in6.h>
 #include <linux/fs.h>
 #include <linux/uaccess.h>
+#include <linux/device.h>
 #include <rdma/ib.h>
 #include <rdma/rdma_cm.h>
 
 #include "ibnbd-clt.h"
 
-static struct kobject *ibnbd_kobject;
-static struct kobject *ibnbd_devices_kobject;
+static struct device *ibnbd_dev;
+static struct class *ibnbd_dev_class;
+static struct kobject *ibnbd_devs_kobj;
 
 enum {
 	IBNBD_OPT_ERR		= 0,
@@ -488,7 +490,7 @@ void ibnbd_clt_remove_dev_symlink(struct ibnbd_clt_dev *dev)
 	 * path was just removed, see ibnbd_close_sessions().
 	 */
 	if (strlen(dev->blk_symlink_name) && module_is_live(THIS_MODULE))
-		sysfs_remove_link(ibnbd_devices_kobject, dev->blk_symlink_name);
+		sysfs_remove_link(ibnbd_devs_kobj, dev->blk_symlink_name);
 }
 
 static struct kobj_type ibnbd_dev_ktype = {
@@ -555,7 +557,7 @@ static int ibnbd_clt_add_dev_symlink(struct ibnbd_clt_dev *dev)
 		goto out_err;
 	}
 
-	ret = sysfs_create_link(ibnbd_devices_kobject, gd_kobj,
+	ret = sysfs_create_link(ibnbd_devs_kobj, gd_kobj,
 				dev->blk_symlink_name);
 	if (ret) {
 		ibnbd_err(dev, "Creating /sys/block symlink failed, err: %d\n",
@@ -637,44 +639,49 @@ static struct attribute_group default_attr_group = {
 
 int ibnbd_clt_create_sysfs_files(void)
 {
-	int err = 0;
+	int err;
 
-	ibnbd_kobject = kobject_create_and_add(KBUILD_MODNAME, kernel_kobj);
-	if (!ibnbd_kobject) {
-		err = -ENOMEM;
-		goto err1;
+	ibnbd_dev_class = class_create(THIS_MODULE, "ibnbd-client");
+	if (unlikely(IS_ERR(ibnbd_dev_class)))
+		return PTR_ERR(ibnbd_dev_class);
+
+	ibnbd_dev = device_create(ibnbd_dev_class, NULL,
+				  MKDEV(0, 0), NULL, "ctl");
+	if (unlikely(IS_ERR(ibnbd_dev))) {
+		err = PTR_ERR(ibnbd_dev);
+		goto cls_destroy;
 	}
-
-	ibnbd_devices_kobject = kobject_create_and_add("devices",
-						       ibnbd_kobject);
-	if (!ibnbd_devices_kobject) {
+	ibnbd_devs_kobj = kobject_create_and_add("devices", &ibnbd_dev->kobj);
+	if (unlikely(!ibnbd_devs_kobj)) {
 		err = -ENOMEM;
-		goto err2;
+		goto dev_destroy;
 	}
-
-	err = sysfs_create_group(ibnbd_kobject, &default_attr_group);
-	if (err)
-		goto err3;
+	err = sysfs_create_group(&ibnbd_dev->kobj, &default_attr_group);
+	if (unlikely(err))
+		goto put_devs_kobj;
 
 	return 0;
 
-err3:
-	kobject_put(ibnbd_devices_kobject);
-err2:
-	kobject_put(ibnbd_kobject);
-err1:
+put_devs_kobj:
+	kobject_del(ibnbd_devs_kobj);
+	kobject_put(ibnbd_devs_kobj);
+dev_destroy:
+	device_destroy(ibnbd_dev_class, MKDEV(0, 0));
+cls_destroy:
+	class_destroy(ibnbd_dev_class);
+
 	return err;
 }
 
 void ibnbd_clt_destroy_default_group(void)
 {
-	sysfs_remove_group(ibnbd_kobject, &default_attr_group);
+	sysfs_remove_group(&ibnbd_dev->kobj, &default_attr_group);
 }
 
 void ibnbd_clt_destroy_sysfs_files(void)
 {
-	kobject_del(ibnbd_devices_kobject);
-	kobject_put(ibnbd_devices_kobject);
-	kobject_del(ibnbd_kobject);
-	kobject_put(ibnbd_kobject);
+	kobject_del(ibnbd_devs_kobj);
+	kobject_put(ibnbd_devs_kobj);
+	device_destroy(ibnbd_dev_class, MKDEV(0, 0));
+	class_destroy(ibnbd_dev_class);
 }
