@@ -527,7 +527,7 @@ void ibtrs_stop_hb(struct ibtrs_sess *sess)
 EXPORT_SYMBOL_GPL(ibtrs_stop_hb);
 
 static int ibtrs_str_ipv4_to_sockaddr(const char *addr, size_t len,
-				      short port, struct sockaddr *dst)
+				      short port, struct sockaddr_storage *dst)
 {
 	struct sockaddr_in *dst_sin = (struct sockaddr_in *)dst;
 	int ret;
@@ -544,7 +544,7 @@ static int ibtrs_str_ipv4_to_sockaddr(const char *addr, size_t len,
 }
 
 static int ibtrs_str_ipv6_to_sockaddr(const char *addr, size_t len,
-				      short port, struct sockaddr *dst)
+				      short port, struct sockaddr_storage *dst)
 {
 	struct sockaddr_in6 *dst_sin6 = (struct sockaddr_in6 *)dst;
 	int ret;
@@ -561,7 +561,7 @@ static int ibtrs_str_ipv6_to_sockaddr(const char *addr, size_t len,
 }
 
 static int ibtrs_str_gid_to_sockaddr(const char *addr, size_t len,
-				     short port, struct sockaddr *dst)
+				     short port, struct sockaddr_storage *dst)
 {
 	struct sockaddr_ib *dst_ib = (struct sockaddr_ib *)dst;
 	int ret;
@@ -598,7 +598,7 @@ static int ibtrs_str_gid_to_sockaddr(const char *addr, size_t len,
  * Returns 0 if conversion successful. Non-zero on error.
  */
 static int ibtrs_str_to_sockaddr(const char *addr, size_t len,
-				 short port, struct sockaddr *dst)
+				 short port, struct sockaddr_storage *dst)
 {
 	if (strncmp(addr, "gid:", 4) == 0) {
 		return ibtrs_str_gid_to_sockaddr(addr + 4, len - 4, port, dst);

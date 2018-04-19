@@ -148,8 +148,8 @@ static ssize_t add_path_store(struct device *dev,
 {
 	struct sockaddr_storage srcaddr, dstaddr;
 	struct ibtrs_addr addr = {
-		.src = (struct sockaddr *)&srcaddr,
-		.dst = (struct sockaddr *)&dstaddr
+		.src = &srcaddr,
+		.dst = &dstaddr
 	};
 	struct ibtrs_clt *clt;
 	const char *nl;

@@ -56,8 +56,8 @@ enum ibtrs_clt_link_ev {
  * Source and destination address of a path to be established
  */
 struct ibtrs_addr {
-	struct sockaddr *src;
-	struct sockaddr *dst;
+	struct sockaddr_storage *src;
+	struct sockaddr_storage *dst;
 };
 
 typedef void (link_clt_ev_fn)(void *priv, enum ibtrs_clt_link_ev ev);

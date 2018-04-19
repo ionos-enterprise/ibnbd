@@ -1438,7 +1438,7 @@ static inline bool __ibtrs_clt_path_exists(struct ibtrs_clt *clt,
 
 	list_for_each_entry(sess, &clt->paths_list, s.entry)
 		if (!sockaddr_cmp((struct sockaddr *)&sess->s.dst_addr,
-				  addr->dst))
+				  (struct sockaddr *)addr->dst))
 			return true;
 
 	return false;

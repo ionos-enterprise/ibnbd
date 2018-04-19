@@ -589,8 +589,8 @@ static ssize_t ibnbd_clt_map_device_store(struct kobject *kobj,
 	struct sockaddr_storage daddr[ARRAY_SIZE(paths)];
 
 	for (path_cnt = 0; path_cnt < ARRAY_SIZE(paths); path_cnt++) {
-		paths[path_cnt].src = (struct sockaddr *)&saddr[path_cnt];
-		paths[path_cnt].dst = (struct sockaddr *)&daddr[path_cnt];
+		paths[path_cnt].src = &saddr[path_cnt];
+		paths[path_cnt].dst = &daddr[path_cnt];
 	}
 
 	ret = ibnbd_clt_parse_map_options(buf, sessname, paths,
