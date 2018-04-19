@@ -29,7 +29,7 @@ Server side:
 Client side:
   # modprobe ibnbd_client
   # echo "sessname=blya path=ip:10.50.100.66 device_path=/dev/ram0" > \
-            /sys/kernel/ibnbd_client/map_device
+            /sys/devices/virtual/ibnbd-client/ctl/map_device
 
   Where "sessname=" is a session name, a string to identify the session
   on client and on server sides; "path=" is a destination IP address or
@@ -48,7 +48,7 @@ Client Sysfs Interface
 All sysfs files that are not read-only provide the usage information on read:
 
 Example:
-  # cat /sys/kernel/ibnbd_client/map_device
+  # cat /sys/devices/virtual/ibnbd-client/ctl/map_device
 
   > Usage: echo "sessname=<name of the ibtrs session> path=<[srcaddr,]dstaddr>
   > [path=<[srcaddr,]dstaddr>] device_path=<full path on remote side>
@@ -57,7 +57,7 @@ Example:
   >
   > addr ::= [ ip:<ipv4> | ip:<ipv6> | gid:<gid> ]
 
-Entries under /sys/kernel/ibnbd_client/
+Entries under /sys/devices/virtual/ibnbd-client/ctl/
 =======================================
 
 map_device (RW)
@@ -75,7 +75,7 @@ Where:
 
 sessname: accepts a string not bigger than 256 chars, which identifies
           a given session on the client and on the server.
-	  I.e. "clt_hostname-srv_hostname" could be a natural choice.
+		  I.e. "clt_hostname-srv_hostname" could be a natural choice.
 
 path:     describes a connection between the client and the server by
 	  specifying destination and, when required, the source address.
@@ -108,14 +108,14 @@ device_path: Path to the block device on the server side. Path is specified
 	     with <dev_search_path> and tries to open the
 	     <dev_search_path>/<device_path> block device.  On success,
 	     a /dev/ibnbd<N> device file, a /sys/block/ibnbd_client/ibnbd<N>/
-	     directory and an entry in /sys/kernel/ibnbd_client/devices will be
-             created.
+	     directory and an entry in /sys/devices/virtual/ibnbd-client/ctl/devices
+		 will be created.
 
 access_mode: the access_mode parameter specifies if the device is to be
              mapped as "ro" read-only or "rw" read-write. The server allows
-	     a device to be exported in rw mode only once. The "migration"
+	         a device to be exported in rw mode only once. The "migration"
              access mode has to be specified if a second mapping in read-write
-	     mode is desired.
+             mode is desired.
 
              By default "rw" is used.
 
@@ -138,23 +138,23 @@ Finding device file after mapping
 ---------------------------------
 
 After mapping, the device file can be found by:
- o  The symlink /sys/kernel/ibnbd_client/devices/<device_id> points to
-    /sys/block/<dev-name>. The last part of the symlink destination is
-    the same as the device name.  By extracting the last part of the
+ o  The symlink /sys/devices/virtual/ibnbd-client/ctl/devices/<device_id>
+    points to /sys/block/<dev-name>. The last part of the symlink destination
+	is the same as the device name.  By extracting the last part of the
     path the path to the device /dev/<dev-name> can be build.
 
- o /dev/block/$(cat /sys/kernel/ibnbd_client/devices/<device_id>/dev)
+ o /dev/block/$(cat /sys/devices/virtual/ibnbd-client/ctl/devices/<device_id>/dev)
 
 How to find the <device_id> of the device is described on the next
 section.
 
-Entries under /sys/kernel/ibnbd_client/devices/
-===============================================
+Entries under /sys/devices/virtual/ibnbd-client/ctl/devices/
+============================================================
 
 For each device mapped on the client a new symbolic link is created as
-/sys/kernel/ibnbd_client/devices/<device_id>, which points to the block
-device created by ibnbd (/sys/block/ibnbd<N>/). The <device_id> of each
-device is created as follows:
+/sys/devices/virtual/ibnbd-client/ctl/devices/<device_id>, which points
+to the block device created by ibnbd (/sys/block/ibnbd<N>/).
+The <device_id> of each device is created as follows:
 
 - If the 'device_path' provided during mapping contains slashes ("/"),
   they are replaced by exclamation mark ("!") and used as as the
@@ -205,14 +205,14 @@ operation.
 Server Sysfs Interface
 ======================
 
-Entries under /sys/kernel/ibnbd_server/
-=======================================
+Entries under /sys/devices/virtual/ibnbd-server/ctl/
+====================================================
 
 When a client maps a device, a directory entry with the name of the
-block device is created under /sys/kernel/ibnbd_server/devices/.
+block device is created under /sys/devices/virtual/ibnbd-server/ctl/devices/.
 
-Entries under /sys/kernel/ibnbd_server/devices/<device_name>/
-=============================================================
+Entries under /sys/devices/virtual/ibnbd-server/ctl/devices/<device_name>/
+==========================================================================
 
 block_dev (link)
 ---------------
@@ -223,18 +223,18 @@ Example:
 
   block_dev -> ../../../../devices/virtual/block/ram0
 
-Entries under /sys/kernel/ibnbd_server/devices/<device_name>/sessions/
-======================================================================
+Entries under /sys/devices/virtual/ibnbd-server/ctl/devices/<device_name>/sessions/
+===================================================================================
 
 For each client a particular device is exported to, following directory will be
 created:
 
-/sys/kernel/ibnbd_server/devices/<device_name>/sessions/<session-name>/
+/sys/devices/virtual/ibnbd-server/ctl/devices/<device_name>/sessions/<session-name>/
 
 When the device is unmapped by that client, the directory will be removed.
 
-Entries under /sys/kernel/ibnbd_server/devices/<device_name>/sessions/<session-name>
-====================================================================================
+Entries under /sys/devices/virtual/ibnbd-server/ctl/devices/<device_name>/sessions/<session-name>
+=================================================================================================
 
 read_only (RO)
 --------------

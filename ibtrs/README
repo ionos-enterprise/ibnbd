@@ -24,14 +24,14 @@ Client Sysfs Interface
 This chapter describes only the most important files of sysfs interface
 on client side.
 
-Entries under /sys/kernel/ibtrs_client/
-=======================================
+Entries under /sys/devices/virtual/ibtrs-client/
+================================================
 
 When a user of IBTRS API creates a new session, a directory entry with
 the name of that session is created.
 
-Entries under /sys/kernel/ibtrs_client/<session-name>/
-======================================================
+Entries under /sys/devices/virtual/ibtrs-client/<session-name>/
+===============================================================
 
 add_path (RW)
 -------------
@@ -60,16 +60,16 @@ Multipath policy specifies which path should be selected on each IO:
    min-inflight (1):
        select path with minimum inflights.
 
-Entries under /sys/kernel/ibtrs_client/<session-name>/paths/
-============================================================
+Entries under /sys/devices/virtual/ibtrs-client/<session-name>/paths/
+=====================================================================
 
 
 Each path belonging to a given session is listed here by its destination
 address. When a new path is added to a session by writing to the "add_path"
 entry, a directory with the corresponding destination address is created.
 
-Entries under /sys/kernel/ibtrs_client/<session-name>/paths/<dest-addr>/
-========================================================================
+Entries under /sys/devices/virtual/ibtrs-client/<session-name>/paths/<dest-addr>/
+=================================================================================
 
 state (R)
 ---------
@@ -96,8 +96,8 @@ Write "1" to the file in order to disconnected and remove the path
 from the session.  Operation blocks until the path is disconnected
 and removed from the session.
 
-Entries under /sys/kernel/ibtrs_client/<session-name>/paths/<dest-addr>/stats/
-==============================================================================
+Entries under /sys/devices/virtual/ibtrs-client/<session-name>/paths/<dest-addr>/stats/
+=======================================================================================
 
 Write "0" to any file in that directory to reset corresponding statistics.
 
@@ -170,20 +170,20 @@ The output consists of 6 values:
 Server Sysfs Interface
 ======================
 
-Entries under /sys/kernel/ibtrs_server/
-=======================================
+Entries under /sys/devices/virtual/ibtrs-server/
+================================================
 
 When a user of IBTRS API creates a new session on a client side, a
 directory entry with the name of that session is created in here.
 
-Entries under /sys/kernel/ibtrs_server/<session-name>/paths/
-============================================================
+Entries under /sys/devices/virtual/ibtrs-server/<session-name>/paths/
+=====================================================================
 
 When new path is created by writing to "add_path" entry on client side,
 a directory entry with source address is created on server.
 
-Entries under /sys/kernel/ibtrs_server/<session-name>/paths/<source-addr>/
-==========================================================================
+Entries under /sys/devices/virtual/ibtrs-server/<session-name>/paths/<source-addr>/
+===================================================================================
 
 disconnect (RW)
 ---------------
@@ -201,8 +201,8 @@ hca_port (R)
 
 Contains the port number of active port traffic is going through.
 
-Entries under /sys/kernel/ibtrs_server/<session-name>/paths/<source-addr>/stats/
-================================================================================
+Entries under /sys/devices/virtual/ibtrs-server/<session-name>/paths/<source-addr>/stats/
+=========================================================================================
 
 When "0" is written to a file in this directory, the corresponding counters
 will be reset.
