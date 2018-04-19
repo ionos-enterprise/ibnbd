@@ -151,7 +151,7 @@ struct ibtrs_clt_io_req {
 	struct ibtrs_tag	*tag;
 	enum dma_data_direction dir;
 	ibtrs_conf_fn		*conf;
-	unsigned long		start_time;
+	unsigned long		start_jiffies;
 
 	struct ib_mr		*mr;
 	struct ib_cqe		inv_cqe;

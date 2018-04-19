@@ -290,15 +290,6 @@ static int ibtrs_post_send_rdma(struct ibtrs_clt_con *con,
 					    imm, flags, wr);
 }
 
-static inline unsigned long ibtrs_clt_get_raw_ms(void)
-{
-	struct timespec ts;
-
-	getrawmonotonic(&ts);
-
-	return timespec_to_ns(&ts) / NSEC_PER_MSEC;
-}
-
 static void complete_rdma_req(struct ibtrs_clt_io_req *req, int errno,
 			      bool notify, bool can_wait)
 {
@@ -360,9 +351,8 @@ static void complete_rdma_req(struct ibtrs_clt_io_req *req, int errno,
 	}
 	if (sess->stats.enable_rdma_lat)
 		ibtrs_clt_update_rdma_lat(&sess->stats,
-					  req->dir == DMA_FROM_DEVICE,
-					  ibtrs_clt_get_raw_ms() -
-					  req->start_time);
+				req->dir == DMA_FROM_DEVICE,
+				jiffies_to_msecs(jiffies - req->start_jiffies));
 	ibtrs_clt_decrease_inflight(&sess->stats);
 
 	req->in_use = false;
@@ -641,7 +631,7 @@ static inline void ibtrs_clt_init_req(struct ibtrs_clt_io_req *req,
 	copy_from_kvec(req->iu->buf, vec, usr_len);
 	reinit_completion(&req->inv_comp);
 	if (sess->stats.enable_rdma_lat)
-		req->start_time = ibtrs_clt_get_raw_ms();
+		req->start_jiffies = jiffies;
 }
 
 static inline struct ibtrs_clt_io_req *
