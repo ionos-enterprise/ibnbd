@@ -179,7 +179,7 @@ struct ibtrs_clt_sess {
 	unsigned		reconnect_attempts;
 	bool			established;
 	struct ibtrs_rbuf	*rbufs;
-	u32			max_io_size;
+	size_t			max_io_size;
 	u32			max_req_size;
 	u32			chunk_size;
 	size_t			queue_depth;
