@@ -526,47 +526,14 @@ void ibtrs_stop_hb(struct ibtrs_sess *sess)
 }
 EXPORT_SYMBOL_GPL(ibtrs_stop_hb);
 
-static int ibtrs_str_ipv4_to_sockaddr(const char *addr, size_t len,
-				      short port, struct sockaddr_storage *dst)
-{
-	struct sockaddr_in *dst_sin = (struct sockaddr_in *)dst;
-	int ret;
-
-	ret = in4_pton(addr, len, (u8 *)&dst_sin->sin_addr.s_addr,
-		       '\0', NULL);
-	if (ret == 0)
-		return -EINVAL;
-
-	dst_sin->sin_family = AF_INET;
-	dst_sin->sin_port = htons(port);
-
-	return 0;
-}
-
-static int ibtrs_str_ipv6_to_sockaddr(const char *addr, size_t len,
-				      short port, struct sockaddr_storage *dst)
-{
-	struct sockaddr_in6 *dst_sin6 = (struct sockaddr_in6 *)dst;
-	int ret;
-
-	ret = in6_pton(addr, len, dst_sin6->sin6_addr.s6_addr,
-		       '\0', NULL);
-	if (ret != 1)
-		return -EINVAL;
-
-	dst_sin6->sin6_family = AF_INET6;
-	dst_sin6->sin6_port = htons(port);
-
-	return 0;
-}
-
 static int ibtrs_str_gid_to_sockaddr(const char *addr, size_t len,
 				     short port, struct sockaddr_storage *dst)
 {
 	struct sockaddr_ib *dst_ib = (struct sockaddr_ib *)dst;
 	int ret;
 
-	/* We can use some of the I6 functions since GID is a valid
+	/*
+	 * We can use some of the I6 functions since GID is a valid
 	 * IPv6 address format
 	 */
 	ret = in6_pton(addr, len, dst_ib->sib_addr.sib_raw, '\0', NULL);
@@ -603,11 +570,17 @@ static int ibtrs_str_to_sockaddr(const char *addr, size_t len,
 	if (strncmp(addr, "gid:", 4) == 0) {
 		return ibtrs_str_gid_to_sockaddr(addr + 4, len - 4, port, dst);
 	} else if (strncmp(addr, "ip:", 3) == 0) {
-		if (ibtrs_str_ipv4_to_sockaddr(addr + 3, len - 3, port, dst))
-			return ibtrs_str_ipv6_to_sockaddr(addr + 3, len - 3,
-							  port, dst);
-		else
-			return 0;
+		char port_str[8];
+		char *cpy;
+		int err;
+
+		snprintf(port_str, sizeof(port_str), "%u", port);
+		cpy = kstrndup(addr + 3, len - 3, GFP_KERNEL);
+		err = cpy ? inet_pton_with_scope(&init_net, AF_UNSPEC,
+						 cpy, port_str, dst) : -ENOMEM;
+		kfree(cpy);
+
+		return err;
 	}
 	return -EPROTONOSUPPORT;
 }
