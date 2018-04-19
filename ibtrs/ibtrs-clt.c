@@ -70,29 +70,6 @@ static void complete_rdma_req(struct ibtrs_clt_io_req *req, int errno,
 static int ibtrs_clt_write_req(struct ibtrs_clt_io_req *req);
 static int ibtrs_clt_read_req(struct ibtrs_clt_io_req *req);
 
-#define cmpxchg_min(var, new) ({					\
-	typeof(var) old;						\
-									\
-	do {								\
-		old = var;						\
-		new = (!old ? new : min_t(typeof(var), old, new));	\
-	} while (cmpxchg(&var, old, new) != old);			\
-})
-
-static void ibtrs_clt_set_min_queue_depth(struct ibtrs_clt *clt, size_t new)
-{
-	/* Can be updated from different sessions (paths), so cmpxchg */
-
-	cmpxchg_min(clt->queue_depth, new);
-}
-
-static void ibtrs_clt_set_min_io_size(struct ibtrs_clt *clt, size_t new)
-{
-	/* Can be updated from different sessions (paths), so cmpxchg */
-
-	cmpxchg_min(clt->max_io_size, new);
-}
-
 bool ibtrs_clt_sess_is_connected(const struct ibtrs_clt_sess *sess)
 {
 	return sess->state == IBTRS_CLT_CONNECTED;
@@ -1649,6 +1626,7 @@ static int ibtrs_rdma_conn_established(struct ibtrs_clt_con *con,
 				       struct rdma_cm_event *ev)
 {
 	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
+	struct ibtrs_clt *clt = sess->clt;
 	const struct ibtrs_msg_conn_rsp *msg;
 	u16 version, queue_depth;
 	int errno;
@@ -1700,12 +1678,19 @@ static int ibtrs_rdma_conn_established(struct ibtrs_clt_con *con,
 		sess->chunk_size = sess->max_io_size + sess->max_req_size;
 
 		/*
-		 * Global queue depth and is always a minimum.  If while a
-		 * reconnection server sends us a value a bit higher -
-		 * client does not care and uses cached minimum.
+		 * Global queue depth and IO size is always a minimum.
+		 * If while a reconnection server sends us a value a bit
+		 * higher - client does not care and uses cached minimum.
+		 *
+		 * Since we can have several sessions (paths) restablishing
+		 * connections in parallel, use lock.
 		 */
-		ibtrs_clt_set_min_queue_depth(sess->clt, sess->queue_depth);
-		ibtrs_clt_set_min_io_size(sess->clt, sess->max_io_size);
+		mutex_lock(&clt->paths_mutex);
+		clt->queue_depth = min_not_zero(sess->queue_depth,
+						clt->queue_depth);
+		clt->max_io_size = min_not_zero(sess->max_io_size,
+						clt->max_io_size);
+		mutex_unlock(&clt->paths_mutex);
 
 		/*
 		 * Cache the hca_port and hca_name for sysfs
