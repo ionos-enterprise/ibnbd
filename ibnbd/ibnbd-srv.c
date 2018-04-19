@@ -77,9 +77,11 @@ static const struct kernel_param_ops dev_search_path_ops = {
 
 module_param_cb(dev_search_path, &dev_search_path_ops,
 		&dev_search_path_kparam_str, 0444);
-MODULE_PARM_DESC(dev_search_path, "Sets the device_search_path."
+MODULE_PARM_DESC(dev_search_path, "Sets the dev_search_path."
 		 " When a device is mapped this path is prepended to the"
-		 " device_path from the map_device operation."
+		 " device path from the map device operation.  If %SESSNAME%"
+		 " is specified in a path, then device will be searched in a"
+		 " session namespace."
 		 " (default: " DEFAULT_DEV_SEARCH_PATH ")");
 
 static int def_io_mode = IBNBD_BLOCKIO;
@@ -635,7 +637,8 @@ ibnbd_srv_create_set_sess_dev(struct ibnbd_srv_session *srv_sess,
 	return sdev;
 }
 
-static char *ibnbd_srv_get_full_path(const char *dev_name)
+static char *ibnbd_srv_get_full_path(struct ibnbd_srv_session *srv_sess,
+				     const char *dev_name)
 {
 	char *full_path;
 	char *a, *b;
@@ -644,7 +647,25 @@ static char *ibnbd_srv_get_full_path(const char *dev_name)
 	if (!full_path)
 		return ERR_PTR(-ENOMEM);
 
-	snprintf(full_path, PATH_MAX, "%s/%s", dev_search_path, dev_name);
+	/*
+	 * Replace %SESSNAME% with a real session name in order to
+	 * create device namespace.
+	 */
+	if ((a = strnstr(dev_search_path, "%SESSNAME%",
+			       sizeof(dev_search_path)))) {
+		int len = a - dev_search_path;
+
+		len = snprintf(full_path, PATH_MAX, "%.*s/%s/%s", len,
+			       dev_search_path, srv_sess->sessname, dev_name);
+		if (len >= PATH_MAX) {
+			pr_err("Tooooo looong path: %s, %s, %s\n",
+			       dev_search_path, srv_sess->sessname, dev_name);
+			kfree(full_path);
+			return ERR_PTR(-EINVAL);
+		}
+	} else
+		snprintf(full_path, PATH_MAX, "%s/%s",
+			 dev_search_path, dev_name);
 
 	/* eliminitate duplicated slashes */
 	a = strchr(full_path, '/');
@@ -741,7 +762,7 @@ static int process_msg_open(struct ibtrs_srv *ibtrs,
 		ret = -EINVAL;
 		goto reject;
 	}
-	full_path = ibnbd_srv_get_full_path(open_msg->dev_name);
+	full_path = ibnbd_srv_get_full_path(srv_sess, open_msg->dev_name);
 	if (IS_ERR(full_path)) {
 		ret = PTR_ERR(full_path);
 		pr_err("Opening device '%s' for client %s failed,"
