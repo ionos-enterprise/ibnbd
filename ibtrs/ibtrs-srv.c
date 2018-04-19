@@ -1717,7 +1717,7 @@ static int ibtrs_srv_rdma_cm_handler(struct rdma_cm_id *cm_id,
 
 static struct rdma_cm_id *ibtrs_srv_cm_init(struct ibtrs_srv_ctx *ctx,
 					    struct sockaddr *addr,
-					    enum rdma_port_space ps)
+					    enum rdma_ucm_port_space ps)
 {
 	struct rdma_cm_id *cm_id;
 	int ret;

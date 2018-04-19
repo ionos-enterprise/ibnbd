@@ -39,9 +39,6 @@
 #define CAT(a, ...) PRIMITIVE_CAT(a, __VA_ARGS__)
 #define PRIMITIVE_CAT(a, ...) a ## __VA_ARGS__
 
-#define COUNT_ARGS(...) COUNT_ARGS_(,##__VA_ARGS__,6,5,4,3,2,1,0)
-#define COUNT_ARGS_(z,a,b,c,d,e,f,cnt,...) cnt
-
 #define LIST(...)						\
 	__VA_ARGS__,						\
 	({ unknown_type(); NULL; })				\

@@ -214,7 +214,9 @@ static inline void ibnbd_clt_dev_requeue(struct ibnbd_queue *q)
 {
 	if (WARN_ON(!q->hctx))
 		return;
-	blk_mq_delay_queue(q->hctx, 0);
+
+	/* We can come here from interrupt, thus async=true */
+	blk_mq_run_hw_queue(q->hctx, true);
 }
 
 enum {
@@ -1222,15 +1224,14 @@ static void ibnbd_clt_dev_kick_mq_queue(struct ibnbd_clt_dev *dev,
 {
 	struct ibnbd_queue *q = hctx->driver_data;
 
-	blk_mq_stop_hw_queue(hctx);
-
 	if (delay != IBNBD_DELAY_IFBUSY)
-		blk_mq_delay_queue(hctx, delay);
+		blk_mq_delay_run_hw_queue(hctx, delay);
 	else if (unlikely(!ibnbd_clt_dev_add_to_requeue(dev, q)))
-		/* If session is not busy we have to restart
+		/*
+		 * If session is not busy we have to restart
 		 * the queue ourselves.
 		 */
-		blk_mq_delay_queue(hctx, IBNBD_DELAY_10ms);
+		blk_mq_delay_run_hw_queue(hctx, IBNBD_DELAY_10ms);
 }
 
 static blk_status_t ibnbd_queue_rq(struct blk_mq_hw_ctx *hctx,
@@ -1339,12 +1340,12 @@ static void setup_request_queue(struct ibnbd_clt_dev *dev)
 	dev->queue->limits.discard_granularity	= dev->discard_granularity;
 	dev->queue->limits.discard_alignment	= dev->discard_alignment;
 	if (dev->max_discard_sectors)
-		queue_flag_set_unlocked(QUEUE_FLAG_DISCARD, dev->queue);
+		blk_queue_flag_set(QUEUE_FLAG_DISCARD, dev->queue);
 	if (dev->secure_discard)
-		queue_flag_set_unlocked(QUEUE_FLAG_SECERASE, dev->queue);
+		blk_queue_flag_set(QUEUE_FLAG_SECERASE, dev->queue);
 
-	queue_flag_set_unlocked(QUEUE_FLAG_SAME_COMP, dev->queue);
-	queue_flag_set_unlocked(QUEUE_FLAG_SAME_FORCE, dev->queue);
+	blk_queue_flag_set(QUEUE_FLAG_SAME_COMP, dev->queue);
+	blk_queue_flag_set(QUEUE_FLAG_SAME_FORCE, dev->queue);
 	/* our hca only support 32 sg cnt, proto use one, so 31 left */
 	blk_queue_max_segments(dev->queue, dev->max_segments);
 	blk_queue_io_opt(dev->queue, dev->sess->max_io_size);
@@ -1378,7 +1379,7 @@ static void ibnbd_clt_setup_gen_disk(struct ibnbd_clt_dev *dev, int idx)
 	}
 
 	if (!dev->rotational)
-		queue_flag_set_unlocked(QUEUE_FLAG_NONROT, dev->queue);
+		blk_queue_flag_set(QUEUE_FLAG_NONROT, dev->queue);
 }
 
 static void ibnbd_clt_add_gen_disk(struct ibnbd_clt_dev *dev)
