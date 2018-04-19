@@ -1742,23 +1742,6 @@ static struct rdma_cm_id *ibtrs_srv_cm_init(struct ibtrs_srv_ctx *ctx,
 		goto err_cm;
 	}
 
-	switch (addr->sa_family) {
-	case AF_INET:
-		pr_debug("listening on port %u\n",
-			 ntohs(((struct sockaddr_in *)addr)->sin_port));
-		break;
-	case AF_INET6:
-		pr_debug("listening on port %u\n",
-			 ntohs(((struct sockaddr_in6 *)addr)->sin6_port));
-		break;
-	case AF_IB:
-		pr_debug("listening on service id 0x%016llx\n",
-			 be64_to_cpu(rdma_get_service_id(cm_id, addr)));
-		break;
-	default:
-		pr_debug("listening on address family %u\n", addr->sa_family);
-	}
-
 	return cm_id;
 
 err_cm:
