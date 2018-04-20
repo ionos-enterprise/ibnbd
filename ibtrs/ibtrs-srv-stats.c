@@ -65,11 +65,11 @@ ssize_t ibtrs_srv_stats_rdma_to_str(struct ibtrs_srv_stats *stats,
 
 	sess = container_of(stats, typeof(*sess), stats);
 
-	return scnprintf(page, len, "%ld %ld %ld %ld %u\n",
-			 atomic64_read(&r->dir[READ].cnt),
-			 atomic64_read(&r->dir[READ].size_total),
-			 atomic64_read(&r->dir[WRITE].cnt),
-			 atomic64_read(&r->dir[WRITE].size_total),
+	return scnprintf(page, len, "%lld %lld %lld %lld %u\n",
+			 (s64)atomic64_read(&r->dir[READ].cnt),
+			 (s64)atomic64_read(&r->dir[READ].size_total),
+			 (s64)atomic64_read(&r->dir[WRITE].cnt),
+			 (s64)atomic64_read(&r->dir[WRITE].size_total),
 			 atomic_read(&sess->ids_inflight));
 }
 
@@ -87,9 +87,9 @@ int ibtrs_srv_reset_wc_completion_stats(struct ibtrs_srv_stats *stats,
 int ibtrs_srv_stats_wc_completion_to_str(struct ibtrs_srv_stats *stats,
 					 char *buf, size_t len)
 {
-	return snprintf(buf, len, "%ld %ld\n",
-			atomic64_read(&stats->wc_comp.total_wc_cnt),
-			atomic64_read(&stats->wc_comp.calls));
+	return snprintf(buf, len, "%lld %lld\n",
+			(s64)atomic64_read(&stats->wc_comp.total_wc_cnt),
+			(s64)atomic64_read(&stats->wc_comp.calls));
 }
 
 ssize_t ibtrs_srv_reset_all_help(struct ibtrs_srv_stats *stats,
