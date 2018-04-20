@@ -342,9 +342,9 @@ static void
 isert_device_put(struct isert_device *device)
 {
 	mutex_lock(&device_list_mutex);
-	device->refcount--;
-	isert_info("device %p refcount %d\n", device, device->refcount);
-	if (!device->refcount) {
+	isert_info("device %p refcount %d\n", device,
+		   refcount_read(&device->refcount));
+	if (refcount_dec_and_test(&device->refcount)) {
 		isert_free_device_ib_res(device);
 		list_del(&device->dev_node);
 		kfree(device);
@@ -361,9 +361,9 @@ isert_device_get(struct rdma_cm_id *cma_id)
 	mutex_lock(&device_list_mutex);
 	list_for_each_entry(device, &device_list, dev_node) {
 		if (device->ib_device->node_guid == cma_id->device->node_guid) {
-			device->refcount++;
+			refcount_inc(&device->refcount);
 			isert_info("Found iser device %p refcount %d\n",
-				   device, device->refcount);
+				   device, refcount_read(&device->refcount));
 			mutex_unlock(&device_list_mutex);
 			return device;
 		}
@@ -386,10 +386,10 @@ isert_device_get(struct rdma_cm_id *cma_id)
 		return ERR_PTR(ret);
 	}
 
-	device->refcount++;
+	refcount_inc(&device->refcount);
 	list_add_tail(&device->dev_node, &device_list);
 	isert_info("Created a new iser device %p refcount %d\n",
-		   device, device->refcount);
+		   device, refcount_read(&device->refcount));
 	mutex_unlock(&device_list_mutex);
 
 	return device;

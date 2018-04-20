@@ -2,6 +2,7 @@
 #include <linux/socket.h>
 #include <linux/in.h>
 #include <linux/in6.h>
+#include <linux/refcount.h>
 #include <rdma/ib_verbs.h>
 #include <rdma/rdma_cm.h>
 #include <rdma/rw.h>
@@ -183,7 +184,7 @@ struct isert_comp {
 
 struct isert_device {
 	bool			pi_capable;
-	int			refcount;
+	refcount_t		refcount;
 	struct mutex		comp_mutex;
 	struct ib_device	*ib_device;
 	struct ib_pd		*pd;
