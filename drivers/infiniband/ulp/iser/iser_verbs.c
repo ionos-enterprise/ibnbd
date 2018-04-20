@@ -491,55 +491,72 @@ out_err:
 	return ret;
 }
 
-/**
- * based on the resolved device node GUID see if there already allocated
- * device for this device. If there's no such, create one.
- */
 static
 struct iser_device *iser_device_find_by_ib_device(struct rdma_cm_id *cma_id)
 {
 	struct iser_device *device;
 
-	mutex_lock(&ig.device_list_mutex);
+	/* Paired with iser_ib_client_remove_one() */
+	rcu_read_lock();
+	device = ib_get_client_data(cma_id->device, &ig.rdma_ib_client);
+	if (device && WARN_ON(!refcount_inc_not_zero(&device->refcount)))
+		device = NULL;
+	rcu_read_unlock();
 
-	list_for_each_entry(device, &ig.device_list, ig_list)
-		/* find if there's a match using the node GUID */
-		if (device->ib_device->node_guid == cma_id->device->node_guid)
-			goto inc_refcnt;
+	return device;
+}
+
+static struct iser_device *iser_device_alloc(struct ib_device *ib_device)
+{
+	struct iser_device *device;
 
 	device = kzalloc(sizeof *device, GFP_KERNEL);
-	if (device == NULL)
-		goto out;
+	if (unlikely(!device))
+		return NULL;
 
-	/* assign this device to the device */
-	device->ib_device = cma_id->device;
-	/* init the device and link it into ig device list */
+	refcount_set(&device->refcount, 1);
+	device->ib_device = ib_device;
 	if (iser_create_device_ib_res(device)) {
 		kfree(device);
-		device = NULL;
-		goto out;
+		return NULL;
 	}
-	list_add(&device->ig_list, &ig.device_list);
 
-inc_refcnt:
-	refcount_inc(&device->refcount);
-out:
-	mutex_unlock(&ig.device_list_mutex);
 	return device;
 }
 
 /* if there's no demand for this device, release it */
 static void iser_device_try_release(struct iser_device *device)
 {
-	mutex_lock(&ig.device_list_mutex);
 	iser_info("device %p refcount %d\n", device,
 		  refcount_read(&device->refcount));
 	if (refcount_dec_and_test(&device->refcount)) {
 		iser_free_device_ib_res(device);
-		list_del(&device->ig_list);
 		kfree(device);
 	}
-	mutex_unlock(&ig.device_list_mutex);
+}
+
+void iser_ib_client_add_one(struct ib_device *ib_device)
+{
+	struct iser_device *device;
+
+	device = iser_device_alloc(ib_device);
+	if (likely(device))
+		ib_set_client_data(ib_device, &ig.rdma_ib_client, device);
+	else
+		pr_err("Allocattion of a device failed.\n");
+}
+
+void iser_ib_client_remove_one(struct ib_device *ib_device, void *client_data)
+{
+	struct iser_device *device = client_data;
+
+	if (unlikely(!device))
+		return;
+
+	ib_set_client_data(ib_device, &ig.rdma_ib_client, NULL);
+	/* Paired with iser_device_find_by_ib_device() */
+	synchronize_rcu();
+	iser_device_try_release(device);
 }
 
 /**
@@ -735,8 +752,8 @@ static void iser_addr_handler(struct rdma_cm_id *cma_id)
 
 	ib_conn = &iser_conn->ib_conn;
 	device = iser_device_find_by_ib_device(cma_id);
-	if (!device) {
-		iser_err("device lookup/creation failed\n");
+	if (unlikely(!device)) {
+		iser_err("no device exists\n");
 		iser_connect_error(cma_id);
 		return;
 	}

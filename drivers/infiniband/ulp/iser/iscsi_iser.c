@@ -83,7 +83,14 @@ static struct iscsi_transport iscsi_iser_transport;
 static struct scsi_transport_template *iscsi_iser_scsi_transport;
 static struct workqueue_struct *release_wq;
 static DEFINE_MUTEX(unbind_iser_conn_mutex);
-struct iser_global ig;
+
+struct iser_global ig = {
+	.rdma_ib_client = {
+		.name   = "iser_ib_client",
+		.add    = iser_ib_client_add_one,
+		.remove = iser_ib_client_remove_one
+	}
+};
 
 int iser_debug_level = 0;
 module_param_named(debug_level, iser_debug_level, int, S_IRUGO | S_IWUSR);
@@ -1064,8 +1071,6 @@ static int __init iser_init(void)
 		return -EINVAL;
 	}
 
-	memset(&ig, 0, sizeof(struct iser_global));
-
 	ig.desc_cache = kmem_cache_create("iser_descriptors",
 					  sizeof(struct iser_tx_desc),
 					  0, SLAB_HWCACHE_ALIGN,
@@ -1074,11 +1079,14 @@ static int __init iser_init(void)
 		return -ENOMEM;
 
 	/* device init is called only after the first addr resolution */
-	mutex_init(&ig.device_list_mutex);
-	INIT_LIST_HEAD(&ig.device_list);
 	mutex_init(&ig.connlist_mutex);
 	INIT_LIST_HEAD(&ig.connlist);
 
+	err = ib_register_client(&ig.rdma_ib_client);
+	if (unlikely(err)) {
+		iser_err("ib_register_client(): %d\n", err);
+		goto err_register_client;
+	}
 	release_wq = alloc_workqueue("release workqueue", 0, 0);
 	if (!release_wq) {
 		iser_err("failed to allocate release workqueue\n");
@@ -1099,6 +1107,8 @@ static int __init iser_init(void)
 err_reg:
 	destroy_workqueue(release_wq);
 err_alloc_wq:
+	ib_unregister_client(&ig.rdma_ib_client);
+err_register_client:
 	kmem_cache_destroy(ig.desc_cache);
 
 	return err;
@@ -1127,6 +1137,7 @@ static void __exit iser_exit(void)
 
 	iscsi_unregister_transport(&iscsi_iser_transport);
 	kmem_cache_destroy(ig.desc_cache);
+	ib_unregister_client(&ig.rdma_ib_client);
 }
 
 module_init(iser_init);

@@ -364,7 +364,6 @@ struct iser_reg_ops {
  * @pd:            Protection Domain for this device
  * @mr:            Global DMA memory region
  * @event_handler: IB events handle routine
- * @ig_list:	   entry in devices list
  * @refcount:      Reference counter, dominated by open iser connections
  * @comps_used:    Number of completion contexts used, Min between online
  *                 cpus and device max completion vectors
@@ -558,15 +557,13 @@ struct iser_page_vec {
 /**
  * struct iser_global: iSER global context
  *
- * @device_list_mutex:    protects device_list
- * @device_list:          iser devices global list
+ * @rdma_ib_client:       IB client
  * @connlist_mutex:       protects connlist
  * @connlist:             iser connections global list
  * @desc_cache:           kmem cache for tx dataout
  */
 struct iser_global {
-	struct mutex      device_list_mutex;
-	struct list_head  device_list;
+	struct ib_client  rdma_ib_client;
 	struct mutex      connlist_mutex;
 	struct list_head  connlist;
 	struct kmem_cache *desc_cache;
@@ -578,6 +575,9 @@ extern bool iser_pi_enable;
 extern int iser_pi_guard;
 extern unsigned int iser_max_sectors;
 extern bool iser_always_reg;
+
+void iser_ib_client_add_one(struct ib_device *ib_device);
+void iser_ib_client_remove_one(struct ib_device *ib_device, void *client_data);
 
 int iser_assign_reg_ops(struct iser_device *device);
 
