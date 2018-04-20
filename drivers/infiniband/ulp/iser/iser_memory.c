@@ -74,7 +74,7 @@ void iser_reg_comp(struct ib_cq *cq, struct ib_wc *wc)
 
 int iser_assign_reg_ops(struct iser_device *device)
 {
-	struct ib_device *ib_dev = device->ib_device;
+	struct ib_device *ib_dev = device->dev.ib_dev;
 
 	/* Assign function handles  - based on FMR support */
 	if (ib_dev->alloc_fmr && ib_dev->dealloc_fmr &&
@@ -168,7 +168,7 @@ int iser_dma_map_task_data(struct iscsi_iser_task *iser_task,
 	struct ib_device *dev;
 
 	iser_task->dir[iser_dir] = 1;
-	dev = iser_task->iser_conn->ib_conn.device->ib_device;
+	dev = iser_task->iser_conn->ib_conn.device->dev.ib_dev;
 
 	data->dma_nents = ib_dma_map_sg(dev, data->sg, data->size, dma_dir);
 	if (data->dma_nents == 0) {
@@ -184,7 +184,7 @@ void iser_dma_unmap_task_data(struct iscsi_iser_task *iser_task,
 {
 	struct ib_device *dev;
 
-	dev = iser_task->iser_conn->ib_conn.device->ib_device;
+	dev = iser_task->iser_conn->ib_conn.device->dev.ib_dev;
 	ib_dma_unmap_sg(dev, data->sg, data->size, dir);
 }
 
@@ -194,18 +194,18 @@ iser_reg_dma(struct iser_device *device, struct iser_data_buf *mem,
 {
 	struct scatterlist *sg = mem->sg;
 
-	reg->sge.lkey = device->pd->local_dma_lkey;
+	reg->sge.lkey = device->dev.ib_pd->local_dma_lkey;
 	/*
 	 * FIXME: rework the registration code path to differentiate
 	 * rkey/lkey use cases
 	 */
 
-	if (device->pd->flags & IB_PD_UNSAFE_GLOBAL_RKEY)
-		reg->rkey = device->pd->unsafe_global_rkey;
+	if (device->dev.ib_pd->flags & IB_PD_UNSAFE_GLOBAL_RKEY)
+		reg->rkey = device->dev.ib_pd->unsafe_global_rkey;
 	else
 		reg->rkey = 0;
-	reg->sge.addr = ib_sg_dma_address(device->ib_device, &sg[0]);
-	reg->sge.length = ib_sg_dma_len(device->ib_device, &sg[0]);
+	reg->sge.addr = ib_sg_dma_address(device->dev.ib_dev, &sg[0]);
+	reg->sge.length = ib_sg_dma_len(device->dev.ib_dev, &sg[0]);
 
 	iser_dbg("Single DMA entry: lkey=0x%x, rkey=0x%x, addr=0x%llx,"
 		 " length=0x%x\n", reg->sge.lkey, reg->rkey,
@@ -243,7 +243,7 @@ int iser_fast_reg_fmr(struct iscsi_iser_task *iser_task,
 			      mem->size, NULL, iser_set_page);
 	if (unlikely(plen < mem->size)) {
 		iser_err("page vec too short to hold this SG\n");
-		iser_data_buf_dump(mem, device->ib_device);
+		iser_data_buf_dump(mem, device->dev.ib_dev);
 		iser_dump_page_vec(page_vec);
 		return -EINVAL;
 	}

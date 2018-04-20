@@ -165,7 +165,7 @@ static void iser_create_send_desc(struct iser_conn	*iser_conn,
 {
 	struct iser_device *device = iser_conn->ib_conn.device;
 
-	ib_dma_sync_single_for_cpu(device->ib_device,
+	ib_dma_sync_single_for_cpu(device->dev.ib_dev,
 		tx_desc->dma_addr, ISER_HEADERS_LEN, DMA_TO_DEVICE);
 
 	memset(&tx_desc->iser_header, 0, sizeof(struct iser_ctrl));
@@ -181,10 +181,10 @@ static void iser_free_login_buf(struct iser_conn *iser_conn)
 	if (!desc->req)
 		return;
 
-	ib_dma_unmap_single(device->ib_device, desc->req_dma,
+	ib_dma_unmap_single(device->dev.ib_dev, desc->req_dma,
 			    ISCSI_DEF_MAX_RECV_SEG_LEN, DMA_TO_DEVICE);
 
-	ib_dma_unmap_single(device->ib_device, desc->rsp_dma,
+	ib_dma_unmap_single(device->dev.ib_dev, desc->rsp_dma,
 			    ISER_RX_LOGIN_SIZE, DMA_FROM_DEVICE);
 
 	kfree(desc->req);
@@ -204,10 +204,10 @@ static int iser_alloc_login_buf(struct iser_conn *iser_conn)
 	if (!desc->req)
 		return -ENOMEM;
 
-	desc->req_dma = ib_dma_map_single(device->ib_device, desc->req,
+	desc->req_dma = ib_dma_map_single(device->dev.ib_dev, desc->req,
 					  ISCSI_DEF_MAX_RECV_SEG_LEN,
 					  DMA_TO_DEVICE);
-	if (ib_dma_mapping_error(device->ib_device,
+	if (ib_dma_mapping_error(device->dev.ib_dev,
 				desc->req_dma))
 		goto free_req;
 
@@ -215,10 +215,10 @@ static int iser_alloc_login_buf(struct iser_conn *iser_conn)
 	if (!desc->rsp)
 		goto unmap_req;
 
-	desc->rsp_dma = ib_dma_map_single(device->ib_device, desc->rsp,
+	desc->rsp_dma = ib_dma_map_single(device->dev.ib_dev, desc->rsp,
 					   ISER_RX_LOGIN_SIZE,
 					   DMA_FROM_DEVICE);
-	if (ib_dma_mapping_error(device->ib_device,
+	if (ib_dma_mapping_error(device->dev.ib_dev,
 				desc->rsp_dma))
 		goto free_rsp;
 
@@ -227,7 +227,7 @@ static int iser_alloc_login_buf(struct iser_conn *iser_conn)
 free_rsp:
 	kfree(desc->rsp);
 unmap_req:
-	ib_dma_unmap_single(device->ib_device, desc->req_dma,
+	ib_dma_unmap_single(device->dev.ib_dev, desc->req_dma,
 			    ISCSI_DEF_MAX_RECV_SEG_LEN,
 			    DMA_TO_DEVICE);
 free_req:
@@ -266,9 +266,9 @@ int iser_alloc_rx_descriptors(struct iser_conn *iser_conn,
 	rx_desc = iser_conn->rx_descs;
 
 	for (i = 0; i < iser_conn->qp_max_recv_dtos; i++, rx_desc++)  {
-		dma_addr = ib_dma_map_single(device->ib_device, (void *)rx_desc,
+		dma_addr = ib_dma_map_single(device->dev.ib_dev, (void *)rx_desc,
 					ISER_RX_PAYLOAD_SIZE, DMA_FROM_DEVICE);
-		if (ib_dma_mapping_error(device->ib_device, dma_addr))
+		if (ib_dma_mapping_error(device->dev.ib_dev, dma_addr))
 			goto rx_desc_dma_map_failed;
 
 		rx_desc->dma_addr = dma_addr;
@@ -276,7 +276,7 @@ int iser_alloc_rx_descriptors(struct iser_conn *iser_conn,
 		rx_sg = &rx_desc->rx_sg;
 		rx_sg->addr = rx_desc->dma_addr;
 		rx_sg->length = ISER_RX_PAYLOAD_SIZE;
-		rx_sg->lkey = device->pd->local_dma_lkey;
+		rx_sg->lkey = device->dev.ib_pd->local_dma_lkey;
 	}
 
 	iser_conn->rx_desc_head = 0;
@@ -285,7 +285,7 @@ int iser_alloc_rx_descriptors(struct iser_conn *iser_conn,
 rx_desc_dma_map_failed:
 	rx_desc = iser_conn->rx_descs;
 	for (j = 0; j < i; j++, rx_desc++)
-		ib_dma_unmap_single(device->ib_device, rx_desc->dma_addr,
+		ib_dma_unmap_single(device->dev.ib_dev, rx_desc->dma_addr,
 				    ISER_RX_PAYLOAD_SIZE, DMA_FROM_DEVICE);
 	kfree(iser_conn->rx_descs);
 	iser_conn->rx_descs = NULL;
@@ -310,7 +310,7 @@ void iser_free_rx_descriptors(struct iser_conn *iser_conn)
 
 	rx_desc = iser_conn->rx_descs;
 	for (i = 0; i < iser_conn->qp_max_recv_dtos; i++, rx_desc++)
-		ib_dma_unmap_single(device->ib_device, rx_desc->dma_addr,
+		ib_dma_unmap_single(device->dev.ib_dev, rx_desc->dma_addr,
 				    ISER_RX_PAYLOAD_SIZE, DMA_FROM_DEVICE);
 	kfree(iser_conn->rx_descs);
 	/* make sure we never redo any unmapping */
@@ -520,17 +520,17 @@ int iser_send_control(struct iscsi_conn *conn,
 			goto send_control_error;
 		}
 
-		ib_dma_sync_single_for_cpu(device->ib_device, desc->req_dma,
+		ib_dma_sync_single_for_cpu(device->dev.ib_dev, desc->req_dma,
 					   task->data_count, DMA_TO_DEVICE);
 
 		memcpy(desc->req, task->data, task->data_count);
 
-		ib_dma_sync_single_for_device(device->ib_device, desc->req_dma,
+		ib_dma_sync_single_for_device(device->dev.ib_dev, desc->req_dma,
 					      task->data_count, DMA_TO_DEVICE);
 
 		tx_dsg->addr = desc->req_dma;
 		tx_dsg->length = task->data_count;
-		tx_dsg->lkey = device->pd->local_dma_lkey;
+		tx_dsg->lkey = device->dev.ib_pd->local_dma_lkey;
 		mdesc->num_sge = 2;
 	}
 
@@ -568,7 +568,7 @@ void iser_login_rsp(struct ib_cq *cq, struct ib_wc *wc)
 		return;
 	}
 
-	ib_dma_sync_single_for_cpu(ib_conn->device->ib_device,
+	ib_dma_sync_single_for_cpu(ib_conn->device->dev.ib_dev,
 				   desc->rsp_dma, ISER_RX_LOGIN_SIZE,
 				   DMA_FROM_DEVICE);
 
@@ -581,7 +581,7 @@ void iser_login_rsp(struct ib_cq *cq, struct ib_wc *wc)
 
 	iscsi_iser_recv(iser_conn->iscsi_conn, hdr, data, length);
 
-	ib_dma_sync_single_for_device(ib_conn->device->ib_device,
+	ib_dma_sync_single_for_device(ib_conn->device->dev.ib_dev,
 				      desc->rsp_dma, ISER_RX_LOGIN_SIZE,
 				      DMA_FROM_DEVICE);
 
@@ -653,7 +653,7 @@ void iser_task_rsp(struct ib_cq *cq, struct ib_wc *wc)
 		return;
 	}
 
-	ib_dma_sync_single_for_cpu(ib_conn->device->ib_device,
+	ib_dma_sync_single_for_cpu(ib_conn->device->dev.ib_dev,
 				   desc->dma_addr, ISER_RX_PAYLOAD_SIZE,
 				   DMA_FROM_DEVICE);
 
@@ -671,7 +671,7 @@ void iser_task_rsp(struct ib_cq *cq, struct ib_wc *wc)
 
 	iscsi_iser_recv(iser_conn->iscsi_conn, hdr, desc->data, length);
 
-	ib_dma_sync_single_for_device(ib_conn->device->ib_device,
+	ib_dma_sync_single_for_device(ib_conn->device->dev.ib_dev,
 				      desc->dma_addr, ISER_RX_PAYLOAD_SIZE,
 				      DMA_FROM_DEVICE);
 
@@ -722,7 +722,7 @@ void iser_dataout_comp(struct ib_cq *cq, struct ib_wc *wc)
 	if (unlikely(wc->status != IB_WC_SUCCESS))
 		iser_err_comp(wc, "dataout");
 
-	ib_dma_unmap_single(device->ib_device, desc->dma_addr,
+	ib_dma_unmap_single(device->dev.ib_dev, desc->dma_addr,
 			    ISER_HEADERS_LEN, DMA_TO_DEVICE);
 	kmem_cache_free(ig.desc_cache, desc);
 }

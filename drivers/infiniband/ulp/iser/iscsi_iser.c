@@ -83,7 +83,10 @@ static struct iscsi_transport iscsi_iser_transport;
 static struct scsi_transport_template *iscsi_iser_scsi_transport;
 static struct workqueue_struct *release_wq;
 static DEFINE_MUTEX(unbind_iser_conn_mutex);
-struct iser_global ig;
+static const struct ib_device_pool_ops ib_dev_pool_ops;
+struct iser_global ig = {
+	.ib_dev_pool.ops = &ib_dev_pool_ops
+};
 
 int iser_debug_level = 0;
 module_param_named(debug_level, iser_debug_level, int, S_IRUGO | S_IWUSR);
@@ -198,9 +201,9 @@ iser_initialize_task_headers(struct iscsi_task *task,
 		goto out;
 	}
 
-	dma_addr = ib_dma_map_single(device->ib_device, (void *)tx_desc,
+	dma_addr = ib_dma_map_single(device->dev.ib_dev, (void *)tx_desc,
 				ISER_HEADERS_LEN, DMA_TO_DEVICE);
-	if (ib_dma_mapping_error(device->ib_device, dma_addr)) {
+	if (ib_dma_mapping_error(device->dev.ib_dev, dma_addr)) {
 		ret = -ENOMEM;
 		goto out;
 	}
@@ -210,7 +213,7 @@ iser_initialize_task_headers(struct iscsi_task *task,
 	tx_desc->dma_addr = dma_addr;
 	tx_desc->tx_sg[0].addr   = tx_desc->dma_addr;
 	tx_desc->tx_sg[0].length = ISER_HEADERS_LEN;
-	tx_desc->tx_sg[0].lkey   = device->pd->local_dma_lkey;
+	tx_desc->tx_sg[0].lkey   = device->dev.ib_pd->local_dma_lkey;
 
 	iser_task->iser_conn = iser_conn;
 out:
@@ -375,7 +378,7 @@ static void iscsi_iser_cleanup_task(struct iscsi_task *task)
 		return;
 
 	if (likely(tx_desc->mapped)) {
-		ib_dma_unmap_single(device->ib_device, tx_desc->dma_addr,
+		ib_dma_unmap_single(device->dev.ib_dev, tx_desc->dma_addr,
 				    ISER_HEADERS_LEN, DMA_TO_DEVICE);
 		tx_desc->mapped = false;
 	}
@@ -646,7 +649,7 @@ iscsi_iser_session_create(struct iscsi_endpoint *ep,
 
 		ib_conn = &iser_conn->ib_conn;
 		if (ib_conn->pi_support) {
-			u32 sig_caps = ib_conn->device->ib_device->attrs.sig_prot_cap;
+			u32 sig_caps = ib_conn->device->dev.ib_dev->attrs.sig_prot_cap;
 
 			scsi_host_set_prot(shost, iser_dif_prot_caps(sig_caps));
 			scsi_host_set_guard(shost, SHOST_DIX_GUARD_IP |
@@ -654,7 +657,7 @@ iscsi_iser_session_create(struct iscsi_endpoint *ep,
 		}
 
 		if (iscsi_host_add(shost,
-				   ib_conn->device->ib_device->dev.parent)) {
+				   ib_conn->device->dev.ib_dev->dev.parent)) {
 			mutex_unlock(&iser_conn->state_mutex);
 			goto free_host;
 		}
@@ -987,7 +990,7 @@ static int iscsi_iser_slave_alloc(struct scsi_device *sdev)
 		mutex_unlock(&unbind_iser_conn_mutex);
 		return -ENOTCONN;
 	}
-	ib_dev = iser_conn->ib_conn.device->ib_device;
+	ib_dev = iser_conn->ib_conn.device->dev.ib_dev;
 
 	if (!(ib_dev->attrs.device_cap_flags & IB_DEVICE_SG_GAPS_REG))
 		blk_queue_virt_boundary(sdev->request_queue, ~MASK_4K);
@@ -1053,6 +1056,48 @@ static struct iscsi_transport iscsi_iser_transport = {
 	.ep_disconnect          = iscsi_iser_ep_disconnect
 };
 
+static struct ib_pool_device *iser_ib_pool_dev_alloc(void)
+{
+	struct iser_device *device;
+
+	device = kzalloc(sizeof(*device), GFP_KERNEL);
+	if (likely(device))
+		return &device->dev;
+
+	return NULL;
+}
+
+static void iser_ib_pool_dev_free(struct ib_pool_device *dev)
+{
+	struct iser_device *device;
+
+	device = container_of(dev, typeof(*device), dev);
+	kfree(device);
+}
+
+static int iser_ib_pool_dev_init(struct ib_pool_device *dev)
+{
+	struct iser_device *device;
+
+	device = container_of(dev, typeof(*device), dev);
+	return iser_create_device_ib_res(device);
+}
+
+static void iser_ib_pool_dev_deinit(struct ib_pool_device *dev)
+{
+	struct iser_device *device;
+
+	device = container_of(dev, typeof(*device), dev);
+	iser_free_device_ib_res(device);
+}
+
+static const struct ib_device_pool_ops ib_dev_pool_ops = {
+	.alloc  = iser_ib_pool_dev_alloc,
+	.free   = iser_ib_pool_dev_free,
+	.init   = iser_ib_pool_dev_init,
+	.deinit = iser_ib_pool_dev_deinit,
+};
+
 static int __init iser_init(void)
 {
 	int err;
@@ -1064,8 +1109,6 @@ static int __init iser_init(void)
 		return -EINVAL;
 	}
 
-	memset(&ig, 0, sizeof(struct iser_global));
-
 	ig.desc_cache = kmem_cache_create("iser_descriptors",
 					  sizeof(struct iser_tx_desc),
 					  0, SLAB_HWCACHE_ALIGN,
@@ -1074,8 +1117,8 @@ static int __init iser_init(void)
 		return -ENOMEM;
 
 	/* device init is called only after the first addr resolution */
-	mutex_init(&ig.device_list_mutex);
-	INIT_LIST_HEAD(&ig.device_list);
+	ib_pool_dev_init(iser_always_reg ? 0 : IB_PD_UNSAFE_GLOBAL_RKEY,
+			 &ig.ib_dev_pool);
 	mutex_init(&ig.connlist_mutex);
 	INIT_LIST_HEAD(&ig.connlist);
 
@@ -1127,6 +1170,7 @@ static void __exit iser_exit(void)
 
 	iscsi_unregister_transport(&iscsi_iser_transport);
 	kmem_cache_destroy(ig.desc_cache);
+	ib_pool_dev_deinit(&ig.ib_dev_pool);
 }
 
 module_init(iser_init);

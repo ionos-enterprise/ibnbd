@@ -65,9 +65,9 @@ static void iser_event_handler(struct ib_event_handler *handler,
  *
  * returns 0 on success, -1 on failure
  */
-static int iser_create_device_ib_res(struct iser_device *device)
+int iser_create_device_ib_res(struct iser_device *device)
 {
-	struct ib_device *ib_dev = device->ib_device;
+	struct ib_device *ib_dev = device->dev.ib_dev;
 	int ret, i, max_cqe;
 
 	ret = iser_assign_reg_ops(device);
@@ -87,11 +87,6 @@ static int iser_create_device_ib_res(struct iser_device *device)
 	iser_info("using %d CQs, device %s supports %d vectors max_cqe %d\n",
 		  device->comps_used, ib_dev->name,
 		  ib_dev->num_comp_vectors, max_cqe);
-
-	device->pd = ib_alloc_pd(ib_dev,
-		iser_always_reg ? 0 : IB_PD_UNSAFE_GLOBAL_RKEY);
-	if (IS_ERR(device->pd))
-		goto pd_err;
 
 	for (i = 0; i < device->comps_used; i++) {
 		struct iser_comp *comp = &device->comps[i];
@@ -116,8 +111,6 @@ cq_err:
 		if (comp->cq)
 			ib_free_cq(comp->cq);
 	}
-	ib_dealloc_pd(device->pd);
-pd_err:
 	kfree(device->comps);
 comps_err:
 	iser_err("failed to allocate an IB resource\n");
@@ -128,7 +121,7 @@ comps_err:
  * iser_free_device_ib_res - destroy/dealloc/dereg the DMA MR,
  * CQ and PD created with the device associated with the adapator.
  */
-static void iser_free_device_ib_res(struct iser_device *device)
+void iser_free_device_ib_res(struct iser_device *device)
 {
 	int i;
 
@@ -140,11 +133,9 @@ static void iser_free_device_ib_res(struct iser_device *device)
 	}
 
 	ib_unregister_event_handler(&device->event_handler);
-	ib_dealloc_pd(device->pd);
 
 	kfree(device->comps);
 	device->comps = NULL;
-	device->pd = NULL;
 }
 
 /**
@@ -192,7 +183,7 @@ int iser_alloc_fmr_pool(struct ib_conn *ib_conn,
 				    IB_ACCESS_REMOTE_WRITE |
 				    IB_ACCESS_REMOTE_READ);
 
-	fmr_pool = ib_create_fmr_pool(device->pd, &params);
+	fmr_pool = ib_create_fmr_pool(device->dev.ib_pd, &params);
 	if (IS_ERR(fmr_pool)) {
 		ret = PTR_ERR(fmr_pool);
 		iser_err("FMR allocation failed, err %d\n", ret);
@@ -239,7 +230,7 @@ iser_alloc_reg_res(struct iser_device *device,
 		   struct iser_reg_resources *res,
 		   unsigned int size)
 {
-	struct ib_device *ib_dev = device->ib_device;
+	struct ib_device *ib_dev = device->dev.ib_dev;
 	enum ib_mr_type mr_type;
 	int ret;
 
@@ -364,7 +355,7 @@ int iser_alloc_fastreg_pool(struct ib_conn *ib_conn,
 	spin_lock_init(&fr_pool->lock);
 	fr_pool->size = 0;
 	for (i = 0; i < cmds_max; i++) {
-		desc = iser_create_fastreg_desc(device, device->pd,
+		desc = iser_create_fastreg_desc(device, device->dev.ib_pd,
 						ib_conn->pi_support, size);
 		if (IS_ERR(desc)) {
 			ret = PTR_ERR(desc);
@@ -428,7 +419,7 @@ static int iser_create_ib_conn_res(struct ib_conn *ib_conn)
 	BUG_ON(ib_conn->device == NULL);
 
 	device = ib_conn->device;
-	ib_dev = device->ib_device;
+	ib_dev = device->dev.ib_dev;
 
 	memset(&init_attr, 0, sizeof init_attr);
 
@@ -468,11 +459,12 @@ static int iser_create_ib_conn_res(struct ib_conn *ib_conn)
 			iser_conn->max_cmds =
 				ISER_GET_MAX_XMIT_CMDS(ib_dev->attrs.max_qp_wr);
 			iser_dbg("device %s supports max_send_wr %d\n",
-				 device->ib_device->name, ib_dev->attrs.max_qp_wr);
+				 device->dev.ib_dev->name,
+				 ib_dev->attrs.max_qp_wr);
 		}
 	}
 
-	ret = rdma_create_qp(ib_conn->cma_id, device->pd, &init_attr);
+	ret = rdma_create_qp(ib_conn->cma_id, device->dev.ib_pd, &init_attr);
 	if (ret)
 		goto out_err;
 
@@ -489,57 +481,6 @@ out_err:
 	iser_err("unable to alloc mem or create resource, err %d\n", ret);
 
 	return ret;
-}
-
-/**
- * based on the resolved device node GUID see if there already allocated
- * device for this device. If there's no such, create one.
- */
-static
-struct iser_device *iser_device_find_by_ib_device(struct rdma_cm_id *cma_id)
-{
-	struct iser_device *device;
-
-	mutex_lock(&ig.device_list_mutex);
-
-	list_for_each_entry(device, &ig.device_list, ig_list)
-		/* find if there's a match using the node GUID */
-		if (device->ib_device->node_guid == cma_id->device->node_guid)
-			goto inc_refcnt;
-
-	device = kzalloc(sizeof *device, GFP_KERNEL);
-	if (device == NULL)
-		goto out;
-
-	/* assign this device to the device */
-	device->ib_device = cma_id->device;
-	/* init the device and link it into ig device list */
-	if (iser_create_device_ib_res(device)) {
-		kfree(device);
-		device = NULL;
-		goto out;
-	}
-	list_add(&device->ig_list, &ig.device_list);
-
-inc_refcnt:
-	device->refcount++;
-out:
-	mutex_unlock(&ig.device_list_mutex);
-	return device;
-}
-
-/* if there's no demand for this device, release it */
-static void iser_device_try_release(struct iser_device *device)
-{
-	mutex_lock(&ig.device_list_mutex);
-	device->refcount--;
-	iser_info("device %p refcount %d\n", device, device->refcount);
-	if (!device->refcount) {
-		iser_free_device_ib_res(device);
-		list_del(&device->ig_list);
-		kfree(device);
-	}
-	mutex_unlock(&ig.device_list_mutex);
 }
 
 /**
@@ -609,7 +550,7 @@ static void iser_free_ib_conn_res(struct iser_conn *iser_conn,
 			iser_free_rx_descriptors(iser_conn);
 
 		if (device != NULL) {
-			iser_device_try_release(device);
+			ib_pool_dev_put(&device->dev);
 			ib_conn->device = NULL;
 		}
 	}
@@ -706,12 +647,12 @@ iser_calc_scsi_params(struct iser_conn *iser_conn,
 	unsigned short sg_tablesize, sup_sg_tablesize;
 
 	sg_tablesize = DIV_ROUND_UP(max_sectors * 512, SIZE_4K);
-	if (device->ib_device->attrs.device_cap_flags &
+	if (device->dev.ib_dev->attrs.device_cap_flags &
 			IB_DEVICE_MEM_MGT_EXTENSIONS)
 		sup_sg_tablesize =
 			min_t(
 			 uint, ISCSI_ISER_MAX_SG_TABLESIZE,
-			 device->ib_device->attrs.max_fast_reg_page_list_len);
+			 device->dev.ib_dev->attrs.max_fast_reg_page_list_len);
 	else
 		sup_sg_tablesize = ISCSI_ISER_MAX_SG_TABLESIZE;
 
@@ -723,6 +664,7 @@ iser_calc_scsi_params(struct iser_conn *iser_conn,
  **/
 static void iser_addr_handler(struct rdma_cm_id *cma_id)
 {
+	struct ib_pool_device *pool_dev;
 	struct iser_device *device;
 	struct iser_conn   *iser_conn;
 	struct ib_conn   *ib_conn;
@@ -734,22 +676,24 @@ static void iser_addr_handler(struct rdma_cm_id *cma_id)
 		return;
 
 	ib_conn = &iser_conn->ib_conn;
-	device = iser_device_find_by_ib_device(cma_id);
-	if (!device) {
+	pool_dev = ib_pool_dev_find_get_or_create(cma_id->device,
+						  &ig.ib_dev_pool);
+	if (unlikely(!pool_dev)) {
 		iser_err("device lookup/creation failed\n");
 		iser_connect_error(cma_id);
 		return;
 	}
+	device = container_of(pool_dev, typeof(*device), dev);
 
 	ib_conn->device = device;
 
 	/* connection T10-PI support */
 	if (iser_pi_enable) {
-		if (!(device->ib_device->attrs.device_cap_flags &
+		if (!(device->dev.ib_dev->attrs.device_cap_flags &
 		      IB_DEVICE_SIGNATURE_HANDOVER)) {
 			iser_warn("T10-PI requested but not supported on %s, "
 				  "continue without T10-PI\n",
-				  ib_conn->device->ib_device->name);
+				  ib_conn->device->dev.ib_dev->name);
 			ib_conn->pi_support = false;
 		} else {
 			ib_conn->pi_support = true;
@@ -787,7 +731,7 @@ static void iser_route_handler(struct rdma_cm_id *cma_id)
 		goto failure;
 
 	memset(&conn_param, 0, sizeof conn_param);
-	conn_param.responder_resources = device->ib_device->attrs.max_qp_rd_atom;
+	conn_param.responder_resources = device->dev.ib_dev->attrs.max_qp_rd_atom;
 	conn_param.initiator_depth     = 1;
 	conn_param.retry_count	       = 7;
 	conn_param.rnr_retry_count     = 6;
@@ -1012,7 +956,7 @@ int iser_post_recvl(struct iser_conn *iser_conn)
 
 	desc->sge.addr = desc->rsp_dma;
 	desc->sge.length = ISER_RX_LOGIN_SIZE;
-	desc->sge.lkey = ib_conn->device->pd->local_dma_lkey;
+	desc->sge.lkey = ib_conn->device->dev.ib_pd->local_dma_lkey;
 
 	desc->cqe.done = iser_login_rsp;
 	wr.wr_cqe = &desc->cqe;
@@ -1074,7 +1018,7 @@ int iser_post_send(struct ib_conn *ib_conn, struct iser_tx_desc *tx_desc,
 	struct ib_send_wr *bad_wr, *wr = iser_tx_next_wr(tx_desc);
 	int ib_ret;
 
-	ib_dma_sync_single_for_device(ib_conn->device->ib_device,
+	ib_dma_sync_single_for_device(ib_conn->device->dev.ib_dev,
 				      tx_desc->dma_addr, ISER_HEADERS_LEN,
 				      DMA_TO_DEVICE);
 

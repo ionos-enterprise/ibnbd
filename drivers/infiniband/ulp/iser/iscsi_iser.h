@@ -67,6 +67,7 @@
 #include <rdma/ib_verbs.h>
 #include <rdma/ib_fmr_pool.h>
 #include <rdma/rdma_cm.h>
+#include <rdma/dev_pool.h>
 
 #define DRV_NAME	"iser"
 #define PFX		DRV_NAME ": "
@@ -359,12 +360,8 @@ struct iser_reg_ops {
 /**
  * struct iser_device - iSER device handle
  *
- * @ib_device:     RDMA device
- * @pd:            Protection Domain for this device
- * @mr:            Global DMA memory region
+ * @dev:           IB device in pool
  * @event_handler: IB events handle routine
- * @ig_list:	   entry in devices list
- * @refcount:      Reference counter, dominated by open iser connections
  * @comps_used:    Number of completion contexts used, Min between online
  *                 cpus and device max completion vectors
  * @comps:         Dinamically allocated array of completion handlers
@@ -372,11 +369,8 @@ struct iser_reg_ops {
  * @remote_inv_sup: Remote invalidate is supported on this device
  */
 struct iser_device {
-	struct ib_device             *ib_device;
-	struct ib_pd	             *pd;
+	struct ib_pool_device        dev;
 	struct ib_event_handler      event_handler;
-	struct list_head             ig_list;
-	int                          refcount;
 	int			     comps_used;
 	struct iser_comp	     *comps;
 	const struct iser_reg_ops    *reg_ops;
@@ -557,15 +551,13 @@ struct iser_page_vec {
 /**
  * struct iser_global: iSER global context
  *
- * @device_list_mutex:    protects device_list
- * @device_list:          iser devices global list
+ * @ib_dev_pool:          pool of devices
  * @connlist_mutex:       protects connlist
  * @connlist:             iser connections global list
  * @desc_cache:           kmem cache for tx dataout
  */
 struct iser_global {
-	struct mutex      device_list_mutex;
-	struct list_head  device_list;
+	struct ib_device_pool ib_dev_pool;
 	struct mutex      connlist_mutex;
 	struct list_head  connlist;
 	struct kmem_cache *desc_cache;
@@ -579,6 +571,9 @@ extern unsigned int iser_max_sectors;
 extern bool iser_always_reg;
 
 int iser_assign_reg_ops(struct iser_device *device);
+
+int iser_create_device_ib_res(struct iser_device *device);
+void iser_free_device_ib_res(struct iser_device *device);
 
 int iser_send_control(struct iscsi_conn *conn,
 		      struct iscsi_task *task);
