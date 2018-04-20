@@ -96,14 +96,14 @@ isert_comp_get(struct isert_conn *isert_conn)
 	struct isert_comp *comp;
 	int i, min = 0;
 
-	mutex_lock(&device_list_mutex);
+	mutex_lock(&device->comp_mutex);
 	for (i = 0; i < device->comps_used; i++)
 		if (device->comps[i].active_qps <
 		    device->comps[min].active_qps)
 			min = i;
 	comp = &device->comps[min];
 	comp->active_qps++;
-	mutex_unlock(&device_list_mutex);
+	mutex_unlock(&device->comp_mutex);
 
 	isert_info("conn %p, using comp %p min_index: %d\n",
 		   isert_conn, comp, min);
@@ -114,9 +114,11 @@ isert_comp_get(struct isert_conn *isert_conn)
 static void
 isert_comp_put(struct isert_comp *comp)
 {
-	mutex_lock(&device_list_mutex);
+	struct isert_device *device = comp->device;
+
+	mutex_lock(&device->comp_mutex);
 	comp->active_qps--;
-	mutex_unlock(&device_list_mutex);
+	mutex_unlock(&device->comp_mutex);
 }
 
 static struct ib_qp *
@@ -374,6 +376,7 @@ isert_device_get(struct rdma_cm_id *cma_id)
 	}
 
 	INIT_LIST_HEAD(&device->dev_node);
+	mutex_init(&device->comp_mutex);
 
 	device->ib_device = cma_id->device;
 	ret = isert_create_device_ib_res(device);

@@ -184,6 +184,7 @@ struct isert_comp {
 struct isert_device {
 	bool			pi_capable;
 	int			refcount;
+	struct mutex		comp_mutex;
 	struct ib_device	*ib_device;
 	struct ib_pd		*pd;
 	struct isert_comp	*comps;
