@@ -59,6 +59,7 @@
 #include <linux/mutex.h>
 #include <linux/mempool.h>
 #include <linux/uio.h>
+#include <linux/refcount.h>
 
 #include <linux/socket.h>
 #include <linux/in.h>
@@ -376,7 +377,7 @@ struct iser_device {
 	struct ib_pd	             *pd;
 	struct ib_event_handler      event_handler;
 	struct list_head             ig_list;
-	int                          refcount;
+	refcount_t                   refcount;
 	int			     comps_used;
 	struct iser_comp	     *comps;
 	const struct iser_reg_ops    *reg_ops;

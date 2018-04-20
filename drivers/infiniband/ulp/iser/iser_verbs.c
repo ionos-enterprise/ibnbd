@@ -522,7 +522,7 @@ struct iser_device *iser_device_find_by_ib_device(struct rdma_cm_id *cma_id)
 	list_add(&device->ig_list, &ig.device_list);
 
 inc_refcnt:
-	device->refcount++;
+	refcount_inc(&device->refcount);
 out:
 	mutex_unlock(&ig.device_list_mutex);
 	return device;
@@ -532,9 +532,9 @@ out:
 static void iser_device_try_release(struct iser_device *device)
 {
 	mutex_lock(&ig.device_list_mutex);
-	device->refcount--;
-	iser_info("device %p refcount %d\n", device, device->refcount);
-	if (!device->refcount) {
+	iser_info("device %p refcount %d\n", device,
+		  refcount_read(&device->refcount));
+	if (refcount_dec_and_test(&device->refcount)) {
 		iser_free_device_ib_res(device);
 		list_del(&device->ig_list);
 		kfree(device);
