@@ -775,7 +775,7 @@ out_destroy_srq:
 	return ret;
 }
 
-static void nvmet_rdma_free_dev(struct kref *ref)
+static void nvmet_rdma_free_device(struct kref *ref)
 {
 	struct nvmet_rdma_device *ndev =
 		container_of(ref, struct nvmet_rdma_device, ref);
@@ -790,6 +790,16 @@ static void nvmet_rdma_free_dev(struct kref *ref)
 	kfree(ndev);
 }
 
+static int nvmet_rdma_dev_put(struct nvmet_rdma_device *dev)
+{
+	return kref_put(&dev->ref, nvmet_rdma_free_device);
+}
+
+static int nvmet_rdma_dev_get(struct nvmet_rdma_device *dev)
+{
+	return kref_get_unless_zero(&dev->ref);
+}
+
 static struct nvmet_rdma_device *
 nvmet_rdma_find_get_device(struct rdma_cm_id *cm_id)
 {
@@ -799,7 +809,7 @@ nvmet_rdma_find_get_device(struct rdma_cm_id *cm_id)
 	mutex_lock(&device_list_mutex);
 	list_for_each_entry(ndev, &device_list, entry) {
 		if (ndev->device->node_guid == cm_id->device->node_guid &&
-		    kref_get_unless_zero(&ndev->ref))
+		    nvmet_rdma_dev_get(ndev))
 			goto out_unlock;
 	}
 
@@ -945,8 +955,7 @@ static void nvmet_rdma_release_queue_work(struct work_struct *w)
 	struct nvmet_rdma_device *dev = queue->dev;
 
 	nvmet_rdma_free_queue(queue);
-
-	kref_put(&dev->ref, nvmet_rdma_free_dev);
+	nvmet_rdma_dev_put(dev);
 }
 
 static int
@@ -1163,7 +1172,7 @@ static int nvmet_rdma_queue_connect(struct rdma_cm_id *cm_id,
 	return 0;
 
 put_device:
-	kref_put(&ndev->ref, nvmet_rdma_free_dev);
+	nvmet_rdma_dev_put(ndev);
 
 	return ret;
 }
