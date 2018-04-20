@@ -125,9 +125,7 @@ MODULE_PARM_DESC(use_srq, "Use shared receive queue.");
 static DEFINE_IDA(nvmet_rdma_queue_ida);
 static LIST_HEAD(nvmet_rdma_queue_list);
 static DEFINE_MUTEX(nvmet_rdma_queue_mutex);
-
-static LIST_HEAD(device_list);
-static DEFINE_MUTEX(device_list_mutex);
+static struct ib_client nvmet_rdma_ib_client;
 
 static bool nvmet_rdma_execute_command(struct nvmet_rdma_rsp *rsp);
 static void nvmet_rdma_send_done(struct ib_cq *cq, struct ib_wc *wc);
@@ -780,13 +778,9 @@ static void nvmet_rdma_free_device(struct kref *ref)
 	struct nvmet_rdma_device *ndev =
 		container_of(ref, struct nvmet_rdma_device, ref);
 
-	mutex_lock(&device_list_mutex);
-	list_del(&ndev->entry);
-	mutex_unlock(&device_list_mutex);
-
+	ib_set_client_data(ndev->device, &nvmet_rdma_ib_client, NULL);
 	nvmet_rdma_destroy_srq(ndev);
 	ib_dealloc_pd(ndev->pd);
-
 	kfree(ndev);
 }
 
@@ -804,24 +798,29 @@ static struct nvmet_rdma_device *
 nvmet_rdma_find_get_device(struct rdma_cm_id *cm_id)
 {
 	struct nvmet_rdma_device *ndev;
+
+	ndev = ib_get_client_data(cm_id->device, &nvmet_rdma_ib_client);
+	if (ndev && WARN_ON(!nvmet_rdma_dev_get(ndev)))
+		ndev = NULL;
+
+	return ndev;
+}
+
+static struct nvmet_rdma_device *
+nvmet_rdma_alloc_device(struct ib_device *device)
+{
+	struct nvmet_rdma_device *ndev;
 	int ret;
 
-	mutex_lock(&device_list_mutex);
-	list_for_each_entry(ndev, &device_list, entry) {
-		if (ndev->device->node_guid == cm_id->device->node_guid &&
-		    nvmet_rdma_dev_get(ndev))
-			goto out_unlock;
-	}
-
 	ndev = kzalloc(sizeof(*ndev), GFP_KERNEL);
-	if (!ndev)
-		goto out_err;
+	if (unlikely(!ndev))
+		return NULL;
 
-	ndev->device = cm_id->device;
+	ndev->device = device;
 	kref_init(&ndev->ref);
 
 	ndev->pd = ib_alloc_pd(ndev->device, 0);
-	if (IS_ERR(ndev->pd))
+	if (unlikely(IS_ERR(ndev->pd)))
 		goto out_free_dev;
 
 	if (nvmet_rdma_use_srq) {
@@ -829,19 +828,15 @@ nvmet_rdma_find_get_device(struct rdma_cm_id *cm_id)
 		if (ret)
 			goto out_free_pd;
 	}
-
-	list_add(&ndev->entry, &device_list);
-out_unlock:
-	mutex_unlock(&device_list_mutex);
+	ib_set_client_data(ndev->device, &nvmet_rdma_ib_client, ndev);
 	pr_debug("added %s.\n", ndev->device->name);
+
 	return ndev;
 
 out_free_pd:
 	ib_dealloc_pd(ndev->pd);
 out_free_dev:
 	kfree(ndev);
-out_err:
-	mutex_unlock(&device_list_mutex);
 	return NULL;
 }
 
@@ -1475,22 +1470,21 @@ static const struct nvmet_fabrics_ops nvmet_rdma_ops = {
 	.disc_traddr		= nvmet_rdma_disc_port_addr,
 };
 
+static void nvmet_rdma_add_one(struct ib_device *ib_device)
+{
+	struct nvmet_rdma_device *ndev;
+
+	ndev = nvmet_rdma_alloc_device(ib_device);
+	if (unlikely(!ndev))
+		pr_info("Allocation of a device failed.\n");
+}
+
 static void nvmet_rdma_remove_one(struct ib_device *ib_device, void *client_data)
 {
+	struct nvmet_rdma_device *ndev = client_data;
 	struct nvmet_rdma_queue *queue, *tmp;
-	struct nvmet_rdma_device *ndev;
-	bool found = false;
 
-	mutex_lock(&device_list_mutex);
-	list_for_each_entry(ndev, &device_list, entry) {
-		if (ndev->device == ib_device) {
-			found = true;
-			break;
-		}
-	}
-	mutex_unlock(&device_list_mutex);
-
-	if (!found)
+	if (unlikely(!ndev))
 		return;
 
 	/*
@@ -1510,10 +1504,12 @@ static void nvmet_rdma_remove_one(struct ib_device *ib_device, void *client_data
 	mutex_unlock(&nvmet_rdma_queue_mutex);
 
 	flush_scheduled_work();
+	WARN_ON(!nvmet_rdma_dev_put(ndev));
 }
 
 static struct ib_client nvmet_rdma_ib_client = {
 	.name   = "nvmet_rdma",
+	.add    = nvmet_rdma_add_one,
 	.remove = nvmet_rdma_remove_one
 };
 
