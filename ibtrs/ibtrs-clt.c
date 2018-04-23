@@ -31,6 +31,7 @@
 #define pr_fmt(fmt) KBUILD_MODNAME " L" __stringify(__LINE__) ": " fmt
 
 #include <linux/module.h>
+#include <linux/rculist.h>
 
 #include "ibtrs-clt.h"
 #include "ibtrs-log.h"
@@ -519,7 +520,9 @@ static struct ibtrs_clt_sess *get_next_path_rr(struct path_it *it)
 		path = list_first_or_null_rcu(&clt->paths_list,
 					      typeof(*path), s.entry);
 	else
-		path = list_next_or_null_rcu_rr(path, &clt->paths_list,
+		path = list_next_or_null_rr_rcu(&clt->paths_list,
+						&path->s.entry,
+						typeof(*path),
 						s.entry);
 	rcu_assign_pointer(*ppcpu_path, path);
 
@@ -1407,7 +1410,8 @@ static void ibtrs_clt_remove_path_from_arr(struct ibtrs_clt_sess *sess)
 	 */
 	clt->paths_num--;
 
-	next = list_next_or_null_rcu_rr(sess, &clt->paths_list, s.entry);
+	next = list_next_or_null_rr_rcu(&clt->paths_list, &sess->s.entry,
+					typeof(*next), s.entry);
 
 	/*
 	 * Pcpu paths can still point to the path which is going to be

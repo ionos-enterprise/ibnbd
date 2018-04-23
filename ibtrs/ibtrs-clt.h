@@ -234,29 +234,6 @@ static inline struct ibtrs_clt_sess *to_clt_sess(struct ibtrs_sess *s)
 	return container_of(s, struct ibtrs_clt_sess, s);
 }
 
-/**
- * list_next_or_null_rr - get next list element in round-robin fashion.
- * @pos:     entry, starting cursor.
- * @head:    head of the list to examine. This list must have at least one
- *           element, namely @pos.
- * @member:  name of the list_head structure within typeof(*pos).
- *
- * Important to understand that @pos is a list entry, which can be already
- * removed using list_del_rcu(), so if @head has become empty NULL will be
- * returned. Otherwise next element is returned in round-robin fashion.
- */
-#define list_next_or_null_rcu_rr(pos, head, member) ({			\
-	typeof(pos) ________next = NULL;				\
-									\
-	if (!list_empty(head))						\
-		________next = (pos)->member.next != (head) ?		\
-			list_entry_rcu((pos)->member.next,		\
-				       typeof(*pos), member) :		\
-			list_entry_rcu((pos)->member.next->next,	\
-				       typeof(*pos), member);		\
-	________next;							\
-})
-
 /* See ibtrs-log.h */
 #define TYPES_TO_SESSNAME(obj)						\
 	LIST(CASE(obj, struct ibtrs_clt_sess *, s.sessname),		\
