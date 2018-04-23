@@ -357,7 +357,7 @@ static int rdma_write_sg(struct ibtrs_srv_op *id)
 			return -EINVAL;
 		}
 
-		list->lkey = sess->s.ib_dev->lkey;
+		list->lkey = sess->s.ib_dev->pd->local_dma_lkey;
 		offset += list->length;
 
 		wr->wr.wr_cqe	= &io_comp_cqe;

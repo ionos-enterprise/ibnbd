@@ -250,7 +250,7 @@ static int ibtrs_post_send_rdma(struct ibtrs_clt_con *con,
 	/* user data and user message in the first list element */
 	sge.addr   = req->iu->dma_addr;
 	sge.length = req->sg_size;
-	sge.lkey   = sess->s.ib_dev->lkey;
+	sge.lkey   = sess->s.ib_dev->pd->local_dma_lkey;
 
 	/*
 	 * From time to time we have to post signalled sends,
@@ -2405,11 +2405,11 @@ static int ibtrs_post_rdma_write_sg(struct ibtrs_clt_con *con,
 	for_each_sg(req->sglist, sg, req->sg_cnt, i) {
 		sge[i].addr   = sg_dma_address(sg);
 		sge[i].length = sg_dma_len(sg);
-		sge[i].lkey   = sess->s.ib_dev->lkey;
+		sge[i].lkey   = sess->s.ib_dev->pd->local_dma_lkey;
 	}
 	sge[i].addr   = req->iu->dma_addr;
 	sge[i].length = size;
-	sge[i].lkey   = sess->s.ib_dev->lkey;
+	sge[i].lkey   = sess->s.ib_dev->pd->local_dma_lkey;
 
 	num_sge = 1 + req->sg_cnt;
 
@@ -2540,7 +2540,8 @@ static int ibtrs_clt_read_req(struct ibtrs_clt_io_req *req)
 	msg->type = cpu_to_le16(IBTRS_MSG_READ);
 	msg->usr_len = cpu_to_le16(req->usr_len);
 
-	if (count > noreg_cnt || !ibdev->unsafe_rkey) {
+	if (count > noreg_cnt ||
+	    !(ibdev->pd->flags & IB_PD_UNSAFE_GLOBAL_RKEY)) {
 		ret = ibtrs_map_sg_fr(req, count);
 		if (ret < 0) {
 			ibtrs_err_rl(sess,
@@ -2577,7 +2578,7 @@ static int ibtrs_clt_read_req(struct ibtrs_clt_io_req *req)
 
 		for_each_sg(req->sglist, sg, req->sg_cnt, i) {
 			msg->desc[i].addr = cpu_to_le64(sg_dma_address(sg));
-			msg->desc[i].key = cpu_to_le32(ibdev->unsafe_rkey);
+			msg->desc[i].key = cpu_to_le32(ibdev->pd->unsafe_global_rkey);
 			msg->desc[i].len = cpu_to_le32(sg_dma_len(sg));
 		}
 	}
