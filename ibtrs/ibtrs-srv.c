@@ -543,7 +543,7 @@ static int map_cont_bufs(struct ibtrs_srv_sess *sess)
 	 * figure out how many chunks can we map per MR.
 	 */
 
-	chunks_per_mr = sess->s.ib_dev->attrs.max_fast_reg_page_list_len;
+	chunks_per_mr = sess->s.ib_dev->dev->attrs.max_fast_reg_page_list_len;
 	mrs_num = DIV_ROUND_UP(srv->queue_depth, chunks_per_mr);
 	chunks_per_mr = DIV_ROUND_UP(srv->queue_depth, mrs_num);
 
@@ -1431,7 +1431,7 @@ static int create_con(struct ibtrs_srv_sess *sess,
 		 * and we have queue_depth read requests each consisting
 		 * of 32 different addresses.
 		 */
-		wr_queue_size = sess->s.ib_dev->attrs.max_qp_wr;
+		wr_queue_size = sess->s.ib_dev->dev->attrs.max_qp_wr;
 	}
 
 	cq_vector = ibtrs_srv_get_next_cq_vector(sess);

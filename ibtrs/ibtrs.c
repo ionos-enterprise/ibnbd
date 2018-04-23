@@ -269,30 +269,15 @@ static void qp_event_handler(struct ib_event *ev, void *ctx)
 	}
 }
 
-static int ibtrs_query_device(struct ibtrs_ib_dev *ib_dev)
-{
-	struct ib_udata uhw = {.outlen = 0, .inlen = 0};
-
-	memset(&ib_dev->attrs, 0, sizeof(ib_dev->attrs));
-
-	return ib_dev->dev->query_device(ib_dev->dev, &ib_dev->attrs, &uhw);
-}
-
 static int ibtrs_ib_dev_init(struct ibtrs_ib_dev *d, struct ib_device *dev,
 			     enum ib_pd_flags flags)
 {
-	int err;
-
 	d->pd = ib_alloc_pd(dev, flags);
 	if (IS_ERR(d->pd))
 		return PTR_ERR(d->pd);
 	d->dev = dev;
 
-	err = ibtrs_query_device(d);
-	if (unlikely(err))
-		ib_dealloc_pd(d->pd);
-
-	return err;
+	return 0;
 }
 
 static void ibtrs_ib_dev_destroy(struct ibtrs_ib_dev *d)

@@ -815,13 +815,13 @@ static void query_fast_reg_mode(struct ibtrs_clt_sess *sess)
 	 * minimum of 4096 bytes. We're unlikely to build large sglists
 	 * out of smaller entries.
 	 */
-	mr_page_shift      = max(12, ffs(ib_dev->attrs.page_size_cap) - 1);
-	max_pages_per_mr   = ib_dev->attrs.max_mr_size;
+	mr_page_shift      = max(12, ffs(ib_dev->dev->attrs.page_size_cap) - 1);
+	max_pages_per_mr   = ib_dev->dev->attrs.max_mr_size;
 	do_div(max_pages_per_mr, (1ull << mr_page_shift));
 	sess->max_pages_per_mr =
 		min3(sess->max_pages_per_mr, (u32)max_pages_per_mr,
-		     ib_dev->attrs.max_fast_reg_page_list_len);
-	sess->max_sge = ib_dev->attrs.max_sge;
+		     ib_dev->dev->attrs.max_fast_reg_page_list_len);
+	sess->max_sge = ib_dev->dev->attrs.max_sge;
 }
 
 static bool __ibtrs_clt_change_state(struct ibtrs_clt_sess *sess,
@@ -1145,7 +1145,7 @@ static int create_con_cq_qp(struct ibtrs_clt_con *con)
 		/* Shared between connections */
 		sess->s.ib_dev_ref++;
 		cq_size = wr_queue_size =
-			min_t(int, sess->s.ib_dev->attrs.max_qp_wr,
+			min_t(int, sess->s.ib_dev->dev->attrs.max_qp_wr,
 			      /* QD * (REQ + RSP + FR REGS or INVS) + drain */
 			      sess->queue_depth * 3 + 1);
 	}
