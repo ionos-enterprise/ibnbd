@@ -432,24 +432,6 @@ put_kobj:
 	return err;
 }
 
-static void ibtrs_sysfs_remove_file_self(struct kobject *kobj,
-					 const struct attribute *attr)
-{
-	struct device_attribute dattr = {
-		.attr.name = attr->name
-	};
-	struct device *device;
-
-	/*
-	 * Unfortunately original sysfs_remove_file_self() is not exported,
-	 * so consider this as a hack to call self removal of a sysfs entry
-	 * just using another "door".
-	 */
-
-	device = container_of(kobj, typeof(*device), kobj);
-	device_remove_file_self(device, &dattr);
-}
-
 void ibtrs_clt_destroy_sess_files(struct ibtrs_clt_sess *sess,
 				  const struct attribute *sysfs_self)
 {
@@ -458,7 +440,7 @@ void ibtrs_clt_destroy_sess_files(struct ibtrs_clt_sess *sess,
 		kobject_put(&sess->kobj_stats);
 		if (sysfs_self)
 			/* To avoid deadlock firstly commit suicide */
-			ibtrs_sysfs_remove_file_self(&sess->kobj, sysfs_self);
+			sysfs_remove_file_self(&sess->kobj, sysfs_self);
 		kobject_del(&sess->kobj);
 		kobject_put(&sess->kobj);
 	}
