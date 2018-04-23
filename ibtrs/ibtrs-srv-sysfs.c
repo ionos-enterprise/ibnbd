@@ -100,7 +100,7 @@ static ssize_t ibtrs_srv_hca_name_show(struct kobject *kobj,
 	sess = container_of(kobj, struct ibtrs_srv_sess, kobj);
 
 	return scnprintf(page, PAGE_SIZE, "%s\n",
-			 sess->s.ib_dev->dev->name);
+			 sess->s.dev->ib_dev->name);
 }
 
 static struct kobj_attribute ibtrs_srv_hca_name_attr =

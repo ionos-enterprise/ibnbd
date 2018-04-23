@@ -32,6 +32,7 @@
 
 #include <linux/uuid.h>
 #include <rdma/rdma_cm.h>
+#include <rdma/dev_pool.h>
 #include <rdma/ib_verbs.h>
 #include <rdma/ib.h>
 
@@ -83,13 +84,6 @@ enum {
 	IBTRS_VERSION = (IBTRS_VER_MAJOR << 8) | IBTRS_VER_MINOR,
 };
 
-struct ibtrs_ib_dev {
-	struct list_head	entry;
-	struct kref		ref;
-	struct ib_pd		*pd;
-	struct ib_device	*dev;
-};
-
 struct ibtrs_con {
 	struct ibtrs_sess	*sess;
 	struct ib_qp		*qp;
@@ -109,8 +103,8 @@ struct ibtrs_sess {
 	struct ibtrs_con	**con;
 	unsigned int		con_num;
 	unsigned int		recon_cnt;
-	struct ibtrs_ib_dev	*ib_dev;
-	int			ib_dev_ref;
+	struct ib_pool_device	*dev;
+	int			dev_ref;
 	struct ib_cqe		*hb_cqe;
 	ibtrs_hb_handler_t	*hb_err_handler;
 	struct workqueue_struct *hb_wq;
@@ -323,10 +317,6 @@ int ibtrs_post_recv_empty_x2(struct ibtrs_con *con, struct ib_cqe *cqe);
 int ibtrs_post_rdma_write_imm_empty(struct ibtrs_con *con, struct ib_cqe *cqe,
 				    u32 imm_data, enum ib_send_flags flags,
 				    struct ib_send_wr *head);
-
-struct ibtrs_ib_dev *ibtrs_ib_dev_find_get(struct rdma_cm_id *cm_id,
-					   enum ib_pd_flags flags);
-void ibtrs_ib_dev_put(struct ibtrs_ib_dev *dev);
 
 int ibtrs_cq_qp_create(struct ibtrs_sess *ibtrs_sess, struct ibtrs_con *con,
 		       u32 max_send_sge, int cq_vector, u16 cq_size,
