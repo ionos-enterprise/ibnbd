@@ -1457,19 +1457,6 @@ rdma_consumer_reject_data(struct backport_rdma_cm_id *id,
 
 #ifndef COMPAT
 /*
- * linux/gfp.h
- */
-#define __GFP_RETRY_MAYFAIL __GFP_REPEAT
-
-/*
- * linux/uuid.h
- */
-typedef uuid_be uuid_t;
-#define uuid_gen uuid_be_gen
-#define uuid_copy(dst,src) memcpy(dst, src, sizeof(uuid_t))
-#define uuid_equal(u1,u2) (!memcmp(u1, u2, sizeof(uuid_t)))
-
-/*
  * rdma/ib_verbs.h
  * rdma/rdma_cm.h
  * rdma/ib_cm.h
@@ -1518,11 +1505,6 @@ typedef uuid_be uuid_t;
 #define rdma_accept backport_rdma_accept
 #define rdma_reject backport_rdma_reject
 #define rdma_get_service_id backport_rdma_get_service_id
-
-/*
- * Common stuff
- */
-#include "compat.h"
 
 #endif /* ifndef COMPAT */
 #endif /* IBTRS_4_4_73_COMPAT_H */

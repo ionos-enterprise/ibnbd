@@ -16,7 +16,7 @@ endif
 
 ifdef do_compat
     $(info - IBTRS with compat support for $(LIN_VER) kernel)
-    ccflags-y := -include $(dir)/compat-$(LIN_VER).h -I$(dir)/include
+    ccflags-y := -include $(dir)/compat.h -I$(dir)/include
 
     ifeq ($(LIN_VER), 4.4.73)
         obj-m += compat/4.4.73/
