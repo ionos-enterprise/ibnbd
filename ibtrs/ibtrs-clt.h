@@ -187,6 +187,9 @@ struct ibtrs_clt_sess {
 	struct kobject		kobj;
 	struct kobject		kobj_stats;
 	struct ibtrs_clt_stats  stats;
+	/* cache hca_port and hca_name to display in sysfs */
+	u8			hca_port;
+	char                    hca_name[IB_DEVICE_NAME_MAX];
 	struct list_head __percpu
 				*mp_skip_entry;
 };

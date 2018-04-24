@@ -1715,6 +1715,13 @@ static int ibtrs_rdma_conn_established(struct ibtrs_clt_con *con,
 		 */
 		ibtrs_clt_set_min_queue_depth(sess->clt, sess->queue_depth);
 		ibtrs_clt_set_min_io_size(sess->clt, sess->max_io_size);
+
+		/*
+		 * Cache the hca_port and hca_name for sysfs
+		 */
+		sess->hca_port = con->c.cm_id->port_num;
+		scnprintf(sess->hca_name, sizeof(sess->hca_name),
+			  sess->s.ib_dev->dev->name);
 	}
 
 	return 0;

@@ -368,7 +368,37 @@ err:
 	return ret;
 }
 
+static ssize_t ibtrs_clt_hca_port_show(struct kobject *kobj,
+				       struct kobj_attribute *attr,
+				       char *page)
+{
+	struct ibtrs_clt_sess *sess;
+
+	sess = container_of(kobj, typeof(*sess), kobj);
+
+	return scnprintf(page, PAGE_SIZE, "%u\n", sess->hca_port);
+}
+
+static struct kobj_attribute ibtrs_clt_hca_port_attr =
+	__ATTR(hca_port, 0444, ibtrs_clt_hca_port_show, NULL);
+
+static ssize_t ibtrs_clt_hca_name_show(struct kobject *kobj,
+				       struct kobj_attribute *attr,
+				       char *page)
+{
+	struct ibtrs_clt_sess *sess;
+
+	sess = container_of(kobj, struct ibtrs_clt_sess, kobj);
+
+	return scnprintf(page, PAGE_SIZE, "%s\n", sess->hca_name);
+}
+
+static struct kobj_attribute ibtrs_clt_hca_name_attr =
+	__ATTR(hca_name, 0444, ibtrs_clt_hca_name_show, NULL);
+
 static struct attribute *ibtrs_clt_sess_attrs[] = {
+	&ibtrs_clt_hca_name_attr.attr,
+	&ibtrs_clt_hca_port_attr.attr,
 	&ibtrs_clt_state_attr.attr,
 	&ibtrs_clt_reconnect_attr.attr,
 	&ibtrs_clt_disconnect_attr.attr,
