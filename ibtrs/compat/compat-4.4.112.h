@@ -18,9 +18,11 @@
 #ifndef IBTRS_4_4_112_COMPAT_H
 #define IBTRS_4_4_112_COMPAT_H
 
+#define sysfs_remove_file_self ORIGINAL_sysfs_remove_file_self
 #include <rdma/ib_verbs.h>
 #include <rdma/rdma_cm.h>
 #include <rdma/ib_cm.h>
+#undef sysfs_remove_file_self
 
 struct fmr_struct {
 	struct ib_fmr *fmr;

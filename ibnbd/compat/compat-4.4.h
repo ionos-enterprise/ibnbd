@@ -179,6 +179,16 @@ backport_blk_queue_max_discard_segments(struct request_queue *q,
 	return;
 }
 
+static inline void
+backport_blk_queue_flag_set(unsigned int flag, struct request_queue *q)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(q->queue_lock, flags);
+	queue_flag_set(flag, q);
+	spin_unlock_irqrestore(q->queue_lock, flags);
+}
+
 static inline blk_qc_t backport_submit_bio(struct bio *bio)
 {
 	return submit_bio(bio->bi_rw, bio);
@@ -229,6 +239,20 @@ backport_blk_mq_free_tag_set(struct backport_blk_mq_tag_set *set)
 	blk_mq_free_tag_set((struct blk_mq_tag_set *)set);
 }
 
+static inline bool
+backport_blk_mq_run_hw_queue(struct blk_mq_hw_ctx *hctx, bool async)
+{
+	blk_mq_delay_queue(hctx, 0);
+	return true;
+}
+
+static inline void
+backport_blk_mq_delay_run_hw_queue(struct blk_mq_hw_ctx *hctx,
+				   unsigned long msecs)
+{
+	blk_mq_delay_queue(hctx, msecs);
+}
+
 static inline ssize_t
 backport_kernel_read(struct file *file, void *buf, size_t count,
 		     loff_t *pos)
@@ -249,9 +273,12 @@ backport_kernel_write(struct file *file, const void *buf, size_t count,
 #define blk_mq_alloc_tag_set backport_blk_mq_alloc_tag_set
 #define blk_mq_free_tag_set backport_blk_mq_free_tag_set
 #define blk_mq_complete_request backport_blk_mq_complete_request
+#define blk_mq_run_hw_queue backport_blk_mq_run_hw_queue
+#define blk_mq_delay_run_hw_queue backport_blk_mq_delay_run_hw_queue
 #define blk_queue_write_cache backport_blk_queue_write_cache
 #define blk_queue_max_discard_segments backport_blk_queue_max_discard_segments
 #define blk_queue_secure_erase blk_queue_secdiscard
+#define blk_queue_flag_set backport_blk_queue_flag_set
 #define submit_bio backport_submit_bio
 #define bioset_create backport_bioset_create
 #define kernel_read backport_kernel_read
