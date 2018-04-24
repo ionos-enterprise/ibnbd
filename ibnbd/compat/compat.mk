@@ -16,5 +16,5 @@ endif
 
 ifdef do_compat
     $(info - IBNBD with compat support for $(LIN_VER) kernel)
-    ccflags-y := -include $(dir)/compat-4.4.h -I$(dir)/include
+    ccflags-y := -include $(dir)/compat.h -I$(dir)/include
 endif

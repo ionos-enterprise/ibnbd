@@ -15,16 +15,16 @@
  * along with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef LINUX_REFCOUNT_H
-#define LINUX_REFCOUNT_H
+#ifndef LINUX_COMPAT_H
+#define LINUX_COMPAT_H
 
 #include <linux/version.h>
 
 #if LINUX_VERSION_CODE == KERNEL_VERSION(4,4,73) || \
     LINUX_VERSION_CODE == KERNEL_VERSION(4,4,112)
 
-#include "../../refcount-4.4.h"
+#include "compat-4.4.h"
 
 #endif
 
-#endif /* LINUX_REFCOUNT_H */
+#endif /* LINUX_COMPAT_H */
