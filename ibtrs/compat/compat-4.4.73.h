@@ -25,8 +25,10 @@
 #include "4.4.73/irq_poll.h"
 
 struct backport_ib_device {
-	struct ib_device      *ib_dev;
+	struct ib_device      *ORIG_dev;
 	struct ib_device_attr attrs;
+	const char *name;
+	int num_comp_vectors;
 };
 
 enum ib_poll_context {
@@ -443,19 +445,11 @@ static inline struct backport_ib_pd *
 backport_ib_alloc_pd(struct backport_ib_device *device,
 		     unsigned int flags)
 {
-	struct ib_device_attr attrs;
 	struct backport_ib_pd *bpd;
 	int mr_access_flags = 0;
 	struct ib_pd *pd;
-	int err;
 
-	memset(&attrs, 0, sizeof(attrs));
-
-	err = ib_query_device((struct ib_device *)device, &attrs);
-	if (unlikely(err))
-		return ERR_PTR(err);
-
-	pd = ib_alloc_pd((struct ib_device *)device);
+	pd = ib_alloc_pd(device->ORIG_dev);
 	if (unlikely(IS_ERR(pd)))
 		return ERR_CAST(pd);
 
@@ -466,8 +460,8 @@ backport_ib_alloc_pd(struct backport_ib_device *device,
 	}
 	bpd->flags = flags;
 
-	if (attrs.device_cap_flags & IB_DEVICE_LOCAL_DMA_LKEY)
-		bpd->local_dma_lkey = device->local_dma_lkey;
+	if (device->attrs.device_cap_flags & IB_DEVICE_LOCAL_DMA_LKEY)
+		bpd->local_dma_lkey = device->ORIG_dev->local_dma_lkey;
 	else
 		mr_access_flags |= IB_ACCESS_LOCAL_WRITE;
 
@@ -489,7 +483,7 @@ backport_ib_alloc_pd(struct backport_ib_device *device,
 		}
 		bpd->__internal_mr = mr;
 
-		if (!(attrs.device_cap_flags & IB_DEVICE_LOCAL_DMA_LKEY))
+		if (!(device->attrs.device_cap_flags & IB_DEVICE_LOCAL_DMA_LKEY))
 			bpd->local_dma_lkey = bpd->__internal_mr->lkey;
 
 		if (flags & IB_PD_UNSAFE_GLOBAL_RKEY)
@@ -871,14 +865,14 @@ static inline u64 backport_ib_dma_map_single(struct backport_ib_device *dev,
 					     void *cpu_addr, size_t size,
 					     enum dma_data_direction direction)
 {
-	return ib_dma_map_single(dev->ib_dev, cpu_addr, size, direction);
+	return ib_dma_map_single(dev->ORIG_dev, cpu_addr, size, direction);
 }
 
 static inline void backport_ib_dma_unmap_single(struct backport_ib_device *dev,
 						u64 addr, size_t size,
 						enum dma_data_direction direction)
 {
-	return ib_dma_unmap_single(dev->ib_dev, addr, size, direction);
+	return ib_dma_unmap_single(dev->ORIG_dev, addr, size, direction);
 }
 
 static inline u64 backport_ib_dma_map_page(struct backport_ib_device *dev,
@@ -886,46 +880,46 @@ static inline u64 backport_ib_dma_map_page(struct backport_ib_device *dev,
 					   unsigned long offset, size_t size,
 					   enum dma_data_direction direction)
 {
-	return ib_dma_map_page(dev->ib_dev, page, offset, size, direction);
+	return ib_dma_map_page(dev->ORIG_dev, page, offset, size, direction);
 }
 
 static inline void backport_ib_dma_unmap_page(struct backport_ib_device *dev,
 					      u64 addr, size_t size,
 					      enum dma_data_direction direction)
 {
-	return ib_dma_unmap_page(dev->ib_dev, addr, size, direction);
+	return ib_dma_unmap_page(dev->ORIG_dev, addr, size, direction);
 }
 
 static inline int backport_ib_dma_map_sg(struct backport_ib_device *dev,
 					 struct scatterlist *sg, int nents,
 					 enum dma_data_direction direction)
 {
-	return ib_dma_map_sg(dev->ib_dev, sg, nents, direction);
+	return ib_dma_map_sg(dev->ORIG_dev, sg, nents, direction);
 }
 
 static inline void backport_ib_dma_unmap_sg(struct backport_ib_device *dev,
 					    struct scatterlist *sg, int nents,
 					    enum dma_data_direction direction)
 {
-	return ib_dma_unmap_sg(dev->ib_dev, sg, nents, direction);
+	return ib_dma_unmap_sg(dev->ORIG_dev, sg, nents, direction);
 }
 
 static inline unsigned int backport_ib_sg_dma_len(struct backport_ib_device *dev,
 						  struct scatterlist *sg)
 {
-	return ib_sg_dma_len(dev->ib_dev, sg);
+	return ib_sg_dma_len(dev->ORIG_dev, sg);
 }
 
 static inline u64 backport_ib_sg_dma_address(struct backport_ib_device *dev,
 					     struct scatterlist *sg)
 {
-	return ib_sg_dma_address(dev->ib_dev, sg);
+	return ib_sg_dma_address(dev->ORIG_dev, sg);
 }
 
 static inline int backport_ib_dma_mapping_error(struct backport_ib_device *dev,
 						u64 dma_addr)
 {
-	return ib_dma_mapping_error(dev->ib_dev, dma_addr);
+	return ib_dma_mapping_error(dev->ORIG_dev, dma_addr);
 }
 
 static inline void
@@ -933,7 +927,7 @@ backport_ib_dma_sync_single_for_cpu(struct backport_ib_device *dev,
 				    u64 addr, size_t size,
 				    enum dma_data_direction dir)
 {
-	ib_dma_sync_single_for_cpu(dev->ib_dev, addr, size, dir);
+	ib_dma_sync_single_for_cpu(dev->ORIG_dev, addr, size, dir);
 }
 
 static inline void
@@ -941,13 +935,13 @@ backport_ib_dma_sync_single_for_device(struct backport_ib_device *dev,
 			      u64 addr, size_t size,
 			      enum dma_data_direction dir)
 {
-	ib_dma_sync_single_for_device(dev->ib_dev, addr, size, dir);
+	ib_dma_sync_single_for_device(dev->ORIG_dev, addr, size, dir);
 }
 
-struct backport_ib_cq *ib_alloc_cq(struct backport_ib_device *dev,
-			  void *private,
-			  int nr_cqe, int comp_vector,
-			  enum ib_poll_context poll_ctx);
+struct backport_ib_cq *ib_alloc_cq(struct ib_device *dev,
+				   void *private,
+				   int nr_cqe, int comp_vector,
+				   enum ib_poll_context poll_ctx);
 void ib_free_cq(struct backport_ib_cq *cq);
 void ib_drain_qp(struct ib_qp *qp);
 
@@ -1088,7 +1082,7 @@ static inline const char *__attribute_const__ ibcm_reject_msg(int reason)
                return "unrecognized reason";
 }
 
-static inline bool rdma_ib_or_roce(const struct backport_ib_device *device,
+static inline bool rdma_ib_or_roce(const struct ib_device *device,
 				   u8 port_num)
 {
 	/* Since we use it for IBTRS only assume always true */
@@ -1139,6 +1133,7 @@ rdma_consumer_reject_data(struct backport_rdma_cm_id *id,
  * rdma/ib_cm.h
  * rdma/ib_fmr_pool.h
  */
+typedef struct ib_device ORIGINAL_ib_device;
 #define ib_device backport_ib_device
 #define ib_cq backport_ib_cq
 #define ib_mr backport_ib_mr

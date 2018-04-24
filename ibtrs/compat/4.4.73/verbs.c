@@ -141,7 +141,7 @@ static void ib_cq_completion_workqueue(struct ib_cq *cq, void *private)
  * specified context. The ULP must use wr->wr_cqe instead of wr->wr_id
  * to use this CQ abstraction.
  */
-struct backport_ib_cq *ib_alloc_cq(struct backport_ib_device *dev, void *private,
+struct backport_ib_cq *ib_alloc_cq(struct ib_device *dev, void *private,
 		int nr_cqe, int comp_vector, enum ib_poll_context poll_ctx)
 {
 	ib_comp_handler comp_handler;
@@ -176,8 +176,7 @@ struct backport_ib_cq *ib_alloc_cq(struct backport_ib_device *dev, void *private
 		goto out_free_wc;
 	}
 
-	cq = ib_create_cq((struct ib_device *)dev, comp_handler,
-			  NULL, bcq, nr_cqe, comp_vector);
+	cq = ib_create_cq(dev, comp_handler, NULL, bcq, nr_cqe, comp_vector);
 	if (unlikely(IS_ERR(cq)))
 		goto out_free_wc;
 
