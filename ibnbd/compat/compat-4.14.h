@@ -15,18 +15,22 @@
  * along with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef LINUX_COMPAT_H
-#define LINUX_COMPAT_H
+#ifndef LINUX_4_14_COMPAT_H
+#define LINUX_4_14_COMPAT_H
 
 #include <linux/version.h>
+#include <linux/blk-mq.h>
 
-#if LINUX_VERSION_CODE == KERNEL_VERSION(4,4,73) || \
-    LINUX_VERSION_CODE == KERNEL_VERSION(4,4,112)
-#include "compat-4.4.h"
-#elif LINUX_VERSION_CODE == KERNEL_VERSION(4,14,28)
-#include "compat-4.14.h"
-#else
-#error Unsupported kernel version
-#endif
+static inline void
+backport_blk_queue_flag_set(unsigned int flag, struct request_queue *q)
+{
+	unsigned long flags;
 
-#endif /* LINUX_COMPAT_H */
+	spin_lock_irqsave(q->queue_lock, flags);
+	queue_flag_set(flag, q);
+	spin_unlock_irqrestore(q->queue_lock, flags);
+}
+
+#define blk_queue_flag_set backport_blk_queue_flag_set
+
+#endif /* LINUX_4_14_COMPAT_H */

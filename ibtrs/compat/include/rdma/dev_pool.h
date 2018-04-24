@@ -17,12 +17,13 @@
 
 #include <linux/version.h>
 
-#if LINUX_VERSION_CODE == KERNEL_VERSION(4,4,112)
+#if LINUX_VERSION_CODE == KERNEL_VERSION(4,4,112) || \
+    LINUX_VERSION_CODE == KERNEL_VERSION(4,14,28)
 #include "../../dev_pool.h"
 #elif LINUX_VERSION_CODE == KERNEL_VERSION(4,4,73)
 #include "../../dev_pool-4.4.73.h"
 #else
-#error Unsupported version
+#error Unsupported kernel version
 #endif
 
 #endif /* LINUX_DEV_POOL_H */
