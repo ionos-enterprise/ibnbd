@@ -249,19 +249,11 @@ enum ib_pd_flags {
 static inline struct backport_ib_pd *
 backport_ib_alloc_pd(struct ib_device *device, unsigned int flags)
 {
-	struct ib_device_attr attrs;
 	struct backport_ib_pd *bpd;
 	int mr_access_flags = 0;
 	struct ib_pd *pd;
-	int err;
 
-	memset(&attrs, 0, sizeof(attrs));
-
-	err = ib_query_device((struct ib_device *)device, &attrs);
-	if (unlikely(err))
-		return ERR_PTR(err);
-
-	pd = ib_alloc_pd((struct ib_device *)device);
+	pd = ib_alloc_pd(device);
 	if (unlikely(IS_ERR(pd)))
 		return ERR_CAST(pd);
 
@@ -272,7 +264,7 @@ backport_ib_alloc_pd(struct ib_device *device, unsigned int flags)
 	}
 	bpd->flags = flags;
 
-	if (attrs.device_cap_flags & IB_DEVICE_LOCAL_DMA_LKEY)
+	if (device->attrs.device_cap_flags & IB_DEVICE_LOCAL_DMA_LKEY)
 		bpd->local_dma_lkey = device->local_dma_lkey;
 	else
 		mr_access_flags |= IB_ACCESS_LOCAL_WRITE;
@@ -295,7 +287,7 @@ backport_ib_alloc_pd(struct ib_device *device, unsigned int flags)
 		}
 		bpd->__internal_mr = mr;
 
-		if (!(attrs.device_cap_flags & IB_DEVICE_LOCAL_DMA_LKEY))
+		if (!(device->attrs.device_cap_flags & IB_DEVICE_LOCAL_DMA_LKEY))
 			bpd->local_dma_lkey = bpd->__internal_mr->lkey;
 
 		if (flags & IB_PD_UNSAFE_GLOBAL_RKEY)
@@ -373,25 +365,21 @@ static void unmap_fmr_work(struct work_struct *work)
 static inline struct fmr_per_mr *alloc_fmr(struct ib_pd *pd,
 					   size_t page_size)
 {
-	struct ib_device_attr attr;
 	struct ib_fmr_attr fmr_attr;
 	struct fmr_per_mr *fmr_mr;
 	int max_remaps, max_pages, err;
 
-	err = ib_query_device(pd->device, &attr);
-	if (unlikely(err))
-		return ERR_PTR(err);
-	if (unlikely(!attr.max_map_per_fmr))
+	if (unlikely(!pd->device->attrs.max_map_per_fmr))
 		max_remaps = 32;
 	else
-		max_remaps = attr.max_map_per_fmr;
+		max_remaps = pd->device->attrs.max_map_per_fmr;
 
 	fmr_mr = kzalloc(sizeof(*fmr_mr), GFP_KERNEL);
 	if (unlikely(!fmr_mr))
 		return ERR_PTR(-ENOMEM);
 
 	/* XXX attr.max_fmr ? */
-        max_pages = attr.max_mr_size;
+        max_pages = pd->device->attrs.max_mr_size;
 	do_div(max_pages, page_size);
 	max_pages = min_t(u64, 512, max_pages);
 
