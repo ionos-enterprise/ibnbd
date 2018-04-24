@@ -22,338 +22,6 @@
 #include <rdma/rdma_cm.h>
 #include <rdma/ib_cm.h>
 
-struct backport_ib_device {
-	struct device                *dma_device;
-
-	char                          name[IB_DEVICE_NAME_MAX];
-
-	struct list_head              event_handler_list;
-	spinlock_t                    event_handler_lock;
-
-	spinlock_t                    client_data_lock;
-	struct list_head              core_list;
-	struct list_head              client_data_list;
-
-	struct ib_cache               cache;
-	int                          *pkey_tbl_len;
-	int                          *gid_tbl_len;
-
-	int			      num_comp_vectors;
-	struct kobject		      *mad_sa_cc_kobj;
-
-	struct iw_cm_verbs	     *iwcm;
-
-	int		           (*get_protocol_stats)(struct ib_device *device,
-							 union rdma_protocol_stats *stats);
-	int		           (*query_device)(struct backport_ib_device *device,
-						   struct ib_device_attr *device_attr,
-						   /* BACKPORT: here pass NULL */
-						   void *);
-	int		           (*query_port)(struct ib_device *device,
-						 u8 port_num,
-						 struct ib_port_attr *port_attr);
-	enum rdma_link_layer	   (*get_link_layer)(struct ib_device *device,
-						     u8 port_num);
-	/* When calling get_netdev, the HW vendor's driver should return the
-	 * net device of device @device at port @port_num. The function
-	 * is called in rtnl_lock. The HW vendor's device driver must guarantee
-	 * to return NULL before the net device has reached
-	 * NETDEV_UNREGISTER_FINAL state.
-	 */
-	struct net_device	  *(*get_netdev)(struct ib_device *device,
-						 u8 port_num);
-	int		           (*query_gid)(struct ib_device *device,
-						u8 port_num, int index,
-						union ib_gid *gid);
-	/* When calling modify_gid, the HW vendor's driver should
-	 * modify the gid of device @device at gid index @index of
-	 * port @port to be @gid. Meta-info of that gid (for example,
-	 * the network device related to this gid is available
-	 * at @attr. @context allows the HW vendor driver to store extra
-	 * information together with a GID entry. The HW vendor may allocate
-	 * memory to contain this information and store it in @context when a
-	 * new GID entry is written to. Upon the deletion of a GID entry,
-	 * the HW vendor must free any allocated memory. The caller will clear
-	 * @context afterwards.GID deletion is done by passing the zero gid.
-	 * Params are consistent until the next call of modify_gid.
-	 * The function should return 0 on success or error otherwise.
-	 * The function could be called concurrently for different ports.
-	 */
-	int		           (*modify_gid)(struct ib_device *device,
-						 u8 port_num,
-						 unsigned int index,
-						 const union ib_gid *gid,
-						 const struct ib_gid_attr *attr,
-						 void **context);
-	int			   (*set_vf_port_guid)(struct ib_device *device,
-						       u8 port_num, u64 guid);
-	int			   (*set_vf_node_guid)(struct ib_device *device,
-						       u16 vf, u64 guid);
-	int		           (*query_pkey)(struct ib_device *device,
-						 u8 port_num, u16 index, u16 *pkey);
-	int		           (*modify_device)(struct ib_device *device,
-						    int device_modify_mask,
-						    struct ib_device_modify *device_modify);
-	int		           (*modify_port)(struct ib_device *device,
-						  u8 port_num, int port_modify_mask,
-						  struct ib_port_modify *port_modify);
-	struct ib_ucontext *       (*alloc_ucontext)(struct ib_device *device,
-						     struct ib_udata *udata);
-	int                        (*dealloc_ucontext)(struct ib_ucontext *context);
-	int                        (*mmap)(struct ib_ucontext *context,
-					   struct vm_area_struct *vma);
-	struct ib_pd *             (*alloc_pd)(struct ib_device *device,
-					       struct ib_ucontext *context,
-					       struct ib_udata *udata);
-	int                        (*dealloc_pd)(struct ib_pd *pd);
-	struct ib_ah *             (*create_ah)(struct ib_pd *pd,
-						struct ib_ah_attr *ah_attr);
-	int                        (*modify_ah)(struct ib_ah *ah,
-						struct ib_ah_attr *ah_attr);
-	int                        (*query_ah)(struct ib_ah *ah,
-					       struct ib_ah_attr *ah_attr);
-	int                        (*destroy_ah)(struct ib_ah *ah);
-	struct ib_srq *            (*create_srq)(struct ib_pd *pd,
-						 struct ib_srq_init_attr *srq_init_attr,
-						 struct ib_udata *udata);
-	int                        (*modify_srq)(struct ib_srq *srq,
-						 struct ib_srq_attr *srq_attr,
-						 enum ib_srq_attr_mask srq_attr_mask,
-						 struct ib_udata *udata);
-	int                        (*query_srq)(struct ib_srq *srq,
-						struct ib_srq_attr *srq_attr);
-	int                        (*destroy_srq)(struct ib_srq *srq);
-	int                        (*post_srq_recv)(struct ib_srq *srq,
-						    struct ib_recv_wr *recv_wr,
-						    struct ib_recv_wr **bad_recv_wr);
-	struct ib_qp *             (*create_qp)(struct ib_pd *pd,
-						struct ib_qp_init_attr *qp_init_attr,
-						struct ib_udata *udata);
-	int                        (*modify_qp)(struct ib_qp *qp,
-						struct ib_qp_attr *qp_attr,
-						int qp_attr_mask,
-						struct ib_udata *udata);
-	int                        (*query_qp)(struct ib_qp *qp,
-					       struct ib_qp_attr *qp_attr,
-					       int qp_attr_mask,
-					       struct ib_qp_init_attr *qp_init_attr);
-	int                        (*destroy_qp)(struct ib_qp *qp);
-	int                        (*post_send)(struct ib_qp *qp,
-						struct ib_send_wr *send_wr,
-						struct ib_send_wr **bad_send_wr);
-	int                        (*post_recv)(struct ib_qp *qp,
-						struct ib_recv_wr *recv_wr,
-						struct ib_recv_wr **bad_recv_wr);
-	struct ib_cq *             (*create_cq)(struct ib_device *device,
-						struct ib_cq_init_attr *attr,
-						struct ib_ucontext *context,
-						struct ib_udata *udata);
-	int                        (*modify_cq)(struct ib_cq *cq,
-						struct ib_cq_attr *cq_attr,
-						int cq_attr_mask);
-	int                        (*destroy_cq)(struct ib_cq *cq);
-	int                        (*resize_cq)(struct ib_cq *cq, int cqe,
-						struct ib_udata *udata);
-	int                        (*poll_cq)(struct ib_cq *cq, int num_entries,
-					      struct ib_wc *wc);
-	int                        (*peek_cq)(struct ib_cq *cq, int wc_cnt);
-	int                        (*req_notify_cq)(struct ib_cq *cq,
-						    enum ib_cq_notify_flags flags);
-	int                        (*req_ncomp_notif)(struct ib_cq *cq,
-						      int wc_cnt);
-	struct ib_mr *             (*get_dma_mr)(struct ib_pd *pd,
-						 int mr_access_flags);
-	struct ib_mr *             (*reg_phys_mr)(struct ib_pd *pd,
-						  struct ib_phys_buf *phys_buf_array,
-						  int num_phys_buf,
-						  int mr_access_flags,
-						  u64 *iova_start);
-	struct ib_mr *             (*reg_user_mr)(struct ib_pd *pd,
-						  u64 start, u64 length,
-						  u64 virt_addr,
-						  int mr_access_flags,
-						  struct ib_udata *udata,
-						  int mr_id);
-	int			   (*rereg_user_mr)(struct ib_mr *mr,
-						    int flags,
-						    u64 start, u64 length,
-						    u64 virt_addr,
-						    int mr_access_flags,
-						    struct ib_pd *pd,
-						    struct ib_udata *udata);
-	int                        (*query_mr)(struct ib_mr *mr,
-					       struct ib_mr_attr *mr_attr);
-	int                        (*dereg_mr)(struct ib_mr *mr);
-	int                        (*destroy_mr)(struct ib_mr *mr);
-	struct ib_mr *		   (*create_mr)(struct ib_pd *pd,
-						struct ib_mr_init_attr *mr_init_attr);
-	struct ib_mr *		   (*alloc_fast_reg_mr)(struct ib_pd *pd,
-					       int max_page_list_len);
-	struct ib_fast_reg_page_list * (*alloc_fast_reg_page_list)(struct ib_device *device,
-								   int page_list_len);
-	void			   (*free_fast_reg_page_list)(struct ib_fast_reg_page_list *page_list);
-	struct ib_indir_reg_list * (*alloc_indir_reg_list)(struct ib_device *device,
-							   unsigned int indir_list_len);
-	void			   (*free_indir_reg_list)(struct ib_indir_reg_list *indir_list);
-	int                        (*rereg_phys_mr)(struct ib_mr *mr,
-						    int mr_rereg_mask,
-						    struct ib_pd *pd,
-						    struct ib_phys_buf *phys_buf_array,
-						    int num_phys_buf,
-						    int mr_access_flags,
-						    u64 *iova_start);
-	struct ib_mw *             (*alloc_mw)(struct ib_pd *pd,
-					       enum ib_mw_type type);
-	int                        (*bind_mw)(struct ib_qp *qp,
-					      struct ib_mw *mw,
-					      struct ib_mw_bind *mw_bind);
-	int                        (*dealloc_mw)(struct ib_mw *mw);
-	struct ib_fmr *	           (*alloc_fmr)(struct ib_pd *pd,
-						int mr_access_flags,
-						struct ib_fmr_attr *fmr_attr);
-	int		           (*map_phys_fmr)(struct ib_fmr *fmr,
-						   u64 *page_list, int list_len,
-						   u64 iova);
-	int		           (*unmap_fmr)(struct list_head *fmr_list);
-	int		           (*dealloc_fmr)(struct ib_fmr *fmr);
-	int                        (*attach_mcast)(struct ib_qp *qp,
-						   union ib_gid *gid,
-						   u16 lid);
-	int                        (*detach_mcast)(struct ib_qp *qp,
-						   union ib_gid *gid,
-						   u16 lid);
-	int                        (*process_mad)(struct ib_device *device,
-						  int process_mad_flags,
-						  u8 port_num,
-						  struct ib_wc *in_wc,
-						  struct ib_grh *in_grh,
-						  struct ib_mad *in_mad,
-						  struct ib_mad *out_mad);
-	struct ib_xrcd *	   (*alloc_xrcd)(struct ib_device *device,
-						 struct ib_ucontext *ucontext,
-						 struct ib_udata *udata);
-	int			   (*dealloc_xrcd)(struct ib_xrcd *xrcd);
-	struct ib_flow *	   (*create_flow)(struct ib_qp *qp,
-						  struct ib_flow_attr
-						  *flow_attr,
-						  int domain);
-	int			   (*destroy_flow)(struct ib_flow *flow_id);
-	int			   (*check_mr_status)(struct ib_mr *mr, u32 check_mask,
-						      struct ib_mr_status *mr_status);
-	void			   (*disassociate_ucontext)(struct ib_ucontext *ibcontext);
-	void			   (*drain_rq)(struct ib_qp *qp);
-	void			   (*drain_sq)(struct ib_qp *qp);
-
-	unsigned long		   (*get_unmapped_area)(struct file *file,
-					unsigned long addr,
-					unsigned long len, unsigned long pgoff,
-					unsigned long flags);
-	int			   (*get_vf_stats)(struct ib_device *device, u16 vf,
-						   struct ib_vf_stats *stats);
-	int                        (*query_values)(struct ib_device *device,
-						   int q_values,
-						   struct ib_device_values *values);
-	int			   (*ioctl)(struct ib_ucontext *context,
-					    unsigned int cmd,
-					    unsigned long arg);
-	struct ib_dma_mapping_ops   *dma_ops;
-
-	struct module               *owner;
-	struct device                dev;
-	struct kobject               *ports_parent;
-	struct list_head             port_list;
-
-	int			     uverbs_abi_ver;
-	u64			     uverbs_cmd_mask;
-	u64			     uverbs_ex_cmd_mask;
-
-	struct ib_odp_statistics     odp_statistics;
-
-	char			     node_desc[64];
-	__be64			     node_guid;
-	u32			     local_dma_lkey;
-	u8                           node_type;
-	u8                           phys_port_cnt;
-	struct ib_device_attr        attrs;
-	struct kref		     refcount;
-	struct completion	     free;
-
-	/*
-	 * Experimental data and functions
-	 */
-	struct ib_wq *		(*create_wq)(struct ib_pd *pd,
-					     struct ib_wq_init_attr *init_attr,
-					     struct ib_udata *udata);
-	int			(*destroy_wq)(struct ib_wq *wq);
-	int			(*modify_wq)(struct ib_wq *wq,
-					     struct ib_wq_attr *attr,
-					     enum ib_wq_attr_mask attr_mask,
-					     struct ib_udata *udata);
-	struct ib_rwq_ind_table *(*create_rwq_ind_table)(struct ib_device *device,
-							 struct ib_rwq_ind_table_init_attr *init_attr,
-							 struct ib_udata *udata);
-	int                     (*destroy_rwq_ind_table)(struct ib_rwq_ind_table *wq_ind_table);
-	int			(*exp_query_device)(struct ib_device *device,
-						    struct ib_exp_device_attr *device_attr);
-	struct ib_qp *		(*exp_create_qp)(struct ib_pd *pd,
-						 struct ib_exp_qp_init_attr *qp_init_attr,
-						 struct ib_udata *udata);
-	struct ib_dct *		(*exp_create_dct)(struct ib_pd *pd,
-					      struct ib_dct_init_attr *attr,
-					      struct ib_udata *udata);
-	int			(*exp_destroy_dct)(struct ib_dct *dct);
-	int			(*exp_query_dct)(struct ib_dct *dct, struct ib_dct_attr *attr);
-	int			(*exp_arm_dct)(struct ib_dct *dct, struct ib_udata *udata);
-	int			(*exp_query_mkey)(struct ib_mr *mr,
-						  u64 mkey_attr_mask,
-						  struct ib_mkey_attr *mkey_attr);
-	/**
-	 * exp_rereg_user_mr - Modifies the attributes of an existing memory region.
-	 *   Conceptually, this call performs the functions deregister memory region
-	 *   followed by register memory region.  Where possible,
-	 *   resources are reused instead of deallocated and reallocated.
-	 * @mr: The memory region to modify.
-	 * @flags: A bit-mask used to indicate which of the following
-	 *   properties of the memory region are being modified.
-	 * @start: If %IB_MR_REREG_TRANS is set in flags, this
-	 *   field specifies the start of the virtual address to use in the new
-	 *   translation, otherwise, this parameter is ignored.
-	 * @length: If %IB_MR_REREG_TRANS is set in flags, this
-	 *   field specifies the length of the virtual address to use in the new
-	 *   translation, otherwise, this parameter is ignored.
-	 * @virt_address: If %IB_MR_REREG_TRANS is set in flags, this
-	 *   field specifies the start of the virtual address in HCA to use in the new
-	 *   translation, otherwise, this parameter is ignored.
-	 * @mr_access_flags: If %IB_MR_REREG_ACCESS is set in flags, this
-	 *   field specifies the new memory access rights, otherwise, this
-	 *   parameter is ignored.
-	 * @pd: If %IB_MR_REREG_PD is set in flags, this field specifies
-	 *   the new protection domain to associated with the memory region,
-	 *   otherwise, this parameter is ignored.
-	 */
-	int			(*exp_rereg_user_mr)(struct ib_mr *mr,
-						     int flags,
-						     u64 start, u64 length,
-						     u64 virt_addr,
-						     int mr_access_flags,
-						     struct ib_pd *pd);
-
-	int			(*exp_prefetch_mr)(struct ib_mr *mr,
-						   u64 start, u64 length,
-						   u32 flags);
-
-	u64			uverbs_exp_cmd_mask;
-#if !defined(HAVE_VLAN_DEV_GET_EGRESS_QOS_MASK)
-#define NUM_SKPRIO 16
-#define NUM_UP	   8
-#define MAX_PORTS  2
-	struct {
-		u8  map[MAX_PORTS][NUM_SKPRIO];
-		struct mutex lock;
-	} skprio2up;
-#endif
-};
-
 struct fmr_struct {
 	struct ib_fmr *fmr;
 	unsigned remap_count;
@@ -392,7 +60,7 @@ typedef int (*backport_rdma_cm_event_handler)(struct backport_rdma_cm_id *id,
 					      struct rdma_cm_event *event);
 
 struct backport_rdma_cm_id {
-	struct backport_ib_device	*device;
+	struct ib_device	*device;
 	void			*context;
 	struct ib_qp		*qp;
 	backport_rdma_cm_event_handler	 event_handler;
@@ -579,8 +247,7 @@ enum ib_pd_flags {
 };
 
 static inline struct backport_ib_pd *
-backport_ib_alloc_pd(struct backport_ib_device *device,
-		     unsigned int flags)
+backport_ib_alloc_pd(struct ib_device *device, unsigned int flags)
 {
 	struct ib_device_attr attrs;
 	struct backport_ib_pd *bpd;
@@ -1006,101 +673,6 @@ backport_ib_update_fast_reg_key(struct backport_ib_mr *bmr, u8 newkey)
 	 */
 }
 
-static inline u64 backport_ib_dma_map_single(struct backport_ib_device *dev,
-					     void *cpu_addr, size_t size,
-					     enum dma_data_direction direction)
-{
-	return ib_dma_map_single((struct ib_device *)dev,
-				 cpu_addr, size, direction);
-}
-
-static inline void backport_ib_dma_unmap_single(struct backport_ib_device *dev,
-						u64 addr, size_t size,
-						enum dma_data_direction direction)
-{
-	return ib_dma_unmap_single((struct ib_device *)dev, addr,
-				   size, direction);
-}
-
-static inline u64 backport_ib_dma_map_page(struct backport_ib_device *dev,
-					   struct page *page,
-					   unsigned long offset, size_t size,
-					   enum dma_data_direction direction)
-{
-	return ib_dma_map_page((struct ib_device *)dev, page,
-			       offset, size, direction);
-}
-
-static inline void backport_ib_dma_unmap_page(struct backport_ib_device *dev,
-					      u64 addr, size_t size,
-					      enum dma_data_direction direction)
-{
-	return ib_dma_unmap_page((struct ib_device *)dev, addr,
-				 size, direction);
-}
-
-static inline int backport_ib_dma_map_sg(struct backport_ib_device *dev,
-					 struct scatterlist *sg, int nents,
-					 enum dma_data_direction direction)
-{
-	return ib_dma_map_sg((struct ib_device *)dev,
-			     sg, nents, direction);
-}
-
-static inline void backport_ib_dma_unmap_sg(struct backport_ib_device *dev,
-					    struct scatterlist *sg, int nents,
-					    enum dma_data_direction direction)
-{
-	return ib_dma_unmap_sg((struct ib_device *)dev, sg,
-			       nents, direction);
-}
-
-static inline unsigned int backport_ib_sg_dma_len(struct backport_ib_device *dev,
-						  struct scatterlist *sg)
-{
-	return ib_sg_dma_len((struct ib_device *)dev, sg);
-}
-
-static inline u64 backport_ib_sg_dma_address(struct backport_ib_device *dev,
-					     struct scatterlist *sg)
-{
-	return ib_sg_dma_address((struct ib_device *)dev, sg);
-}
-
-static inline int backport_ib_dma_mapping_error(struct backport_ib_device *dev,
-						u64 dma_addr)
-{
-	return ib_dma_mapping_error((struct ib_device *)dev, dma_addr);
-}
-
-static inline void
-backport_ib_dma_sync_single_for_cpu(struct backport_ib_device *dev,
-				    u64 addr, size_t size,
-				    enum dma_data_direction dir)
-{
-	ib_dma_sync_single_for_cpu((struct ib_device *)dev,
-				   addr, size, dir);
-}
-
-static inline void
-backport_ib_dma_sync_single_for_device(struct backport_ib_device *dev,
-			      u64 addr, size_t size,
-			      enum dma_data_direction dir)
-{
-	ib_dma_sync_single_for_device((struct ib_device *)dev,
-				      addr, size, dir);
-}
-
-static inline struct ib_cq *
-backport_ib_alloc_cq(struct backport_ib_device *dev,
-		     void *private,
-		     int nr_cqe, int comp_vector,
-		     enum ib_poll_context poll_ctx)
-{
-	return ib_alloc_cq((struct ib_device *)dev, private,
-			   nr_cqe, comp_vector, poll_ctx);
-}
-
 static const char * const cma_events[] = {
        [RDMA_CM_EVENT_ADDR_RESOLVED]    = "address resolved",
        [RDMA_CM_EVENT_ADDR_ERROR]       = "address error",
@@ -1238,7 +810,7 @@ static inline const char *__attribute_const__ ibcm_reject_msg(int reason)
                return "unrecognized reason";
 }
 
-static inline bool rdma_ib_or_roce(const struct backport_ib_device *device,
+static inline bool rdma_ib_or_roce(const struct ib_device *device,
 				   u8 port_num)
 {
 	/* Since we use it for IBTRS only assume always true */
@@ -1301,26 +873,13 @@ typedef uuid_be uuid_t;
  * rdma/rdma_cm.h
  * rdma/ib_cm.h
  */
-#define ib_device backport_ib_device
 #define ib_mr backport_ib_mr
 #define ib_dereg_mr backport_ib_dereg_mr
 #define ib_update_fast_reg_key backport_ib_update_fast_reg_key
-#define ib_dma_mapping_error backport_ib_dma_mapping_error
-#define ib_dma_map_single backport_ib_dma_map_single
-#define ib_dma_unmap_page backport_ib_dma_unmap_page
-#define ib_dma_map_page backport_ib_dma_map_page
-#define ib_dma_unmap_single backport_ib_dma_unmap_single
-#define ib_dma_map_sg backport_ib_dma_map_sg
-#define ib_dma_unmap_sg backport_ib_dma_unmap_sg
-#define ib_dma_sync_single_for_device backport_ib_dma_sync_single_for_device
-#define ib_dma_sync_single_for_cpu backport_ib_dma_sync_single_for_cpu
-#define ib_sg_dma_len backport_ib_sg_dma_len
-#define ib_sg_dma_address backport_ib_sg_dma_address
 #define ib_post_send backport_ib_post_send
 #define ib_alloc_pd backport_ib_alloc_pd
 #define ib_dealloc_pd backport_ib_dealloc_pd
 #define ib_pd backport_ib_pd
-#define ib_alloc_cq backport_ib_alloc_cq
 #define rdma_cm_id backport_rdma_cm_id
 #define rdma_cm_event_handler backport_rdma_cm_event_handler
 #define rdma_create_id backport_rdma_create_id
