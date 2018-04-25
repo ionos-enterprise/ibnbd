@@ -135,6 +135,49 @@ static ssize_t mpath_policy_store(struct device *dev,
 
 static DEVICE_ATTR_RW(mpath_policy);
 
+static ssize_t add_path_show(struct device *dev,
+			     struct device_attribute *attr, char *page)
+{
+	return scnprintf(page, PAGE_SIZE, "Usage: echo"
+			 " [<source addr>,]<destination addr> > %s\n\n"
+			"*addr ::= [ ip:<ipv4|ipv6> | gid:<gid> ]\n",
+			 attr->attr.name);
+}
+
+static ssize_t add_path_store(struct device *dev,
+			      struct device_attribute *attr,
+			      const char *buf, size_t count)
+{
+	struct sockaddr_storage srcaddr, dstaddr;
+	struct ibtrs_addr addr = {
+		.src = (struct sockaddr *)&srcaddr,
+		.dst = (struct sockaddr *)&dstaddr
+	};
+	struct ibtrs_clt *clt;
+	const char *nl;
+	size_t len;
+	int err;
+
+	clt = container_of(dev, struct ibtrs_clt, dev);
+
+	nl = strchr(buf, '\n');
+	if (nl)
+		len = nl - buf;
+	else
+		len = count;
+	err = ibtrs_addr_to_sockaddr(buf, len, clt->port, &addr);
+	if (unlikely(err))
+		return -EINVAL;
+
+	err = ibtrs_clt_create_path_from_sysfs(clt, &addr);
+	if (unlikely(err))
+		return err;
+
+	return count;
+}
+
+static DEVICE_ATTR_RW(add_path);
+
 static ssize_t ibtrs_clt_state_show(struct kobject *kobj,
 				    struct kobj_attribute *attr, char *page)
 {
@@ -245,49 +288,6 @@ static ssize_t ibtrs_clt_remove_path_store(struct kobject *kobj,
 static struct kobj_attribute ibtrs_clt_remove_path_attr =
 	__ATTR(remove_path, 0644, ibtrs_clt_remove_path_show,
 	       ibtrs_clt_remove_path_store);
-
-static ssize_t add_path_show(struct device *dev,
-			     struct device_attribute *attr, char *page)
-{
-	return scnprintf(page, PAGE_SIZE, "Usage: echo"
-			 " [<source addr>,]<destination addr> > %s\n\n"
-			"*addr ::= [ ip:<ipv4|ipv6> | gid:<gid> ]\n",
-			 attr->attr.name);
-}
-
-static ssize_t add_path_store(struct device *dev,
-			      struct device_attribute *attr,
-			      const char *buf, size_t count)
-{
-	struct sockaddr_storage srcaddr, dstaddr;
-	struct ibtrs_addr addr = {
-		.src = (struct sockaddr *)&srcaddr,
-		.dst = (struct sockaddr *)&dstaddr
-	};
-	struct ibtrs_clt *clt;
-	const char *nl;
-	size_t len;
-	int err;
-
-	clt = container_of(dev, struct ibtrs_clt, dev);
-
-	nl = strchr(buf, '\n');
-	if (nl)
-		len = nl - buf;
-	else
-		len = count;
-	err = ibtrs_addr_to_sockaddr(buf, len, clt->port, &addr);
-	if (unlikely(err))
-		return -EINVAL;
-
-	err = ibtrs_clt_create_path_from_sysfs(clt, &addr);
-	if (unlikely(err))
-		return err;
-
-	return count;
-}
-
-static DEVICE_ATTR_RW(add_path);
 
 STAT_ATTR(struct ibtrs_clt_sess, cpu_migration,
 	  ibtrs_clt_stats_migration_cnt_to_str,
