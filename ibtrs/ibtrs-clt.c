@@ -1631,7 +1631,7 @@ static int ibtrs_rdma_route_resolved(struct ibtrs_clt_con *con)
 	msg.__cma_version = 0;
 	msg.__ip_version = 0;
 	msg.magic = cpu_to_le16(IBTRS_MAGIC);
-	msg.version = cpu_to_le16(IBTRS_VERSION);
+	msg.version = cpu_to_le16(IBTRS_PROTO_VER);
 	msg.cid = cpu_to_le16(con->c.cid);
 	msg.cid_num = cpu_to_le16(sess->s.con_num);
 	msg.recon_cnt = cpu_to_le16(sess->s.recon_cnt);
@@ -1666,9 +1666,9 @@ static int ibtrs_rdma_conn_established(struct ibtrs_clt_con *con,
 		return -ECONNRESET;
 	}
 	version = le16_to_cpu(msg->version);
-	if (unlikely(version >> 8 != IBTRS_VER_MAJOR)) {
+	if (unlikely(version >> 8 != IBTRS_PROTO_VER_MAJOR)) {
 		ibtrs_err(sess, "Unsupported major IBTRS version: %d, expected %d\n",
-			  version >> 8, IBTRS_VER_MAJOR);
+			  version >> 8, IBTRS_PROTO_VER_MAJOR);
 		return -ECONNRESET;
 	}
 	errno = le16_to_cpu(msg->errno);
@@ -2775,9 +2775,9 @@ static int __init ibtrs_client_init(void)
 {
 	int err;
 
-	pr_info("Loading module %s, version: %s "
+	pr_info("Loading module %s, version %s, proto %s: "
 		"(retry_cnt: %d, noreg_cnt: %d)\n",
-		KBUILD_MODNAME, IBTRS_VER_STRING,
+		KBUILD_MODNAME, IBTRS_VER_STRING, IBTRS_PROTO_VER_STRING,
 		retry_cnt, noreg_cnt);
 
 	ib_pool_dev_init(noreg_cnt ? IB_PD_UNSAFE_GLOBAL_RKEY : 0,

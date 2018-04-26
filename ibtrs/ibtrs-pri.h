@@ -38,10 +38,16 @@
 
 #include "ibtrs.h"
 
-#define IBTRS_VER_MAJOR 2
-#define IBTRS_VER_MINOR 0
-#define IBTRS_VER_STRING __stringify(IBTRS_VER_MAJOR) "." \
-			 __stringify(IBTRS_VER_MINOR)
+#define IBTRS_PROTO_VER_MAJOR 2
+#define IBTRS_PROTO_VER_MINOR 0
+
+#define IBTRS_PROTO_VER_STRING __stringify(IBTRS_PROTO_VER_MAJOR) "." \
+			       __stringify(IBTRS_PROTO_VER_MINOR)
+
+#ifndef IBTRS_VER_STRING
+#define IBTRS_VER_STRING __stringify(IBTRS_PROTO_VER_MAJOR) "." \
+			 __stringify(IBTRS_PROTO_VER_MINOR)
+#endif
 
 enum ibtrs_imm_const {
 	MAX_IMM_TYPE_BITS = 4,
@@ -81,7 +87,7 @@ enum {
 	IBTRS_HB_MISSED_MAX = 5,
 
 	IBTRS_MAGIC = 0x1BBD,
-	IBTRS_VERSION = (IBTRS_VER_MAJOR << 8) | IBTRS_VER_MINOR,
+	IBTRS_PROTO_VER = (IBTRS_PROTO_VER_MAJOR << 8) | IBTRS_PROTO_VER_MINOR,
 };
 
 struct ibtrs_con {

@@ -1343,7 +1343,7 @@ static int ibtrs_rdma_do_accept(struct ibtrs_srv_sess *sess,
 
 	memset(&msg, 0, sizeof(msg));
 	msg.magic = cpu_to_le16(IBTRS_MAGIC);
-	msg.version = cpu_to_le16(IBTRS_VERSION);
+	msg.version = cpu_to_le16(IBTRS_PROTO_VER);
 	msg.errno = 0;
 	msg.queue_depth = cpu_to_le16(srv->queue_depth);
 	msg.max_io_size = cpu_to_le32(max_chunk_size - MAX_REQ_SIZE);
@@ -1364,7 +1364,7 @@ static int ibtrs_rdma_do_reject(struct rdma_cm_id *cm_id, int errno)
 
 	memset(&msg, 0, sizeof(msg));
 	msg.magic = cpu_to_le16(IBTRS_MAGIC);
-	msg.version = cpu_to_le16(IBTRS_VERSION);
+	msg.version = cpu_to_le16(IBTRS_PROTO_VER);
 	msg.errno = cpu_to_le16(errno);
 
 	err = rdma_reject(cm_id, &msg, sizeof(msg));
@@ -1559,9 +1559,9 @@ static int ibtrs_rdma_connect(struct rdma_cm_id *cm_id,
 		goto reject_w_econnreset;
 	}
 	version = le16_to_cpu(msg->version);
-	if (unlikely(version >> 8 != IBTRS_VER_MAJOR)) {
+	if (unlikely(version >> 8 != IBTRS_PROTO_VER_MAJOR)) {
 		pr_err("Unsupported major IBTRS version: %d, expected %d\n",
-		       version >> 8, IBTRS_VER_MAJOR);
+		       version >> 8, IBTRS_PROTO_VER_MAJOR);
 		goto reject_w_econnreset;
 	}
 	con_num = le16_to_cpu(msg->cid_num);
@@ -1925,12 +1925,12 @@ static int __init ibtrs_server_init(void)
 	if (!strlen(cq_affinity_list))
 		init_cq_affinity();
 
-	pr_info("Loading module %s, version: %s "
+	pr_info("Loading module %s, version %s, proto %s: "
 		"(retry_count: %d, cq_affinity_list: %s, "
 		"max_chunk_size: %d (pure IO %ld, headers %ld) , "
 		"sess_queue_depth: %d)\n",
-		KBUILD_MODNAME, IBTRS_VER_STRING, retry_count,
-		cq_affinity_list, max_chunk_size,
+		KBUILD_MODNAME, IBTRS_VER_STRING, IBTRS_PROTO_VER_STRING,
+		retry_count, cq_affinity_list, max_chunk_size,
 		max_chunk_size - MAX_REQ_SIZE, MAX_REQ_SIZE,
 		sess_queue_depth);
 
