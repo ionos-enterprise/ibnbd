@@ -1053,10 +1053,9 @@ static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 	if (unlikely(wc->status != IB_WC_SUCCESS)) {
 		if (wc->status != IB_WC_WR_FLUSH_ERR) {
 			ibtrs_err(sess, "%s (wr_cqe: %p,"
-				  " type: %s, vendor_err: 0x%x, len: %u)\n",
+				  " type: %d, vendor_err: 0x%x, len: %u)\n",
 				  ib_wc_status_msg(wc->status), wc->wr_cqe,
-				  ib_wc_opcode_str(wc->opcode),
-				  wc->vendor_err, wc->byte_len);
+				  wc->opcode, wc->vendor_err, wc->byte_len);
 			close_sess(sess);
 		}
 		return;
@@ -1111,8 +1110,7 @@ static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 		}
 		break;
 	default:
-		ibtrs_wrn(sess, "Unexpected WC type: %s\n",
-			  ib_wc_opcode_str(wc->opcode));
+		ibtrs_wrn(sess, "Unexpected WC type: %d\n", wc->opcode);
 		return;
 	}
 }

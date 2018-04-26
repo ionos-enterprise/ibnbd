@@ -331,22 +331,6 @@ void ibtrs_start_hb(struct ibtrs_sess *sess);
 void ibtrs_stop_hb(struct ibtrs_sess *sess);
 void ibtrs_send_hb_ack(struct ibtrs_sess *sess);
 
-#define XX(a) case (a): return #a
-static inline const char *ib_wc_opcode_str(enum ib_wc_opcode opcode)
-{
-	switch (opcode) {
-	XX(IB_WC_SEND);
-	XX(IB_WC_RDMA_WRITE);
-	XX(IB_WC_RDMA_READ);
-	XX(IB_WC_COMP_SWAP);
-	XX(IB_WC_FETCH_ADD);
-	/* recv-side); inbound completion */
-	XX(IB_WC_RECV);
-	XX(IB_WC_RECV_RDMA_WITH_IMM);
-	default: return "IB_WC_OPCODE_UNKNOWN";
-	}
-}
-
 static inline int sockaddr_cmp(const struct sockaddr *a,
 			       const struct sockaddr *b)
 {

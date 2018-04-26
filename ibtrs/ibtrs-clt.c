@@ -436,8 +436,7 @@ static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 		}
 		break;
 	default:
-		ibtrs_wrn(sess, "Unexpected WC type: %s\n",
-			  ib_wc_opcode_str(wc->opcode));
+		ibtrs_wrn(sess, "Unexpected WC type: %d\n", wc->opcode);
 		return;
 	}
 }
