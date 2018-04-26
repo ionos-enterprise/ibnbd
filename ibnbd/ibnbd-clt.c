@@ -588,7 +588,7 @@ static void msg_sess_info_conf(struct work_struct *work)
 	struct ibnbd_clt_session *sess = iu->sess;
 
 	if (likely(!iu->errno))
-		sess->ver = min_t(u8, rsp->ver, IBNBD_VER_MAJOR);
+		sess->ver = min_t(u8, rsp->ver, IBNBD_PROTO_VER_MAJOR);
 
 	kfree(rsp);
 	wake_up_iu_comp(iu, iu->errno);
@@ -670,7 +670,7 @@ static int send_msg_sess_info(struct ibnbd_clt_session *sess, bool wait)
 	sg_init_one(iu->sglist, rsp, sizeof(*rsp));
 
 	msg.hdr.type = cpu_to_le16(IBNBD_MSG_SESS_INFO);
-	msg.ver      = IBNBD_VER_MAJOR;
+	msg.ver      = IBNBD_PROTO_VER_MAJOR;
 
 	ibnbd_clt_get_sess(sess);
 	err = send_usr_msg(sess->ibtrs, READ, iu,
@@ -1758,8 +1758,10 @@ static int __init ibnbd_client_init(void)
 {
 	int err;
 
-	pr_info("Loading module %s, version %s: (softirq_enable: %d)\n",
-		KBUILD_MODNAME, IBNBD_VER_STRING, softirq_enable);
+	pr_info("Loading module %s, version %s, proto %s: "
+		"(softirq_enable: %d)\n", KBUILD_MODNAME,
+		IBNBD_VER_STRING, IBNBD_PROTO_VER_STRING,
+		softirq_enable);
 
 	ibnbd_client_major = register_blkdev(ibnbd_client_major, "ibnbd");
 	if (ibnbd_client_major <= 0) {

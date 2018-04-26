@@ -693,10 +693,10 @@ static int process_msg_sess_info(struct ibtrs_srv *ibtrs,
 	const struct ibnbd_msg_sess_info *sess_info_msg = msg;
 	struct ibnbd_msg_sess_info_rsp *rsp = data;
 
-	srv_sess->ver = min_t(u8, sess_info_msg->ver, IBNBD_VER_MAJOR);
+	srv_sess->ver = min_t(u8, sess_info_msg->ver, IBNBD_PROTO_VER_MAJOR);
 	pr_debug("Session %s using protocol version %d (client version: %d,"
 		 " server version: %d)\n", srv_sess->sessname,
-		 srv_sess->ver, sess_info_msg->ver, IBNBD_VER_MAJOR);
+		 srv_sess->ver, sess_info_msg->ver, IBNBD_PROTO_VER_MAJOR);
 
 	rsp->hdr.type = cpu_to_le16(IBNBD_MSG_SESS_INFO_RSP);
 	rsp->ver = srv_sess->ver;
@@ -876,8 +876,8 @@ static int __init ibnbd_srv_init_module(void)
 {
 	int err;
 
-	pr_info("Loading module %s, version %s\n",
-		KBUILD_MODNAME, IBNBD_VER_STRING);
+	pr_info("Loading module %s, version %s, proto %s\n",
+		KBUILD_MODNAME, IBNBD_VER_STRING, IBNBD_PROTO_VER_STRING);
 
 	ibtrs_ctx = ibtrs_srv_open(ibnbd_srv_rdma_ev, ibnbd_srv_link_ev,
 				   IBTRS_PORT);

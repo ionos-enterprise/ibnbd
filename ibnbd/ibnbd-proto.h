@@ -38,10 +38,16 @@
 #include <linux/in6.h>
 #include <rdma/ib.h>
 
-#define IBNBD_VER_MAJOR 1
-#define IBNBD_VER_MINOR 0
-#define IBNBD_VER_STRING __stringify(IBNBD_VER_MAJOR) "." \
-			 __stringify(IBNBD_VER_MINOR)
+#define IBNBD_PROTO_VER_MAJOR 1
+#define IBNBD_PROTO_VER_MINOR 0
+
+#define IBNBD_PROTO_VER_STRING __stringify(IBNBD_PROTO_VER_MAJOR) "." \
+			       __stringify(IBNBD_PROTO_VER_MINOR)
+
+#ifndef IBNBD_VER_STRING
+#define IBNBD_VER_STRING __stringify(IBNBD_PROTO_VER_MAJOR) "." \
+			 __stringify(IBNBD_PROTO_VER_MINOR)
+#endif
 
 /* TODO: should be configurable */
 #define IBTRS_PORT 1234
