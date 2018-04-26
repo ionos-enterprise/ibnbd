@@ -590,6 +590,22 @@ static inline void path_it_deinit(struct path_it *it)
 		list_del_init(skip);
 }
 
+/**
+ * copy_from_kvec() - Copy kvec to the buffer.
+ */
+static inline void copy_from_kvec(void *data, const struct kvec *vec,
+				  size_t copy)
+{
+	size_t seg, len;
+
+	for (seg = 0; copy; seg++) {
+		len = min(vec[seg].iov_len, copy);
+		memcpy(data, vec[seg].iov_base, len);
+		data += len;
+		copy -= len;
+	}
+}
+
 static inline void ibtrs_clt_init_req(struct ibtrs_clt_io_req *req,
 				      struct ibtrs_clt_sess *sess,
 				      ibtrs_conf_fn *conf,
@@ -2630,11 +2646,14 @@ int ibtrs_clt_request(int dir, ibtrs_conf_fn *conf, struct ibtrs_clt *clt,
 	struct ibtrs_clt_sess *sess;
 
 	enum dma_data_direction dma_dir;
-	int err = -ECONNABORTED;
+	int err = -ECONNABORTED, i;
 	size_t usr_len, hdr_len;
 	struct path_it it;
 
-	usr_len = kvec_length(vec, nr);
+	/* Get kvec length */
+	for (i = 0, usr_len = 0; i < nr; i++)
+		usr_len += vec[i].iov_len;
+
 	if (dir == READ) {
 		hdr_len = sizeof(struct ibtrs_msg_rdma_read) +
 			  sg_cnt * sizeof(struct ibtrs_sg_desc);

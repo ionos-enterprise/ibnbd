@@ -374,34 +374,6 @@ static inline void sockaddr_to_str(const struct sockaddr *addr,
 }
 
 /**
- * kvec_length() - Total number of bytes covered by an kvec.
- */
-static inline size_t kvec_length(const struct kvec *vec, size_t nr)
-{
-	size_t seg, ret = 0;
-
-	for (seg = 0; seg < nr; seg++)
-		ret += vec[seg].iov_len;
-	return ret;
-}
-
-/**
- * copy_from_kvec() - Copy kvec to the buffer.
- */
-static inline void copy_from_kvec(void *data, const struct kvec *vec,
-				  size_t copy)
-{
-	size_t seg, len;
-
-	for (seg = 0; copy; seg++) {
-		len = min(vec[seg].iov_len, copy);
-		memcpy(data, vec[seg].iov_base, len);
-		data += len;
-		copy -= len;
-	}
-}
-
-/**
  * ibtrs_invalidate_flag() - returns proper flags for invalidation
  *
  * NOTE: This function is needed for compat layer, so think twice before
