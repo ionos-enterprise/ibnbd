@@ -1,8 +1,13 @@
 # Called as kbuild
 ifneq ($(KERNELRELEASE),)
 
+ifdef PKG_VERSION
+DEFINES += -D IBNBD_VER_STRING=\"$(PKG_VERSION)\"
+DEFINES += -D IBTRS_VER_STRING=\"$(PKG_VERSION)\"
+endif
+
 # ibnbd requires public header of ibtrs API
-KBUILD_CFLAGS += -I$(src)/ibtrs
+KBUILD_CFLAGS += $(DEFINES) -I$(src)/ibtrs
 
 export CONFIG_BLK_DEV_IBNBD        := y
 export CONFIG_BLK_DEV_IBNBD_CLIENT := m
