@@ -1348,7 +1348,6 @@ static int ibtrs_rdma_do_accept(struct ibtrs_srv_sess *sess,
 	msg.queue_depth = cpu_to_le16(srv->queue_depth);
 	msg.max_io_size = cpu_to_le32(max_chunk_size - MAX_REQ_SIZE);
 	msg.max_req_size = cpu_to_le32(MAX_REQ_SIZE);
-	uuid_copy(&msg.uuid, &sess->s.uuid);
 
 	err = rdma_accept(cm_id, &param);
 	if (err)

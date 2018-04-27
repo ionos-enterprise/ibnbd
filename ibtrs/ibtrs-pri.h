@@ -200,7 +200,6 @@ struct ibtrs_msg_conn_req {
  * @queue_depth:   max inflight messages (queue-depth) in this session
  * @max_io_size:   max io size server supports
  * @max_req_size:  max infiniband message size server supports
- * @uuid:	   Server UUID
  *
  * NOTE: size is 56 bytes, max possible is 136 bytes, see man rdma_accept().
  */
@@ -211,8 +210,7 @@ struct ibtrs_msg_conn_rsp {
 	__le16		queue_depth;
 	__le32		max_io_size;
 	__le32		max_req_size;
-	uuid_t		uuid;
-	u8		reserved[24];
+	u8		reserved[40];
 };
 
 /**
