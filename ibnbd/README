@@ -111,6 +111,12 @@ device_path: Path to the block device on the server side. Path is specified
          directory and an entry in /sys/devices/virtual/ibnbd-client/ctl/devices
          will be created.
 
+         If 'dev_search_path' contains '%SESSNAME%', then each session can
+         have different devices namespace, e.g. server was configured with
+         the following parameter "dev_search_path=/run/ibnbd-devs/%SESSNAME%",
+         client has this string "sessname=blya device_path=sda", then server
+         will try to open: /run/ibnbd-devs/blya/sda.
+
 access_mode: the access_mode parameter specifies if the device is to be
              mapped as "ro" read-only or "rw" read-write. The server allows
              a device to be exported in rw mode only once. The "migration"
@@ -258,6 +264,10 @@ to the block device on the server side by concatenating dev_search_path
 and the "device_path" that was specified in the map_device operation.
 
 The default dev_search_path is: "/".
+
+dev_search_path option can also contain %SESSNAME% in order to provide
+different deviec namespaces for different sessions.  See "device_path"
+option for details.
 
 Contact
 -------
