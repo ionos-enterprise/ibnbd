@@ -136,14 +136,12 @@ struct ibtrs_iu {
  * @IBTRS_MSG_INFO_RSP:		Server additional info response to the client
  * @IBTRS_MSG_WRITE:		Client writes data per RDMA to server
  * @IBTRS_MSG_READ:		Client requests data transfer from server
- * @IBTRS_MSG_USER:		Data transfer per Infiniband message
  */
 enum ibtrs_msg_types {
 	IBTRS_MSG_INFO_REQ,
 	IBTRS_MSG_INFO_RSP,
 	IBTRS_MSG_WRITE,
 	IBTRS_MSG_READ,
-	IBTRS_MSG_USER,
 };
 
 /**
@@ -239,42 +237,6 @@ struct ibtrs_msg_info_rsp {
 	__le16          sg_cnt;
 	u8              reserved[4];
 	struct ibtrs_sg_desc desc[];
-};
-
-/*
- *  Data Layout in RDMA-Bufs:
- *
- * +---------RDMA-BUF--------+
- * |         Slice N	     |
- * | +---------------------+ |
- * | |      I/O data       | |
- * | |---------------------| |
- * | |      IBNBD MSG	   | |
- * | |---------------------| |
- * | |	    IBTRS MSG	   | |
- * | +---------------------+ |
- * +-------------------------+
- * |	     Slice N+1	     |
- * | +---------------------+ |
- * | |       I/O data	   | |
- * | |---------------------| |
- * | |	     IBNBD MSG     | |
- * | |---------------------| |
- * | |       IBTRS MSG     | |
- * | +---------------------+ |
- * +-------------------------+
- */
-
-/**
- * struct ibtrs_msg_user - Data exchanged a Infiniband message
- * @type:		@IBTRS_MSG_USER
- * @psize:		Payload size
- * @payl:		Payload data
- */
-struct ibtrs_msg_user {
-	__le16			type;
-	__le16			psize;
-	u8			payl[];
 };
 
 /**
