@@ -180,7 +180,7 @@ struct ibtrs_clt_sess {
 	bool			established;
 	struct ibtrs_rbuf	*rbufs;
 	size_t			max_io_size;
-	u32			max_req_size;
+	u32			max_hdr_size;
 	u32			chunk_size;
 	size_t			queue_depth;
 	u32			max_pages_per_mr;

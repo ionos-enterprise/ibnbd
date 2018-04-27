@@ -752,7 +752,7 @@ static int alloc_sess_reqs(struct ibtrs_clt_sess *sess)
 
 	for (i = 0; i < sess->queue_depth; ++i) {
 		req = &sess->reqs[i];
-		req->iu = ibtrs_iu_alloc(i, sess->max_req_size, GFP_KERNEL,
+		req->iu = ibtrs_iu_alloc(i, sess->max_hdr_size, GFP_KERNEL,
 					 sess->s.dev->ib_dev, DMA_TO_DEVICE,
 					 ibtrs_clt_rdma_done);
 		if (unlikely(!req->iu))
@@ -1696,9 +1696,9 @@ static int ibtrs_rdma_conn_established(struct ibtrs_clt_con *con,
 			}
 		}
 		sess->queue_depth = queue_depth;
-		sess->max_req_size = le32_to_cpu(msg->max_req_size);
+		sess->max_hdr_size = le32_to_cpu(msg->max_hdr_size);
 		sess->max_io_size = le32_to_cpu(msg->max_io_size);
-		sess->chunk_size = sess->max_io_size + sess->max_req_size;
+		sess->chunk_size = sess->max_io_size + sess->max_hdr_size;
 
 		/*
 		 * Global queue depth and IO size is always a minimum.
@@ -2667,12 +2667,12 @@ int ibtrs_clt_request(int dir, ibtrs_conf_fn *conf, struct ibtrs_clt *clt,
 		if (unlikely(sess->state != IBTRS_CLT_CONNECTED))
 			continue;
 
-		if (unlikely(usr_len + hdr_len > sess->max_req_size)) {
+		if (unlikely(usr_len + hdr_len > sess->max_hdr_size)) {
 			ibtrs_wrn_rl(sess, "%s request failed, user message "
 				     "size is %zu and header length %zu, but "
 				     "max size is %u\n",
 				     dir == READ ? "Read" : "Write",
-				     usr_len, hdr_len, sess->max_req_size);
+				     usr_len, hdr_len, sess->max_hdr_size);
 			err = -EMSGSIZE;
 			break;
 		}

@@ -44,8 +44,8 @@ MODULE_LICENSE("GPL");
 /* Must be power of 2, see mask from mr->page_size in ib_sg_to_pages() */
 #define DEFAULT_MAX_CHUNK_SIZE (128 << 10)
 #define DEFAULT_SESS_QUEUE_DEPTH 512
-#define MAX_REQ_SIZE PAGE_SIZE
-#define MAX_SG_COUNT ((MAX_REQ_SIZE - sizeof(struct ibtrs_msg_rdma_read)) \
+#define MAX_HDR_SIZE PAGE_SIZE
+#define MAX_SG_COUNT ((MAX_HDR_SIZE - sizeof(struct ibtrs_msg_rdma_read)) \
 		      / sizeof(struct ibtrs_sg_desc))
 
 /* We guarantee to serve 10 paths at least */
@@ -1346,8 +1346,8 @@ static int ibtrs_rdma_do_accept(struct ibtrs_srv_sess *sess,
 	msg.version = cpu_to_le16(IBTRS_PROTO_VER);
 	msg.errno = 0;
 	msg.queue_depth = cpu_to_le16(srv->queue_depth);
-	msg.max_io_size = cpu_to_le32(max_chunk_size - MAX_REQ_SIZE);
-	msg.max_req_size = cpu_to_le32(MAX_REQ_SIZE);
+	msg.max_io_size = cpu_to_le32(max_chunk_size - MAX_HDR_SIZE);
+	msg.max_hdr_size = cpu_to_le32(MAX_HDR_SIZE);
 
 	err = rdma_accept(cm_id, &param);
 	if (err)
@@ -1930,7 +1930,7 @@ static int __init ibtrs_server_init(void)
 		"sess_queue_depth: %d)\n",
 		KBUILD_MODNAME, IBTRS_VER_STRING, IBTRS_PROTO_VER_STRING,
 		retry_count, cq_affinity_list, max_chunk_size,
-		max_chunk_size - MAX_REQ_SIZE, MAX_REQ_SIZE,
+		max_chunk_size - MAX_HDR_SIZE, MAX_HDR_SIZE,
 		sess_queue_depth);
 
 	ib_pool_dev_init(0, &ib_dev_pool);

@@ -199,7 +199,7 @@ struct ibtrs_msg_conn_req {
  * @errno:	   If rdma_accept() then 0, if rdma_reject() indicates error
  * @queue_depth:   max inflight messages (queue-depth) in this session
  * @max_io_size:   max io size server supports
- * @max_req_size:  max infiniband message size server supports
+ * @max_hdr_size:  max msg header size server supports
  *
  * NOTE: size is 56 bytes, max possible is 136 bytes, see man rdma_accept().
  */
@@ -209,7 +209,7 @@ struct ibtrs_msg_conn_rsp {
 	__le16		errno;
 	__le16		queue_depth;
 	__le32		max_io_size;
-	__le32		max_req_size;
+	__le32		max_hdr_size;
 	u8		reserved[40];
 };
 
