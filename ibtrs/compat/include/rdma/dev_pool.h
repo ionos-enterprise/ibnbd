@@ -18,7 +18,7 @@
 #include <linux/version.h>
 
 #if LINUX_VERSION_CODE == KERNEL_VERSION(4,4,112) || \
-    LINUX_VERSION_CODE == KERNEL_VERSION(4,14,28)
+    LINUX_VERSION_CODE == KERNEL_VERSION(4,14,34)
 #include "../../dev_pool.h"
 #elif LINUX_VERSION_CODE == KERNEL_VERSION(4,4,73)
 #include "../../dev_pool-4.4.73.h"
