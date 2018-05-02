@@ -51,7 +51,7 @@ MODULE_LICENSE("GPL");
 /* We guarantee to serve 10 paths at least */
 #define CHUNK_POOL_SZ 10
 
-static struct ib_device_pool ib_dev_pool;
+static struct ibtrs_ib_dev_pool dev_pool;
 static mempool_t *chunk_pool;
 struct class *ibtrs_dev_class;
 
@@ -1315,7 +1315,7 @@ static void ibtrs_srv_close_work(struct work_struct *work)
 		rdma_destroy_id(con->c.cm_id);
 		kfree(con);
 	}
-	ib_pool_dev_put(sess->s.dev);
+	ibtrs_ib_dev_put(sess->s.dev);
 
 	del_path_from_srv(sess);
 	put_srv(sess->srv);
@@ -1503,8 +1503,7 @@ static struct ibtrs_srv_sess *__alloc_sess(struct ibtrs_srv *srv,
 	INIT_WORK(&sess->close_work, ibtrs_srv_close_work);
 	ibtrs_srv_init_hb(sess);
 
-	sess->s.dev = ib_pool_dev_find_get_or_create(cm_id->device,
-						     &ib_dev_pool);
+	sess->s.dev = ibtrs_ib_dev_find_or_add(cm_id->device, &dev_pool);
 	if (unlikely(!sess->s.dev)) {
 		err = -ENOMEM;
 		ibtrs_wrn(sess, "Failed to alloc ibtrs_device\n");
@@ -1525,7 +1524,7 @@ static struct ibtrs_srv_sess *__alloc_sess(struct ibtrs_srv *srv,
 err_unmap_bufs:
 	unmap_cont_bufs(sess);
 err_put_dev:
-	ib_pool_dev_put(sess->s.dev);
+	ibtrs_ib_dev_put(sess->s.dev);
 err_free_con:
 	kfree(sess->s.con);
 err_free_dma_addr:
@@ -1933,7 +1932,7 @@ static int __init ibtrs_server_init(void)
 		max_chunk_size - MAX_HDR_SIZE, MAX_HDR_SIZE,
 		sess_queue_depth);
 
-	ib_pool_dev_init(0, &ib_dev_pool);
+	ibtrs_ib_dev_pool_init(0, &dev_pool);
 
 	err = check_module_params();
 	if (err) {
@@ -1974,7 +1973,7 @@ static void __exit ibtrs_server_exit(void)
 	destroy_workqueue(ibtrs_wq);
 	class_destroy(ibtrs_dev_class);
 	mempool_destroy(chunk_pool);
-	ib_pool_dev_deinit(&ib_dev_pool);
+	ibtrs_ib_dev_pool_deinit(&dev_pool);
 }
 
 module_init(ibtrs_server_init);

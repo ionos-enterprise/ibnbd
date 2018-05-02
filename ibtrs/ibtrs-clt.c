@@ -61,9 +61,9 @@ module_param_named(noreg_cnt, noreg_cnt, int, 0644);
 MODULE_PARM_DESC(noreg_cnt, "Max number of SG entries when MR registration "
 		 "does not happen (default: 4)");
 
-static const struct ib_device_pool_ops ib_dev_pool_ops;
-static struct ib_device_pool ib_dev_pool = {
-	.ops = &ib_dev_pool_ops
+static const struct ibtrs_ib_dev_pool_ops dev_pool_ops;
+static struct ibtrs_ib_dev_pool dev_pool = {
+	.ops = &dev_pool_ops
 };
 static struct workqueue_struct *ibtrs_wq;
 static struct class *ibtrs_dev_class;
@@ -1147,10 +1147,10 @@ static int create_con_cq_qp(struct ibtrs_clt_con *con)
 		 * Be careful not to close user connection before ib dev
 		 * is gracefully put.
 		 */
-		sess->s.dev = ib_pool_dev_find_get_or_create(
-			con->c.cm_id->device, &ib_dev_pool);
+		sess->s.dev = ibtrs_ib_dev_find_or_add(
+			con->c.cm_id->device, &dev_pool);
 		if (unlikely(!sess->s.dev)) {
-			ibtrs_wrn(sess, "ib_pool_dev_find_get_or_create(): no memory\n");
+			ibtrs_wrn(sess, "ibtrs_ib_dev_find_get_or_add(): no memory\n");
 			return -ENOMEM;
 		}
 		sess->s.dev_ref = 1;
@@ -1199,7 +1199,7 @@ static void destroy_con_cq_qp(struct ibtrs_clt_con *con)
 
 	ibtrs_cq_qp_destroy(&con->c);
 	if (sess->s.dev_ref && !--sess->s.dev_ref) {
-		ib_pool_dev_put(sess->s.dev);
+		ibtrs_ib_dev_put(sess->s.dev);
 		sess->s.dev = NULL;
 	}
 }
@@ -2528,7 +2528,7 @@ static int ibtrs_clt_read_req(struct ibtrs_clt_io_req *req)
 	struct ibtrs_clt_con *con = req->con;
 	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
 	struct ibtrs_msg_rdma_read *msg;
-	struct ib_pool_device *dev;
+	struct ibtrs_ib_dev *dev;
 	struct scatterlist *sg;
 
 	struct ib_reg_wr rwr;
@@ -2755,7 +2755,7 @@ static int check_module_params(void)
 	return 0;
 }
 
-static int ibtrs_clt_ib_pool_dev_init(struct ib_pool_device *dev)
+static int ibtrs_clt_ib_dev_init(struct ibtrs_ib_dev *dev)
 {
 	if (!(dev->ib_dev->attrs.device_cap_flags &
 	      IB_DEVICE_MEM_MGT_EXTENSIONS)) {
@@ -2766,8 +2766,8 @@ static int ibtrs_clt_ib_pool_dev_init(struct ib_pool_device *dev)
 	return 0;
 }
 
-static const struct ib_device_pool_ops ib_dev_pool_ops = {
-	.init = ibtrs_clt_ib_pool_dev_init
+static const struct ibtrs_ib_dev_pool_ops dev_pool_ops = {
+	.init = ibtrs_clt_ib_dev_init
 };
 
 static int __init ibtrs_client_init(void)
@@ -2779,8 +2779,8 @@ static int __init ibtrs_client_init(void)
 		KBUILD_MODNAME, IBTRS_VER_STRING, IBTRS_PROTO_VER_STRING,
 		retry_cnt, noreg_cnt);
 
-	ib_pool_dev_init(noreg_cnt ? IB_PD_UNSAFE_GLOBAL_RKEY : 0,
-			 &ib_dev_pool);
+	ibtrs_ib_dev_pool_init(noreg_cnt ? IB_PD_UNSAFE_GLOBAL_RKEY : 0,
+			       &dev_pool);
 
 	err = check_module_params();
 	if (unlikely(err)) {
@@ -2807,7 +2807,7 @@ static void __exit ibtrs_client_exit(void)
 {
 	destroy_workqueue(ibtrs_wq);
 	class_destroy(ibtrs_dev_class);
-	ib_pool_dev_deinit(&ib_dev_pool);
+	ibtrs_ib_dev_pool_deinit(&dev_pool);
 }
 
 module_init(ibtrs_client_init);

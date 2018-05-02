@@ -32,7 +32,6 @@
 
 #include <linux/uuid.h>
 #include <rdma/rdma_cm.h>
-#include <rdma/dev_pool.h>
 #include <rdma/ib_verbs.h>
 #include <rdma/ib.h>
 
@@ -90,6 +89,30 @@ enum {
 	IBTRS_PROTO_VER = (IBTRS_PROTO_VER_MAJOR << 8) | IBTRS_PROTO_VER_MINOR,
 };
 
+struct ibtrs_ib_dev;
+
+struct ibtrs_ib_dev_pool_ops {
+	struct ibtrs_ib_dev *(*alloc)(void);
+	void (*free)(struct ibtrs_ib_dev *);
+	int (*init)(struct ibtrs_ib_dev *);
+	void (*deinit)(struct ibtrs_ib_dev *);
+};
+
+struct ibtrs_ib_dev_pool {
+	struct mutex		mutex;
+	struct list_head	list;
+	enum ib_pd_flags	pd_flags;
+	const struct ibtrs_ib_dev_pool_ops *ops;
+};
+
+struct ibtrs_ib_dev {
+	struct ib_device	 *ib_dev;
+	struct ib_pd		 *ib_pd;
+	struct kref		 ref;
+	struct list_head	 entry;
+	struct ibtrs_ib_dev_pool *pool;
+};
+
 struct ibtrs_con {
 	struct ibtrs_sess	*sess;
 	struct ib_qp		*qp;
@@ -109,7 +132,7 @@ struct ibtrs_sess {
 	struct ibtrs_con	**con;
 	unsigned int		con_num;
 	unsigned int		recon_cnt;
-	struct ib_pool_device	*dev;
+	struct ibtrs_ib_dev	*dev;
 	int			dev_ref;
 	struct ib_cqe		*hb_cqe;
 	ibtrs_hb_handler_t	*hb_err_handler;
@@ -296,6 +319,14 @@ void ibtrs_init_hb(struct ibtrs_sess *sess, struct ib_cqe *cqe,
 void ibtrs_start_hb(struct ibtrs_sess *sess);
 void ibtrs_stop_hb(struct ibtrs_sess *sess);
 void ibtrs_send_hb_ack(struct ibtrs_sess *sess);
+
+void ibtrs_ib_dev_pool_init(enum ib_pd_flags pd_flags,
+			    struct ibtrs_ib_dev_pool *pool);
+void ibtrs_ib_dev_pool_deinit(struct ibtrs_ib_dev_pool *pool);
+
+struct ibtrs_ib_dev *ibtrs_ib_dev_find_or_add(struct ib_device *ib_dev,
+					      struct ibtrs_ib_dev_pool *pool);
+int ibtrs_ib_dev_put(struct ibtrs_ib_dev *dev);
 
 static inline int sockaddr_cmp(const struct sockaddr *a,
 			       const struct sockaddr *b)
