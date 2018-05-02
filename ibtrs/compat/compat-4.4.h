@@ -75,12 +75,10 @@ void sysfs_remove_file_self(struct kobject *kobj,
  * Version specific
  */
 
-#if LINUX_VERSION_CODE == KERNEL_VERSION(4,4,73)
-#include "compat-4.4.73.h"
-#elif LINUX_VERSION_CODE == KERNEL_VERSION(4,4,112)
+#if LINUX_VERSION_CODE == KERNEL_VERSION(4,4,112)
 #include "compat-4.4.112.h"
 #else
-#error Unsupported version
+#error Unsupported kernel version
 #endif
 
 /*

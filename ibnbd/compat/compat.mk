@@ -8,8 +8,6 @@ dir := $(src)/compat
 
 ifeq ($(LIN_VER),0.0.0)
     $(error Failed to read linux/version.h and extract version)
-else ifeq ($(LIN_VER), 4.4.73)
-    do_compat := 1
 else ifeq ($(LIN_VER), 4.4.112)
     do_compat := 1
 else ifeq ($(LIN_VER), 4.14.34)
