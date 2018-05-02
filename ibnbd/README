@@ -269,6 +269,30 @@ dev_search_path option can also contain %SESSNAME% in order to provide
 different deviec namespaces for different sessions.  See "device_path"
 option for details.
 
+==============================
+Protocol (ibnbd/ibnbd-proto.h)
+==============================
+
+1. Before mapping first device from a given server, client sends an
+IBNBD_MSG_SESS_INFO to the server. Server responds with
+IBNBD_MSG_SESS_INFO_RSP. Currently the messages only contain the protocol
+version for backward compatibility.
+
+2. Client requests to open a device by sending IBNBD_MSG_OPEN message. This
+contains the path to the device, access mode (read-only or writable), and
+io_mode which specifies if the device should be opened as block device or
+using file io. Server responds to the message with IBNBD_MSG_OPEN_RSP. This
+contains a 32 bit device id to be used for  IOs and device "geometry" related
+information: side, max_hw_sectors, etc.
+
+3. Client attaches IBNBD_MSG_IO to each IO message send to a device. This
+message contains device id, provided by server in his ibnbd_msg_open_rsp,
+sector to be accessed, read-write flags and bi_size.
+
+4. Client closes a device by sending IBNBD_MSG_CLOSE which contains only the
+device id provided by the server.
+
+
 Contact
 -------
 
