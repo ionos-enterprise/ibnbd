@@ -60,7 +60,6 @@
  * @IBNBD_MSG_OPEN_RSP:		response to an @IBNBD_MSG_OPEN
  * @IBNBD_MSG_IO:		block IO request operation
  * @IBNBD_MSG_CLOSE:		close (unmap) device request
- * @IBNBD_MSG_CLOSE_RSP:	response to an @IBNBD_MSG_CLOSE
  */
 enum ibnbd_msg_type {
 	IBNBD_MSG_SESS_INFO,
@@ -69,7 +68,6 @@ enum ibnbd_msg_type {
 	IBNBD_MSG_OPEN_RSP,
 	IBNBD_MSG_IO,
 	IBNBD_MSG_CLOSE,
-	IBNBD_MSG_CLOSE_RSP,
 };
 
 /**
