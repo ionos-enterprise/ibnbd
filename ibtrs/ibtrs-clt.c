@@ -69,6 +69,8 @@ static struct workqueue_struct *ibtrs_wq;
 static struct class *ibtrs_dev_class;
 
 static void ibtrs_rdma_error_recovery(struct ibtrs_clt_con *con);
+static int ibtrs_clt_rdma_cm_handler(struct rdma_cm_id *cm_id,
+				     struct rdma_cm_event *ev);
 static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc);
 static void complete_rdma_req(struct ibtrs_clt_io_req *req, int errno,
 			      bool notify, bool can_wait);
@@ -1214,9 +1216,6 @@ static void destroy_cm(struct ibtrs_clt_con *con)
 	rdma_destroy_id(con->c.cm_id);
 	con->c.cm_id = NULL;
 }
-
-static int ibtrs_clt_rdma_cm_handler(struct rdma_cm_id *cm_id,
-				     struct rdma_cm_event *ev);
 
 static int create_cm(struct ibtrs_clt_con *con)
 {
