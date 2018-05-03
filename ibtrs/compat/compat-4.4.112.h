@@ -226,13 +226,6 @@ static inline void backport_rdma_destroy_qp(struct backport_rdma_cm_id *id)
 	return rdma_destroy_qp((struct rdma_cm_id *)id);
 }
 
-static inline __be64
-backport_rdma_get_service_id(struct backport_rdma_cm_id *id,
-			     struct sockaddr *addr)
-{
-	return rdma_get_service_id((struct rdma_cm_id *)id, addr);
-}
-
 enum ib_pd_flags {
        /*
         * Create a memory registration for all memory in the system and place
@@ -870,6 +863,5 @@ rdma_consumer_reject_data(struct backport_rdma_cm_id *id,
 #define rdma_listen backport_rdma_listen
 #define rdma_accept backport_rdma_accept
 #define rdma_reject backport_rdma_reject
-#define rdma_get_service_id backport_rdma_get_service_id
 
 #endif /* IBTRS_4_4_112_COMPAT_H */
