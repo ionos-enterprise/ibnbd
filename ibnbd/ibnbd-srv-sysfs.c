@@ -53,42 +53,8 @@ static struct attribute_group ibnbd_srv_default_dev_attr_group = {
 	.attrs = ibnbd_srv_default_dev_attrs,
 };
 
-static ssize_t ibnbd_srv_attr_show(struct kobject *kobj, struct attribute *attr,
-				   char *page)
-{
-	struct kobj_attribute *kattr;
-	int ret = -EIO;
-
-	kattr = container_of(attr, struct kobj_attribute, attr);
-	if (kattr->show)
-		ret = kattr->show(kobj, kattr, page);
-	return ret;
-}
-
-static ssize_t ibnbd_srv_attr_store(struct kobject *kobj,
-				    struct attribute *attr,
-				    const char *page, size_t length)
-{
-	struct kobj_attribute *kattr;
-	int ret = -EIO;
-
-	kattr = container_of(attr, struct kobj_attribute, attr);
-	if (kattr->store)
-		ret = kattr->store(kobj, kattr, page, length);
-	return ret;
-}
-
-static const struct sysfs_ops ibnbd_srv_sysfs_ops = {
-	.show	= ibnbd_srv_attr_show,
-	.store	= ibnbd_srv_attr_store,
-};
-
-static struct kobj_type ibnbd_srv_dev_ktype = {
-	.sysfs_ops	= &ibnbd_srv_sysfs_ops,
-};
-
-static struct kobj_type ibnbd_srv_dev_sessions_ktype = {
-	.sysfs_ops	= &ibnbd_srv_sysfs_ops,
+static struct kobj_type ktype = {
+	.sysfs_ops	= &kobj_sysfs_ops,
 };
 
 int ibnbd_srv_create_dev_sysfs(struct ibnbd_srv_dev *dev,
@@ -98,13 +64,13 @@ int ibnbd_srv_create_dev_sysfs(struct ibnbd_srv_dev *dev,
 	struct kobject *bdev_kobj;
 	int ret;
 
-	ret = kobject_init_and_add(&dev->dev_kobj, &ibnbd_srv_dev_ktype,
+	ret = kobject_init_and_add(&dev->dev_kobj, &ktype,
 				   ibnbd_devs_kobj, dir_name);
 	if (ret)
 		return ret;
 
 	ret = kobject_init_and_add(&dev->dev_sessions_kobj,
-				   &ibnbd_srv_dev_sessions_ktype,
+				   &ktype,
 				   &dev->dev_kobj, "sessions");
 	if (ret)
 		goto err;
@@ -209,7 +175,7 @@ static void ibnbd_srv_sess_dev_release(struct kobject *kobj)
 }
 
 static struct kobj_type ibnbd_srv_sess_dev_ktype = {
-	.sysfs_ops	= &ibnbd_srv_sysfs_ops,
+	.sysfs_ops	= &kobj_sysfs_ops,
 	.release	= ibnbd_srv_sess_dev_release,
 };
 
