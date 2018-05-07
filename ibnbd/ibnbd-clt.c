@@ -1666,13 +1666,12 @@ int ibnbd_clt_unmap_device(struct ibnbd_clt_dev *dev, bool force,
 	mutex_unlock(&dev->lock);
 
 	delete_dev(dev);
-
+	destroy_sysfs(dev, sysfs_self);
+	destroy_gen_disk(dev);
 	if (prev_state == DEV_STATE_MAPPED && sess->ibtrs)
 		send_msg_close(dev, dev->device_id, WAIT);
 
 	ibnbd_info(dev, "Device is unmapped\n");
-	destroy_sysfs(dev, sysfs_self);
-	destroy_gen_disk(dev);
 
 	/* Likely last reference put */
 	ibnbd_clt_put_dev(dev);
