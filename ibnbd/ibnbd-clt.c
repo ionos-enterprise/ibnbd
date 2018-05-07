@@ -542,7 +542,7 @@ static int send_msg_close(struct ibnbd_clt_dev *dev, u32 device_id, bool wait)
 	msg.hdr.type	= cpu_to_le16(IBNBD_MSG_CLOSE);
 	msg.device_id	= cpu_to_le32(device_id);
 
-	ibnbd_clt_get_dev(dev);
+	WARN_ON(!ibnbd_clt_get_dev(dev));
 	err = send_usr_msg(sess->ibtrs, WRITE, iu, &vec, 1, 0, NULL, 0,
 			   msg_close_conf, &errno, wait);
 	if (unlikely(err)) {
@@ -628,7 +628,7 @@ static int send_msg_open(struct ibnbd_clt_dev *dev, bool wait)
 	msg.io_mode	= dev->io_mode;
 	strlcpy(msg.dev_name, dev->pathname, sizeof(msg.dev_name));
 
-	ibnbd_clt_get_dev(dev);
+	WARN_ON(!ibnbd_clt_get_dev(dev));
 	err = send_usr_msg(sess->ibtrs, READ, iu,
 			   &vec, 1, sizeof(*rsp), iu->sglist, 1,
 			   msg_open_conf, &errno, wait);
@@ -672,12 +672,22 @@ static int send_msg_sess_info(struct ibnbd_clt_session *sess, bool wait)
 	msg.hdr.type = cpu_to_le16(IBNBD_MSG_SESS_INFO);
 	msg.ver      = IBNBD_PROTO_VER_MAJOR;
 
-	ibnbd_clt_get_sess(sess);
+	if (unlikely(!ibnbd_clt_get_sess(sess))) {
+		/*
+		 * That can happen only in one case, when IBTRS has restablished
+		 * the connection and link_ev() is called, but session is almost
+		 * dead, last reference on session is put and caller is waiting
+		 * for IBTRS to close everything.
+		 */
+		err = -ENODEV;
+		goto put_iu;
+	}
 	err = send_usr_msg(sess->ibtrs, READ, iu,
 			   &vec, 1, sizeof(*rsp), iu->sglist, 1,
 			   msg_sess_info_conf, &errno, wait);
 	if (unlikely(err)) {
 		ibnbd_clt_put_sess(sess);
+put_iu:
 		ibnbd_put_iu(sess, iu);
 		kfree(rsp);
 	} else {
@@ -1417,8 +1427,8 @@ static struct ibnbd_clt_dev *init_dev(struct ibnbd_clt_session *sess,
 				      enum ibnbd_io_mode io_mode,
 				      const char *pathname)
 {
-	int ret;
 	struct ibnbd_clt_dev *dev;
+	int ret;
 
 	dev = kzalloc_node(sizeof(*dev), GFP_KERNEL, NUMA_NO_NODE);
 	if (!dev)
@@ -1456,7 +1466,7 @@ static struct ibnbd_clt_dev *init_dev(struct ibnbd_clt_session *sess,
 	 * Here we called from sysfs entry, thus clt-sysfs is
 	 * responsible that session will not disappear.
 	 */
-	ibnbd_clt_get_sess(sess);
+	WARN_ON(!ibnbd_clt_get_sess(sess));
 
 	return dev;
 
@@ -1735,7 +1745,7 @@ static void ibnbd_destroy_sessions(void)
 	 */
 
 	list_for_each_entry_safe(sess, sn, &sess_list, list) {
-		ibnbd_clt_get_sess(sess);
+		WARN_ON(!ibnbd_clt_get_sess(sess));
 		close_ibtrs(sess);
 		list_for_each_entry_safe(dev, tn, &sess->devs_list, list) {
 			/*
