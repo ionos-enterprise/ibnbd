@@ -1645,8 +1645,8 @@ int ibnbd_clt_unmap_device(struct ibnbd_clt_dev *dev, bool force,
 			   const struct attribute *sysfs_self)
 {
 	struct ibnbd_clt_session *sess = dev->sess;
-	enum ibnbd_clt_dev_state prev_state;
 	int refcount, ret = 0;
+	bool was_mapped;
 
 	mutex_lock(&dev->lock);
 	if (dev->dev_state == DEV_STATE_UNMAPPED) {
@@ -1661,14 +1661,14 @@ int ibnbd_clt_unmap_device(struct ibnbd_clt_dev *dev, bool force,
 		ret = -EBUSY;
 		goto err;
 	}
-	prev_state = dev->dev_state;
+	was_mapped = (dev->dev_state == DEV_STATE_MAPPED);
 	dev->dev_state = DEV_STATE_UNMAPPED;
 	mutex_unlock(&dev->lock);
 
 	delete_dev(dev);
 	destroy_sysfs(dev, sysfs_self);
 	destroy_gen_disk(dev);
-	if (prev_state == DEV_STATE_MAPPED && sess->ibtrs)
+	if (was_mapped && sess->ibtrs)
 		send_msg_close(dev, dev->device_id, WAIT);
 
 	ibnbd_info(dev, "Device is unmapped\n");
