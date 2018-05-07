@@ -445,7 +445,8 @@ static inline int alloc_and_set_fmr(struct ib_pd *pd,
 static inline void dealloc_fmr(struct fmr_per_mr *fmr_mr)
 {
 	if (likely(fmr_mr)) {
-		flush_scheduled_work();
+		flush_work(&fmr_mr->fmr[0].unmap_work);
+		flush_work(&fmr_mr->fmr[1].unmap_work);
 		if (fmr_mr->fmr[0].remap_count)
 			unmap_fmr(&fmr_mr->fmr[0]);
 		if (fmr_mr->fmr[1].remap_count)
@@ -596,6 +597,9 @@ next_page:
 	return i;
 }
 
+/* Defined in IBTRS (client or server) with WQ_MEM_RECLAIM */
+static struct workqueue_struct *ibtrs_wq;
+
 static inline int ib_map_mr_sg(struct backport_ib_mr *bmr,
 			       struct scatterlist *sg,
 			       int sg_nents,  unsigned int *sg_offset,
@@ -605,12 +609,15 @@ static inline int ib_map_mr_sg(struct backport_ib_mr *bmr,
 	struct fmr_struct *fmr;
 	int err;
 
+	if (WARN_ON(!ibtrs_wq))
+		return -EINVAL;
+
 	fmr_mr = get_fmr(bmr, page_size);
 	if (WARN_ON(!fmr_mr))
 		return -EINVAL;
 
 	if (fmr_mr->active_fmr->remap_count >= fmr_mr->max_remaps) {
-		schedule_work(&fmr_mr->active_fmr->unmap_work);
+		queue_work(ibtrs_wq, &fmr_mr->active_fmr->unmap_work);
 		swap(fmr_mr->active_fmr, fmr_mr->shadow_fmr);
 		/* WTF? */
 		if (unlikely(fmr_mr->active_fmr->remap_count >=
