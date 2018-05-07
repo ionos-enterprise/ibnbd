@@ -167,7 +167,5 @@ void ibnbd_clt_destroy_sysfs_files(void);
 void ibnbd_clt_destroy_default_group(void);
 
 void ibnbd_clt_remove_dev_symlink(struct ibnbd_clt_dev *dev);
-void ibnbd_sysfs_remove_file_self(struct kobject *kobj,
-				  const struct attribute *attr);
 
 #endif /* IBNBD_CLT_H */

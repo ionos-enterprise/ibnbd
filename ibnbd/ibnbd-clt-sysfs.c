@@ -299,24 +299,6 @@ static ssize_t ibnbd_clt_unmap_dev_show(struct kobject *kobj,
 			 attr->attr.name);
 }
 
-void ibnbd_sysfs_remove_file_self(struct kobject *kobj,
-				  const struct attribute *attr)
-{
-	struct device_attribute dattr = {
-		.attr.name = attr->name
-	};
-	struct device *device;
-
-	/*
-	 * Unfortunately original sysfs_remove_file_self() is not exported,
-	 * so consider this as a hack to call self removal of a sysfs entry
-	 * just using another "door".
-	 */
-
-	device = container_of(kobj, typeof(*device), kobj);
-	device_remove_file_self(device, &dattr);
-}
-
 static ssize_t ibnbd_clt_unmap_dev_store(struct kobject *kobj,
 					 struct kobj_attribute *attr,
 					 const char *buf, size_t count)
