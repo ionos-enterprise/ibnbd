@@ -193,6 +193,7 @@ struct ibtrs_attrs {
 	u32	queue_depth;
 	u32	max_io_size;
 	u8	sessname[NAME_MAX];
+	struct kobject *sess_kobj;
 };
 
 /**
