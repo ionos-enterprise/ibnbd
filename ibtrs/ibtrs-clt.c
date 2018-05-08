@@ -732,7 +732,8 @@ static void free_sess_reqs(struct ibtrs_clt_sess *sess)
 		return;
 	for (i = 0; i < sess->queue_depth; ++i) {
 		req = &sess->reqs[i];
-		ib_dereg_mr(req->mr);
+		if (req->mr)
+			ib_dereg_mr(req->mr);
 		kfree(req->sge);
 		ibtrs_iu_free(req->iu, DMA_TO_DEVICE,
 			      sess->s.dev->ib_dev);
