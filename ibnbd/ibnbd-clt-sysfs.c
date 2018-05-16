@@ -134,8 +134,14 @@ static int ibnbd_clt_parse_map_options(const char *buf,
 			break;
 
 		case IBNBD_OPT_PATH:
+			if (p_cnt >= max_path_cnt) {
+				pr_err("map_device: too many (> %lu) paths "
+				       "provided\n", max_path_cnt);
+				ret = -ENOMEM;
+				goto out;
+			}
 			p = match_strdup(args);
-			if (!p || p_cnt >= max_path_cnt) {
+			if (!p) {
 				ret = -ENOMEM;
 				goto out;
 			}
