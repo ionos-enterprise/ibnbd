@@ -57,7 +57,7 @@ MODULE_PARM_DESC(retry_cnt, "Number of times to send the message if the"
 		 __stringify(MAX_RTR_CNT) ")");
 
 static int __read_mostly noreg_cnt = 0;
-module_param_named(noreg_cnt, noreg_cnt, int, 0644);
+module_param_named(noreg_cnt, noreg_cnt, int, 0444);
 MODULE_PARM_DESC(noreg_cnt, "Max number of SG entries when MR registration "
 		 "does not happen (default: 0)");
 
@@ -2563,8 +2563,7 @@ static int ibtrs_clt_read_req(struct ibtrs_clt_io_req *req)
 	msg->type = cpu_to_le16(IBTRS_MSG_READ);
 	msg->usr_len = cpu_to_le16(req->usr_len);
 
-	if (count > noreg_cnt ||
-	    !(dev->ib_pd->flags & IB_PD_UNSAFE_GLOBAL_RKEY)) {
+	if (count > noreg_cnt) {
 		ret = ibtrs_map_sg_fr(req, count);
 		if (ret < 0) {
 			ibtrs_err_rl(sess,
