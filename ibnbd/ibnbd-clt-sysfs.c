@@ -107,9 +107,8 @@ static int ibnbd_clt_parse_map_options(const char *buf,
 	if (!options)
 		return -ENOMEM;
 
-	options = strstrip(options);
-	strip(options);
-	sep_opt = options;
+	sep_opt = strstrip(options);
+	strip(sep_opt);
 	while ((p = strsep(&sep_opt, " ")) != NULL) {
 		if (!*p)
 			continue;
@@ -304,15 +303,15 @@ static ssize_t ibnbd_clt_unmap_dev_store(struct kobject *kobj,
 					 const char *buf, size_t count)
 {
 	struct ibnbd_clt_dev *dev;
-	char *options;
+	char *opt, *options;
 	bool force;
 	int err;
 
-	options = kstrdup(buf, GFP_KERNEL);
-	if (!options)
+	opt = kstrdup(buf, GFP_KERNEL);
+	if (!opt)
 		return -ENOMEM;
 
-	options = strstrip(options);
+	options = strstrip(opt);
 	strip(options);
 
 	dev = container_of(kobj, struct ibnbd_clt_dev, kobj);
@@ -354,7 +353,7 @@ static ssize_t ibnbd_clt_unmap_dev_store(struct kobject *kobj,
 module_put:
 	module_put(THIS_MODULE);
 out:
-	kfree(options);
+	kfree(opt);
 
 	return err;
 }
@@ -409,14 +408,14 @@ static ssize_t ibnbd_clt_remap_dev_store(struct kobject *kobj,
 					 const char *buf, size_t count)
 {
 	struct ibnbd_clt_dev *dev;
-	char *options;
+	char *opt, *options;
 	int err;
 
-	options = kstrdup(buf, GFP_KERNEL);
-	if (!options)
+	opt = kstrdup(buf, GFP_KERNEL);
+	if (!opt)
 		return -ENOMEM;
 
-	options = strstrip(options);
+	options = strstrip(opt);
 	strip(options);
 
 	dev = container_of(kobj, struct ibnbd_clt_dev, kobj);
@@ -430,7 +429,7 @@ static ssize_t ibnbd_clt_remap_dev_store(struct kobject *kobj,
 		err = count;
 
 out:
-	kfree(options);
+	kfree(opt);
 
 	return err;
 }
