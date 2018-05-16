@@ -56,10 +56,10 @@ MODULE_PARM_DESC(retry_cnt, "Number of times to send the message if the"
 		 " min: " __stringify(MIN_RTR_CNT) ", max: "
 		 __stringify(MAX_RTR_CNT) ")");
 
-static int __read_mostly noreg_cnt = 4;
+static int __read_mostly noreg_cnt = 0;
 module_param_named(noreg_cnt, noreg_cnt, int, 0644);
 MODULE_PARM_DESC(noreg_cnt, "Max number of SG entries when MR registration "
-		 "does not happen (default: 4)");
+		 "does not happen (default: 0)");
 
 static const struct ibtrs_ib_dev_pool_ops dev_pool_ops;
 static struct ibtrs_ib_dev_pool dev_pool = {
