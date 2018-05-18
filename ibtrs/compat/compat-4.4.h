@@ -39,6 +39,30 @@ typedef uuid_be uuid_t;
 #define COUNT_ARGS_(z,a,b,c,d,e,f,cnt,...) cnt
 
 /*
+ * implement _copy_from_iter from lib/iov_iter.c
+ */
+#include <linux/uio.h>
+#include <linux/bug.h>
+
+static inline size_t _copy_from_iter(void *data, size_t bytes,
+				     struct iov_iter *i)
+{
+	size_t seg, len, copy = bytes;
+	const struct kvec *vec = i->kvec;
+
+	BUG_ON(!(i->type & ITER_KVEC));
+
+	for (seg = 0; copy; seg++) {
+		len = min(vec[seg].iov_len, copy);
+		memcpy(data, vec[seg].iov_base, len);
+		data += len;
+		copy -= len;
+	}
+
+	return bytes;
+}
+
+/*
  * linux/sysfs.h
  */
 #define sysfs_remove_file_self ORIGINAL_sysfs_remove_file_self
