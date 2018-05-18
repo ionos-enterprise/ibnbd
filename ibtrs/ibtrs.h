@@ -113,25 +113,11 @@ enum ibtrs_clt_con_type {
 	IBTRS_IO_CON
 };
 
-/**
- * ibtrs_tag - tags the memory allocation for future RDMA operation
- */
-struct ibtrs_tag {
-	enum ibtrs_clt_con_type con_type;
-	unsigned int cpu_id;
-	unsigned int mem_id;
-	unsigned int mem_off;
-};
+struct ibtrs_tag;
 
-static inline struct ibtrs_tag *ibtrs_tag_from_pdu(void *pdu)
-{
-	return pdu - sizeof(struct ibtrs_tag);
-}
+struct ibtrs_tag *ibtrs_tag_from_pdu(void *pdu);
 
-static inline void *ibtrs_tag_to_pdu(struct ibtrs_tag *tag)
-{
-	return tag + 1;
-}
+void *ibtrs_tag_to_pdu(struct ibtrs_tag *tag);
 
 /**
  * ibtrs_clt_get_tag() - allocates tag for future RDMA operation

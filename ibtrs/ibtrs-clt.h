@@ -136,6 +136,16 @@ struct ibtrs_clt_con {
 	int			cm_err;
 };
 
+/**
+ * ibtrs_tag - tags the memory allocation for future RDMA operation
+ */
+struct ibtrs_tag {
+	enum ibtrs_clt_con_type con_type;
+	unsigned int cpu_id;
+	unsigned int mem_id;
+	unsigned int mem_off;
+};
+
 struct ibtrs_clt_io_req {
 	struct list_head        list;
 	struct ibtrs_iu		*iu;

@@ -170,6 +170,18 @@ void ibtrs_clt_put_tag(struct ibtrs_clt *clt, struct ibtrs_tag *tag)
 }
 EXPORT_SYMBOL(ibtrs_clt_put_tag);
 
+struct ibtrs_tag *ibtrs_tag_from_pdu(void *pdu)
+{
+	return pdu - sizeof(struct ibtrs_tag);
+}
+EXPORT_SYMBOL(ibtrs_tag_from_pdu);
+
+void *ibtrs_tag_to_pdu(struct ibtrs_tag *tag)
+{
+	return tag + 1;
+}
+EXPORT_SYMBOL(ibtrs_tag_to_pdu);
+
 /**
  * ibtrs_tag_to_clt_con() - returns RDMA connection id by the tag
  *
