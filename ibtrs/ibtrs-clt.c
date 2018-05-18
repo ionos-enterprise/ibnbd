@@ -593,22 +593,6 @@ static inline void path_it_deinit(struct path_it *it)
 		list_del_init(skip);
 }
 
-/**
- * copy_from_kvec() - Copy kvec to the buffer.
- */
-static inline void copy_from_kvec(void *data, const struct kvec *vec,
-				  size_t copy)
-{
-	size_t seg, len;
-
-	for (seg = 0; copy; seg++) {
-		len = min(vec[seg].iov_len, copy);
-		memcpy(data, vec[seg].iov_base, len);
-		data += len;
-		copy -= len;
-	}
-}
-
 static inline void ibtrs_clt_init_req(struct ibtrs_clt_io_req *req,
 				      struct ibtrs_clt_sess *sess,
 				      ibtrs_conf_fn *conf,
@@ -617,6 +601,9 @@ static inline void ibtrs_clt_init_req(struct ibtrs_clt_io_req *req,
 				      struct scatterlist *sg, size_t sg_cnt,
 				      size_t data_len, int dir)
 {
+	struct iov_iter iter;
+	size_t len;
+
 	req->tag = tag;
 	req->in_use = true;
 	req->usr_len = usr_len;
@@ -630,7 +617,11 @@ static inline void ibtrs_clt_init_req(struct ibtrs_clt_io_req *req,
 	req->need_inv = false;
 	req->need_inv_comp = false;
 	req->inv_errno = 0;
-	copy_from_kvec(req->iu->buf, vec, usr_len);
+
+	iov_iter_kvec(&iter, ITER_KVEC, vec, 1, usr_len);
+	len = _copy_from_iter(req->iu->buf, usr_len, &iter);
+	WARN_ON(len != usr_len);
+
 	reinit_completion(&req->inv_comp);
 	if (sess->stats.enable_rdma_lat)
 		req->start_jiffies = jiffies;
