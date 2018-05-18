@@ -12,6 +12,7 @@
  * Copyright (c) 2017 - 2018 ProfitBricks GmbH. All rights reserved.
  * Authors: Danil Kipnis <danil.kipnis@profitbricks.com>
  *          Roman Penyaev <roman.penyaev@profitbricks.com>
+ *          Swapnil Ingle <swapnil.ingle@profitbricks.com>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
