@@ -33,6 +33,7 @@
 #include <linux/socket.h>
 #include <linux/scatterlist.h>
 
+struct ibtrs_tag;
 struct ibtrs_clt;
 struct ibtrs_srv_ctx;
 struct ibtrs_srv;
@@ -98,6 +99,18 @@ struct ibtrs_clt *ibtrs_clt_open(void *priv, link_clt_ev_fn *link_ev,
  */
 void ibtrs_clt_close(struct ibtrs_clt *sess);
 
+/**
+ * ibtrs_tag_from_pdu() - converts opaque pdu pointer to ibtrs_tag
+ * @pdu: opaque pointer
+ */
+struct ibtrs_tag *ibtrs_tag_from_pdu(void *pdu);
+
+/**
+ * ibtrs_tag_to_pdu() - converts ibtrs_tag to opaque pdu pointer
+ * @tag: IBTRS tag pointer
+ */
+void *ibtrs_tag_to_pdu(struct ibtrs_tag *tag);
+
 enum {
 	IBTRS_TAG_NOWAIT = 0,
 	IBTRS_TAG_WAIT   = 1,
@@ -112,12 +125,6 @@ enum ibtrs_clt_con_type {
 	IBTRS_USR_CON,
 	IBTRS_IO_CON
 };
-
-struct ibtrs_tag;
-
-struct ibtrs_tag *ibtrs_tag_from_pdu(void *pdu);
-
-void *ibtrs_tag_to_pdu(struct ibtrs_tag *tag);
 
 /**
  * ibtrs_clt_get_tag() - allocates tag for future RDMA operation
