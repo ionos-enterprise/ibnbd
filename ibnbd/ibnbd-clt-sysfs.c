@@ -571,21 +571,27 @@ static ssize_t ibnbd_clt_map_device_store(struct kobject *kobj,
 	enum ibnbd_access_mode access_mode = IBNBD_ACCESS_RW;
 	enum ibnbd_io_mode io_mode = IBNBD_AUTOIO;
 
+	struct sockaddr_storage *addrs;
+	struct ibtrs_addr paths[6];
 	size_t path_cnt;
-	struct ibtrs_addr paths[3];
-	struct sockaddr_storage saddr[ARRAY_SIZE(paths)];
-	struct sockaddr_storage daddr[ARRAY_SIZE(paths)];
+
+	addrs = kcalloc(ARRAY_SIZE(paths) * 2, sizeof(*addrs), GFP_KERNEL);
+	if (!addrs) {
+		pr_err("Can't alloc memory for addresses\n");
+		ret = -ENOMEM;
+		goto out;
+	}
 
 	for (path_cnt = 0; path_cnt < ARRAY_SIZE(paths); path_cnt++) {
-		paths[path_cnt].src = &saddr[path_cnt];
-		paths[path_cnt].dst = &daddr[path_cnt];
+		paths[path_cnt].src = &addrs[path_cnt * 2];
+		paths[path_cnt].dst = &addrs[path_cnt * 2 + 1];
 	}
 
 	ret = ibnbd_clt_parse_map_options(buf, sessname, paths,
 					  &path_cnt, ARRAY_SIZE(paths),
 					  pathname, &access_mode, &io_mode);
 	if (ret)
-		return ret;
+		 goto out;
 
 	pr_info("Mapping device %s on session %s, (access_mode: %s, "
 		"io_mode: %s)\n", pathname, sessname,
@@ -593,8 +599,10 @@ static ssize_t ibnbd_clt_map_device_store(struct kobject *kobj,
 
 	dev = ibnbd_clt_map_device(sessname, paths, path_cnt, pathname,
 				   access_mode, io_mode);
-	if (unlikely(IS_ERR(dev)))
-		return PTR_ERR(dev);
+	if (unlikely(IS_ERR(dev))) {
+		ret = PTR_ERR(dev);
+		goto out;
+	}
 
 	ret = ibnbd_clt_add_dev_kobj(dev);
 	if (unlikely(ret))
@@ -604,11 +612,13 @@ static ssize_t ibnbd_clt_map_device_store(struct kobject *kobj,
 	if (ret)
 		goto unmap_dev;
 
+	kfree(addrs);
 	return count;
 
 unmap_dev:
 	ibnbd_clt_unmap_device(dev, true, NULL);
-
+out:
+	kfree(addrs);
 	return ret;
 }
 
