@@ -354,7 +354,8 @@ static int process_msg_close(struct ibtrs_srv *ibtrs,
 	const struct ibnbd_msg_close *close_msg = usr;
 	struct ibnbd_srv_sess_dev *sess_dev;
 
-	sess_dev = ibnbd_get_sess_dev(close_msg->device_id, srv_sess);
+	sess_dev = ibnbd_get_sess_dev(le32_to_cpu(close_msg->device_id),
+						  srv_sess);
 	if (unlikely(IS_ERR(sess_dev)))
 		return 0;
 
