@@ -136,7 +136,7 @@ static int ibnbd_clt_parse_map_options(const char *buf,
 
 		case IBNBD_OPT_PATH:
 			if (p_cnt >= max_path_cnt) {
-				pr_err("map_device: too many (> %lu) paths "
+				pr_err("map_device: too many (> %zu) paths "
 				       "provided\n", max_path_cnt);
 				ret = -ENOMEM;
 				goto out;
