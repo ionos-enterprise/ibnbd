@@ -2046,7 +2046,7 @@ static void ibtrs_clt_info_rsp_done(struct ib_cq *cq, struct ib_wc *wc)
 	msg = iu->buf;
 	if (unlikely(le16_to_cpu(msg->type) != IBTRS_MSG_INFO_RSP)) {
 		ibtrs_err(sess, "Sess info response is malformed: type %d\n",
-			  le32_to_cpu(msg->type));
+			  le16_to_cpu(msg->type));
 		goto out;
 	}
 	rx_sz  = sizeof(*msg);

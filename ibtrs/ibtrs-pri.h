@@ -286,6 +286,14 @@ struct ibtrs_msg_rdma_write {
 	__le16			usr_len;
 };
 
+/**
+ * struct_msg_rdma_hdr - header for read or write request
+ * @type:		@IBTRS_MSG_WRITE | @IBTRS_MSG_READ
+ */
+struct ibtrs_msg_rdma_hdr {
+	__le16			type;
+};
+
 /* ibtrs.c */
 
 struct ibtrs_iu *ibtrs_iu_alloc(u32 tag, size_t size, gfp_t t,

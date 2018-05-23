@@ -837,9 +837,9 @@ static void ibtrs_srv_info_req_done(struct ib_cq *cq, struct ib_wc *wc)
 	ib_dma_sync_single_for_cpu(sess->s.dev->ib_dev, iu->dma_addr,
 				   iu->size, DMA_FROM_DEVICE);
 	msg = iu->buf;
-	if (unlikely(le32_to_cpu(msg->type) != IBTRS_MSG_INFO_REQ)) {
+	if (unlikely(le16_to_cpu(msg->type) != IBTRS_MSG_INFO_REQ)) {
 		ibtrs_err(sess, "Sess info request is malformed: type %d\n",
-			  le32_to_cpu(msg->type));
+			  le16_to_cpu(msg->type));
 		goto close;
 	}
 	err = process_info_req(con, msg);
@@ -1018,11 +1018,13 @@ static void process_io_req(struct ibtrs_srv_con *con, void *msg,
 			   u32 id, u32 off)
 {
 	struct ibtrs_srv_sess *sess = to_srv_sess(con->c.sess);
+	struct ibtrs_msg_rdma_hdr *hdr;
 	unsigned int type;
 
 	ib_dma_sync_single_for_cpu(sess->s.dev->ib_dev, sess->dma_addr[id],
 				   max_chunk_size, DMA_BIDIRECTIONAL);
-	type = le16_to_cpu(le16_to_cpu(*(__le16 *)msg));
+	hdr = msg;
+	type = le16_to_cpu(hdr->type);
 
 	switch (type) {
 	case IBTRS_MSG_WRITE:
