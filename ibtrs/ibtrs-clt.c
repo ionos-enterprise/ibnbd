@@ -544,8 +544,11 @@ struct path_it {
  */
 static struct ibtrs_clt_sess *get_next_path_rr(struct path_it *it)
 {
-	struct ibtrs_clt_sess __percpu * __rcu *ppcpu_path, *path;
-	struct ibtrs_clt *clt = it->clt;
+	struct ibtrs_clt_sess __rcu **ppcpu_path;
+	struct ibtrs_clt_sess *path;
+	struct ibtrs_clt *clt;
+
+	clt = it->clt;
 
 	/*
 	 * Here we use two RCU objects: @paths_list and @pcpu_path
@@ -1419,6 +1422,17 @@ static void ibtrs_clt_stop_and_destroy_conns(struct ibtrs_clt_sess *sess)
 	}
 }
 
+static inline bool xchg_sessions(struct ibtrs_clt_sess __rcu **rcu_ppcpu_path,
+				 struct ibtrs_clt_sess *sess,
+				 struct ibtrs_clt_sess *next)
+{
+	struct ibtrs_clt_sess **ppcpu_path;
+
+	/* Call cmpxchg() without sparse warnings */
+	ppcpu_path = (typeof(ppcpu_path))rcu_ppcpu_path;
+	return (sess == cmpxchg(ppcpu_path, sess, next));
+}
+
 static void ibtrs_clt_remove_path_from_arr(struct ibtrs_clt_sess *sess)
 {
 	struct ibtrs_clt *clt = sess->clt;
@@ -1475,10 +1489,10 @@ static void ibtrs_clt_remove_path_from_arr(struct ibtrs_clt_sess *sess)
 	 * removed, so change the pointer manually.
 	 */
 	for_each_possible_cpu(cpu) {
-		struct ibtrs_clt_sess **ppcpu_path;
+		struct ibtrs_clt_sess __rcu **ppcpu_path;
 
 		ppcpu_path = per_cpu_ptr(clt->pcpu_path, cpu);
-		if (*ppcpu_path != sess)
+		if (rcu_dereference(*ppcpu_path) != sess)
 			/*
 			 * synchronize_rcu() was called just after deleting
 			 * entry from the list, thus IO code path cannot
@@ -1491,7 +1505,7 @@ static void ibtrs_clt_remove_path_from_arr(struct ibtrs_clt_sess *sess)
 		 * We race with IO code path, which also changes pointer,
 		 * thus we have to be careful not to overwrite it.
 		 */
-		if (sess == cmpxchg(ppcpu_path, sess, next))
+		if (xchg_sessions(ppcpu_path, sess, next))
 			/*
 			 * @ppcpu_path was successfully replaced with @next,
 			 * that means that someone could also pick up the

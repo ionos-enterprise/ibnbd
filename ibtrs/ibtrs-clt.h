@@ -210,7 +210,7 @@ struct ibtrs_clt {
 	struct list_head   /* __rcu */ paths_list;
 	size_t			       paths_num;
 	struct ibtrs_clt_sess
-		      __percpu * __rcu *pcpu_path;
+		      __rcu * __percpu *pcpu_path;
 
 	bool			opened;
 	uuid_t			paths_uuid;
