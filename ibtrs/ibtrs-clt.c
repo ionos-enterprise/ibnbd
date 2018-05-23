@@ -547,6 +547,12 @@ static struct ibtrs_clt_sess *get_next_path_rr(struct path_it *it)
 	struct ibtrs_clt_sess __percpu * __rcu *ppcpu_path, *path;
 	struct ibtrs_clt *clt = it->clt;
 
+	/*
+	 * Here we use two RCU objects: @paths_list and @pcpu_path
+	 * pointer.  See ibtrs_clt_remove_path_from_arr() for details
+	 * how that is handled.
+	 */
+
 	ppcpu_path = this_cpu_ptr(clt->pcpu_path);
 	path = rcu_dereference(*ppcpu_path);
 	if (unlikely(!path))
@@ -1417,6 +1423,7 @@ static void ibtrs_clt_remove_path_from_arr(struct ibtrs_clt_sess *sess)
 {
 	struct ibtrs_clt *clt = sess->clt;
 	struct ibtrs_clt_sess *next;
+	bool wait_for_grace = false;
 	int cpu;
 
 	mutex_lock(&clt->paths_mutex);
@@ -1424,6 +1431,14 @@ static void ibtrs_clt_remove_path_from_arr(struct ibtrs_clt_sess *sess)
 
 	/* Make sure everybody observes path removal. */
 	synchronize_rcu();
+
+	/*
+	 * At this point nobody sees @sess in the list, but still we have
+	 * dangling pointer @pcpu_path which _can_ point to @sess.  Since
+	 * nobody can observe @sess in the list, we guarantee that IO path
+	 * will not assign @sess to @pcpu_path, i.e. @pcpu_path can be equal
+	 * to @sess, but can never again become @sess.
+	 */
 
 	/*
 	 * Decrement paths number only after grace period, because
@@ -1448,11 +1463,15 @@ static void ibtrs_clt_remove_path_from_arr(struct ibtrs_clt_sess *sess)
 	 */
 	clt->paths_num--;
 
+	/*
+	 * Get @next connection from current @sess which is going to be
+	 * removed.  If @sess is the last element, then @next is NULL.
+	 */
 	next = list_next_or_null_rr_rcu(&clt->paths_list, &sess->s.entry,
 					typeof(*next), s.entry);
 
 	/*
-	 * Pcpu paths can still point to the path which is going to be
+	 * @pcpu paths can still point to the path which is going to be
 	 * removed, so change the pointer manually.
 	 */
 	for_each_possible_cpu(cpu) {
@@ -1470,10 +1489,20 @@ static void ibtrs_clt_remove_path_from_arr(struct ibtrs_clt_sess *sess)
 
 		/*
 		 * We race with IO code path, which also changes pointer,
-		 * thus we have to be careful not to override it.
+		 * thus we have to be careful not to overwrite it.
 		 */
-		cmpxchg(ppcpu_path, sess, next);
+		if (sess == cmpxchg(ppcpu_path, sess, next))
+			/*
+			 * @ppcpu_path was successfully replaced with @next,
+			 * that means that someone could also pick up the
+			 * @sess and dereferencing it right now, so wait for
+			 * a grace period is required.
+			 */
+			wait_for_grace = true;
 	}
+	if (wait_for_grace)
+		synchronize_rcu();
+
 	mutex_unlock(&clt->paths_mutex);
 }
 
