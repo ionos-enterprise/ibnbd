@@ -145,6 +145,8 @@ struct ibtrs_srv_ctx {
 	struct list_head srv_list;
 };
 
+extern struct class *ibtrs_dev_class;
+
 /* See ibtrs-log.h */
 #define TYPES_TO_SESSNAME(obj)						\
 	LIST(CASE(obj, struct ibtrs_srv_sess *, s.sessname))

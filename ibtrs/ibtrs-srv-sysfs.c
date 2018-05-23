@@ -34,8 +34,6 @@
 #include "ibtrs-srv.h"
 #include "ibtrs-log.h"
 
-extern struct class *ibtrs_dev_class;
-
 static struct kobj_type ktype = {
 	.sysfs_ops	= &kobj_sysfs_ops,
 };
