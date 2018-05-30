@@ -856,9 +856,7 @@ static void free_sess(struct ibnbd_clt_session *sess)
 	kfree(sess);
 }
 
-static struct ibnbd_clt_session *alloc_sess(const char *sessname,
-					    const struct ibtrs_addr *paths,
-					    size_t path_cnt)
+static struct ibnbd_clt_session *alloc_sess(const char *sessname)
 {
 	struct ibnbd_clt_session *sess;
 	int err, cpu;
@@ -1026,7 +1024,7 @@ find_and_get_or_create_sess(const char *sessname,
 	if (sess)
 		return sess;
 
-	sess = alloc_sess(sessname, paths, path_cnt);
+	sess = alloc_sess(sessname);
 	if (unlikely(IS_ERR(sess)))
 		return sess;
 
