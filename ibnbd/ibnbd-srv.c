@@ -85,7 +85,30 @@ MODULE_PARM_DESC(dev_search_path, "Sets the dev_search_path."
 		 " (default: " DEFAULT_DEV_SEARCH_PATH ")");
 
 static int def_io_mode = IBNBD_BLOCKIO;
-module_param(def_io_mode, int, 0444);
+
+static int def_io_mode_set(const char *val, const struct kernel_param *kp)
+{
+	int io_mode, rc;
+
+	rc = kstrtoint(val, 0, &io_mode);
+	if (unlikely(rc))
+		return rc;
+
+	switch (io_mode) {
+	case IBNBD_FILEIO:
+	case IBNBD_BLOCKIO:
+		def_io_mode = io_mode;
+		return 0;
+	default:
+		return -EINVAL;
+	}
+}
+
+static const struct kernel_param_ops def_io_mode_ops = {
+	.set	= def_io_mode_set,
+	.get	= param_get_int,
+};
+module_param_cb(def_io_mode, &def_io_mode_ops, &def_io_mode, 0444);
 MODULE_PARM_DESC(def_io_mode, "By default, export devices in"
 		 " blockio(" __stringify(_IBNBD_BLOCKIO) ") or"
 		 " fileio(" __stringify(_IBNBD_FILEIO) ") mode."

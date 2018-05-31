@@ -125,6 +125,9 @@ struct ibnbd_dev *ibnbd_dev_open(const char *path, fmode_t flags,
 		ret = ibnbd_dev_vfs_open(dev, path, flags);
 		if (ret)
 			goto blk_put;
+	} else {
+		ret = -EINVAL;
+		goto err;
 	}
 
 	dev->blk_open_flags	= flags;
