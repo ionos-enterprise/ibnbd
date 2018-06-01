@@ -64,12 +64,12 @@ Entries under /sys/devices/virtual/ibtrs-client/<session-name>/paths/
 =====================================================================
 
 
-Each path belonging to a given session is listed here by its destination
-address. When a new path is added to a session by writing to the "add_path"
-entry, a directory with the corresponding destination address is created.
+Each path belonging to a given session is listed here by its source and
+destination address. When a new path is added to a session by writing to
+the "add_path" entry, a directory <src@dst> is created.
 
-Entries under /sys/devices/virtual/ibtrs-client/<session-name>/paths/<dest-addr>/
-=================================================================================
+Entries under /sys/devices/virtual/ibtrs-client/<session-name>/paths/<src@dst>/
+===============================================================================
 
 state (R)
 ---------
@@ -117,8 +117,8 @@ dst_addr (R)
 Contains the destination address of the path
 
 
-Entries under /sys/devices/virtual/ibtrs-client/<session-name>/paths/<dest-addr>/stats/
-=======================================================================================
+Entries under /sys/devices/virtual/ibtrs-client/<session-name>/paths/<src@dst>/stats/
+=====================================================================================
 
 Write "0" to any file in that directory to reset corresponding statistics.
 
@@ -201,10 +201,11 @@ Entries under /sys/devices/virtual/ibtrs-server/<session-name>/paths/
 =====================================================================
 
 When new path is created by writing to "add_path" entry on client side,
-a directory entry with source address is created on server.
+a directory entry named as <source address>@<destination address> is created
+on server.
 
-Entries under /sys/devices/virtual/ibtrs-server/<session-name>/paths/<source-addr>/
-===================================================================================
+Entries under /sys/devices/virtual/ibtrs-server/<session-name>/paths/<src@dst>/
+===============================================================================
 
 disconnect (RW)
 ---------------
@@ -232,8 +233,8 @@ dst_addr (R)
 
 Contains the destination address of the path
 
-Entries under /sys/devices/virtual/ibtrs-server/<session-name>/paths/<source-addr>/stats/
-=========================================================================================
+Entries under /sys/devices/virtual/ibtrs-server/<session-name>/paths/<src@dst>/stats/
+=====================================================================================
 
 When "0" is written to a file in this directory, the corresponding counters
 will be reset.
