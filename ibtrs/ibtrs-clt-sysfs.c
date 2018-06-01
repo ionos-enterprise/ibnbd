@@ -386,9 +386,43 @@ static ssize_t ibtrs_clt_hca_name_show(struct kobject *kobj,
 static struct kobj_attribute ibtrs_clt_hca_name_attr =
 	__ATTR(hca_name, 0444, ibtrs_clt_hca_name_show, NULL);
 
+static ssize_t ibtrs_clt_src_addr_show(struct kobject *kobj,
+				       struct kobj_attribute *attr,
+				       char *page)
+{
+	struct ibtrs_clt_sess *sess;
+	int cnt;
+
+	sess = container_of(kobj, struct ibtrs_clt_sess, kobj);
+	cnt = sockaddr_to_str((struct sockaddr *)&sess->s.src_addr,
+			      page, PAGE_SIZE);
+	return cnt + scnprintf(page + cnt, PAGE_SIZE - cnt, "\n");
+}
+
+static struct kobj_attribute ibtrs_clt_src_addr_attr =
+	__ATTR(src_addr, 0444, ibtrs_clt_src_addr_show, NULL);
+
+static ssize_t ibtrs_clt_dst_addr_show(struct kobject *kobj,
+				       struct kobj_attribute *attr,
+				       char *page)
+{
+	struct ibtrs_clt_sess *sess;
+	int cnt;
+
+	sess = container_of(kobj, struct ibtrs_clt_sess, kobj);
+	cnt = sockaddr_to_str((struct sockaddr *)&sess->s.dst_addr,
+			      page, PAGE_SIZE);
+	return cnt + scnprintf(page + cnt, PAGE_SIZE - cnt, "\n");
+}
+
+static struct kobj_attribute ibtrs_clt_dst_addr_attr =
+	__ATTR(dst_addr, 0444, ibtrs_clt_dst_addr_show, NULL);
+
 static struct attribute *ibtrs_clt_sess_attrs[] = {
 	&ibtrs_clt_hca_name_attr.attr,
 	&ibtrs_clt_hca_port_attr.attr,
+	&ibtrs_clt_src_addr_attr.attr,
+	&ibtrs_clt_dst_addr_attr.attr,
 	&ibtrs_clt_state_attr.attr,
 	&ibtrs_clt_reconnect_attr.attr,
 	&ibtrs_clt_disconnect_attr.attr,
