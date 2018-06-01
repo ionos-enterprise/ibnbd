@@ -219,10 +219,14 @@ err:
 int ibtrs_srv_create_sess_files(struct ibtrs_srv_sess *sess)
 {
 	struct ibtrs_srv *srv = sess->srv;
-	char str[MAXHOSTNAMELEN];
-	int err;
+	char str[NAME_MAX];
+	int err, cnt;
 
-	sockaddr_to_str((struct sockaddr *)&sess->s.dst_addr, str, sizeof(str));
+	cnt = sockaddr_to_str((struct sockaddr *)&sess->s.dst_addr,
+			      str, sizeof(str));
+	cnt += scnprintf(str + cnt, sizeof(str) - cnt, "@");
+	sockaddr_to_str((struct sockaddr *)&sess->s.src_addr,
+			str + cnt, sizeof(str) - cnt);
 
 	err = ibtrs_srv_create_once_sysfs_root_folders(sess);
 	if (unlikely(err))
