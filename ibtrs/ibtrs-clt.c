@@ -1787,6 +1787,7 @@ static int ibtrs_rdma_conn_established(struct ibtrs_clt_con *con,
 		sess->hca_port = con->c.cm_id->port_num;
 		scnprintf(sess->hca_name, sizeof(sess->hca_name),
 			  sess->s.dev->ib_dev->name);
+		sess->s.src_addr = con->c.cm_id->route.addr.src_addr;
 	}
 
 	return 0;
