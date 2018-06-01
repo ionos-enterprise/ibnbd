@@ -116,9 +116,11 @@ void sysfs_remove_file_self(struct kobject *kobj,
 #undef sockaddr_to_str
 #undef ibtrs_invalidate_flag
 
-static inline void sockaddr_to_str(const struct sockaddr *addr,
+static inline int sockaddr_to_str(const struct sockaddr *addr,
 				   char *buf, size_t len)
 {
+	int cnt;
+
 	switch (addr->sa_family) {
 	case AF_INET6:
 		/* workaround for ip4 client addr being set to INET6 family.
@@ -132,9 +134,9 @@ static inline void sockaddr_to_str(const struct sockaddr *addr,
 		 *                                                   Danil K.
 		 */
 		if (!((struct sockaddr_in6 *)addr)->sin6_addr.s6_addr[0]) {
-			scnprintf(buf, len, "ip:%pI4",
-				  &((struct sockaddr_in *)addr)->sin_addr);
-			return;
+			cnt = scnprintf(buf, len, "ip:%pI4",
+				&((struct sockaddr_in *)addr)->sin_addr);
+			return cnt;
 		}
 		/* FALLTHRU */
 	default:

@@ -358,25 +358,28 @@ static inline int sockaddr_cmp(const struct sockaddr *a,
 	}
 }
 
-static inline void sockaddr_to_str(const struct sockaddr *addr,
+static inline int sockaddr_to_str(const struct sockaddr *addr,
 				   char *buf, size_t len)
 {
+	int cnt;
+
 	switch (addr->sa_family) {
 	case AF_IB:
-		scnprintf(buf, len, "gid:%pI6",
-			  &((struct sockaddr_ib *)addr)->sib_addr.sib_raw);
-		return;
+		cnt = scnprintf(buf, len, "gid:%pI6",
+			&((struct sockaddr_ib *)addr)->sib_addr.sib_raw);
+		return cnt;
 	case AF_INET:
-		scnprintf(buf, len, "ip:%pI4",
-			  &((struct sockaddr_in *)addr)->sin_addr);
-		return;
+		cnt = scnprintf(buf, len, "ip:%pI4",
+			&((struct sockaddr_in *)addr)->sin_addr);
+		return cnt;
 	case AF_INET6:
-		scnprintf(buf, len, "ip:%pI6c",
+		cnt = scnprintf(buf, len, "ip:%pI6c",
 			  &((struct sockaddr_in6 *)addr)->sin6_addr);
-		return;
+		return cnt;
 	}
-	scnprintf(buf, len, "<invalid address family>");
+	cnt = scnprintf(buf, len, "<invalid address family>");
 	pr_err("Invalid address family\n");
+	return cnt;
 }
 
 /**
