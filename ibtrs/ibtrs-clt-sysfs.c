@@ -403,10 +403,14 @@ static struct attribute_group ibtrs_clt_sess_attr_group = {
 int ibtrs_clt_create_sess_files(struct ibtrs_clt_sess *sess)
 {
 	struct ibtrs_clt *clt = sess->clt;
-	char str[MAXHOSTNAMELEN];
-	int err;
+	char str[NAME_MAX];
+	int err, cnt;
 
-	sockaddr_to_str((struct sockaddr *)&sess->s.dst_addr, str, sizeof(str));
+	cnt = sockaddr_to_str((struct sockaddr *)&sess->s.src_addr,
+			      str, sizeof(str));
+	cnt += scnprintf(str + cnt, sizeof(str) - cnt, "@");
+	sockaddr_to_str((struct sockaddr *)&sess->s.dst_addr,
+			str + cnt, sizeof(str) - cnt);
 
 	err = kobject_init_and_add(&sess->kobj, &ktype, &clt->kobj_paths,
 				   "%s", str);
