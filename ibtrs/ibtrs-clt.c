@@ -1520,56 +1520,24 @@ static void ibtrs_clt_remove_path_from_arr(struct ibtrs_clt_sess *sess)
 	mutex_unlock(&clt->paths_mutex);
 }
 
-static inline bool __ibtrs_clt_path_exists(struct ibtrs_clt *clt,
-					   struct ibtrs_addr *addr)
-{
-	struct ibtrs_clt_sess *sess;
-
-	list_for_each_entry(sess, &clt->paths_list, s.entry)
-		if (!sockaddr_cmp((struct sockaddr *)&sess->s.dst_addr,
-				  (struct sockaddr *)addr->dst))
-			return true;
-
-	return false;
-}
-
-static bool ibtrs_clt_path_exists(struct ibtrs_clt *clt,
-				  struct ibtrs_addr *addr)
-{
-	bool res;
-
-	mutex_lock(&clt->paths_mutex);
-	res = __ibtrs_clt_path_exists(clt, addr);
-	mutex_unlock(&clt->paths_mutex);
-
-	return res;
-}
-
-static int ibtrs_clt_add_path_to_arr(struct ibtrs_clt_sess *sess,
-				     struct ibtrs_addr *addr)
+static void ibtrs_clt_add_path_to_arr(struct ibtrs_clt_sess *sess,
+				      struct ibtrs_addr *addr)
 {
 	struct ibtrs_clt *clt = sess->clt;
-	int err = 0;
 
 	mutex_lock(&clt->paths_mutex);
-	if (!__ibtrs_clt_path_exists(clt, addr)) {
+	clt->paths_num++;
 
-		clt->paths_num++;
+	/*
+	 * Firstly increase paths_num, wait for GP and then
+	 * add path to the list.  Why?  Since we add path with
+	 * !CONNECTED state explanation is similar to what has
+	 * been written in ibtrs_clt_remove_path_from_arr().
+	 */
+	synchronize_rcu();
 
-		/*
-		 * Firstly increase paths_num, wait for GP and then
-		 * add path to the list.  Why?  Since we add path with
-		 * !CONNECTED state explanation is similar to what has
-		 * been written in ibtrs_clt_remove_path_from_arr().
-		 */
-		synchronize_rcu();
-
-		list_add_tail_rcu(&sess->s.entry, &clt->paths_list);
-	} else
-		err = -EEXIST;
+	list_add_tail_rcu(&sess->s.entry, &clt->paths_list);
 	mutex_unlock(&clt->paths_mutex);
-
-	return err;
 }
 
 static void ibtrs_clt_close_work(struct work_struct *work)
@@ -2780,9 +2748,6 @@ int ibtrs_clt_create_path_from_sysfs(struct ibtrs_clt *clt,
 	struct ibtrs_clt_sess *sess;
 	int err;
 
-	if (ibtrs_clt_path_exists(clt, addr))
-		return -EEXIST;
-
 	sess = alloc_sess(clt, addr, nr_cons_per_session, clt->max_segments);
 	if (unlikely(IS_ERR(sess)))
 		return PTR_ERR(sess);
@@ -2792,9 +2757,7 @@ int ibtrs_clt_create_path_from_sysfs(struct ibtrs_clt *clt,
 	 * IO will never grab it.  Also it is very important to add
 	 * path before init, since init fires LINK_CONNECTED event.
 	 */
-	err = ibtrs_clt_add_path_to_arr(sess, addr);
-	if (unlikely(err))
-		goto free_sess;
+	ibtrs_clt_add_path_to_arr(sess, addr);
 
 	err = init_sess(sess);
 	if (unlikely(err))
@@ -2809,7 +2772,6 @@ int ibtrs_clt_create_path_from_sysfs(struct ibtrs_clt *clt,
 close_sess:
 	ibtrs_clt_remove_path_from_arr(sess);
 	ibtrs_clt_close_conns(sess, true);
-free_sess:
 	free_sess(sess);
 
 	return err;
