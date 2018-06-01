@@ -495,6 +495,8 @@ int ibtrs_addr_to_sockaddr(const char *str, size_t len, short port,
 	int ret;
 
 	d = strchr(str, ',');
+	if (!d)
+		d = strchr(str, '@');
 	if (d) {
 		if (ibtrs_str_to_sockaddr(str, d - str, 0, addr->src))
 			return -EINVAL;
