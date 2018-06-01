@@ -96,6 +96,27 @@ Write "1" to the file in order to disconnected and remove the path
 from the session.  Operation blocks until the path is disconnected
 and removed from the session.
 
+hca_name (R)
+------------
+
+Contains the the name of HCA the connection established on.
+
+hca_port (R)
+------------
+
+Contains the port number of active port traffic is going through.
+
+src_addr (R)
+------------
+
+Contains the source address of the path
+
+dst_addr (R)
+------------
+
+Contains the destination address of the path
+
+
 Entries under /sys/devices/virtual/ibtrs-client/<session-name>/paths/<dest-addr>/stats/
 =======================================================================================
 
@@ -200,6 +221,16 @@ hca_port (R)
 ------------
 
 Contains the port number of active port traffic is going through.
+
+src_addr (R)
+------------
+
+Contains the source address of the path
+
+dst_addr (R)
+------------
+
+Contains the destination address of the path
 
 Entries under /sys/devices/virtual/ibtrs-server/<session-name>/paths/<source-addr>/stats/
 =========================================================================================
