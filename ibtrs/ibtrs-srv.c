@@ -1281,6 +1281,21 @@ static void del_path_from_srv(struct ibtrs_srv_sess *sess)
 	mutex_unlock(&srv->paths_mutex);
 }
 
+static inline bool __is_path_w_addr_exists(struct ibtrs_srv *srv,
+					   struct rdma_addr *addr)
+{
+	struct ibtrs_srv_sess *sess;
+
+	list_for_each_entry(sess, &srv->paths_list, s.entry)
+		if (!sockaddr_cmp((struct sockaddr *)&sess->s.dst_addr,
+				  (struct sockaddr *)&addr->dst_addr) &&
+		    !sockaddr_cmp((struct sockaddr *)&sess->s.src_addr,
+				  (struct sockaddr *)&addr->src_addr))
+			return true;
+
+	return false;
+}
+
 static void ibtrs_srv_close_work(struct work_struct *work)
 {
 	struct ibtrs_srv_sess *sess;
@@ -1480,6 +1495,10 @@ static struct ibtrs_srv_sess *__alloc_sess(struct ibtrs_srv *srv,
 
 	if (unlikely(srv->paths_num >= MAX_PATHS_NUM)) {
 		err = -ECONNRESET;
+		goto err;
+	}
+	if (unlikely(__is_path_w_addr_exists(srv, &cm_id->route.addr))) {
+		err = -EEXIST;
 		goto err;
 	}
 	sess = kzalloc(sizeof(*sess), GFP_KERNEL);
