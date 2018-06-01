@@ -1499,6 +1499,7 @@ static struct ibtrs_srv_sess *__alloc_sess(struct ibtrs_srv *srv,
 	sess->srv = srv;
 	sess->cur_cq_vector = -1;
 	sess->s.dst_addr = cm_id->route.addr.dst_addr;
+	sess->s.src_addr = cm_id->route.addr.src_addr;
 	sess->s.con_num = con_num;
 	sess->s.recon_cnt = recon_cnt;
 	uuid_copy(&sess->s.uuid, uuid);
