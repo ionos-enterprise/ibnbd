@@ -58,6 +58,9 @@ void sysfs_remove_file_self(struct kobject *kobj,
 
 #define rdma_ucm_port_space rdma_port_space
 
+
+#ifndef IBTRS_USE_FR
+
 #include <rdma/ib_verbs.h>
 #include <rdma/ib_cm.h>
 
@@ -508,6 +511,7 @@ static inline u32 ibtrs_invalidate_flag(void)
 	return 0;
 }
 
+#endif // IBTRS_USE_FR
 /*
  * linux/rculist.h
  */

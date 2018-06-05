@@ -21,4 +21,12 @@ endif
 ifdef do_compat
     $(info - IBTRS with compat support for $(LIN_VER) kernel)
     ccflags-y := -include $(dir)/compat.h -I$(dir)/include
+
+    ifdef IBTRS_USE_FR
+        $(info - IBTRS using FR memory registration)
+        ccflags-y += -DIBTRS_USE_FR
+    else
+        $(info - IBTRS using FMR memory registration)
+    endif
+
 endif
