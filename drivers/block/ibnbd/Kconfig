@@ -1,0 +1,22 @@
+config BLK_DEV_IBNBD
+	bool
+
+config BLK_DEV_IBNBD_CLIENT
+	tristate "Network block device driver on top of IBTRS transport"
+	depends on INFINIBAND_IBTRS_CLIENT
+	select BLK_DEV_IBNBD
+	help
+	  IBNBD client allows for mapping of a remote block devices over
+	  IBTRS protocol from a target system where IBNBD server is running.
+
+	  If unsure, say N.
+
+config BLK_DEV_IBNBD_SERVER
+	tristate "Network block device over RDMA Infiniband server support"
+	depends on INFINIBAND_IBTRS_SERVER
+	select BLK_DEV_IBNBD
+	help
+	  IBNBD server allows for exporting local block devices to a remote client
+	  over IBTRS protocol.
+
+	  If unsure, say N.
