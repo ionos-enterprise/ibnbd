@@ -2192,10 +2192,8 @@ struct ib_device {
 	spinlock_t                    event_handler_lock;
 
 	spinlock_t                    client_data_lock;
-	struct list_head              core_list;
-	/* Access to the client_data_list is protected by the client_data_lock
-	 * spinlock and the lists_rwsem read-write semaphore */
 	struct list_head              client_data_list;
+	struct list_head              core_list;
 
 	struct ib_cache               cache;
 	/**
@@ -2515,10 +2513,15 @@ struct ib_device {
 	enum rdma_driver_id		driver_id;
 };
 
+struct ib_client_data;
+
 struct ib_client {
 	char  *name;
 	void (*add)   (struct ib_device *);
 	void (*remove)(struct ib_device *, void *client_data);
+
+	struct ib_client_data *(*alloc_client_data)(struct ib_device *);
+	void (*free_client_data)(struct ib_client_data *);
 
 	/* Returns the net_dev belonging to this ib_client and matching the
 	 * given parameters.
@@ -2542,7 +2545,16 @@ struct ib_client {
 			const union ib_gid *gid,
 			const struct sockaddr *addr,
 			void *client_data);
-	struct list_head list;
+	struct list_head core_entry;
+	struct list_head client_data_list;
+};
+
+struct ib_client_data {
+	struct kref kref;
+	struct ib_device *device;
+	struct ib_client *client;
+	struct list_head device_entry;
+	struct list_head client_entry;
 };
 
 struct ib_device *ib_alloc_device(size_t size);
@@ -2558,9 +2570,14 @@ void ib_unregister_device(struct ib_device *device);
 int ib_register_client   (struct ib_client *client);
 void ib_unregister_client(struct ib_client *client);
 
+/* XXX Deprecated API, will be removed ASAP */
 void *ib_get_client_data(struct ib_device *device, struct ib_client *client);
 void  ib_set_client_data(struct ib_device *device, struct ib_client *client,
 			 void *data);
+
+struct ib_client_data *ib_alloc_or_get_client_data(struct ib_device *device,
+						   struct ib_client *client);
+bool ib_put_client_data(struct ib_client_data *data);
 
 static inline int ib_copy_from_udata(void *dest, struct ib_udata *udata, size_t len)
 {

@@ -51,15 +51,6 @@ MODULE_AUTHOR("Roland Dreier");
 MODULE_DESCRIPTION("core kernel InfiniBand API");
 MODULE_LICENSE("Dual BSD/GPL");
 
-struct ib_client_data {
-	struct list_head  list;
-	struct ib_client *client;
-	void *            data;
-	/* The device or client is going down. Do not call client or device
-	 * callbacks other than remove(). */
-	bool		  going_down;
-};
-
 struct workqueue_struct *ib_comp_wq;
 struct workqueue_struct *ib_wq;
 EXPORT_SYMBOL_GPL(ib_wq);
@@ -294,28 +285,6 @@ void ib_dealloc_device(struct ib_device *device)
 }
 EXPORT_SYMBOL(ib_dealloc_device);
 
-static int add_client_context(struct ib_device *device, struct ib_client *client)
-{
-	struct ib_client_data *context;
-	unsigned long flags;
-
-	context = kmalloc(sizeof *context, GFP_KERNEL);
-	if (!context)
-		return -ENOMEM;
-
-	context->client = client;
-	context->data   = NULL;
-	context->going_down = false;
-
-	down_write(&lists_rwsem);
-	spin_lock_irqsave(&device->client_data_lock, flags);
-	list_add(&context->list, &device->client_data_list);
-	spin_unlock_irqrestore(&device->client_data_lock, flags);
-	up_write(&lists_rwsem);
-
-	return 0;
-}
-
 static int verify_immutable(const struct ib_device *dev, u8 port)
 {
 	return WARN_ON(!rdma_cap_ib_mad(dev, port) &&
@@ -548,8 +517,8 @@ int ib_register_device(struct ib_device *device,
 
 	device->reg_state = IB_DEV_REGISTERED;
 
-	list_for_each_entry(client, &client_list, list)
-		if (!add_client_context(device, client) && client->add)
+	list_for_each_entry(client, &client_list, core_entry)
+		if (client->add)
 			client->add(device);
 
 	device->index = __dev_new_index();
@@ -581,22 +550,18 @@ EXPORT_SYMBOL(ib_register_device);
 void ib_unregister_device(struct ib_device *device)
 {
 	struct ib_client_data *context, *tmp;
-	unsigned long flags;
+	struct list_head data_list;
 
 	mutex_lock(&device_mutex);
 
 	down_write(&lists_rwsem);
 	list_del(&device->core_list);
-	spin_lock_irqsave(&device->client_data_lock, flags);
-	list_for_each_entry_safe(context, tmp, &device->client_data_list, list)
-		context->going_down = true;
-	spin_unlock_irqrestore(&device->client_data_lock, flags);
+	list_splice_init(&device->client_data_list, &data_list);
 	downgrade_write(&lists_rwsem);
 
-	list_for_each_entry_safe(context, tmp, &device->client_data_list,
-				 list) {
+	list_for_each_entry_safe(context, tmp, &data_list, device_entry) {
 		if (context->client->remove)
-			context->client->remove(device, context->data);
+			context->client->remove(device, context);
 	}
 	up_read(&lists_rwsem);
 
@@ -610,12 +575,8 @@ void ib_unregister_device(struct ib_device *device)
 	ib_security_destroy_port_pkey_list(device);
 	kfree(device->port_pkey_list);
 
-	down_write(&lists_rwsem);
-	spin_lock_irqsave(&device->client_data_lock, flags);
-	list_for_each_entry_safe(context, tmp, &device->client_data_list, list)
-		kfree(context);
-	spin_unlock_irqrestore(&device->client_data_lock, flags);
-	up_write(&lists_rwsem);
+	list_for_each_entry_safe(context, tmp, &data_list, device_entry)
+		WARN_ON(!ib_put_client_data(context));
 
 	device->reg_state = IB_DEV_UNREGISTERED;
 }
@@ -641,11 +602,11 @@ int ib_register_client(struct ib_client *client)
 	mutex_lock(&device_mutex);
 
 	list_for_each_entry(device, &device_list, core_list)
-		if (!add_client_context(device, client) && client->add)
+		if (client->add)
 			client->add(device);
 
 	down_write(&lists_rwsem);
-	list_add_tail(&client->list, &client_list);
+	list_add_tail(&client->core_entry, &client_list);
 	up_write(&lists_rwsem);
 
 	mutex_unlock(&device_mutex);
@@ -665,50 +626,155 @@ EXPORT_SYMBOL(ib_register_client);
 void ib_unregister_client(struct ib_client *client)
 {
 	struct ib_client_data *context, *tmp;
-	struct ib_device *device;
-	unsigned long flags;
 
 	mutex_lock(&device_mutex);
 
 	down_write(&lists_rwsem);
-	list_del(&client->list);
+	list_del(&client->core_entry);
 	up_write(&lists_rwsem);
 
-	list_for_each_entry(device, &device_list, core_list) {
-		struct ib_client_data *found_context = NULL;
-
-		down_write(&lists_rwsem);
-		spin_lock_irqsave(&device->client_data_lock, flags);
-		list_for_each_entry_safe(context, tmp, &device->client_data_list, list)
-			if (context->client == client) {
-				context->going_down = true;
-				found_context = context;
-				break;
-			}
-		spin_unlock_irqrestore(&device->client_data_lock, flags);
-		up_write(&lists_rwsem);
-
+	list_for_each_entry_safe(context, tmp, &client->client_data_list,
+				 client_entry) {
 		if (client->remove)
-			client->remove(device, found_context ?
-					       found_context->data : NULL);
-
-		if (!found_context) {
-			pr_warn("No client context found for %s/%s\n",
-				device->name, client->name);
-			continue;
-		}
-
-		down_write(&lists_rwsem);
-		spin_lock_irqsave(&device->client_data_lock, flags);
-		list_del(&found_context->list);
-		kfree(found_context);
-		spin_unlock_irqrestore(&device->client_data_lock, flags);
-		up_write(&lists_rwsem);
+			client->remove(context->device, context);
+		WARN_ON(!ib_put_client_data(context));
 	}
-
+	/* Be nice, do not keep freed pointers float around */
+	INIT_LIST_HEAD(&client->client_data_list);
 	mutex_unlock(&device_mutex);
 }
 EXPORT_SYMBOL(ib_unregister_client);
+
+static struct ib_client_data *__find_client_data(struct ib_device *device,
+						 struct ib_client *client)
+{
+	struct ib_client_data *context;
+
+	list_for_each_entry(context, &device->client_data_list, device_entry) {
+		if (context->client == client)
+			return context;
+	}
+	return NULL;
+}
+
+static struct ib_client_data *get_client_data(struct ib_device *device,
+					      struct ib_client *client)
+{
+	struct ib_client_data *context;
+	unsigned long flags;
+
+	spin_lock_irqsave(&device->client_data_lock, flags);
+	context = __find_client_data(device, client);
+	if (!kref_get_unless_zero(&context->kref))
+		context = NULL;
+	spin_unlock_irqrestore(&device->client_data_lock, flags);
+
+	return context;
+}
+
+static bool set_client_data_if_null(struct ib_device *device,
+				    struct ib_client *client,
+				    struct ib_client_data *data)
+{
+	struct ib_client_data *context;
+	unsigned long flags;
+
+	spin_lock_irqsave(&device->client_data_lock, flags);
+	context = __find_client_data(device, client);
+	if (context) {
+		kref_init(&data->kref);
+		data->client = client;
+		data->device = device;
+		list_add(&data->client_entry, &client->client_data_list);
+		list_add(&data->device_entry, &device->client_data_list);
+	}
+	spin_unlock_irqrestore(&device->client_data_lock, flags);
+
+	return !!context;
+}
+
+struct ib_client_data *ib_alloc_or_get_client_data(struct ib_device *device,
+						   struct ib_client *client)
+{
+	struct ib_client_data *context;
+
+	if (WARN_ON(!client->alloc_client_data) ||
+	    WARN_ON(!client->free_client_data))
+		return NULL;
+
+repeat:
+	context = get_client_data(device, client);
+	if (unlikely(!context)) {
+		context = client->alloc_client_data(device);
+		if (unlikely(!context))
+			return NULL;
+
+		if (unlikely(!set_client_data_if_null(device, client,
+						      context))) {
+			/*
+			 * We lost the race, someone has set the data,
+			 * free ours and repeat reference get.
+			 */
+			client->free_client_data(context);
+			cpu_relax();
+			goto repeat;
+		}
+	}
+
+	return context;
+}
+EXPORT_SYMBOL(ib_alloc_or_get_client_data);
+
+bool ib_put_client_data(struct ib_client_data *data)
+{
+	if (refcount_dec_and_test(&data->kref.refcount)) {
+		struct ib_client *client = data->client;
+
+		down_write(&lists_rwsem);
+		list_del(&data->client_entry);
+		list_del(&data->device_entry);
+		up_write(&lists_rwsem);
+
+		client->free_client_data(data);
+		return 1;
+	}
+	return 0;
+}
+
+struct ib_client_data_context {
+	struct ib_client_data data;
+	void *ptr;
+};
+
+static struct ib_client_data *alloc_client_data(struct ib_device *device)
+{
+	struct ib_client_data_context *context;
+
+	context = kzalloc(sizeof(*context), GFP_ATOMIC);
+	if (unlikely(!context))
+		return NULL;
+
+	return &context->data;
+}
+
+static void free_client_data(struct ib_client_data *data)
+{
+	struct ib_client_data_context *context;
+
+	context = container_of(data, typeof(*context), data);
+	kfree(context);
+}
+
+static inline void set_sane_callbacks(struct ib_client *client)
+{
+	WARN_ON(client->alloc_client_data &&
+		client->alloc_client_data != alloc_client_data);
+	WARN_ON(client->free_client_data &&
+		client->free_client_data != free_client_data);
+
+	client->alloc_client_data = alloc_client_data;
+	client->free_client_data = free_client_data;
+}
 
 /**
  * ib_get_client_data - Get IB client context
@@ -717,52 +783,60 @@ EXPORT_SYMBOL(ib_unregister_client);
  *
  * ib_get_client_data() returns client context set with
  * ib_set_client_data().
+ *
+ * XXX: remove ASAP
  */
-void *ib_get_client_data(struct ib_device *device, struct ib_client *client)
+void *ib_get_client_data(struct ib_device *device,
+			 struct ib_client *client)
 {
-	struct ib_client_data *context;
-	void *ret = NULL;
-	unsigned long flags;
+	struct ib_client_data_context *context;
+	struct ib_client_data *data;
 
-	spin_lock_irqsave(&device->client_data_lock, flags);
-	list_for_each_entry(context, &device->client_data_list, list)
-		if (context->client == client) {
-			ret = context->data;
-			break;
-		}
-	spin_unlock_irqrestore(&device->client_data_lock, flags);
+	/* XXX For this API use private callbacks */
+	set_sane_callbacks(client);
 
-	return ret;
+	data = ib_alloc_or_get_client_data(device, client);
+	if (WARN_ON(!data))
+		return NULL;
+
+	/* XXX: abuse reference for this API, set to 1 */
+	kref_init(&data->kref);
+
+	context = container_of(data, typeof(*context), data);
+	return context->ptr;
 }
 EXPORT_SYMBOL(ib_get_client_data);
+
 
 /**
  * ib_set_client_data - Set IB client context
  * @device:Device to set context for
  * @client:Client to set context for
- * @data:Context to set
+ * @ptr:Context to set
  *
  * ib_set_client_data() sets client context that can be retrieved with
  * ib_get_client_data().
+ *
+ * XXX: remove ASAP
  */
 void ib_set_client_data(struct ib_device *device, struct ib_client *client,
-			void *data)
+			void *ptr)
 {
-	struct ib_client_data *context;
-	unsigned long flags;
+	struct ib_client_data_context *context;
+	struct ib_client_data *data;
 
-	spin_lock_irqsave(&device->client_data_lock, flags);
-	list_for_each_entry(context, &device->client_data_list, list)
-		if (context->client == client) {
-			context->data = data;
-			goto out;
-		}
+	/* XXX For this API use private callbacks */
+	set_sane_callbacks(client);
 
-	pr_warn("No client context found for %s/%s\n",
-		device->name, client->name);
+	data = ib_alloc_or_get_client_data(device, client);
+	if (WARN_ON(!data))
+		return;
 
-out:
-	spin_unlock_irqrestore(&device->client_data_lock, flags);
+	/* XXX: abuse reference for this API, set to 1 */
+	kref_init(&data->kref);
+
+	context = container_of(data, typeof(*context), data);
+	context->ptr = ptr;
 }
 EXPORT_SYMBOL(ib_set_client_data);
 
@@ -1129,23 +1203,25 @@ struct net_device *ib_get_net_dev_by_params(struct ib_device *dev,
 					    const struct sockaddr *addr)
 {
 	struct net_device *net_dev = NULL;
-	struct ib_client_data *context;
+	struct ib_client_data *data;
 
 	if (!rdma_protocol_ib(dev, port))
 		return NULL;
 
 	down_read(&lists_rwsem);
 
-	list_for_each_entry(context, &dev->client_data_list, list) {
-		struct ib_client *client = context->client;
+	list_for_each_entry(data, &dev->client_data_list, device_entry) {
+		struct ib_client_data_context *context;
+		struct ib_client *client;
 
-		if (context->going_down)
-			continue;
+		client = data->client;
+		/* XXX Deprecated API */
+		context = container_of(data, typeof(*context), data);
 
 		if (client->get_net_dev_by_params) {
 			net_dev = client->get_net_dev_by_params(dev, port, pkey,
 								gid, addr,
-								context->data);
+								context->ptr);
 			if (net_dev)
 				break;
 		}
