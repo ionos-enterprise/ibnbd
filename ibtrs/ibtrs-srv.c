@@ -1144,18 +1144,20 @@ int ibtrs_srv_get_queue_depth(struct ibtrs_srv *srv)
 }
 EXPORT_SYMBOL(ibtrs_srv_get_queue_depth);
 
-static int find_next_bit_ring(int cur)
+static int find_next_bit_ring(struct ibtrs_srv_sess *sess)
 {
-	int v = cpumask_next(cur, &cq_affinity_mask);
+	struct ib_device *ib_dev = sess->s.dev->ib_dev;
+	int v;
 
-	if (v >= nr_cpu_ids)
+	v = cpumask_next(sess->cur_cq_vector, &cq_affinity_mask);
+	if (v >= nr_cpu_ids || v >= ib_dev->num_comp_vectors)
 		v = cpumask_first(&cq_affinity_mask);
 	return v;
 }
 
 static int ibtrs_srv_get_next_cq_vector(struct ibtrs_srv_sess *sess)
 {
-	sess->cur_cq_vector = find_next_bit_ring(sess->cur_cq_vector);
+	sess->cur_cq_vector = find_next_bit_ring(sess);
 
 	return sess->cur_cq_vector;
 }
