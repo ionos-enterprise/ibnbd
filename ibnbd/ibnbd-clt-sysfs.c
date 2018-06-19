@@ -298,6 +298,21 @@ static ssize_t ibnbd_clt_io_mode_show(struct kobject *kobj,
 static struct kobj_attribute ibnbd_clt_io_mode =
 	__ATTR(io_mode, 0444, ibnbd_clt_io_mode_show, NULL);
 
+static ssize_t ibnbd_clt_access_mode_show(struct kobject *kobj,
+					  struct kobj_attribute *attr,
+					  char *page)
+{
+	struct ibnbd_clt_dev *dev;
+
+	dev = container_of(kobj, struct ibnbd_clt_dev, kobj);
+
+	return scnprintf(page, PAGE_SIZE, "%s\n",
+			 ibnbd_access_mode_str(dev->access_mode));
+}
+
+static struct kobj_attribute ibnbd_clt_access_mode =
+	__ATTR(access_mode, 0444, ibnbd_clt_access_mode_show, NULL);
+
 static ssize_t ibnbd_clt_unmap_dev_show(struct kobject *kobj,
 					struct kobj_attribute *attr, char *page)
 {
@@ -467,6 +482,7 @@ static struct attribute *ibnbd_dev_attrs[] = {
 	&ibnbd_clt_state_attr.attr,
 	&ibnbd_clt_session_attr.attr,
 	&ibnbd_clt_io_mode.attr,
+	&ibnbd_clt_access_mode.attr,
 	NULL,
 };
 

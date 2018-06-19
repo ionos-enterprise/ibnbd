@@ -207,6 +207,16 @@ mapping_path (RO)
 Contains the path that was passed as "device_path" to the map_device
 operation.
 
+io_mode (RO)
+------------
+
+Contains the way device is accessed: blockio or fileio
+
+access_mode (RO)
+----------------
+
+Contains the device access mode: ro, rw or migration.
+
 ======================
 Server Sysfs Interface
 ======================
