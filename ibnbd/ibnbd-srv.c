@@ -657,6 +657,7 @@ ibnbd_srv_create_set_sess_dev(struct ibnbd_srv_session *srv_sess,
 	sdev->sess		= srv_sess;
 	sdev->dev		= srv_dev;
 	sdev->open_flags	= open_flags;
+	sdev->access_mode	= open_msg->access_mode;
 
 	return sdev;
 }

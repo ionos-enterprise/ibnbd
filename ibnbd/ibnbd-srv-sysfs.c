@@ -143,6 +143,24 @@ static struct kobj_attribute ibnbd_srv_dev_session_ro_attr =
 	       NULL);
 
 static ssize_t
+ibnbd_srv_dev_session_access_mode_show(struct kobject *kobj,
+				       struct kobj_attribute *attr,
+				       char *page)
+{
+	struct ibnbd_srv_sess_dev *sess_dev;
+
+	sess_dev = container_of(kobj, struct ibnbd_srv_sess_dev, kobj);
+
+	return scnprintf(page, PAGE_SIZE, "%s\n",
+			 ibnbd_access_mode_str(sess_dev->access_mode));
+}
+
+static struct kobj_attribute ibnbd_srv_dev_session_access_mode_attr =
+	__ATTR(access_mode, 0444,
+	       ibnbd_srv_dev_session_access_mode_show,
+	       NULL);
+
+static ssize_t
 ibnbd_srv_dev_session_mapping_path_show(struct kobject *kobj,
 					struct kobj_attribute *attr, char *page)
 {
@@ -159,6 +177,7 @@ static struct kobj_attribute ibnbd_srv_dev_session_mapping_path_attr =
 	       NULL);
 
 static struct attribute *ibnbd_srv_default_dev_sessions_attrs[] = {
+	&ibnbd_srv_dev_session_access_mode_attr.attr,
 	&ibnbd_srv_dev_session_ro_attr.attr,
 	&ibnbd_srv_dev_session_mapping_path_attr.attr,
 	NULL,

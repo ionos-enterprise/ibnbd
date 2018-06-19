@@ -84,6 +84,7 @@ struct ibnbd_srv_sess_dev {
 	struct kref			kref;
 	struct completion               *destroy_comp;
 	char				pathname[NAME_MAX];
+	enum ibnbd_access_mode		access_mode;
 };
 
 /* ibnbd-srv-sysfs.c */

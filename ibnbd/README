@@ -257,6 +257,12 @@ mapping_path (RO)
 
 Contains the relative device path provided by the user during mapping.
 
+access_mode (RO)
+-----------------
+
+Contains the device access mode: ro, rw or migration.
+
+
 ==============================
 IBNBD-Server Module Parameters
 ==============================
