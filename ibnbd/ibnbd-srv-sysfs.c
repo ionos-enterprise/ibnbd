@@ -45,7 +45,23 @@ static struct device *ibnbd_dev;
 static struct class *ibnbd_dev_class;
 static struct kobject *ibnbd_devs_kobj;
 
+static ssize_t ibnbd_srv_dev_mode_show(struct kobject *kobj,
+				       struct kobj_attribute *attr,
+				       char *page)
+{
+	struct ibnbd_srv_dev *srv_dev;
+
+	srv_dev = container_of(kobj, struct ibnbd_srv_dev, dev_kobj);
+
+	return scnprintf(page, PAGE_SIZE, "%s\n",
+			 ibnbd_io_mode_str(srv_dev->mode));
+}
+
+static struct kobj_attribute ibnbd_srv_dev_mode_attr =
+	__ATTR(io_mode, 0444, ibnbd_srv_dev_mode_show, NULL);
+
 static struct attribute *ibnbd_srv_default_dev_attrs[] = {
+	&ibnbd_srv_dev_mode_attr.attr,
 	NULL,
 };
 

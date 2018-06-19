@@ -229,6 +229,11 @@ Example:
 
   block_dev -> ../../../../devices/virtual/block/ram0
 
+io_mode (RO)
+-----------
+
+Contains the way device is accessed: blockio or fileio
+
 Entries under /sys/devices/virtual/ibnbd-server/ctl/devices/<device_name>/sessions/
 ===================================================================================
 
