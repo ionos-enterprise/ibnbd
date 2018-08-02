@@ -37,7 +37,6 @@
 #include "ibtrs-clt.h"
 #include "ibtrs-log.h"
 
-#define MAX_SEGMENTS 31
 #define IBTRS_CONNECT_TIMEOUT_MS 30000
 
 MODULE_AUTHOR("ibnbd@profitbricks.com");
