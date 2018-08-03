@@ -1447,9 +1447,9 @@ static int create_con(struct ibtrs_srv_sess *sess,
 		 * In theory we might have queue_depth * 32
 		 * outstanding requests if an unsafe global key is used
 		 * and we have queue_depth read requests each consisting
-		 * of 32 different addresses.
+		 * of 32 different addresses. div 3 for mlx5.
 		 */
-		wr_queue_size = sess->s.dev->ib_dev->attrs.max_qp_wr;
+		wr_queue_size = sess->s.dev->ib_dev->attrs.max_qp_wr/3;
 	}
 
 	cq_vector = ibtrs_srv_get_next_cq_vector(sess);
