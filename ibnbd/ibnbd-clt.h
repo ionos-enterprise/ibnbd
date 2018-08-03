@@ -41,7 +41,7 @@
 #include "ibnbd-proto.h"
 #include "ibnbd-log.h"
 
-#define BMAX_SEGMENTS 31
+#define BMAX_SEGMENTS 29
 #define RECONNECT_DELAY 30
 #define MAX_RECONNECTS -1
 
