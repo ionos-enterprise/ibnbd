@@ -221,13 +221,6 @@ static inline blk_qc_t backport_submit_bio(struct bio *bio)
 	return submit_bio(bio->bi_rw, bio);
 }
 
-static inline struct bio_set *
-backport_bioset_create(unsigned int pool_size, unsigned int front_pad, int flags)
-{
-	(void)flags;
-	return bioset_create(pool_size, front_pad);
-}
-
 static inline struct request_queue *
 backport_blk_mq_init_queue(struct backport_blk_mq_tag_set *set)
 {
@@ -294,6 +287,33 @@ backport_kernel_write(struct file *file, const void *buf, size_t count,
 	return kernel_write(file, buf, count, *pos);
 }
 
+static inline int
+backport_bioset_init(struct bio_set *bs, unsigned int pool_size,
+                     unsigned int front_pad, int flags)
+{
+    struct bio_set *tbs;
+
+    tbs = bioset_create(pool_size, front_pad);
+    if (unlikely(!tbs))
+        return -ENOMEM;
+
+    memcpy(bs, tbs, sizeof(*tbs));
+    kfree(tbs);
+    return 0;
+}
+
+static inline void
+backport_bioset_exit(struct bio_set *bs)
+{
+    struct bio_set *tbs;
+
+    tbs = kzalloc(sizeof(*tbs), GFP_KERNEL);
+    if (WARN_ON(!tbs))
+        return;
+    memcpy(tbs, bs, sizeof(*bs));
+    bioset_free(tbs);
+}
+
 #define blk_mq_ops backport_blk_mq_ops
 #define blk_mq_tag_set backport_blk_mq_tag_set
 #define blk_mq_init_queue backport_blk_mq_init_queue
@@ -307,8 +327,9 @@ backport_kernel_write(struct file *file, const void *buf, size_t count,
 #define blk_queue_secure_erase blk_queue_secdiscard
 #define blk_queue_flag_set backport_blk_queue_flag_set
 #define submit_bio backport_submit_bio
-#define bioset_create backport_bioset_create
 #define kernel_read backport_kernel_read
 #define kernel_write backport_kernel_write
+#define bioset_init backport_bioset_init
+#define bioset_exit backport_bioset_exit
 
 #endif /* LINUX_4_4_COMPAT_H */

@@ -15,8 +15,8 @@
  * along with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef LINUX_4_14_COMPAT_H
-#define LINUX_4_14_COMPAT_H
+#ifndef LINUX_4_19_COMPAT_H
+#define LINUX_4_19_COMPAT_H
 
 /*
  * linux/sysfs.h
@@ -45,49 +45,35 @@ void sysfs_remove_file_self(struct kobject *kobj,
        device_remove_file_self(device, &dattr);
 }
 
-#include <linux/version.h>
-#include <linux/blk-mq.h>
+/*
+ * rdma/rdma_cm.h
+ */
 
-static inline void
-backport_blk_queue_flag_set(unsigned int flag, struct request_queue *q)
-{
-	unsigned long flags;
+#define rdma_ucm_port_space rdma_port_space
 
-	spin_lock_irqsave(q->queue_lock, flags);
-	queue_flag_set(flag, q);
-	spin_unlock_irqrestore(q->queue_lock, flags);
-}
+/*
+ * linux/rculist.h
+ */
 
-#define blk_queue_flag_set backport_blk_queue_flag_set
+/**
+ * list_next_or_null_rcu - get the first element from a list
+ * @head:	the head for the list.
+ * @ptr:        the list head to take the next element from.
+ * @type:       the type of the struct this is embedded in.
+ * @member:     the name of the list_head within the struct.
+ *
+ * Note that if the ptr is at the end of the list, NULL is returned.
+ *
+ * This primitive may safely run concurrently with the _rcu list-mutation
+ * primitives such as list_add_rcu() as long as it's guarded by rcu_read_lock().
+ */
+#define list_next_or_null_rcu(head, ptr, type, member) \
+({ \
+	struct list_head *__head = (head); \
+	struct list_head *__ptr = (ptr); \
+	struct list_head *__next = READ_ONCE(__ptr->next); \
+	likely(__next != __head) ? list_entry_rcu(__next, type, \
+						  member) : NULL; \
+})
 
-static inline int
-backport_bioset_init(struct bio_set *bs, unsigned int pool_size,
-                unsigned int front_pad, int flags)
-{
-    struct bio_set *tbs;
-
-    tbs = bioset_create(pool_size, front_pad, flags);
-    if (unlikely(!tbs))
-        return -ENOMEM;
-
-    memcpy(bs, tbs, sizeof(*tbs));
-    kfree(tbs);
-    return 0;
-}
-
-static inline void
-backport_bioset_exit(struct bio_set *bs)
-{
-    struct bio_set *tbs;
-
-    tbs = kzalloc(sizeof(*tbs), GFP_KERNEL);
-    if (WARN_ON(!tbs))
-        return;
-    memcpy(tbs, bs, sizeof(*bs));
-    bioset_free(tbs);
-}
-
-#define bioset_init backport_bioset_init
-#define bioset_exit backport_bioset_exit
-
-#endif /* LINUX_4_14_COMPAT_H */
+#endif /* LINUX_4_19_COMPAT_H */

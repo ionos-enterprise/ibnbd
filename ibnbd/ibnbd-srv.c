@@ -296,7 +296,7 @@ static void destroy_sess(struct ibnbd_srv_session *srv_sess)
 
 out:
 	idr_destroy(&srv_sess->index_idr);
-	bioset_free(srv_sess->sess_bio_set);
+	bioset_exit(&srv_sess->sess_bio_set);
 
 	pr_info("IBTRS Session %s disconnected\n", srv_sess->sessname);
 
@@ -323,13 +323,13 @@ static int create_sess(struct ibtrs_srv *ibtrs)
 	if (!srv_sess)
 		return -ENOMEM;
 	srv_sess->queue_depth = ibtrs_srv_get_queue_depth(ibtrs);
-	srv_sess->sess_bio_set = bioset_create(srv_sess->queue_depth, 0,
-					       BIOSET_NEED_BVECS);
-	if (!srv_sess->sess_bio_set) {
-		pr_err("Allocating srv_session for session %s failed\n",
-		       sessname);
+
+	err = bioset_init(&srv_sess->sess_bio_set, srv_sess->queue_depth, 0,
+                      BIOSET_NEED_BVECS);
+	if (err) {
+        pr_err("Allocating srv_session for session %s failed\n", sessname);
 		kfree(srv_sess);
-		return -ENOMEM;
+		return err;
 	}
 
 	idr_init(&srv_sess->index_idr);
@@ -807,7 +807,7 @@ static int process_msg_open(struct ibtrs_srv *ibtrs,
 		io_mode = def_io_mode;
 
 	ibnbd_dev = ibnbd_dev_open(full_path, open_flags, io_mode,
-				   srv_sess->sess_bio_set, ibnbd_endio);
+				   &srv_sess->sess_bio_set, ibnbd_endio);
 	if (IS_ERR(ibnbd_dev)) {
 		pr_err("Opening device '%s' on session %s failed,"
 		       " failed to open the block device, err: %ld\n",
