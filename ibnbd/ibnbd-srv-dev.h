@@ -140,10 +140,11 @@ static inline int ibnbd_dev_get_discard_alignment(const struct ibnbd_dev *dev)
  * @data:	I/O data to write or buffer to read I/O date into
  * @len:	length of @data
  * @bi_size:	Amount of data that will be read/written
+ * @prio:       IO priority
  * @priv:	private data passed to @io_fn
  */
 int ibnbd_dev_submit_io(struct ibnbd_dev *dev, sector_t sector, void *data,
 			size_t len, u32 bi_size, enum ibnbd_io_flags flags,
-			void *priv);
+			short prio, void *priv);
 
 #endif /* IBNBD_SRV_DEV_H */

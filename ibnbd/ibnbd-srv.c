@@ -199,7 +199,10 @@ static int process_rdma(struct ibtrs_srv *sess,
 
 	err = ibnbd_dev_submit_io(sess_dev->ibnbd_dev, le64_to_cpu(msg->sector),
 				  data, datalen, le32_to_cpu(msg->bi_size),
-				  le32_to_cpu(msg->rw), priv);
+				  le32_to_cpu(msg->rw),
+				  srv_sess->ver < IBNBD_PROTO_VER_MAJOR ||
+				  usrlen < sizeof(*msg) ?
+				  0 : le16_to_cpu(msg->prio), priv);
 	if (unlikely(err)) {
 		ibnbd_err(sess_dev,
 			  "Submitting I/O to device failed, err: %d\n", err);

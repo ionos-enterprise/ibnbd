@@ -222,7 +222,8 @@ static struct bio *ibnbd_bio_map_kern(struct request_queue *q, void *data,
 
 static int ibnbd_dev_blk_submit_io(struct ibnbd_dev *dev, sector_t sector,
 				   void *data, size_t len, u32 bi_size,
-				   enum ibnbd_io_flags flags, void *priv)
+				   enum ibnbd_io_flags flags, short prio,
+				   void *priv)
 {
 	struct request_queue *q = bdev_get_queue(dev->bdev);
 	struct ibnbd_dev_blk_io *io;
@@ -251,6 +252,7 @@ static int ibnbd_dev_blk_submit_io(struct ibnbd_dev *dev, sector_t sector,
 	bio->bi_opf		= ibnbd_to_bio_flags(flags);
 	bio->bi_iter.bi_sector	= sector;
 	bio->bi_iter.bi_size	= bi_size;
+	bio_set_prio(bio, prio);
 	bio_set_dev(bio, dev->bdev);
 
 	submit_bio(bio);
@@ -397,14 +399,14 @@ static int ibnbd_dev_file_submit_io(struct ibnbd_dev *dev, sector_t sector,
 
 int ibnbd_dev_submit_io(struct ibnbd_dev *dev, sector_t sector, void *data,
 			size_t len, u32 bi_size, enum ibnbd_io_flags flags,
-			void *priv)
+			short prio, void *priv)
 {
 	if (dev->mode == IBNBD_FILEIO)
 		return ibnbd_dev_file_submit_io(dev, sector, data, len, bi_size,
 						flags, priv);
 	else if (dev->mode == IBNBD_BLOCKIO)
 		return ibnbd_dev_blk_submit_io(dev, sector, data, len, bi_size,
-					       flags, priv);
+					       flags, prio, priv);
 
 	pr_warn("Submitting I/O to %s failed, dev->mode contains invalid "
 		"value: '%d', memory corrupted?", dev->name, dev->mode);
