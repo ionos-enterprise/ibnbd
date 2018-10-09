@@ -1135,7 +1135,7 @@ static size_t ibnbd_clt_get_sg_size(struct scatterlist *sglist, u32 len)
 static short ibnbd_current_ioprio(void)
 {
 	struct task_struct *tsp = current;
-	unsigned short prio = 0;
+	unsigned short prio = IOPRIO_PRIO_VALUE(IOPRIO_CLASS_NONE, 0);
 
 	if (likely(tsp->io_context != NULL))
 		prio = tsp->io_context->ioprio;
@@ -1146,7 +1146,7 @@ static short ibnbd_ioprio_best(unsigned short prio1, unsigned short prio2)
 {
 	if (!ioprio_valid(prio1)) {
 		if (!ioprio_valid(prio2))
-			return 0;
+			return IOPRIO_PRIO_VALUE(IOPRIO_CLASS_NONE, 0);
 		else
 			return prio2;
 	}
