@@ -1385,7 +1385,6 @@ static void setup_request_queue(struct ibnbd_clt_dev *dev)
 
 	blk_queue_flag_set(QUEUE_FLAG_SAME_COMP, dev->queue);
 	blk_queue_flag_set(QUEUE_FLAG_SAME_FORCE, dev->queue);
-	/* our hca only support 32 sg cnt, proto use one, so 31 left */
 	blk_queue_max_segments(dev->queue, dev->max_segments);
 	blk_queue_io_opt(dev->queue, dev->sess->max_io_size);
 	blk_queue_virt_boundary(dev->queue, 4095);
