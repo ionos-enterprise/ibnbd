@@ -402,13 +402,25 @@ static struct ibnbd_iu *ibnbd_get_iu(struct ibnbd_clt_session *sess,
 	iu->tag = tag; /* yes, ibtrs_tag_from_pdu() can be nice here,
 			* but also we have to think about MQ mode
 			*/
+	/*
+	 * 1st reference is dropped after finishing sending a "user" message,
+	 * 2nd reference is dropped after confirmation with the reponse is
+	 * returned.
+	 * 1st and 2nd can happen in any order, so the ibnbd_iu should be
+	 * released (ibtrs_tag returned to ibbtrs) only leased after both
+	 * are finished.
+	 */
+	atomic_set(&iu->refcount, 2);
+	init_waitqueue_head(&iu->comp.wait);
+	iu->comp.errno = INT_MAX;
 
 	return iu;
 }
 
 static void ibnbd_put_iu(struct ibnbd_clt_session *sess, struct ibnbd_iu *iu)
 {
-	ibnbd_put_tag(sess, iu->tag);
+	if (atomic_dec_and_test(&iu->refcount))
+		ibnbd_put_tag(sess, iu->tag);
 }
 
 static void ibnbd_softirq_done_fn(struct request *rq)
@@ -443,32 +455,10 @@ static void msg_io_conf(void *priv, int errno)
 			      errno);
 }
 
-static void init_iu_comp(struct ibnbd_iu *iu, struct ibnbd_iu_comp *comp)
-{
-	init_waitqueue_head(&comp->wait);
-	comp->errno = INT_MAX;
-	iu->comp = comp;
-}
-
-static void deinit_iu_comp(struct ibnbd_iu *iu)
-{
-	iu->comp = NULL;
-}
-
 static void wake_up_iu_comp(struct ibnbd_iu *iu, int errno)
 {
-	struct ibnbd_iu_comp *comp = iu->comp;
-
-	if (comp) {
-		comp->errno = errno;
-		wake_up(&comp->wait);
-		deinit_iu_comp(iu);
-	}
-}
-
-static void wait_iu_comp(struct ibnbd_iu_comp *comp)
-{
-	wait_event(comp->wait, comp->errno != INT_MAX);
+	iu->comp.errno = errno;
+	wake_up(&iu->comp.wait);
 }
 
 static void msg_conf(void *priv, int errno)
@@ -490,19 +480,15 @@ static int send_usr_msg(struct ibtrs_clt *ibtrs, int dir,
 			void (*conf)(struct work_struct *work),
 			int *errno, bool wait)
 {
-	struct ibnbd_iu_comp comp;
 	int err;
 
-	if (wait)
-		init_iu_comp(iu, &comp);
+
 	INIT_WORK(&iu->work, conf);
 	err = ibtrs_clt_request(dir, msg_conf, ibtrs, iu->tag,
 				iu, vec, nr, len, sg, sg_len);
-	if (unlikely(err)) {
-		deinit_iu_comp(iu);
-	} else if (wait) {
-		wait_iu_comp(&comp);
-		*errno = comp.errno;
+	if (!err && wait) {
+		wait_event(iu->comp.wait, iu->comp.errno != INT_MAX);
+		*errno = iu->comp.errno;
 	} else {
 		*errno = 0;
 	}
@@ -553,6 +539,7 @@ static int send_msg_close(struct ibnbd_clt_dev *dev, u32 device_id, bool wait)
 		err = errno;
 	}
 
+	ibnbd_put_iu(sess, iu);
 	return err;
 }
 
@@ -641,6 +628,7 @@ static int send_msg_open(struct ibnbd_clt_dev *dev, bool wait)
 		err = errno;
 	}
 
+	ibnbd_put_iu(sess, iu);
 	return err;
 }
 
@@ -695,6 +683,7 @@ put_iu:
 		err = errno;
 	}
 
+	ibnbd_put_iu(sess, iu);
 	return err;
 }
 

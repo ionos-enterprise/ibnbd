@@ -73,7 +73,8 @@ struct ibnbd_iu {
 	struct scatterlist	sglist[BMAX_SEGMENTS];
 	struct work_struct	work;
 	int			errno;
-	struct ibnbd_iu_comp	*comp;
+	struct ibnbd_iu_comp	comp;
+	atomic_t		refcount;
 };
 
 struct ibnbd_cpu_qlist {
