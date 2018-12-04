@@ -33,6 +33,7 @@
 
 #include <linux/module.h>
 #include <linux/rculist.h>
+#include <linux/blkdev.h> /* for BLK_MAX_SEGMENT_SIZE */
 
 #include "ibtrs-clt.h"
 #include "ibtrs-log.h"
@@ -798,10 +799,11 @@ static int alloc_sess_reqs(struct ibtrs_clt_sess *sess)
 			goto out;
 
 		req->mr = ib_alloc_mr(sess->s.dev->ib_pd, IB_MR_TYPE_MEM_REG,
-				      clt->max_segments + 1);
+				      sess->max_pages_per_mr);
 		if (unlikely(IS_ERR(req->mr))) {
 			err = PTR_ERR(req->mr);
 			req->mr = NULL;
+			pr_err("Memory alloc failed for sess->max_pages_per_mr %d\n", sess->max_pages_per_mr);
 			goto out;
 		}
 
@@ -1080,7 +1082,7 @@ static struct ibtrs_clt_sess *alloc_sess(struct ibtrs_clt *clt,
 	strlcpy(sess->s.sessname, clt->sessname, sizeof(sess->s.sessname));
 	sess->s.con_num = con_num;
 	sess->clt = clt;
-	sess->max_pages_per_mr = max_segments;
+	sess->max_pages_per_mr = max_segments * BLK_MAX_SEGMENT_SIZE >> 12;
 	init_waitqueue_head(&sess->state_wq);
 	sess->state = IBTRS_CLT_CONNECTING;
 	atomic_set(&sess->connected_cnt, 0);
