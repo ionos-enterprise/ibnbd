@@ -10,10 +10,6 @@ ifeq ($(LIN_VER),0.0.0)
     $(error Failed to read linux/version.h and extract version)
 else ifeq ($(LIN_VER), 4.4.112)
     do_compat := 1
-else ifeq ($(LIN_VER), 4.4.131)
-    do_compat := 1
-else ifeq ($(LIN_VER), 4.4.157)
-    do_compat := 1
 else ifeq ($(LIN_VER), 4.14.93)
     do_compat := 1
 else ifeq ($(LIN_VER), 4.14.86)
