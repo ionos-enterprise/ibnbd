@@ -18,6 +18,8 @@ else ifeq ($(LIN_VER), 4.14.93)
     do_compat := 1
 else ifeq ($(LIN_VER), 4.14.86)
     do_compat := 1
+else ifeq ($(LIN_VER), 4.14.110)
+    do_compat := 1
 endif
 
 ifdef do_compat
