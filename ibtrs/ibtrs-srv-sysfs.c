@@ -219,6 +219,7 @@ static void ibtrs_srv_destroy_once_sysfs_root_folders(struct ibtrs_srv_sess *ses
 
 	mutex_lock(&srv->paths_mutex);
 	if (!--srv->dev_ref) {
+		kobject_del(&srv->kobj_paths);
 		kobject_put(&srv->kobj_paths);
 		device_unregister(&srv->dev);
 	}
@@ -245,6 +246,7 @@ static int ibtrs_srv_create_stats_files(struct ibtrs_srv_sess *sess)
 	return 0;
 
 err:
+	kobject_del(&sess->kobj_stats);
 	kobject_put(&sess->kobj_stats);
 
 	return err;
