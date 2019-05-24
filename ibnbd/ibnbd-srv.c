@@ -325,9 +325,10 @@ static int create_sess(struct ibtrs_srv *ibtrs)
 	srv_sess->queue_depth = ibtrs_srv_get_queue_depth(ibtrs);
 
 	err = bioset_init(&srv_sess->sess_bio_set, srv_sess->queue_depth, 0,
-                      BIOSET_NEED_BVECS);
+			  BIOSET_NEED_BVECS);
 	if (err) {
-        pr_err("Allocating srv_session for session %s failed\n", sessname);
+		pr_err("Allocating srv_session for session %s failed\n",
+		       sessname);
 		kfree(srv_sess);
 		return err;
 	}
@@ -381,7 +382,7 @@ static int process_msg_close(struct ibtrs_srv *ibtrs,
 	struct ibnbd_srv_sess_dev *sess_dev;
 
 	sess_dev = ibnbd_get_sess_dev(le32_to_cpu(close_msg->device_id),
-						  srv_sess);
+				      srv_sess);
 	if (unlikely(IS_ERR(sess_dev)))
 		return 0;
 
@@ -679,8 +680,8 @@ static char *ibnbd_srv_get_full_path(struct ibnbd_srv_session *srv_sess,
 	 * Replace %SESSNAME% with a real session name in order to
 	 * create device namespace.
 	 */
-	if ((a = strnstr(dev_search_path, "%SESSNAME%",
-			       sizeof(dev_search_path)))) {
+	a = strnstr(dev_search_path, "%SESSNAME%", sizeof(dev_search_path));
+	if (a) {
 		int len = a - dev_search_path;
 
 		len = snprintf(full_path, PATH_MAX, "%.*s/%s/%s", len,
@@ -691,9 +692,10 @@ static char *ibnbd_srv_get_full_path(struct ibnbd_srv_session *srv_sess,
 			kfree(full_path);
 			return ERR_PTR(-EINVAL);
 		}
-	} else
+	} else {
 		snprintf(full_path, PATH_MAX, "%s/%s",
 			 dev_search_path, dev_name);
+	}
 
 	/* eliminitate duplicated slashes */
 	a = strchr(full_path, '/');
