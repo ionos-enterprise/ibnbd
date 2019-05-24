@@ -213,7 +213,8 @@ unlock:
 	return err;
 }
 
-static void ibtrs_srv_destroy_once_sysfs_root_folders(struct ibtrs_srv_sess *sess)
+static void
+ibtrs_srv_destroy_once_sysfs_root_folders(struct ibtrs_srv_sess *sess)
 {
 	struct ibtrs_srv *srv = sess->srv;
 
