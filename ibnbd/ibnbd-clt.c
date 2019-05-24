@@ -404,7 +404,7 @@ static struct ibnbd_iu *ibnbd_get_iu(struct ibnbd_clt_session *sess,
 			*/
 	/*
 	 * 1st reference is dropped after finishing sending a "user" message,
-	 * 2nd reference is dropped after confirmation with the reponse is
+	 * 2nd reference is dropped after confirmation with the response is
 	 * returned.
 	 * 1st and 2nd can happen in any order, so the ibnbd_iu should be
 	 * released (ibtrs_tag returned to ibbtrs) only leased after both
@@ -481,7 +481,6 @@ static int send_usr_msg(struct ibtrs_clt *ibtrs, int dir,
 			int *errno, bool wait)
 {
 	int err;
-
 
 	INIT_WORK(&iu->work, conf);
 	err = ibtrs_clt_request(dir, msg_conf, ibtrs, iu->tag,
@@ -958,18 +957,17 @@ again:
 				goto again;
 
 			return sess;
-		} else {
-			/*
-			 * Ref is 0, session is dying, wait for IBTRS disconnect
-			 * in order to avoid session names clashes.
-			 */
-			wait_for_ibtrs_disconnection(sess);
-			/*
-			 * IBTRS is disconnected and soon session will be freed,
-			 * so repeat a loop.
-			 */
-			goto again;
 		}
+		/*
+		 * Ref is 0, session is dying, wait for IBTRS disconnect
+		 * in order to avoid session names clashes.
+		 */
+		wait_for_ibtrs_disconnection(sess);
+		/*
+		 * IBTRS is disconnected and soon session will be freed,
+		 * so repeat a loop.
+		 */
+		goto again;
 	}
 
 	return NULL;
@@ -1126,7 +1124,7 @@ static short ibnbd_current_ioprio(void)
 	struct task_struct *tsp = current;
 	unsigned short prio = IOPRIO_PRIO_VALUE(IOPRIO_CLASS_NONE, 0);
 
-	if (likely(tsp->io_context != NULL))
+	if (likely(tsp->io_context))
 		prio = tsp->io_context->ioprio;
 	return prio;
 }
@@ -1163,10 +1161,13 @@ static int ibnbd_client_xfer_request(struct ibnbd_clt_dev *dev,
 	msg.bi_size	= cpu_to_le32(blk_rq_bytes(rq));
 	msg.rw		= cpu_to_le32(rq_to_ibnbd_flags(rq));
 	msg.prio	= cpu_to_le16(ibnbd_ioprio_best(
-					   req_get_ioprio(rq),
-					   ibnbd_current_ioprio()));
+						req_get_ioprio(rq),
+						ibnbd_current_ioprio()));
 
-	/* We only support discards with single segment for now. See queue limits. */
+	/*
+	 * We only support discards with single segment for now.
+	 * See queue limits.
+	 */
 	if (req_op(rq) != REQ_OP_DISCARD)
 		sg_cnt = blk_rq_map_sg(dev->queue, rq, iu->sglist);
 
@@ -1361,7 +1362,10 @@ static void setup_request_queue(struct ibnbd_clt_dev *dev)
 	blk_queue_max_write_same_sectors(dev->queue,
 					 dev->max_write_same_sectors);
 
-	/* we don't support discards to "discontiguous" segments in on request */
+	/*
+	 * we don't support discards to "discontiguous" segments
+	 * in on request
+	 */
 	blk_queue_max_discard_segments(dev->queue, 1);
 
 	blk_queue_max_discard_sectors(dev->queue, dev->max_discard_sectors);
@@ -1451,7 +1455,8 @@ static struct ibnbd_clt_dev *init_dev(struct ibnbd_clt_session *sess,
 	if (!dev)
 		return ERR_PTR(-ENOMEM);
 
-	dev->hw_queues = kcalloc(nr_cpu_ids, sizeof(*dev->hw_queues), GFP_KERNEL);
+	dev->hw_queues = kcalloc(nr_cpu_ids, sizeof(*dev->hw_queues),
+				 GFP_KERNEL);
 	if (unlikely(!dev->hw_queues)) {
 		pr_err("Failed to initialize device '%s' from session"
 		       " %s, allocating hw_queues failed.", pathname,
