@@ -336,7 +336,6 @@ static int rdma_write_sg(struct ibtrs_srv_op *id)
 	bool need_inval;
 	u32 rkey = 0;
 
-	BUG_ON(id->dir != READ);
 	sg_cnt = le16_to_cpu(id->rd_msg->sg_cnt);
 	need_inval = le16_to_cpu(id->rd_msg->flags) & IBTRS_MSG_NEED_INVAL_F;
 	if (unlikely(!sg_cnt))
@@ -383,7 +382,6 @@ static int rdma_write_sg(struct ibtrs_srv_op *id)
 		wr->wr.opcode = IB_WR_RDMA_WRITE;
 		wr->wr.ex.imm_data = 0;
 		wr->wr.send_flags  = 0;
-
 	}
 	/*
 	 * From time to time we have to post signalled sends,
@@ -441,7 +439,8 @@ static int send_io_resp_imm(struct ibtrs_srv_con *con, struct ibtrs_srv_op *id,
 		struct ibtrs_msg_rdma_read *rd_msg = id->rd_msg;
 		size_t sg_cnt;
 
-		need_inval = le16_to_cpu(rd_msg->flags) & IBTRS_MSG_NEED_INVAL_F;
+		need_inval = le16_to_cpu(rd_msg->flags) &
+				IBTRS_MSG_NEED_INVAL_F;
 		sg_cnt = le16_to_cpu(rd_msg->sg_cnt);
 
 		if (need_inval) {
@@ -768,7 +767,7 @@ static int process_info_req(struct ibtrs_srv_con *con,
 		/*
 		 * Fill in reg MR request and chain them *backwards*
 		 */
-		rwr[mri].wr.next = mri ? &rwr[mri-1].wr : NULL;
+		rwr[mri].wr.next = mri ? &rwr[mri - 1].wr : NULL;
 		rwr[mri].wr.opcode = IB_WR_REG_MR;
 		rwr[mri].wr.wr_cqe = &local_reg_cqe;
 		rwr[mri].wr.num_sge = 0;
@@ -1434,7 +1433,8 @@ static int create_con(struct ibtrs_srv_sess *sess,
 		 * All receive and all send (each requiring invalidate)
 		 * + 2 for drain and heartbeat
 		 */
-		cq_size = wr_queue_size = SERVICE_CON_QUEUE_DEPTH * 3 + 2;
+		wr_queue_size = SERVICE_CON_QUEUE_DEPTH * 3 + 2;
+		cq_size = wr_queue_size;
 	} else {
 		/*
 		 * If we have all receive requests posted and
@@ -1449,7 +1449,7 @@ static int create_con(struct ibtrs_srv_sess *sess,
 		 * and we have queue_depth read requests each consisting
 		 * of 32 different addresses. div 3 for mlx5.
 		 */
-		wr_queue_size = sess->s.dev->ib_dev->attrs.max_qp_wr/3;
+		wr_queue_size = sess->s.dev->ib_dev->attrs.max_qp_wr / 3;
 	}
 
 	cq_vector = ibtrs_srv_get_next_cq_vector(sess);
@@ -1929,8 +1929,8 @@ static int check_module_params(void)
 	 * Check if IB immediate data size is enough to hold the mem_id and the
 	 * offset inside the memory chunk
 	 */
-	if ((ilog2(sess_queue_depth-1)+1) + (ilog2(max_chunk_size-1)+1) >
-	    MAX_IMM_PAYL_BITS) {
+	if ((ilog2(sess_queue_depth - 1) + 1) +
+	    (ilog2(max_chunk_size - 1) + 1) > MAX_IMM_PAYL_BITS) {
 		pr_err("RDMA immediate size (%db) not enough to encode "
 		       "%d buffers of size %dB. Reduce 'sess_queue_depth' "
 		       "or 'max_chunk_size' parameters.\n", MAX_IMM_PAYL_BITS,
