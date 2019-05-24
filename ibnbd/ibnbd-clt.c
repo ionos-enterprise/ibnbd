@@ -798,7 +798,6 @@ static int setup_mq_tags(struct ibnbd_clt_session *sess)
 	tags->queue_depth	= sess->queue_depth;
 	tags->numa_node		= NUMA_NO_NODE;
 	tags->flags		= BLK_MQ_F_SHOULD_MERGE |
-				  BLK_MQ_F_SG_MERGE     |
 				  BLK_MQ_F_TAG_SHARED;
 	tags->cmd_size		= sizeof(struct ibnbd_iu);
 	tags->nr_hw_queues	= num_online_cpus();
