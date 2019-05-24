@@ -238,13 +238,12 @@ int ibtrs_clt_stats_sg_list_distr_to_str(struct ibtrs_clt_stats *stats,
 		if (i <= MAX_LIN_SG)
 			cnt += scnprintf(buf + cnt, len - cnt, "\n= %3d:", i);
 		else if (i < SG_DISTR_SZ - 1)
-			cnt += scnprintf(buf + cnt, len - cnt,
-					 "\n< %3d:",
+			cnt += scnprintf(buf + cnt, len - cnt, "\n< %3d:",
 					 1 << (i + MIN_LOG_SG - MAX_LIN_SG));
 		else
-			cnt += scnprintf(buf + cnt, len - cnt,
-					 "\n>=%3d:",
-					 1 << (i + MIN_LOG_SG - MAX_LIN_SG - 1));
+			cnt += scnprintf(buf + cnt, len - cnt, "\n>=%3d:",
+					 1 << (i + MIN_LOG_SG -
+					       MAX_LIN_SG - 1));
 
 		for_each_possible_cpu(cpu) {
 			unsigned int p, p_i, p_f;
