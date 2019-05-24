@@ -114,7 +114,8 @@ static ssize_t mpath_policy_store(struct device *dev,
 	clt = container_of(dev, struct ibtrs_clt, dev);
 
 	ret = kstrtoint(buf, 10, &value);
-	if (!ret && (value == MP_POLICY_RR || value == MP_POLICY_MIN_INFLIGHT)) {
+	if (!ret && (value == MP_POLICY_RR ||
+		     value == MP_POLICY_MIN_INFLIGHT)) {
 		clt->mp_policy = value;
 		return count;
 	}
