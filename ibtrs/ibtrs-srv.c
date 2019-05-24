@@ -334,7 +334,7 @@ static int rdma_write_sg(struct ibtrs_srv_op *id)
 	struct ibtrs_srv *srv = sess->srv;
 	struct ib_send_wr inv_wr, imm_wr;
 	struct ib_rdma_wr *wr = NULL;
-	struct ib_send_wr *bad_wr;
+	const struct ib_send_wr *bad_wr;
 	enum ib_send_flags flags;
 	size_t sg_cnt;
 	int err, i, offset;

@@ -97,7 +97,8 @@ EXPORT_SYMBOL_GPL(ibtrs_iu_free);
 int ibtrs_iu_post_recv(struct ibtrs_con *con, struct ibtrs_iu *iu)
 {
 	struct ibtrs_sess *sess = con->sess;
-	struct ib_recv_wr wr, *bad_wr;
+	struct ib_recv_wr wr;
+	const struct ib_recv_wr *bad_wr;
 	struct ib_sge list;
 
 	list.addr   = iu->dma_addr;
@@ -121,7 +122,8 @@ EXPORT_SYMBOL_GPL(ibtrs_iu_post_recv);
 
 int ibtrs_post_recv_empty(struct ibtrs_con *con, struct ib_cqe *cqe)
 {
-	struct ib_recv_wr wr, *bad_wr;
+	struct ib_recv_wr wr;
+	const struct ib_recv_wr *bad_wr;
 
 	wr.next    = NULL;
 	wr.wr_cqe  = cqe;
@@ -134,7 +136,8 @@ EXPORT_SYMBOL_GPL(ibtrs_post_recv_empty);
 
 int ibtrs_post_recv_empty_x2(struct ibtrs_con *con, struct ib_cqe *cqe)
 {
-	struct ib_recv_wr wr_arr[2], *wr, *bad_wr;
+	struct ib_recv_wr wr_arr[2], *wr;
+	const struct ib_recv_wr *bad_wr;
 	int i;
 
 	memset(wr_arr, 0, sizeof(wr_arr));
@@ -154,7 +157,8 @@ int ibtrs_iu_post_send(struct ibtrs_con *con, struct ibtrs_iu *iu, size_t size,
 		       struct ib_send_wr *head)
 {
 	struct ibtrs_sess *sess = con->sess;
-	struct ib_send_wr wr, *bad_wr;
+	struct ib_send_wr wr;
+	const struct ib_send_wr *bad_wr;
 	struct ib_sge list;
 
 	if ((WARN_ON(size == 0)))
@@ -192,7 +196,7 @@ int ibtrs_iu_post_rdma_write_imm(struct ibtrs_con *con, struct ibtrs_iu *iu,
 				 enum ib_send_flags flags,
 				 struct ib_send_wr *head)
 {
-	struct ib_send_wr *bad_wr;
+	const struct ib_send_wr *bad_wr;
 	struct ib_rdma_wr wr;
 	int i;
 
@@ -232,7 +236,8 @@ int ibtrs_post_rdma_write_imm_empty(struct ibtrs_con *con, struct ib_cqe *cqe,
 				    u32 imm_data, enum ib_send_flags flags,
 				    struct ib_send_wr *head)
 {
-	struct ib_send_wr wr, *bad_wr;
+	struct ib_send_wr wr;
+	const struct ib_send_wr *bad_wr;
 
 	memset(&wr, 0, sizeof(wr));
 	wr.wr_cqe	= cqe;

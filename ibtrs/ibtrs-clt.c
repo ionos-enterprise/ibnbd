@@ -245,7 +245,7 @@ static void ibtrs_clt_inv_rkey_done(struct ib_cq *cq, struct ib_wc *wc)
 static int ibtrs_inv_rkey(struct ibtrs_clt_io_req *req)
 {
 	struct ibtrs_clt_con *con = req->con;
-	struct ib_send_wr *bad_wr;
+	const struct ib_send_wr *bad_wr;
 	struct ib_send_wr wr = {
 		.opcode		    = IB_WR_LOCAL_INV,
 		.wr_cqe		    = &req->inv_cqe,
