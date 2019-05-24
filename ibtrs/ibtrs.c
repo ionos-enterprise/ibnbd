@@ -173,9 +173,9 @@ int ibtrs_iu_post_send(struct ibtrs_con *con, struct ibtrs_iu *iu, size_t size,
 		while (tail->next)
 			tail = tail->next;
 		tail->next = &wr;
-	}
-	else
+	} else {
 		head = &wr;
+	}
 
 	return ib_post_send(con->qp, head, &bad_wr);
 }
@@ -215,9 +215,9 @@ int ibtrs_iu_post_rdma_write_imm(struct ibtrs_con *con, struct ibtrs_iu *iu,
 		while (tail->next)
 			tail = tail->next;
 		tail->next = &wr.wr;
-	}
-	else
+	} else {
 		head = &wr.wr;
+	}
 
 	return ib_post_send(con->qp, head, &bad_wr);
 }
@@ -241,9 +241,9 @@ int ibtrs_post_rdma_write_imm_empty(struct ibtrs_con *con, struct ib_cqe *cqe,
 		while (tail->next)
 			tail = tail->next;
 		tail->next = &wr;
-	}
-	else
+	} else {
 		head = &wr;
+	}
 
 	return ib_post_send(con->qp, head, &bad_wr);
 }
