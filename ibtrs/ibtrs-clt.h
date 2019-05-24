@@ -14,6 +14,11 @@
  *          Roman Penyaev <roman.penyaev@profitbricks.com>
  *          Swapnil Ingle <swapnil.ingle@profitbricks.com>
  *
+ * Copyright (c) 2018 - 2019 1&1 IONOS Cloud GmbH. All rights reserved.
+ * Authors: Roman Penyaev <rpenyaev@suse.com>
+ *          Jinpu Wang <jinpu.wang@cloud.ionos.com>
+ *          Danil Kipnis <danil.kipnis@cloud.ionos.com>
+ *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
  * as published by the Free Software Foundation; either version 2
