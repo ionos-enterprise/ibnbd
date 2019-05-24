@@ -887,7 +887,7 @@ static void query_fast_reg_mode(struct ibtrs_clt_sess *sess)
 	sess->max_pages_per_mr =
 		min3(sess->max_pages_per_mr, (u32)max_pages_per_mr,
 		     ib_dev->attrs.max_fast_reg_page_list_len);
-	sess->max_sge = ib_dev->attrs.max_sge;
+	sess->max_send_sge = ib_dev->attrs.max_send_sge;
 }
 
 static bool __ibtrs_clt_change_state(struct ibtrs_clt_sess *sess,
@@ -1217,7 +1217,7 @@ static int create_con_cq_qp(struct ibtrs_clt_con *con)
 			      sess->queue_depth * 3 + 1);
 	}
 	cq_vector = con->cpu % sess->s.dev->ib_dev->num_comp_vectors;
-	err = ibtrs_cq_qp_create(&sess->s, &con->c, sess->max_sge,
+	err = ibtrs_cq_qp_create(&sess->s, &con->c, sess->max_send_sge,
 				 cq_vector, wr_queue_size, wr_queue_size,
 				 IB_POLL_SOFTIRQ);
 	/*
