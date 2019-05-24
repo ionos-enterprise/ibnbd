@@ -66,6 +66,7 @@ static const struct ibtrs_ib_dev_pool_ops dev_pool_ops;
 static struct ibtrs_ib_dev_pool dev_pool = {
 	.ops = &dev_pool_ops
 };
+
 static struct workqueue_struct *ibtrs_wq;
 static struct class *ibtrs_dev_class;
 
@@ -202,18 +203,18 @@ static struct ibtrs_clt_con *ibtrs_tag_to_clt_con(struct ibtrs_clt_sess *sess,
 
 static void ibtrs_clt_fast_reg_done(struct ib_cq *cq, struct ib_wc *wc)
 {
-       struct ibtrs_clt_con *con = cq->cq_context;
-       struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
+	struct ibtrs_clt_con *con = cq->cq_context;
+	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
 
-       if (unlikely(wc->status != IB_WC_SUCCESS)) {
-               ibtrs_err(sess, "Failed IB_WR_REG_MR: %s\n",
-                         ib_wc_status_msg(wc->status));
-               ibtrs_rdma_error_recovery(con);
-       }
+	if (unlikely(wc->status != IB_WC_SUCCESS)) {
+		ibtrs_err(sess, "Failed IB_WR_REG_MR: %s\n",
+			  ib_wc_status_msg(wc->status));
+		ibtrs_rdma_error_recovery(con);
+	}
 }
 
 static struct ib_cqe fast_reg_cqe = {
-       .done = ibtrs_clt_fast_reg_done
+	.done = ibtrs_clt_fast_reg_done
 };
 
 static void ibtrs_clt_inv_rkey_done(struct ib_cq *cq, struct ib_wc *wc)
@@ -318,9 +319,9 @@ static void complete_rdma_req(struct ibtrs_clt_io_req *req, int errno,
 			 *        should do that ourselves.
 			 */
 
-			if (likely(can_wait))
+			if (likely(can_wait)) {
 				req->need_inv_comp = true;
-			else {
+			} else {
 				/* This should be IO path, so always notify */
 				WARN_ON(!notify);
 				/* Save errno for INV callback */
@@ -328,12 +329,12 @@ static void complete_rdma_req(struct ibtrs_clt_io_req *req, int errno,
 			}
 
 			err = ibtrs_inv_rkey(req);
-			if (unlikely(err))
+			if (unlikely(err)) {
 				ibtrs_err(sess, "Send INV WR key=%#x: %d\n",
 					  req->mr->rkey, err);
-			else if (likely(can_wait))
+			} else if (likely(can_wait)) {
 				wait_for_completion(&req->inv_comp);
-			else {
+			} else {
 				/*
 				 * Something went wrong, so request will be
 				 * completed from INV callback.
@@ -500,7 +501,7 @@ struct path_it {
 	int i;
 	struct list_head skip_list;
 	struct ibtrs_clt *clt;
-	struct ibtrs_clt_sess *(*next_path)(struct path_it *);
+	struct ibtrs_clt_sess *(*next_path)(struct path_it *it);
 };
 
 #define do_each_path(path, clt, it) {					\
@@ -531,7 +532,8 @@ struct path_it {
 #define list_next_or_null_rr_rcu(head, ptr, type, memb) \
 ({ \
 	list_next_or_null_rcu(head, ptr, type, memb) ?: \
-		list_next_or_null_rcu(head, READ_ONCE((ptr)->next), type, memb); \
+		list_next_or_null_rcu(head, READ_ONCE((ptr)->next), \
+				      type, memb); \
 })
 
 /**
@@ -803,7 +805,8 @@ static int alloc_sess_reqs(struct ibtrs_clt_sess *sess)
 		if (unlikely(IS_ERR(req->mr))) {
 			err = PTR_ERR(req->mr);
 			req->mr = NULL;
-			pr_err("Memory alloc failed for sess->max_pages_per_mr %d\n", sess->max_pages_per_mr);
+			pr_err("Failed to alloc sess->max_pages_per_mr %d\n",
+			       sess->max_pages_per_mr);
 			goto out;
 		}
 
@@ -1152,7 +1155,7 @@ static void destroy_con(struct ibtrs_clt_con *con)
 static int create_con_cq_qp(struct ibtrs_clt_con *con)
 {
 	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
-	u16 cq_size, wr_queue_size;
+	u16 wr_queue_size;
 	int err, cq_vector;
 
 	/*
@@ -1171,7 +1174,7 @@ static int create_con_cq_qp(struct ibtrs_clt_con *con)
 		 * + 2 for drain and heartbeat
 		 * in case qp gets into error state
 		 */
-		cq_size = wr_queue_size = SERVICE_CON_QUEUE_DEPTH * 3 + 2;
+		wr_queue_size = SERVICE_CON_QUEUE_DEPTH * 3 + 2;
 		/* We must be the first here */
 		if (WARN_ON(sess->s.dev))
 			return -EINVAL;
@@ -1181,10 +1184,11 @@ static int create_con_cq_qp(struct ibtrs_clt_con *con)
 		 * Be careful not to close user connection before ib dev
 		 * is gracefully put.
 		 */
-		sess->s.dev = ibtrs_ib_dev_find_or_add(
-			con->c.cm_id->device, &dev_pool);
+		sess->s.dev = ibtrs_ib_dev_find_or_add(con->c.cm_id->device,
+						       &dev_pool);
 		if (unlikely(!sess->s.dev)) {
-			ibtrs_wrn(sess, "ibtrs_ib_dev_find_get_or_add(): no memory\n");
+			ibtrs_wrn(sess,
+				  "ibtrs_ib_dev_find_get_or_add(): no memory\n");
 			return -ENOMEM;
 		}
 		sess->s.dev_ref = 1;
@@ -1202,14 +1206,14 @@ static int create_con_cq_qp(struct ibtrs_clt_con *con)
 
 		/* Shared between connections */
 		sess->s.dev_ref++;
-		cq_size = wr_queue_size =
+		wr_queue_size =
 			min_t(int, sess->s.dev->ib_dev->attrs.max_qp_wr,
 			      /* QD * (REQ + RSP + FR REGS or INVS) + drain */
 			      sess->queue_depth * 3 + 1);
 	}
 	cq_vector = con->cpu % sess->s.dev->ib_dev->num_comp_vectors;
 	err = ibtrs_cq_qp_create(&sess->s, &con->c, sess->max_sge,
-				 cq_vector, cq_size, wr_queue_size,
+				 cq_vector, wr_queue_size, wr_queue_size,
 				 IB_POLL_SOFTIRQ);
 	/*
 	 * In case of error we do not bother to clean previous allocations,
@@ -1936,7 +1940,8 @@ static int process_info_rsp(struct ibtrs_clt_sess *sess,
 	 * Check if IB immediate data size is enough to hold the mem_id and
 	 * the offset inside the memory chunk.
 	 */
-	if (unlikely((ilog2(sg_cnt-1)+1) + (ilog2(sess->chunk_size-1)+1) >
+	if (unlikely((ilog2(sg_cnt - 1) + 1) +
+		     (ilog2(sess->chunk_size - 1) + 1) >
 		     MAX_IMM_PAYL_BITS)) {
 		ibtrs_err(sess, "RDMA immediate size (%db) not enough to "
 			  "encode %d buffers of size %dB\n",  MAX_IMM_PAYL_BITS,
@@ -2636,7 +2641,8 @@ static int ibtrs_clt_read_req(struct ibtrs_clt_io_req *req)
 
 		for_each_sg(req->sglist, sg, req->sg_cnt, i) {
 			msg->desc[i].addr = cpu_to_le64(sg_dma_address(sg));
-			msg->desc[i].key = cpu_to_le32(dev->ib_pd->unsafe_global_rkey);
+			msg->desc[i].key =
+				cpu_to_le32(dev->ib_pd->unsafe_global_rkey);
 			msg->desc[i].len = cpu_to_le32(sg_dma_len(sg));
 		}
 	}
