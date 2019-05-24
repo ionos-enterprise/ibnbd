@@ -592,11 +592,8 @@ static ssize_t ibnbd_clt_map_device_store(struct kobject *kobj,
 	size_t path_cnt;
 
 	addrs = kcalloc(ARRAY_SIZE(paths) * 2, sizeof(*addrs), GFP_KERNEL);
-	if (!addrs) {
-		pr_err("Can't alloc memory for addresses\n");
-		ret = -ENOMEM;
-		goto out;
-	}
+	if (!addrs)
+		return -ENOMEM;
 
 	for (path_cnt = 0; path_cnt < ARRAY_SIZE(paths); path_cnt++) {
 		paths[path_cnt].src = &addrs[path_cnt * 2];
@@ -607,7 +604,7 @@ static ssize_t ibnbd_clt_map_device_store(struct kobject *kobj,
 					  &path_cnt, ARRAY_SIZE(paths),
 					  pathname, &access_mode, &io_mode);
 	if (ret)
-		 goto out;
+		goto out;
 
 	pr_info("Mapping device %s on session %s, (access_mode: %s, "
 		"io_mode: %s)\n", pathname, sessname,
