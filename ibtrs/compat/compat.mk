@@ -18,7 +18,7 @@ else ifeq ($(LIN_VER), 4.14.110)
     do_compat := 1
 else ifeq ($(LIN_VER), 4.14.120)
     do_compat := 1
-else ifeq ($(LIN_VER), 4.19.37)
+else ifeq ($(LIN_VER), 4.19.46)
     do_compat := 1
 endif
 
