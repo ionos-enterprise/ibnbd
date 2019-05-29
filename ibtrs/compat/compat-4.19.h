@@ -97,5 +97,9 @@ static inline int backport_ib_post_recv(struct ib_qp *qp,
 	return ib_post_recv(qp, recv_wr, (struct ib_recv_wr **)bad_recv_wr);
 }
 #define ib_post_recv backport_ib_post_recv
+/*
+ * FIXME ugly and dangerous
+ */
+#define max_send_sge max_sge
 
 #endif /* LINUX_4_19_COMPAT_H */

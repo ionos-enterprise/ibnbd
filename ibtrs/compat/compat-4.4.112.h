@@ -882,5 +882,9 @@ rdma_consumer_reject_data(struct backport_rdma_cm_id *id,
 #define rdma_listen backport_rdma_listen
 #define rdma_accept backport_rdma_accept
 #define rdma_reject backport_rdma_reject
+/*
+ * FIXME ugly and dangerous
+ */
+#define max_send_sge max_sge
 
 #endif /* IBTRS_4_4_112_COMPAT_H */
