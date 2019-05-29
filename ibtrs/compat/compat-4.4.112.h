@@ -98,10 +98,16 @@ struct ib_reg_wr {
 };
 
 #define IB_WR_REG_MR IB_WR_FAST_REG_MR
+static inline int backport_ib_post_recv(struct ib_qp *qp,
+					struct ib_recv_wr *recv_wr,
+					const struct ib_recv_wr **bad_send_wr)
+{
+	return ib_post_recv(qp, recv_wr, (struct ib_recv_wr **)bad_send_wr);
+}
 
 static inline int backport_ib_post_send(struct ib_qp *qp,
 					struct ib_send_wr *send_wr,
-					struct ib_send_wr **bad_send_wr)
+					const struct ib_send_wr **bad_send_wr)
 {
 	struct ib_send_wr *wr = send_wr, *prev = NULL;
 	struct ib_rdma_wr *rdma_wr;
@@ -135,7 +141,7 @@ static inline int backport_ib_post_send(struct ib_qp *qp,
 	if (!send_wr)
 		return 0;
 
-	return ib_post_send(qp, send_wr, bad_send_wr);
+	return ib_post_send(qp, send_wr, (struct ib_send_wr **)bad_send_wr);
 }
 
 static inline struct backport_rdma_cm_id *backport_rdma_create_id(
@@ -856,6 +862,7 @@ rdma_consumer_reject_data(struct backport_rdma_cm_id *id,
 #define ib_dereg_mr backport_ib_dereg_mr
 #define ib_update_fast_reg_key backport_ib_update_fast_reg_key
 #define ib_post_send backport_ib_post_send
+#define ib_post_recv backport_ib_post_recv
 #define ib_alloc_pd backport_ib_alloc_pd
 #define ib_dealloc_pd backport_ib_dealloc_pd
 #define ib_pd backport_ib_pd
