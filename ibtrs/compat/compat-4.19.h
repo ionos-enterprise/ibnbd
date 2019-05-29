@@ -81,4 +81,21 @@ void sysfs_remove_file_self(struct kobject *kobj,
 						  member) : NULL; \
 })
 
+#include <rdma/ib_verbs.h>
+static inline int backport_ib_post_send(struct ib_qp *qp,
+					struct ib_send_wr *send_wr,
+					const struct ib_send_wr **bad_send_wr)
+{
+	return ib_post_send(qp, send_wr, (struct ib_send_wr **)bad_send_wr);
+}
+#define ib_post_send backport_ib_post_send
+
+static inline int backport_ib_post_recv(struct ib_qp *qp,
+					struct ib_recv_wr *recv_wr,
+					const struct ib_recv_wr **bad_recv_wr)
+{
+	return ib_post_recv(qp, recv_wr, (struct ib_recv_wr **)bad_recv_wr);
+}
+#define ib_post_recv backport_ib_post_recv
+
 #endif /* LINUX_4_19_COMPAT_H */
