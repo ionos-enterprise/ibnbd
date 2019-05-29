@@ -63,11 +63,10 @@ void sysfs_remove_file_self(struct kobject *kobj,
 
 #define rdma_ucm_port_space rdma_port_space
 
-
-#ifdef IBTRS_USE_FMR
-
 #include <rdma/ib_verbs.h>
 #include <rdma/ib_cm.h>
+
+#ifdef IBTRS_USE_FMR
 
 struct fmr_struct {
 	struct ib_fmr *fmr;
@@ -462,7 +461,7 @@ backport_ib_update_fast_reg_key(struct backport_ib_mr *bmr, u8 newkey)
 
 static inline int backport_ib_post_send(struct ib_qp *qp,
 					struct ib_send_wr *send_wr,
-					struct ib_send_wr **bad_send_wr)
+					const struct ib_send_wr **bad_send_wr)
 {
 	struct ib_send_wr *wr = send_wr, *prev = NULL;
 
@@ -489,7 +488,7 @@ static inline int backport_ib_post_send(struct ib_qp *qp,
 	if (!send_wr)
 		return 0;
 
-	return ib_post_send(qp, send_wr, bad_send_wr);
+	return ib_post_send(qp, send_wr, (struct ib_send_wr **)bad_send_wr);
 }
 
 #define ib_mr backport_ib_mr
@@ -498,7 +497,6 @@ static inline int backport_ib_post_send(struct ib_qp *qp,
 #define ib_dereg_mr backport_ib_dereg_mr
 #define ib_map_mr_sg backport_ib_map_mr_sg
 #define ib_update_fast_reg_key backport_ib_update_fast_reg_key
-#define ib_post_send backport_ib_post_send
 
 /*
  * IBTRS internals
@@ -515,8 +513,23 @@ static inline u32 ibtrs_invalidate_flag(void)
 {
 	return 0;
 }
-
+#else // IBTRS_USE_FMR
+static inline int backport_ib_post_send(struct ib_qp *qp,
+					struct ib_send_wr *send_wr,
+					const struct ib_send_wr **bad_send_wr)
+{
+	return ib_post_send(qp, send_wr, (struct ib_send_wr **)bad_send_wr);
+}
 #endif // IBTRS_USE_FMR
+#define ib_post_send backport_ib_post_send
+static inline int backport_ib_post_recv(struct ib_qp *qp,
+					struct ib_recv_wr *recv_wr,
+					const struct ib_recv_wr **bad_recv_wr)
+{
+	return ib_post_recv(qp, recv_wr, (struct ib_recv_wr **)bad_recv_wr);
+}
+#define ib_post_recv backport_ib_post_recv
+
 /*
  * linux/rculist.h
  */
