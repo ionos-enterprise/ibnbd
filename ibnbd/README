@@ -313,8 +313,3 @@ sector to be accessed, read-write flags and bi_size.
 4. Client closes a device by sending IBNBD_MSG_CLOSE which contains only the
 device id provided by the server.
 
-
-Contact
--------
-
-Mailing list: "IBNBD/IBTRS Storage Team" <ibnbd@profitbricks.com>

@@ -383,8 +383,3 @@ usr_hdr + ibtrs_msg_rdma_read --------------> [IBTRS_IO_REQ_IMM]
 or in case client requested invalidation:
 [IBTRS_IO_RSP_IMM_W_INV]      <-------------- usr_data + (INV) + (id + errno)
 
-
-Contact
--------
-
-Mailing list: "IBNBD/IBTRS Storage Team" <ibnbd@profitbricks.com>

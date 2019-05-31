@@ -17,4 +17,4 @@ IBTRS documentation is [here](./ibtrs/README).
 Contact
 -------
 
-Mailing list: "IBNBD/IBTRS Storage Team" <ibnbd@profitbricks.com>
+Mailing list: "IBNBD/IBTRS Storage Team" <ibnbd@cloud.ionos.com>
