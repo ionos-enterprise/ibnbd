@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+
 ibtrs-client-y := ibtrs-clt.o \
 		  ibtrs-clt-stats.o \
 		  ibtrs-clt-sysfs.o

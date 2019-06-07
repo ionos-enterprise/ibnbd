@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+
 ccflags-y := -Idrivers/infiniband/ulp/ibtrs
 
 ibnbd-client-y := ibnbd-clt.o \
