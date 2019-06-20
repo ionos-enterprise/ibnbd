@@ -16,7 +16,7 @@
  *
  * Copyright (c) 2018 - 2019 1&1 IONOS Cloud GmbH. All rights reserved.
  * Authors: Roman Penyaev <roman.penyaev@profitbricks.com>
- *          Jinpu Wang <jinpu.wang@cloud.ionos.com>
+ *          Jack Wang <jinpu.wang@cloud.ionos.com>
  *          Danil Kipnis <danil.kipnis@cloud.ionos.com>
  */
 
@@ -28,18 +28,18 @@
 
 void unknown_type(void);
 
-#define ibnbd_log(fn, dev, fmt, ...) ({					\
+#define ibnbd_log(fn, dev, fmt, ...) ({				\
 	__builtin_choose_expr(						\
 		__builtin_types_compatible_p(				\
 			typeof(dev), struct ibnbd_clt_dev *),		\
-		fn("<%s@%s> " fmt, (dev)->pathname,		\
-		   (dev)->sess->sessname, 		\
+		fn("<%s@%s> " fmt, (dev)->pathname,			\
+		(dev)->sess->sessname,					\
 		   ##__VA_ARGS__),					\
 		__builtin_choose_expr(					\
 			__builtin_types_compatible_p(typeof(dev),	\
 					struct ibnbd_srv_sess_dev *),	\
-			fn("<%s@%s>: " fmt, (dev)->pathname,	\
-			   (dev)->sess->sessname, ##__VA_ARGS__),		\
+			fn("<%s@%s>: " fmt, (dev)->pathname,		\
+			   (dev)->sess->sessname, ##__VA_ARGS__),	\
 			unknown_type()));				\
 })
 

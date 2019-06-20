@@ -11,7 +11,7 @@ the server over IBTRS protocol using the RDMA (InfiniBand, RoCE, iWarp)
 transport. After being mapped, the remote block devices can be accessed
 on the client side as local block devices.
 
-I/O is transfered between client and server by the IBTRS transport
+I/O is transferred between client and server by the IBTRS transport
 modules. The administration of IBNBD and IBTRS modules is done via
 sysfs entries.
 

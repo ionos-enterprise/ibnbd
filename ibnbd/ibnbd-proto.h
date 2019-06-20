@@ -16,7 +16,7 @@
  *
  * Copyright (c) 2018 - 2019 1&1 IONOS Cloud GmbH. All rights reserved.
  * Authors: Roman Penyaev <roman.penyaev@profitbricks.com>
- *          Jinpu Wang <jinpu.wang@cloud.ionos.com>
+ *          Jack Wang <jinpu.wang@cloud.ionos.com>
  *          Danil Kipnis <danil.kipnis@cloud.ionos.com>
  */
 
@@ -173,7 +173,8 @@ struct ibnbd_msg_open_rsp {
 };
 
 /**
- * struct ibnbd_msg_io_old - message for I/O read/write for ver < IBNBD_PROTO_VER_MAJOR
+ * struct ibnbd_msg_io_old - message for I/O read/write for
+ * ver < IBNBD_PROTO_VER_MAJOR
  * This structure is there only to know the size of the "old" message format
  * @hdr:	message header
  * @device_id:	device_id on server side to find the right device

@@ -16,7 +16,7 @@
  *
  * Copyright (c) 2018 - 2019 1&1 IONOS Cloud GmbH. All rights reserved.
  * Authors: Roman Penyaev <roman.penyaev@profitbricks.com>
- *          Jinpu Wang <jinpu.wang@cloud.ionos.com>
+ *          Jack Wang <jinpu.wang@cloud.ionos.com>
  *          Danil Kipnis <danil.kipnis@cloud.ionos.com>
  */
 
