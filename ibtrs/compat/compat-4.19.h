@@ -81,6 +81,18 @@ static inline int backport_ib_post_recv(struct ib_qp *qp,
 	return ib_post_recv(qp, recv_wr, (struct ib_recv_wr **)bad_recv_wr);
 }
 #define ib_post_recv backport_ib_post_recv
+
+static inline void backport_iov_iter_kvec(struct iov_iter *i, int direction,
+					  const struct kvec *kvec,
+					  unsigned long nr_segs,
+					  size_t count)
+{
+	if (direction == READ)
+		direction = ITER_KVEC;
+	iov_iter_kvec(i, direction, kvec, nr_segs, count);
+}
+#define iov_iter_kvec backport_iov_iter_kvec
+
 /*
  * FIXME ugly and dangerous
  */

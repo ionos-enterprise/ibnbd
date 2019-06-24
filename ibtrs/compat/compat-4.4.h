@@ -39,8 +39,6 @@ static inline size_t _copy_from_iter(void *data, size_t bytes,
 	size_t seg, len, copy = bytes;
 	const struct kvec *vec = i->kvec;
 
-	BUG_ON(!(i->type & ITER_KVEC));
-
 	for (seg = 0; copy; seg++) {
 		len = min(vec[seg].iov_len, copy);
 		memcpy(data, vec[seg].iov_base, len);

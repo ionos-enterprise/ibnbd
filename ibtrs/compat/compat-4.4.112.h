@@ -837,6 +837,16 @@ rdma_consumer_reject_data(struct backport_rdma_cm_id *id,
 	return p;
 }
 
+static inline void backport_iov_iter_kvec(struct iov_iter *i, int direction,
+					  const struct kvec *kvec,
+					  unsigned long nr_segs,
+					  size_t count)
+{
+	if (direction == READ)
+		direction = ITER_KVEC;
+	iov_iter_kvec(i, direction, kvec, nr_segs, count);
+}
+
 /*
  * rdma/ib_verbs.h
  * rdma/rdma_cm.h
@@ -866,6 +876,7 @@ rdma_consumer_reject_data(struct backport_rdma_cm_id *id,
 #define rdma_listen backport_rdma_listen
 #define rdma_accept backport_rdma_accept
 #define rdma_reject backport_rdma_reject
+#define iov_iter_kvec backport_iov_iter_kvec
 /*
  * FIXME ugly and dangerous
  */
