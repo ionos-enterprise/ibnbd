@@ -785,6 +785,13 @@ static int process_msg_open(struct ibtrs_srv *ibtrs,
 		ret = -EINVAL;
 		goto reject;
 	}
+	if (strstr(open_msg->dev_name, "..")) {
+		pr_err("Opening device for session %s failed, device path "
+		       "%s contains relative path ..\n", srv_sess->sessname,
+		       open_msg->dev_name);
+		ret = -EINVAL;
+		goto reject;
+	}
 	full_path = ibnbd_srv_get_full_path(srv_sess, open_msg->dev_name);
 	if (IS_ERR(full_path)) {
 		ret = PTR_ERR(full_path);
