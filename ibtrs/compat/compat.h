@@ -16,7 +16,7 @@
 	LINUX_VERSION_CODE == KERNEL_VERSION(4,14,120) || \
 	LINUX_VERSION_CODE == KERNEL_VERSION(4,14,133)
 #include "compat-4.14.h"
-#elif LINUX_VERSION_CODE == KERNEL_VERSION(4,19,56)
+#elif LINUX_VERSION_CODE == KERNEL_VERSION(4,19,62)
 #include "compat-4.19.h"
 #else
 #error Unsupported kernel version
