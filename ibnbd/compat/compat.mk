@@ -12,7 +12,7 @@ else ifeq ($(LIN_VER), 4.4.112)
     do_compat := 1
 else ifeq ($(LIN_VER), 4.14.86)
     do_compat := 1
-else ifeq ($(LIN_VER), 4.14.133)
+else ifeq ($(LIN_VER), 4.14.144)
     do_compat := 1
 else ifeq ($(LIN_VER), 4.14.120)
     do_compat := 1
