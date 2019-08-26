@@ -738,7 +738,7 @@ static void fail_all_outstanding_reqs(struct ibtrs_clt_sess *sess)
 
 		/*
 		 * Safely (without notification) complete failed request.
-		 * After completion this request is still usebale and can
+		 * After completion this request is still useble and can
 		 * be failovered to another path.
 		 */
 		complete_rdma_req(req, -ECONNABORTED, false, true);
