@@ -335,7 +335,6 @@ static int create_sess(struct ibtrs_srv *ibtrs)
 	mutex_unlock(&sess_lock);
 
 	srv_sess->ibtrs = ibtrs;
-	srv_sess->queue_depth = ibtrs_srv_get_queue_depth(ibtrs);
 	strlcpy(srv_sess->sessname, sessname, sizeof(srv_sess->sessname));
 
 	ibtrs_srv_set_sess_priv(ibtrs, srv_sess);
