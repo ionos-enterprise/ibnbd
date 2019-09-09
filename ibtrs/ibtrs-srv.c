@@ -49,7 +49,6 @@ static struct ibtrs_ib_dev_pool dev_pool;
 static mempool_t *chunk_pool;
 struct class *ibtrs_dev_class;
 
-static int retry_count = 7;
 static int __read_mostly max_chunk_size = DEFAULT_MAX_CHUNK_SIZE;
 static int __read_mostly sess_queue_depth = DEFAULT_SESS_QUEUE_DEPTH;
 
@@ -63,37 +62,6 @@ MODULE_PARM_DESC(sess_queue_depth,
 		 "Number of buffers for pending I/O requests to allocate"
 		 " per session. Maximum: " __stringify(MAX_SESS_QUEUE_DEPTH)
 		 " (default: " __stringify(DEFAULT_SESS_QUEUE_DEPTH) ")");
-
-static int retry_count_set(const char *val, const struct kernel_param *kp)
-{
-	int err, ival;
-
-	err = kstrtoint(val, 0, &ival);
-	if (err)
-		return err;
-
-	if (ival < MIN_RTR_CNT || ival > MAX_RTR_CNT) {
-		pr_err("Invalid retry count value %d, has to be"
-		       " > %d, < %d\n", ival, MIN_RTR_CNT, MAX_RTR_CNT);
-		return -EINVAL;
-	}
-
-	retry_count = ival;
-	pr_info("QP retry count changed to %d\n", ival);
-
-	return 0;
-}
-
-static const struct kernel_param_ops retry_count_ops = {
-	.set		= retry_count_set,
-	.get		= param_get_int,
-};
-module_param_cb(retry_count, &retry_count_ops, &retry_count, 0644);
-
-MODULE_PARM_DESC(retry_count, "Number of times to send the message if the"
-		 " remote side didn't respond with Ack or Nack (default: 3,"
-		 " min: " __stringify(MIN_RTR_CNT) ", max: "
-		 __stringify(MAX_RTR_CNT) ")");
 
 static char cq_affinity_list[256] = "";
 static cpumask_t cq_affinity_mask = { CPU_BITS_ALL };
@@ -1348,7 +1316,6 @@ static int ibtrs_rdma_do_accept(struct ibtrs_srv_sess *sess,
 	int err;
 
 	memset(&param, 0, sizeof(param));
-	param.retry_count = retry_count;
 	param.rnr_retry_count = 7;
 	param.private_data = &msg;
 	param.private_data_len = sizeof(msg);
@@ -1942,11 +1909,11 @@ static int __init ibtrs_server_init(void)
 		init_cq_affinity();
 
 	pr_info("Loading module %s, version %s, proto %s: "
-		"(retry_count: %d, cq_affinity_list: %s, "
+		"(cq_affinity_list: %s, "
 		"max_chunk_size: %d (pure IO %ld, headers %ld) , "
 		"sess_queue_depth: %d)\n",
 		KBUILD_MODNAME, IBTRS_VER_STRING, IBTRS_PROTO_VER_STRING,
-		retry_count, cq_affinity_list, max_chunk_size,
+		cq_affinity_list, max_chunk_size,
 		max_chunk_size - MAX_HDR_SIZE, MAX_HDR_SIZE,
 		sess_queue_depth);
 
