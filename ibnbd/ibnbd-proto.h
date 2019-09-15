@@ -66,6 +66,10 @@ struct ibnbd_msg_hdr {
 	__le16		__padding;
 };
 
+/**
+ * MIGRATION is a special mode to allow temporarily RW access mode during VM
+ * migration.
+ */
 enum ibnbd_access_mode {
 	IBNBD_ACCESS_RO,
 	IBNBD_ACCESS_RW,
