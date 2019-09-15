@@ -76,14 +76,10 @@ enum ibnbd_access_mode {
 	IBNBD_ACCESS_MIGRATION,
 };
 
-#define _IBNBD_FILEIO  0
-#define _IBNBD_BLOCKIO 1
-#define _IBNBD_AUTOIO  2
-
 enum ibnbd_io_mode {
-	IBNBD_FILEIO = _IBNBD_FILEIO,
-	IBNBD_BLOCKIO = _IBNBD_BLOCKIO,
-	IBNBD_AUTOIO = _IBNBD_AUTOIO,
+	IBNBD_FILEIO,
+	IBNBD_BLOCKIO,
+	IBNBD_AUTOIO,
 };
 
 /**
