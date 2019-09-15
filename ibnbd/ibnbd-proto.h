@@ -177,7 +177,7 @@ struct ibnbd_msg_open_rsp {
  * @hdr:	message header
  * @device_id:	device_id on server side to find the right device
  * @sector:	bi_sector attribute from struct bio
- * @rw:		bitmask, valid values are defined in enum ibnbd_io_flags
+ * @rw:		valid values are defined in enum ibnbd_io_flags
  * @bi_size:    number of bytes for I/O read/write
  * @prio:       priority
  */
@@ -194,7 +194,7 @@ struct ibnbd_msg_io_old {
  * @hdr:	message header
  * @device_id:	device_id on server side to find the right device
  * @sector:	bi_sector attribute from struct bio
- * @rw:		bitmask, valid values are defined in enum ibnbd_io_flags
+ * @rw:		valid values are defined in enum ibnbd_io_flags
  * @bi_size:    number of bytes for I/O read/write
  * @prio:       priority
  */
@@ -269,80 +269,80 @@ static inline bool ibnbd_flags_supported(u32 flags)
 	return true;
 }
 
-static inline u32 ibnbd_to_bio_flags(u32 ibnbd_flags)
+static inline u32 ibnbd_to_bio_flags(u32 ibnbd_opf)
 {
-	u32 bio_flags;
+	u32 bio_opf;
 
-	switch (ibnbd_op(ibnbd_flags)) {
+	switch (ibnbd_op(ibnbd_opf)) {
 	case IBNBD_OP_READ:
-		bio_flags = REQ_OP_READ;
+		bio_opf = REQ_OP_READ;
 		break;
 	case IBNBD_OP_WRITE:
-		bio_flags = REQ_OP_WRITE;
+		bio_opf = REQ_OP_WRITE;
 		break;
 	case IBNBD_OP_FLUSH:
-		bio_flags = REQ_OP_FLUSH | REQ_PREFLUSH;
+		bio_opf = REQ_OP_FLUSH | REQ_PREFLUSH;
 		break;
 	case IBNBD_OP_DISCARD:
-		bio_flags = REQ_OP_DISCARD;
+		bio_opf = REQ_OP_DISCARD;
 		break;
 	case IBNBD_OP_SECURE_ERASE:
-		bio_flags = REQ_OP_SECURE_ERASE;
+		bio_opf = REQ_OP_SECURE_ERASE;
 		break;
 	case IBNBD_OP_WRITE_SAME:
-		bio_flags = REQ_OP_WRITE_SAME;
+		bio_opf = REQ_OP_WRITE_SAME;
 		break;
 	default:
 		WARN(1, "Unknown IBNBD type: %d (flags %d)\n",
-		     ibnbd_op(ibnbd_flags), ibnbd_flags);
-		bio_flags = 0;
+		     ibnbd_op(ibnbd_opf), ibnbd_opf);
+		bio_opf = 0;
 	}
 
-	if (ibnbd_flags & IBNBD_F_SYNC)
-		bio_flags |= REQ_SYNC;
+	if (ibnbd_opf & IBNBD_F_SYNC)
+		bio_opf |= REQ_SYNC;
 
-	if (ibnbd_flags & IBNBD_F_FUA)
-		bio_flags |= REQ_FUA;
+	if (ibnbd_opf & IBNBD_F_FUA)
+		bio_opf |= REQ_FUA;
 
-	return bio_flags;
+	return bio_opf;
 }
 
 static inline u32 rq_to_ibnbd_flags(struct request *rq)
 {
-	u32 ibnbd_flags;
+	u32 ibnbd_opf;
 
 	switch (req_op(rq)) {
 	case REQ_OP_READ:
-		ibnbd_flags = IBNBD_OP_READ;
+		ibnbd_opf = IBNBD_OP_READ;
 		break;
 	case REQ_OP_WRITE:
-		ibnbd_flags = IBNBD_OP_WRITE;
+		ibnbd_opf = IBNBD_OP_WRITE;
 		break;
 	case REQ_OP_DISCARD:
-		ibnbd_flags = IBNBD_OP_DISCARD;
+		ibnbd_opf = IBNBD_OP_DISCARD;
 		break;
 	case REQ_OP_SECURE_ERASE:
-		ibnbd_flags = IBNBD_OP_SECURE_ERASE;
+		ibnbd_opf = IBNBD_OP_SECURE_ERASE;
 		break;
 	case REQ_OP_WRITE_SAME:
-		ibnbd_flags = IBNBD_OP_WRITE_SAME;
+		ibnbd_opf = IBNBD_OP_WRITE_SAME;
 		break;
 	case REQ_OP_FLUSH:
-		ibnbd_flags = IBNBD_OP_FLUSH;
+		ibnbd_opf = IBNBD_OP_FLUSH;
 		break;
 	default:
 		WARN(1, "Unknown request type %d (flags %llu)\n",
 		     req_op(rq), (unsigned long long)rq->cmd_flags);
-		ibnbd_flags = 0;
+		ibnbd_opf = 0;
 	}
 
 	if (op_is_sync(rq->cmd_flags))
-		ibnbd_flags |= IBNBD_F_SYNC;
+		ibnbd_opf |= IBNBD_F_SYNC;
 
 	if (op_is_flush(rq->cmd_flags))
-		ibnbd_flags |= IBNBD_F_FUA;
+		ibnbd_opf |= IBNBD_F_FUA;
 
-	return ibnbd_flags;
+	return ibnbd_opf;
 }
 
 static inline const char *ibnbd_io_mode_str(enum ibnbd_io_mode mode)
