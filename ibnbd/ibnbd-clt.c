@@ -131,7 +131,7 @@ static int ibnbd_clt_revalidate_disk(struct ibnbd_clt_dev *dev,
 {
 	int err = 0;
 
-	ibnbd_info(dev, "Device size changed from %zu to %zu sectors\n",
+	ibnbd_clt_info(dev, "Device size changed from %zu to %zu sectors\n",
 		   dev->nsectors, new_nsectors);
 	dev->nsectors = new_nsectors;
 	set_capacity(dev->gd,
@@ -139,7 +139,7 @@ static int ibnbd_clt_revalidate_disk(struct ibnbd_clt_dev *dev,
 				      SECTOR_SIZE));
 	err = revalidate_disk(dev->gd);
 	if (err)
-		ibnbd_err(dev, "Failed to change device size from"
+		ibnbd_clt_err(dev, "Failed to change device size from"
 			  " %zu to %zu, err: %d\n", dev->nsectors,
 			  new_nsectors, err);
 	return err;
@@ -152,7 +152,7 @@ static int process_msg_open_rsp(struct ibnbd_clt_dev *dev,
 
 	mutex_lock(&dev->lock);
 	if (dev->dev_state == DEV_STATE_UNMAPPED) {
-		ibnbd_info(dev, "Ignoring Open-Response message from server for "
+		ibnbd_clt_info(dev, "Ignoring Open-Response message from server for "
 			   " unmapped device\n");
 		err = -ENOENT;
 		goto out;
@@ -166,7 +166,7 @@ static int process_msg_open_rsp(struct ibnbd_clt_dev *dev,
 		 */
 		if (dev->nsectors != nsectors)
 			ibnbd_clt_revalidate_disk(dev, nsectors);
-		ibnbd_info(dev, "Device online, device remapped successfully\n");
+		ibnbd_clt_info(dev, "Device online, device remapped successfully\n");
 	}
 	err = ibnbd_clt_set_dev_attr(dev, rsp);
 	if (unlikely(err))
@@ -437,7 +437,7 @@ static void msg_io_conf(void *priv, int errno)
 	blk_mq_complete_request(rq);
 
 	if (errno)
-		ibnbd_info_rl(dev, "%s I/O failed with err: %d\n",
+		ibnbd_clt_info_rl(dev, "%s I/O failed with err: %d\n",
 			      rq_data_dir(rq) == READ ? "read" : "write",
 			      errno);
 }
@@ -537,7 +537,7 @@ static void msg_open_conf(struct work_struct *work)
 	int errno = iu->errno;
 
 	if (errno) {
-		ibnbd_err(dev, "Opening failed, server responded: %d\n", errno);
+		ibnbd_clt_err(dev, "Opening failed, server responded: %d\n", errno);
 	} else {
 		errno = process_msg_open_rsp(dev, rsp);
 		if (unlikely(errno)) {
@@ -679,7 +679,7 @@ static void set_dev_states_to_disconnected(struct ibnbd_clt_session *sess)
 
 	mutex_lock(&sess->lock);
 	list_for_each_entry(dev, &sess->devs_list, list) {
-		ibnbd_err(dev, "Device disconnected.\n");
+		ibnbd_clt_err(dev, "Device disconnected.\n");
 
 		mutex_lock(&dev->lock);
 		if (dev->dev_state == DEV_STATE_MAPPED)
@@ -729,10 +729,10 @@ static void remap_devs(struct ibnbd_clt_session *sess)
 			 */
 			continue;
 
-		ibnbd_info(dev, "session reconnected, remapping device\n");
+		ibnbd_clt_info(dev, "session reconnected, remapping device\n");
 		err = send_msg_open(dev, NO_WAIT);
 		if (unlikely(err)) {
-			ibnbd_err(dev, "send_msg_open(): %d\n", err);
+			ibnbd_clt_err(dev, "send_msg_open(): %d\n", err);
 			break;
 		}
 	}
@@ -1093,7 +1093,7 @@ static int ibnbd_client_xfer_request(struct ibnbd_clt_dev *dev,
 	err = ibtrs_clt_request(rq_data_dir(rq), msg_io_conf, ibtrs, tag,
 				iu, &vec, 1, size, iu->sglist, sg_cnt);
 	if (unlikely(err)) {
-		ibnbd_err_rl(dev, "IBTRS failed to transfer IO, err: %d\n",
+		ibnbd_clt_err_rl(dev, "IBTRS failed to transfer IO, err: %d\n",
 			     err);
 		return err;
 	}
@@ -1332,7 +1332,7 @@ static int setup_mq_dev(struct ibnbd_clt_dev *dev)
 {
 	dev->queue = blk_mq_init_queue(&dev->sess->tag_set);
 	if (IS_ERR(dev->queue)) {
-		ibnbd_err(dev,
+		ibnbd_clt_err(dev,
 			  "Initializing multiqueue queue failed, err: %ld\n",
 			  PTR_ERR(dev->queue));
 		return PTR_ERR(dev->queue);
@@ -1420,7 +1420,7 @@ static int ibnbd_client_setup_device(struct ibnbd_clt_session *sess,
 
 	dev->gd = alloc_disk_node(1 << IBNBD_PART_BITS,	NUMA_NO_NODE);
 	if (!dev->gd) {
-		ibnbd_err(dev, "Failed to allocate disk node\n");
+		ibnbd_clt_err(dev, "Failed to allocate disk node\n");
 		blk_cleanup_queue(dev->queue);
 		return -ENOMEM;
 	}
@@ -1579,7 +1579,7 @@ struct ibnbd_clt_dev *ibnbd_clt_map_device(const char *sessname,
 	}
 	ret = send_msg_open(dev, WAIT);
 	if (unlikely(ret)) {
-		ibnbd_err(dev, "map_device: failed, can't open remote device,"
+		ibnbd_clt_err(dev, "map_device: failed, can't open remote device,"
 			  " err: %d\n", ret);
 		goto del_dev;
 	}
@@ -1588,13 +1588,13 @@ struct ibnbd_clt_dev *ibnbd_clt_map_device(const char *sessname,
 		 sess->sessname, pathname);
 	ret = ibnbd_client_setup_device(sess, dev, dev->clt_device_id);
 	if (ret) {
-		ibnbd_err(dev, "map_device: Failed to configure device, err: %d\n",
+		ibnbd_clt_err(dev, "map_device: Failed to configure device, err: %d\n",
 			  ret);
 		mutex_unlock(&dev->lock);
 		goto del_dev;
 	}
 
-	ibnbd_info(dev, "map_device: Device mapped as %s (nsectors: %zu,"
+	ibnbd_clt_info(dev, "map_device: Device mapped as %s (nsectors: %zu,"
 		   " logical_block_size: %d, physical_block_size: %d,"
 		   " max_write_same_sectors: %d, max_discard_sectors: %d,"
 		   " discard_granularity: %d, discard_alignment: %d, "
@@ -1659,13 +1659,13 @@ int ibnbd_clt_unmap_device(struct ibnbd_clt_dev *dev, bool force,
 
 	mutex_lock(&dev->lock);
 	if (dev->dev_state == DEV_STATE_UNMAPPED) {
-		ibnbd_info(dev, "Device is already being unmapped\n");
+		ibnbd_clt_info(dev, "Device is already being unmapped\n");
 		ret = -EALREADY;
 		goto err;
 	}
 	refcount = refcount_read(&dev->refcount);
 	if (!force && refcount > 1) {
-		ibnbd_err(dev, "Closing device failed, device is in use,"
+		ibnbd_clt_err(dev, "Closing device failed, device is in use,"
 			  " (%d device users)\n", refcount - 1);
 		ret = -EBUSY;
 		goto err;
@@ -1680,7 +1680,7 @@ int ibnbd_clt_unmap_device(struct ibnbd_clt_dev *dev, bool force,
 	if (was_mapped && sess->ibtrs)
 		send_msg_close(dev, dev->device_id, WAIT);
 
-	ibnbd_info(dev, "Device is unmapped\n");
+	ibnbd_clt_info(dev, "Device is unmapped\n");
 
 	/* Likely last reference put */
 	ibnbd_clt_put_dev(dev);
@@ -1711,10 +1711,10 @@ int ibnbd_clt_remap_device(struct ibnbd_clt_dev *dev)
 		err = -EBUSY;
 	mutex_unlock(&dev->lock);
 	if (likely(!err)) {
-		ibnbd_info(dev, "Remapping device.\n");
+		ibnbd_clt_info(dev, "Remapping device.\n");
 		err = send_msg_open(dev, WAIT);
 		if (unlikely(err))
-			ibnbd_err(dev, "remap_device: %d\n", err);
+			ibnbd_clt_err(dev, "remap_device: %d\n", err);
 	}
 
 	return err;

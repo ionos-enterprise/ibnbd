@@ -196,7 +196,7 @@ static int process_rdma(struct ibtrs_srv *sess,
 				  usrlen < sizeof(*msg) ?
 				  0 : le16_to_cpu(msg->prio), priv);
 	if (unlikely(err)) {
-		ibnbd_err(sess_dev,
+		ibnbd_srv_err(sess_dev,
 			  "Submitting I/O to device failed, err: %d\n", err);
 		goto sess_dev_put;
 	}
@@ -267,7 +267,7 @@ static void ibnbd_destroy_sess_dev(struct ibnbd_srv_sess_dev *sess_dev)
 
 	ibnbd_put_srv_dev(sess_dev->dev);
 
-	ibnbd_info(sess_dev, "Device closed\n");
+	ibnbd_srv_info(sess_dev, "Device closed\n");
 	kfree(sess_dev);
 }
 
@@ -847,7 +847,7 @@ static int process_msg_open(struct ibtrs_srv *ibtrs,
 						 ibnbd_dev->name);
 		if (ret) {
 			mutex_unlock(&srv_dev->lock);
-			ibnbd_err(srv_sess_dev, "Opening device failed, failed to"
+			ibnbd_srv_err(srv_sess_dev, "Opening device failed, failed to"
 				  " create device sysfs files, err: %d\n",
 				  ret);
 			goto free_srv_sess_dev;
@@ -857,7 +857,7 @@ static int process_msg_open(struct ibtrs_srv *ibtrs,
 	ret = ibnbd_srv_create_dev_session_sysfs(srv_sess_dev);
 	if (ret) {
 		mutex_unlock(&srv_dev->lock);
-		ibnbd_err(srv_sess_dev, "Opening device failed, failed to create"
+		ibnbd_srv_err(srv_sess_dev, "Opening device failed, failed to create"
 			  " dev client sysfs files, err: %d\n", ret);
 		goto free_srv_sess_dev;
 	}
@@ -867,7 +867,7 @@ static int process_msg_open(struct ibtrs_srv *ibtrs,
 
 	list_add(&srv_sess_dev->sess_list, &srv_sess->sess_dev_list);
 
-	ibnbd_info(srv_sess_dev, "Opened device '%s' in %s mode\n",
+	ibnbd_srv_info(srv_sess_dev, "Opened device '%s' in %s mode\n",
 		   srv_dev->id, ibnbd_io_mode_str(io_mode));
 
 	kfree(full_path);

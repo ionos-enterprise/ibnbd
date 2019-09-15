@@ -336,12 +336,12 @@ static ssize_t ibnbd_clt_unmap_dev_store(struct kobject *kobj,
 	} else if (sysfs_streq(options, "force")) {
 		force = true;
 	} else {
-		ibnbd_err(dev, "unmap_device: Invalid value: %s\n", options);
+		ibnbd_clt_err(dev, "unmap_device: Invalid value: %s\n", options);
 		err = -EINVAL;
 		goto out;
 	}
 
-	ibnbd_info(dev, "Unmapping device, option: %s.\n",
+	ibnbd_clt_info(dev, "Unmapping device, option: %s.\n",
 		   force ? "force" : "normal");
 
 	/*
@@ -355,7 +355,7 @@ static ssize_t ibnbd_clt_unmap_dev_store(struct kobject *kobj,
 	err = ibnbd_clt_unmap_device(dev, force, &attr->attr);
 	if (unlikely(err)) {
 		if (unlikely(err != -EALREADY))
-			ibnbd_err(dev, "unmap_device: %d\n",  err);
+			ibnbd_clt_err(dev, "unmap_device: %d\n",  err);
 		goto module_put;
 	}
 
@@ -435,7 +435,7 @@ static ssize_t ibnbd_clt_remap_dev_store(struct kobject *kobj,
 
 	dev = container_of(kobj, struct ibnbd_clt_dev, kobj);
 	if (!sysfs_streq(options, "1")) {
-		ibnbd_err(dev, "remap_device: Invalid value: %s\n", options);
+		ibnbd_clt_err(dev, "remap_device: Invalid value: %s\n", options);
 		err = -EINVAL;
 		goto out;
 	}
@@ -503,7 +503,7 @@ static int ibnbd_clt_add_dev_kobj(struct ibnbd_clt_dev *dev)
 	ret = kobject_init_and_add(&dev->kobj, &ibnbd_dev_ktype, gd_kobj, "%s",
 				   "ibnbd");
 	if (ret)
-		ibnbd_err(dev, "Failed to create device sysfs dir, err: %d\n",
+		ibnbd_clt_err(dev, "Failed to create device sysfs dir, err: %d\n",
 			  ret);
 
 	return ret;
@@ -549,7 +549,7 @@ static int ibnbd_clt_add_dev_symlink(struct ibnbd_clt_dev *dev)
 	ret = ibnbd_clt_get_path_name(dev, dev->blk_symlink_name,
 				      sizeof(dev->blk_symlink_name));
 	if (ret) {
-		ibnbd_err(dev, "Failed to get /sys/block symlink path, err: %d\n",
+		ibnbd_clt_err(dev, "Failed to get /sys/block symlink path, err: %d\n",
 			  ret);
 		goto out_err;
 	}
@@ -557,7 +557,7 @@ static int ibnbd_clt_add_dev_symlink(struct ibnbd_clt_dev *dev)
 	ret = sysfs_create_link(ibnbd_devs_kobj, gd_kobj,
 				dev->blk_symlink_name);
 	if (ret) {
-		ibnbd_err(dev, "Creating /sys/block symlink failed, err: %d\n",
+		ibnbd_clt_err(dev, "Creating /sys/block symlink failed, err: %d\n",
 			  ret);
 		goto out_err;
 	}
