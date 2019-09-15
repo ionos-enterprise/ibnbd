@@ -33,6 +33,13 @@ MODULE_AUTHOR("ibnbd@profitbricks.com");
 MODULE_DESCRIPTION("InfiniBand Network Block Device Server");
 MODULE_LICENSE("GPL");
 
+static int __read_mostly port_nr = IBTRS_PORT;
+
+module_param_named(port_nr, port_nr, int, 0444);
+MODULE_PARM_DESC(port_nr,
+		 "The port number server is listening on"
+		 " (default: " __stringify(IBTRS_PORT)")");
+
 #define DEFAULT_DEV_SEARCH_PATH "/"
 
 static char dev_search_path[PATH_MAX] = DEFAULT_DEV_SEARCH_PATH;
@@ -908,7 +915,7 @@ static int __init ibnbd_srv_init_module(void)
 		KBUILD_MODNAME, IBNBD_PROTO_VER_STRING);
 
 	ibtrs_ctx = ibtrs_srv_open(ibnbd_srv_rdma_ev, ibnbd_srv_link_ev,
-				   IBTRS_PORT);
+				   port_nr);
 	if (unlikely(IS_ERR(ibtrs_ctx))) {
 		err = PTR_ERR(ibtrs_ctx);
 		pr_err("ibtrs_srv_open(), err: %d\n", err);

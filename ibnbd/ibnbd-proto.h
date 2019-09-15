@@ -37,8 +37,6 @@
 #define IBNBD_PROTO_VER_STRING __stringify(IBNBD_PROTO_VER_MAJOR) "." \
 			       __stringify(IBNBD_PROTO_VER_MINOR)
 
-
-/* TODO: should be configurable */
 #define IBTRS_PORT 1234
 
 /**
