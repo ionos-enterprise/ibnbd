@@ -30,7 +30,6 @@
 #include "ibnbd-srv-dev.h"
 
 MODULE_AUTHOR("ibnbd@profitbricks.com");
-MODULE_VERSION(IBNBD_VER_STRING);
 MODULE_DESCRIPTION("InfiniBand Network Block Device Server");
 MODULE_LICENSE("GPL");
 
@@ -905,8 +904,8 @@ static int __init ibnbd_srv_init_module(void)
 {
 	int err;
 
-	pr_info("Loading module %s, version %s, proto %s\n",
-		KBUILD_MODNAME, IBNBD_VER_STRING, IBNBD_PROTO_VER_STRING);
+	pr_info("Loading module %s, proto %s\n",
+		KBUILD_MODNAME, IBNBD_PROTO_VER_STRING);
 
 	ibtrs_ctx = ibtrs_srv_open(ibnbd_srv_rdma_ev, ibnbd_srv_link_ev,
 				   IBTRS_PORT);

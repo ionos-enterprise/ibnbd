@@ -34,7 +34,6 @@
 
 MODULE_AUTHOR("ibnbd@profitbricks.com");
 MODULE_DESCRIPTION("InfiniBand Network Block Device Client");
-MODULE_VERSION(IBNBD_VER_STRING);
 MODULE_LICENSE("GPL");
 
 /*
@@ -1764,8 +1763,8 @@ static int __init ibnbd_client_init(void)
 {
 	int err;
 
-	pr_info("Loading module %s, version %s, proto %s: \n", KBUILD_MODNAME,
-		IBNBD_VER_STRING, IBNBD_PROTO_VER_STRING);
+	pr_info("Loading module %s, proto %s: \n", KBUILD_MODNAME,
+		IBNBD_PROTO_VER_STRING);
 
 	ibnbd_client_major = register_blkdev(ibnbd_client_major, "ibnbd");
 	if (ibnbd_client_major <= 0) {
