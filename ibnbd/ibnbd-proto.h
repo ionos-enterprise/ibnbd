@@ -121,7 +121,7 @@ struct ibnbd_msg_open {
 	u8		access_mode;
 	u8		io_mode;
 	s8		dev_name[NAME_MAX];
-	u8		__padding[3];
+	u8		reserved[3];
 };
 
 /**
@@ -137,15 +137,16 @@ struct ibnbd_msg_close {
 /**
  * struct ibnbd_msg_open_rsp - response message to IBNBD_MSG_OPEN
  * @hdr:		message header
- * @nsectors:		number of sectors
  * @device_id:		device_id on server side to identify the device
+ * @nsectors:		number of sectors in the usual 512b unit
  * @max_hw_sectors:	max hardware sectors in the usual 512b unit
  * @max_write_same_sectors: max sectors for WRITE SAME in the 512b unit
- * @max_discard_sectors: max. sectors that can be discarded at once
- * @discard_granularity: size of the internal discard allocation unit
- * @discard_alignment: offset from internal allocation assignment
- * @physical_block_size: physical block size device supports
- * @logical_block_size: logical block size device supports
+ * @max_discard_sectors: max. sectors that can be discarded at once in 512b
+ * unit.
+ * @discard_granularity: size of the internal discard allocation unit in bytes
+ * @discard_alignment: offset from internal allocation assignment in bytes
+ * @physical_block_size: physical block size device supports in bytes
+ * @logical_block_size: logical block size device supports in bytes
  * @max_segments:	max segments hardware support in one transfer
  * @secure_discard:	supports secure discard
  * @rotation:		is a rotational disc?
@@ -166,7 +167,7 @@ struct ibnbd_msg_open_rsp {
 	__le16			secure_discard;
 	u8			rotational;
 	u8			io_mode;
-	u8			__padding[10];
+	u8			reserved[10];
 };
 
 /**
