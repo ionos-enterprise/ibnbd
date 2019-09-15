@@ -141,7 +141,6 @@ struct ibnbd_msg_close {
  * @hdr:		message header
  * @nsectors:		number of sectors
  * @device_id:		device_id on server side to identify the device
- * @queue_flags:	queue_flags of the device on server side
  * @max_hw_sectors:	max hardware sectors in the usual 512b unit
  * @max_write_same_sectors: max sectors for WRITE SAME in the 512b unit
  * @max_discard_sectors: max. sectors that can be discarded at once
