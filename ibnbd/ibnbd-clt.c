@@ -776,23 +776,6 @@ static void ibnbd_init_cpu_qlists(struct ibnbd_cpu_qlist __percpu *cpu_queues)
 	}
 }
 
-static struct blk_mq_ops ibnbd_mq_ops;
-static int setup_mq_tags(struct ibnbd_clt_session *sess)
-{
-	struct blk_mq_tag_set *tags = &sess->tag_set;
-
-	memset(tags, 0, sizeof(*tags));
-	tags->ops		= &ibnbd_mq_ops;
-	tags->queue_depth	= sess->queue_depth;
-	tags->numa_node		= NUMA_NO_NODE;
-	tags->flags		= BLK_MQ_F_SHOULD_MERGE |
-				  BLK_MQ_F_TAG_SHARED;
-	tags->cmd_size		= sizeof(struct ibnbd_iu);
-	tags->nr_hw_queues	= num_online_cpus();
-
-	return blk_mq_alloc_tag_set(tags);
-}
-
 static void destroy_mq_tags(struct ibnbd_clt_session *sess)
 {
 	if (sess->tag_set.tags)
@@ -988,69 +971,6 @@ find_and_get_or_insert_sess(struct ibnbd_clt_session *sess)
 	mutex_unlock(&sess_lock);
 
 	return found;
-}
-
-static struct ibnbd_clt_session *
-find_and_get_or_create_sess(const char *sessname,
-			    const struct ibtrs_addr *paths,
-			    size_t path_cnt)
-{
-	struct ibnbd_clt_session *sess, *found;
-	struct ibtrs_attrs attrs;
-	int err;
-
-	sess = find_and_get_sess(sessname);
-	if (sess)
-		return sess;
-
-	sess = alloc_sess(sessname);
-	if (unlikely(IS_ERR(sess)))
-		return sess;
-
-	found = find_and_get_or_insert_sess(sess);
-	if (unlikely(found)) {
-		free_sess(sess);
-
-		return found;
-	}
-	/*
-	 * Nothing was found, establish ibtrs connection and proceed further.
-	 */
-	sess->ibtrs = ibtrs_clt_open(sess, ibnbd_clt_link_ev, sessname,
-				     paths, path_cnt, IBTRS_PORT,
-				     sizeof(struct ibnbd_iu),
-				     RECONNECT_DELAY, BMAX_SEGMENTS,
-				     MAX_RECONNECTS);
-	if (unlikely(IS_ERR(sess->ibtrs))) {
-		err = PTR_ERR(sess->ibtrs);
-		goto wake_up_and_put;
-	}
-	ibtrs_clt_query(sess->ibtrs, &attrs);
-	sess->max_io_size = attrs.max_io_size;
-	sess->queue_depth = attrs.queue_depth;
-
-	err = setup_mq_tags(sess);
-	if (unlikely(err))
-		goto close_ibtrs;
-
-	err = send_msg_sess_info(sess, WAIT);
-	if (unlikely(err))
-		goto close_ibtrs;
-
-	wake_up_ibtrs_waiters(sess);
-
-	return sess;
-
-close_ibtrs:
-	close_ibtrs(sess);
-put_sess:
-	ibnbd_clt_put_sess(sess);
-
-	return ERR_PTR(err);
-
-wake_up_and_put:
-	wake_up_ibtrs_waiters(sess);
-	goto put_sess;
 }
 
 static int ibnbd_client_open(struct block_device *block_device, fmode_t mode)
@@ -1295,6 +1215,91 @@ static int ibnbd_init_request(struct blk_mq_tag_set *set, struct request *rq,
 	return 0;
 }
 
+static struct blk_mq_ops ibnbd_mq_ops = {
+	.queue_rq	= ibnbd_queue_rq,
+	.init_request	= ibnbd_init_request,
+	.complete	= ibnbd_softirq_done_fn,
+};
+
+static int setup_mq_tags(struct ibnbd_clt_session *sess)
+{
+	struct blk_mq_tag_set *tags = &sess->tag_set;
+
+	memset(tags, 0, sizeof(*tags));
+	tags->ops		= &ibnbd_mq_ops;
+	tags->queue_depth	= sess->queue_depth;
+	tags->numa_node		= NUMA_NO_NODE;
+	tags->flags		= BLK_MQ_F_SHOULD_MERGE |
+				  BLK_MQ_F_TAG_SHARED;
+	tags->cmd_size		= sizeof(struct ibnbd_iu);
+	tags->nr_hw_queues	= num_online_cpus();
+
+	return blk_mq_alloc_tag_set(tags);
+}
+
+static struct ibnbd_clt_session *
+find_and_get_or_create_sess(const char *sessname,
+			    const struct ibtrs_addr *paths,
+			    size_t path_cnt)
+{
+	struct ibnbd_clt_session *sess, *found;
+	struct ibtrs_attrs attrs;
+	int err;
+
+	sess = find_and_get_sess(sessname);
+	if (sess)
+		return sess;
+
+	sess = alloc_sess(sessname);
+	if (unlikely(IS_ERR(sess)))
+		return sess;
+
+	found = find_and_get_or_insert_sess(sess);
+	if (unlikely(found)) {
+		free_sess(sess);
+
+		return found;
+	}
+	/*
+	 * Nothing was found, establish ibtrs connection and proceed further.
+	 */
+	sess->ibtrs = ibtrs_clt_open(sess, ibnbd_clt_link_ev, sessname,
+				     paths, path_cnt, IBTRS_PORT,
+				     sizeof(struct ibnbd_iu),
+				     RECONNECT_DELAY, BMAX_SEGMENTS,
+				     MAX_RECONNECTS);
+	if (unlikely(IS_ERR(sess->ibtrs))) {
+		err = PTR_ERR(sess->ibtrs);
+		goto wake_up_and_put;
+	}
+	ibtrs_clt_query(sess->ibtrs, &attrs);
+	sess->max_io_size = attrs.max_io_size;
+	sess->queue_depth = attrs.queue_depth;
+
+	err = setup_mq_tags(sess);
+	if (unlikely(err))
+		goto close_ibtrs;
+
+	err = send_msg_sess_info(sess, WAIT);
+	if (unlikely(err))
+		goto close_ibtrs;
+
+	wake_up_ibtrs_waiters(sess);
+
+	return sess;
+
+close_ibtrs:
+	close_ibtrs(sess);
+put_sess:
+	ibnbd_clt_put_sess(sess);
+
+	return ERR_PTR(err);
+
+wake_up_and_put:
+	wake_up_ibtrs_waiters(sess);
+	goto put_sess;
+}
+
 static inline void ibnbd_init_hw_queue(struct ibnbd_clt_dev *dev,
 				       struct ibnbd_queue *q,
 				       struct blk_mq_hw_ctx *hctx)
@@ -1316,12 +1321,6 @@ static void ibnbd_init_mq_hw_queues(struct ibnbd_clt_dev *dev)
 		hctx->driver_data = q;
 	}
 }
-
-static struct blk_mq_ops ibnbd_mq_ops = {
-	.queue_rq	= ibnbd_queue_rq,
-	.init_request	= ibnbd_init_request,
-	.complete	= ibnbd_softirq_done_fn,
-};
 
 static int index_to_minor(int index)
 {
