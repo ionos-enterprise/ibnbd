@@ -84,34 +84,44 @@ MODULE_PARM_DESC(dev_search_path, "Sets the dev_search_path."
 		 " (default: " DEFAULT_DEV_SEARCH_PATH ")");
 
 static int def_io_mode = IBNBD_BLOCKIO;
+static char def_io_mode_str[10] = "blockio";
 
 static int def_io_mode_set(const char *val, const struct kernel_param *kp)
 {
-	int io_mode, rc;
+	char *io_mode, *io_mode_tmp;
 
-	rc = kstrtoint(val, 0, &io_mode);
-	if (unlikely(rc))
-		return rc;
+	io_mode_tmp = kstrdup(val, GFP_KERNEL);
+	if (!io_mode_tmp)
+		return -ENOMEM;
 
-	switch (io_mode) {
-	case IBNBD_FILEIO:
-	case IBNBD_BLOCKIO:
-		def_io_mode = io_mode;
-		return 0;
-	default:
+	io_mode = strstrip(io_mode_tmp);
+
+	if (sysfs_streq(io_mode, "fileio")) {
+		def_io_mode = IBNBD_FILEIO;
+		strlcpy(def_io_mode_str, io_mode, sizeof(def_io_mode_str));
+	} else if (sysfs_streq(io_mode, "blockio")) {
+		def_io_mode = IBNBD_BLOCKIO;
+		strlcpy(def_io_mode_str, io_mode, sizeof(def_io_mode_str));
+	} else {
+		kfree(io_mode_tmp);
 		return -EINVAL;
 	}
+	kfree(io_mode_tmp);
+	return 0;
 }
+
+static struct kparam_string def_io_mode_kparam_str = {
+	.maxlen	= sizeof(def_io_mode_str),
+	.string	= def_io_mode_str
+};
 
 static const struct kernel_param_ops def_io_mode_ops = {
 	.set	= def_io_mode_set,
-	.get	= param_get_int,
+	.get	= param_get_string,
 };
-module_param_cb(def_io_mode, &def_io_mode_ops, &def_io_mode, 0444);
+module_param_cb(def_io_mode, &def_io_mode_ops, &def_io_mode_kparam_str, 0444);
 MODULE_PARM_DESC(def_io_mode, "By default, export devices in"
-		 " blockio(" __stringify(_IBNBD_BLOCKIO) ") or"
-		 " fileio(" __stringify(_IBNBD_FILEIO) ") mode."
-		 " (default: " __stringify(_IBNBD_BLOCKIO) " (blockio))");
+		 " blockio or fileio mode. (default: (blockio))");
 
 static DEFINE_MUTEX(sess_lock);
 static DEFINE_SPINLOCK(dev_lock);
