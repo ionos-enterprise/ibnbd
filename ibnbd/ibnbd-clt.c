@@ -49,10 +49,6 @@ static DEFINE_MUTEX(ida_lock);
 static DEFINE_MUTEX(sess_lock);
 static LIST_HEAD(sess_list);
 
-static bool softirq_enable;
-module_param(softirq_enable, bool, 0444);
-MODULE_PARM_DESC(softirq_enable, "finish request in softirq_fn."
-		 " (default: 0)");
 /*
  * Maximum number of partitions an instance can have.
  * 6 bits = 64 minors = 63 partitions (one minor is used for the device itself)
@@ -435,12 +431,7 @@ static void msg_io_conf(void *priv, int errno)
 
 	iu->status = errno ? BLK_STS_IOERR : BLK_STS_OK;
 
-	if (softirq_enable) {
-		blk_mq_complete_request(rq);
-	} else {
-		ibnbd_put_tag(dev->sess, iu->tag);
-		blk_mq_end_request(rq, iu->status);
-	}
+	blk_mq_complete_request(rq);
 
 	if (errno)
 		ibnbd_info_rl(dev, "%s I/O failed with err: %d\n",
@@ -1773,10 +1764,8 @@ static int __init ibnbd_client_init(void)
 {
 	int err;
 
-	pr_info("Loading module %s, version %s, proto %s: "
-		"(softirq_enable: %d)\n", KBUILD_MODNAME,
-		IBNBD_VER_STRING, IBNBD_PROTO_VER_STRING,
-		softirq_enable);
+	pr_info("Loading module %s, version %s, proto %s: \n", KBUILD_MODNAME,
+		IBNBD_VER_STRING, IBNBD_PROTO_VER_STRING);
 
 	ibnbd_client_major = register_blkdev(ibnbd_client_major, "ibnbd");
 	if (ibnbd_client_major <= 0) {
