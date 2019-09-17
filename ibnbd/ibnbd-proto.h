@@ -167,25 +167,6 @@ struct ibnbd_msg_open_rsp {
 };
 
 /**
- * struct ibnbd_msg_io_old - message for I/O read/write for
- * ver < IBNBD_PROTO_VER_MAJOR
- * This structure is there only to know the size of the "old" message format
- * @hdr:	message header
- * @device_id:	device_id on server side to find the right device
- * @sector:	bi_sector attribute from struct bio
- * @rw:		valid values are defined in enum ibnbd_io_flags
- * @bi_size:    number of bytes for I/O read/write
- * @prio:       priority
- */
-struct ibnbd_msg_io_old {
-	struct ibnbd_msg_hdr hdr;
-	__le32		device_id;
-	__le64		sector;
-	__le32		rw;
-	__le32		bi_size;
-};
-
-/**
  * struct ibnbd_msg_io - message for I/O read/write
  * @hdr:	message header
  * @device_id:	device_id on server side to find the right device

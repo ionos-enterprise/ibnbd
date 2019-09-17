@@ -1088,8 +1088,7 @@ static int ibnbd_client_xfer_request(struct ibnbd_clt_dev *dev,
 
 	vec = (struct kvec) {
 		.iov_base = &msg,
-		.iov_len  = dev->sess->ver < IBNBD_PROTO_VER_MAJOR ?
-				sizeof(struct ibnbd_msg_io_old) : sizeof(msg)
+		.iov_len  = sizeof(msg)
 	};
 	size = ibnbd_clt_get_sg_size(iu->sglist, sg_cnt);
 	err = ibtrs_clt_request(rq_data_dir(rq), msg_io_conf, ibtrs, tag,
