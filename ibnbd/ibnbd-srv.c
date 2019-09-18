@@ -96,10 +96,11 @@ static int def_io_mode_set(const char *val, const struct kernel_param *kp)
 
 	io_mode = strstrip(io_mode_tmp);
 
-	if (sysfs_streq(io_mode, "fileio")) {
+	if (sysfs_streq(io_mode, "fileio") || sysfs_streq(io_mode, "0")) {
 		def_io_mode = IBNBD_FILEIO;
 		strlcpy(def_io_mode_str, io_mode, sizeof(def_io_mode_str));
-	} else if (sysfs_streq(io_mode, "blockio")) {
+	} else if (sysfs_streq(io_mode, "blockio") ||
+		   sysfs_streq(io_mode, "1")) {
 		def_io_mode = IBNBD_BLOCKIO;
 		strlcpy(def_io_mode_str, io_mode, sizeof(def_io_mode_str));
 	} else {
