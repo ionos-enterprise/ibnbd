@@ -547,7 +547,7 @@ static int ibnbd_clt_add_dev_symlink(struct ibnbd_clt_dev *dev)
 	int ret;
 
 	ret = ibnbd_clt_get_path_name(dev, dev->blk_symlink_name,
-				      sizeof(dev->blk_symlink_name));
+				      NAME_MAX);
 	if (ret) {
 		ibnbd_clt_err(dev, "Failed to get /sys/block symlink path, err: %d\n",
 			  ret);

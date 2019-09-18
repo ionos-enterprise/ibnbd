@@ -82,6 +82,7 @@ static void ibnbd_clt_put_dev(struct ibnbd_clt_dev *dev)
 		mutex_lock(&ida_lock);
 		ida_simple_remove(&index_ida, dev->clt_device_id);
 		mutex_unlock(&ida_lock);
+		kfree(dev->blk_symlink_name);
 		kfree(dev->pathname);
 		kfree(dev->hw_queues);
 		ibnbd_clt_put_sess(dev->sess);
@@ -1437,8 +1438,9 @@ static struct ibnbd_clt_dev *init_dev(struct ibnbd_clt_session *sess,
 				      const char *pathname)
 {
 	struct ibnbd_clt_dev *dev;
-	int ret;
+	int ret, len;
 
+	len = strlen(pathname) + 1;
 	dev = kzalloc_node(sizeof(*dev), GFP_KERNEL, NUMA_NO_NODE);
 	if (!dev)
 		return ERR_PTR(-ENOMEM);
@@ -1453,7 +1455,7 @@ static struct ibnbd_clt_dev *init_dev(struct ibnbd_clt_session *sess,
 		goto out_alloc;
 	}
 
-	dev->pathname = kzalloc(strlen(pathname) + 1, GFP_KERNEL);
+	dev->pathname = kzalloc(len, GFP_KERNEL);
 	if (unlikely(!dev->pathname)) {
 		pr_err("Failed to initialize device '%s' from session"
 		       " %s, allocating pathname failed.", pathname,
@@ -1462,6 +1464,14 @@ static struct ibnbd_clt_dev *init_dev(struct ibnbd_clt_session *sess,
 		goto out_queues;
 	}
 
+	dev->blk_symlink_name = kzalloc(len, GFP_KERNEL);
+	if (unlikely(!dev->blk_symlink_name)) {
+		pr_err("Failed to initialize device '%s' from session"
+		       " %s, allocating block symlink_name failed.", pathname,
+		       sess->sessname);
+		ret = -ENOMEM;
+		goto out_path;
+	}
 	mutex_lock(&ida_lock);
 	ret = ida_simple_get(&index_ida, 0, minor_to_index(1 << MINORBITS),
 			     GFP_KERNEL);
@@ -1470,7 +1480,7 @@ static struct ibnbd_clt_dev *init_dev(struct ibnbd_clt_session *sess,
 		pr_err("Failed to initialize device '%s' from session %s,"
 		       " allocating idr failed, err: %d\n", pathname,
 		       sess->sessname, ret);
-		goto out_path;
+		goto out_symlink;
 	}
 	dev->clt_device_id	= ret;
 	dev->sess		= sess;
@@ -1489,6 +1499,8 @@ static struct ibnbd_clt_dev *init_dev(struct ibnbd_clt_session *sess,
 
 	return dev;
 
+out_symlink:
+	kfree(dev->blk_symlink_name);
 out_path:
 	kfree(dev->pathname);
 out_queues:
