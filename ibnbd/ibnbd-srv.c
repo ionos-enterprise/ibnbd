@@ -558,10 +558,12 @@ static int ibnbd_srv_check_update_open_perm(struct ibnbd_srv_dev *srv_dev,
 		} else {
 			pr_err("Mapping device '%s' for session %s with"
 			       " RW permissions failed. Device already opened"
-			       " as 'RW' by %d client(s) in %s mode.\n",
+			       " as 'RW' by %d client(s) in %s mode, "
+			       "access mode %s.\n",
 			       srv_dev->id, srv_sess->sessname,
 			       srv_dev->open_write_cnt,
-			       ibnbd_io_mode_str(srv_dev->mode));
+			       ibnbd_io_mode_str(srv_dev->mode),
+			       ibnbd_access_mode_str(access_mode));
 		}
 		break;
 	case IBNBD_ACCESS_MIGRATION:
@@ -571,10 +573,12 @@ static int ibnbd_srv_check_update_open_perm(struct ibnbd_srv_dev *srv_dev,
 		} else {
 			pr_err("Mapping device '%s' for session %s with"
 			       " migration permissions failed. Device already"
-			       " opened as 'RW' by %d client(s) in %s mode.\n",
+			       " opened as 'RW' by %d client(s) in %s mode, "
+			       "access mode %s.\n",
 			       srv_dev->id, srv_sess->sessname,
 			       srv_dev->open_write_cnt,
-			       ibnbd_io_mode_str(srv_dev->mode));
+			       ibnbd_io_mode_str(srv_dev->mode),
+			       ibnbd_access_mode_str(access_mode));
 		}
 		break;
 	default:

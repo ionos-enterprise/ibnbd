@@ -3,9 +3,11 @@
 ccflags-y := -Idrivers/infiniband/ulp/ibtrs
 
 ibnbd-client-y := ibnbd-clt.o \
+		  ibnbd-common.o \
 		  ibnbd-clt-sysfs.o
 
 ibnbd-server-y := ibnbd-srv.o \
+		  ibnbd-common.o \
 		  ibnbd-srv-dev.o \
 		  ibnbd-srv-sysfs.o
 
