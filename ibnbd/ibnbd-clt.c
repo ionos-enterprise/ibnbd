@@ -215,6 +215,8 @@ enum {
 
 /**
  * ibnbd_get_cpu_qlist() - finds a list with HW queues to be requeued
+ * @sess:	Session to find a queue on
+ * @cpu:	Cpu to start the search from
  *
  * Description:
  *     Each CPU has a list of HW queues, which needs to be requeed.  If a list
@@ -247,6 +249,7 @@ static inline int nxt_cpu(int cpu)
 
 /**
  * ibnbd_requeue_if_needed() - requeue if CPU queue is marked as non empty
+ * @sess:	Session to rerun a queue on
  *
  * Description:
  *     Each CPU has it's own list of HW queues, which should be requeued.
@@ -315,7 +318,9 @@ clear_bit:
 
 /**
  * ibnbd_requeue_all_if_idle() - requeue all queues left in the list if
- *     session is idling (there are no requests in-flight).
+ *				 session is idling (there are no requests
+ *				 in-flight).
+ * @sess:	Session to rerun the queues on
  *
  * Description:
  *     This function tries to rerun all stopped queues if there are no
@@ -1099,6 +1104,8 @@ static int ibnbd_client_xfer_request(struct ibnbd_clt_dev *dev,
 
 /**
  * ibnbd_clt_dev_add_to_requeue() - add device to requeue if session is busy
+ * @dev:	Device to be checked
+ * @q:		Queue to be added to the requeue list if required
  *
  * Description:
  *     If session is busy, that means someone will requeue us when resources
