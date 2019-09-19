@@ -280,9 +280,6 @@ static struct ib_cqe io_comp_cqe = {
 	.done = ibtrs_srv_rdma_done
 };
 
-/**
- * rdma_write_sg() - response on successful READ request
- */
 static int rdma_write_sg(struct ibtrs_srv_op *id)
 {
 	struct ibtrs_srv_sess *sess = to_srv_sess(id->con->c.sess);
@@ -1261,12 +1258,10 @@ static inline bool __is_path_w_addr_exists(struct ibtrs_srv *srv,
 static void ibtrs_srv_close_work(struct work_struct *work)
 {
 	struct ibtrs_srv_sess *sess;
-	struct ibtrs_srv_ctx *ctx;
 	struct ibtrs_srv_con *con;
 	int i;
 
 	sess = container_of(work, typeof(*sess), close_work);
-	ctx = sess->srv->ctx;
 
 	ibtrs_srv_destroy_sess_files(sess);
 	ibtrs_srv_stop_hb(sess);
