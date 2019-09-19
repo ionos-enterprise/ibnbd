@@ -237,8 +237,8 @@ out:
 	return ret;
 }
 
-static ssize_t ibnbd_clt_state_show(struct kobject *kobj,
-				    struct kobj_attribute *attr, char *page)
+static ssize_t state_show(struct kobject *kobj,
+			  struct kobj_attribute *attr, char *page)
 {
 	struct ibnbd_clt_dev *dev;
 
@@ -260,12 +260,10 @@ static ssize_t ibnbd_clt_state_show(struct kobject *kobj,
 	}
 }
 
-static struct kobj_attribute ibnbd_clt_state_attr =
-	__ATTR(state, 0444, ibnbd_clt_state_show, NULL);
+static struct kobj_attribute ibnbd_clt_state_attr = __ATTR_RO(state);
 
-static ssize_t ibnbd_clt_mapping_path_show(struct kobject *kobj,
-					   struct kobj_attribute *attr,
-					   char *page)
+static ssize_t mapping_path_show(struct kobject *kobj,
+				 struct kobj_attribute *attr, char *page)
 {
 	struct ibnbd_clt_dev *dev;
 
@@ -275,10 +273,10 @@ static ssize_t ibnbd_clt_mapping_path_show(struct kobject *kobj,
 }
 
 static struct kobj_attribute ibnbd_clt_mapping_path_attr =
-	__ATTR(mapping_path, 0444, ibnbd_clt_mapping_path_show, NULL);
+	__ATTR_RO(mapping_path);
 
-static ssize_t ibnbd_clt_io_mode_show(struct kobject *kobj,
-				      struct kobj_attribute *attr, char *page)
+static ssize_t io_mode_show(struct kobject *kobj,
+			    struct kobj_attribute *attr, char *page)
 {
 	struct ibnbd_clt_dev *dev;
 
@@ -288,12 +286,10 @@ static ssize_t ibnbd_clt_io_mode_show(struct kobject *kobj,
 			 ibnbd_io_mode_str(dev->remote_io_mode));
 }
 
-static struct kobj_attribute ibnbd_clt_io_mode =
-	__ATTR(io_mode, 0444, ibnbd_clt_io_mode_show, NULL);
+static struct kobj_attribute ibnbd_clt_io_mode = __ATTR_RO(io_mode);
 
-static ssize_t ibnbd_clt_access_mode_show(struct kobject *kobj,
-					  struct kobj_attribute *attr,
-					  char *page)
+static ssize_t access_mode_show(struct kobject *kobj,
+				struct kobj_attribute *attr, char *page)
 {
 	struct ibnbd_clt_dev *dev;
 
@@ -304,7 +300,7 @@ static ssize_t ibnbd_clt_access_mode_show(struct kobject *kobj,
 }
 
 static struct kobj_attribute ibnbd_clt_access_mode =
-	__ATTR(access_mode, 0444, ibnbd_clt_access_mode_show, NULL);
+	__ATTR_RO(access_mode);
 
 static ssize_t ibnbd_clt_unmap_dev_show(struct kobject *kobj,
 					struct kobj_attribute *attr, char *page)
@@ -453,9 +449,8 @@ static struct kobj_attribute ibnbd_clt_remap_device_attr =
 	__ATTR(remap_device, 0644, ibnbd_clt_remap_dev_show,
 	       ibnbd_clt_remap_dev_store);
 
-static ssize_t ibnbd_clt_session_show(struct kobject *kobj,
-				      struct kobj_attribute *attr,
-				      char *page)
+static ssize_t session_show(struct kobject *kobj, struct kobj_attribute *attr,
+			    char *page)
 {
 	struct ibnbd_clt_dev *dev;
 
@@ -465,7 +460,7 @@ static ssize_t ibnbd_clt_session_show(struct kobject *kobj,
 }
 
 static struct kobj_attribute ibnbd_clt_session_attr =
-	__ATTR(session, 0444, ibnbd_clt_session_show, NULL);
+	__ATTR_RO(session);
 
 static struct attribute *ibnbd_dev_attrs[] = {
 	&ibnbd_clt_unmap_device_attr.attr,

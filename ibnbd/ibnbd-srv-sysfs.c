@@ -38,9 +38,8 @@ static struct device *ibnbd_dev;
 static struct class *ibnbd_dev_class;
 static struct kobject *ibnbd_devs_kobj;
 
-static ssize_t ibnbd_srv_dev_mode_show(struct kobject *kobj,
-				       struct kobj_attribute *attr,
-				       char *page)
+static ssize_t io_mode_show(struct kobject *kobj, struct kobj_attribute *attr,
+			    char *page)
 {
 	struct ibnbd_srv_dev *srv_dev;
 
@@ -51,7 +50,7 @@ static ssize_t ibnbd_srv_dev_mode_show(struct kobject *kobj,
 }
 
 static struct kobj_attribute ibnbd_srv_dev_mode_attr =
-	__ATTR(io_mode, 0444, ibnbd_srv_dev_mode_show, NULL);
+	__ATTR_RO(io_mode);
 
 static struct attribute *ibnbd_srv_default_dev_attrs[] = {
 	&ibnbd_srv_dev_mode_attr.attr,
@@ -118,7 +117,7 @@ void ibnbd_srv_destroy_dev_sysfs(struct ibnbd_srv_dev *dev)
 	kobject_put(&dev->dev_kobj);
 }
 
-static ssize_t ibnbd_srv_dev_session_ro_show(struct kobject *kobj,
+static ssize_t read_only_show(struct kobject *kobj,
 					     struct kobj_attribute *attr,
 					     char *page)
 {
@@ -131,14 +130,11 @@ static ssize_t ibnbd_srv_dev_session_ro_show(struct kobject *kobj,
 }
 
 static struct kobj_attribute ibnbd_srv_dev_session_ro_attr =
-	__ATTR(read_only, 0444,
-	       ibnbd_srv_dev_session_ro_show,
-	       NULL);
+	__ATTR_RO(read_only);
 
-static ssize_t
-ibnbd_srv_dev_session_access_mode_show(struct kobject *kobj,
-				       struct kobj_attribute *attr,
-				       char *page)
+static ssize_t access_mode_show(struct kobject *kobj,
+				struct kobj_attribute *attr,
+				char *page)
 {
 	struct ibnbd_srv_sess_dev *sess_dev;
 
@@ -149,13 +145,10 @@ ibnbd_srv_dev_session_access_mode_show(struct kobject *kobj,
 }
 
 static struct kobj_attribute ibnbd_srv_dev_session_access_mode_attr =
-	__ATTR(access_mode, 0444,
-	       ibnbd_srv_dev_session_access_mode_show,
-	       NULL);
+	__ATTR_RO(access_mode);
 
-static ssize_t
-ibnbd_srv_dev_session_mapping_path_show(struct kobject *kobj,
-					struct kobj_attribute *attr, char *page)
+static ssize_t mapping_path_show(struct kobject *kobj,
+				 struct kobj_attribute *attr, char *page)
 {
 	struct ibnbd_srv_sess_dev *sess_dev;
 
@@ -165,9 +158,7 @@ ibnbd_srv_dev_session_mapping_path_show(struct kobject *kobj,
 }
 
 static struct kobj_attribute ibnbd_srv_dev_session_mapping_path_attr =
-	__ATTR(mapping_path, 0444,
-	       ibnbd_srv_dev_session_mapping_path_show,
-	       NULL);
+	__ATTR_RO(mapping_path);
 
 static struct attribute *ibnbd_srv_default_dev_sessions_attrs[] = {
 	&ibnbd_srv_dev_session_access_mode_attr.attr,
