@@ -50,7 +50,7 @@ enum {
 	IBNBD_OPT_SESSNAME	= 1 << 6,
 };
 
-static unsigned int ibnbd_opt_mandatory[] = {
+static const unsigned int ibnbd_opt_mandatory[] = {
 	IBNBD_OPT_PATH,
 	IBNBD_OPT_DEV_PATH,
 	IBNBD_OPT_SESSNAME,
