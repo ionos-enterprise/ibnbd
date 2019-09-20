@@ -455,13 +455,13 @@ static int ibtrs_str_gid_to_sockaddr(const char *addr, size_t len,
 
 /**
  * ibtrs_str_to_sockaddr() - Convert ibtrs address string to sockaddr
- * @addr	String representation of an addr (IPv4, IPv6 or IB GID):
+ * @addr:	String representation of an addr (IPv4, IPv6 or IB GID):
  *              - "ip:192.168.1.1"
  *              - "ip:fe80::200:5aee:feaa:20a2"
  *              - "gid:fe80::200:5aee:feaa:20a2"
- * @len         String address length
- * @port	Destination port
- * @dst		Destination sockaddr structure
+ * @len:        String address length
+ * @port:	Destination port
+ * @dst:	Destination sockaddr structure
  *
  * Returns 0 if conversion successful. Non-zero on error.
  */
