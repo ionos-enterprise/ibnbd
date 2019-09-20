@@ -246,17 +246,17 @@ static ssize_t state_show(struct kobject *kobj,
 
 	switch (dev->dev_state) {
 	case DEV_STATE_INIT:
-		return scnprintf(page, PAGE_SIZE, "init\n");
+		return snprintf(page, PAGE_SIZE, "init\n");
 	case DEV_STATE_MAPPED:
 		/* TODO fix cli tool before changing to proper state */
-		return scnprintf(page, PAGE_SIZE, "open\n");
+		return snprintf(page, PAGE_SIZE, "open\n");
 	case DEV_STATE_MAPPED_DISCONNECTED:
 		/* TODO fix cli tool before changing to proper state */
-		return scnprintf(page, PAGE_SIZE, "closed\n");
+		return snprintf(page, PAGE_SIZE, "closed\n");
 	case DEV_STATE_UNMAPPED:
-		return scnprintf(page, PAGE_SIZE, "unmapped\n");
+		return snprintf(page, PAGE_SIZE, "unmapped\n");
 	default:
-		return scnprintf(page, PAGE_SIZE, "unknown\n");
+		return snprintf(page, PAGE_SIZE, "unknown\n");
 	}
 }
 
@@ -282,8 +282,8 @@ static ssize_t io_mode_show(struct kobject *kobj,
 
 	dev = container_of(kobj, struct ibnbd_clt_dev, kobj);
 
-	return scnprintf(page, PAGE_SIZE, "%s\n",
-			 ibnbd_io_mode_str(dev->remote_io_mode));
+	return snprintf(page, PAGE_SIZE, "%s\n",
+			ibnbd_io_mode_str(dev->remote_io_mode));
 }
 
 static struct kobj_attribute ibnbd_clt_io_mode = __ATTR_RO(io_mode);
@@ -295,8 +295,8 @@ static ssize_t access_mode_show(struct kobject *kobj,
 
 	dev = container_of(kobj, struct ibnbd_clt_dev, kobj);
 
-	return scnprintf(page, PAGE_SIZE, "%s\n",
-			 ibnbd_access_mode_str(dev->access_mode));
+	return snprintf(page, PAGE_SIZE, "%s\n",
+			ibnbd_access_mode_str(dev->access_mode));
 }
 
 static struct kobj_attribute ibnbd_clt_access_mode =
