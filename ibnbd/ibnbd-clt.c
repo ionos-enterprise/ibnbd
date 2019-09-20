@@ -1627,6 +1627,13 @@ put_sess:
 static void destroy_gen_disk(struct ibnbd_clt_dev *dev)
 {
 	del_gendisk(dev->gd);
+	/*
+	 * Before marking queue as dying (blk_cleanup_queue() does that)
+	 * we have to be sure that everything in-flight has gone.
+	 * Blink with freeze/unfreeze.
+	 */
+	blk_mq_freeze_queue(dev->queue);
+	blk_mq_unfreeze_queue(dev->queue);
 	blk_cleanup_queue(dev->queue);
 	put_disk(dev->gd);
 }
