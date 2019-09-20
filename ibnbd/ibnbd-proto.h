@@ -67,8 +67,9 @@ struct ibnbd_msg_hdr {
 };
 
 /**
- * MIGRATION is a special mode to allow temporarily RW access mode during VM
- * migration.
+ * We allow to map RO many times and RW only once. We allow to map yet another
+ * time RW, if MIGRATION is provided (second RW export can be required for
+ * example for VM migration)
  */
 enum ibnbd_access_mode {
 	IBNBD_ACCESS_RO,
