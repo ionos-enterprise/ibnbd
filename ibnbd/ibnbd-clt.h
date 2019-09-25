@@ -117,7 +117,7 @@ struct ibnbd_clt_dev {
 	enum ibnbd_clt_dev_state	dev_state;
 	enum ibnbd_io_mode	io_mode; /* user requested */
 	enum ibnbd_io_mode	remote_io_mode; /* server really used */
-	char			*pathname;
+	char			pathname[NAME_MAX];
 	enum ibnbd_access_mode	access_mode;
 	bool			read_only;
 	bool			rotational;

@@ -82,7 +82,6 @@ static void ibnbd_clt_put_dev(struct ibnbd_clt_dev *dev)
 		mutex_lock(&ida_lock);
 		ida_simple_remove(&index_ida, dev->clt_device_id);
 		mutex_unlock(&ida_lock);
-		kfree(dev->pathname);
 		kfree(dev->hw_queues);
 		ibnbd_clt_put_sess(dev->sess);
 		kfree(dev);
@@ -1452,15 +1451,6 @@ static struct ibnbd_clt_dev *init_dev(struct ibnbd_clt_session *sess,
 		goto out_alloc;
 	}
 
-	dev->pathname = kzalloc(strlen(pathname) + 1, GFP_KERNEL);
-	if (unlikely(!dev->pathname)) {
-		pr_err("Failed to initialize device '%s' from session"
-		       " %s, allocating pathname failed.", pathname,
-		       sess->sessname);
-		ret = -ENOMEM;
-		goto out_queues;
-	}
-
 	mutex_lock(&ida_lock);
 	ret = ida_simple_get(&index_ida, 0, minor_to_index(1 << MINORBITS),
 			     GFP_KERNEL);
@@ -1469,13 +1459,13 @@ static struct ibnbd_clt_dev *init_dev(struct ibnbd_clt_session *sess,
 		pr_err("Failed to initialize device '%s' from session %s,"
 		       " allocating idr failed, err: %d\n", pathname,
 		       sess->sessname, ret);
-		goto out_path;
+		goto out_queues;
 	}
 	dev->clt_device_id	= ret;
 	dev->sess		= sess;
 	dev->access_mode	= access_mode;
 	dev->io_mode		= io_mode;
-	strlcpy(dev->pathname, pathname, NAME_MAX);
+	strlcpy(dev->pathname, pathname, sizeof(dev->pathname));
 	mutex_init(&dev->lock);
 	refcount_set(&dev->refcount, 1);
 	dev->dev_state = DEV_STATE_INIT;
@@ -1488,8 +1478,6 @@ static struct ibnbd_clt_dev *init_dev(struct ibnbd_clt_session *sess,
 
 	return dev;
 
-out_path:
-	kfree(dev->pathname);
 out_queues:
 	kfree(dev->hw_queues);
 out_alloc:
@@ -1507,7 +1495,7 @@ static bool __exists_dev(const char *pathname)
 		mutex_lock(&sess->lock);
 		list_for_each_entry(dev, &sess->devs_list, list) {
 			if (!strncmp(dev->pathname, pathname,
-				     NAME_MAX)) {
+				     sizeof(dev->pathname))) {
 				found = true;
 				break;
 			}
