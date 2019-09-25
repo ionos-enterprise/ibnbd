@@ -583,9 +583,8 @@ free_sg:
 	return 0;
 }
 
-static void ibtrs_srv_hb_err_handler(struct ibtrs_con *c, int err)
+static void ibtrs_srv_hb_err_handler(struct ibtrs_con *c)
 {
-	(void)err;
 	close_sess(to_srv_sess(c->sess));
 }
 

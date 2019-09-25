@@ -362,7 +362,7 @@ void ibtrs_send_hb_ack(struct ibtrs_sess *sess)
 	err = ibtrs_post_rdma_write_imm_empty(usr_con, sess->hb_cqe, imm,
 					      IB_SEND_SIGNALED, NULL);
 	if (unlikely(err)) {
-		sess->hb_err_handler(usr_con, err);
+		sess->hb_err_handler(usr_con);
 		return;
 	}
 }
@@ -379,7 +379,7 @@ static void hb_work(struct work_struct *work)
 	usr_con = sess->con[0];
 
 	if (sess->hb_missed_cnt > sess->hb_missed_max) {
-		sess->hb_err_handler(usr_con, -ETIMEDOUT);
+		sess->hb_err_handler(usr_con);
 		return;
 	}
 	if (sess->hb_missed_cnt++) {
@@ -391,7 +391,7 @@ static void hb_work(struct work_struct *work)
 	err = ibtrs_post_rdma_write_imm_empty(usr_con, sess->hb_cqe, imm,
 					      IB_SEND_SIGNALED, NULL);
 	if (unlikely(err)) {
-		sess->hb_err_handler(usr_con, err);
+		sess->hb_err_handler(usr_con);
 		return;
 	}
 

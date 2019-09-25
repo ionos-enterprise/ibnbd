@@ -1012,12 +1012,9 @@ static enum ibtrs_clt_state ibtrs_clt_state(struct ibtrs_clt_sess *sess)
 	return state;
 }
 
-static void ibtrs_clt_hb_err_handler(struct ibtrs_con *c, int err)
+static void ibtrs_clt_hb_err_handler(struct ibtrs_con *c)
 {
-	struct ibtrs_clt_con *con;
-
-	(void)err;
-	con = container_of(c, typeof(*con), c);
+	struct ibtrs_clt_con *con = container_of(c, typeof(*con), c);
 	ibtrs_rdma_error_recovery(con);
 }
 

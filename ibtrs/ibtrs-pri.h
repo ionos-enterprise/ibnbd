@@ -115,7 +115,7 @@ struct ibtrs_con {
 	unsigned		cid;
 };
 
-typedef void (ibtrs_hb_handler_t)(struct ibtrs_con *con, int err);
+typedef void (ibtrs_hb_handler_t)(struct ibtrs_con *con);
 
 struct ibtrs_sess {
 	struct list_head	entry;
