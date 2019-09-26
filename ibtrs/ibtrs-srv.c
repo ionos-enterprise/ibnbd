@@ -54,14 +54,14 @@ static int __read_mostly sess_queue_depth = DEFAULT_SESS_QUEUE_DEPTH;
 
 module_param_named(max_chunk_size, max_chunk_size, int, 0444);
 MODULE_PARM_DESC(max_chunk_size,
-		 "Max size for each IO request, when change the unit is in byte"
-		 " (default: " __stringify(DEFAULT_MAX_CHUNK_SIZE_KB) "KB)");
+		 "Max size for each IO request, when change the unit is in byte (default: "
+		 __stringify(DEFAULT_MAX_CHUNK_SIZE_KB) "KB)");
 
 module_param_named(sess_queue_depth, sess_queue_depth, int, 0444);
 MODULE_PARM_DESC(sess_queue_depth,
-		 "Number of buffers for pending I/O requests to allocate"
-		 " per session. Maximum: " __stringify(MAX_SESS_QUEUE_DEPTH)
-		 " (default: " __stringify(DEFAULT_SESS_QUEUE_DEPTH) ")");
+		 "Number of buffers for pending I/O requests to allocate per session. Maximum: "
+		 __stringify(MAX_SESS_QUEUE_DEPTH) " (default: "
+		 __stringify(DEFAULT_SESS_QUEUE_DEPTH) ")");
 
 static char cq_affinity_list[256] = "";
 static cpumask_t cq_affinity_mask = { CPU_BITS_ALL };
@@ -114,8 +114,8 @@ static const struct kernel_param_ops cq_affinity_list_ops = {
 
 module_param_cb(cq_affinity_list, &cq_affinity_list_ops,
 		&cq_affinity_list_kparam_str, 0644);
-MODULE_PARM_DESC(cq_affinity_list, "Sets the list of cpus to use as cq vectors."
-		 "(default: use all possible CPUs)");
+MODULE_PARM_DESC(cq_affinity_list,
+		 "Sets the list of cpus to use as cq vectors. (default: use all possible CPUs)");
 
 static struct workqueue_struct *ibtrs_wq;
 
@@ -450,8 +450,8 @@ void ibtrs_srv_resp_rdma(struct ibtrs_srv_op *id, int status)
 		return;
 
 	if (unlikely(sess->state != IBTRS_SRV_CONNECTED)) {
-		ibtrs_err_rl(sess, "Sending I/O response failed, "
-			     " session is disconnected, sess state %s\n",
+		ibtrs_err_rl(sess,
+			     "Sending I/O response failed,  session is disconnected, sess state %s\n",
 			     ibtrs_srv_state_str(sess->state));
 		goto out;
 	}
@@ -883,8 +883,8 @@ static void process_read(struct ibtrs_srv_con *con,
 	int ret;
 
 	if (unlikely(sess->state != IBTRS_SRV_CONNECTED)) {
-		ibtrs_err_rl(sess, "Processing read request failed, "
-			     " session is disconnected, sess state %s\n",
+		ibtrs_err_rl(sess,
+			     "Processing read request failed,  session is disconnected, sess state %s\n",
 			     ibtrs_srv_state_str(sess->state));
 		return;
 	}
@@ -902,8 +902,8 @@ static void process_read(struct ibtrs_srv_con *con,
 			   data + data_len, usr_len);
 
 	if (unlikely(ret)) {
-		ibtrs_err_rl(sess, "Processing read request failed, user "
-			     "module cb reported for msg_id %d, err: %d\n",
+		ibtrs_err_rl(sess,
+			     "Processing read request failed, user module cb reported for msg_id %d, err: %d\n",
 			     buf_id, ret);
 		goto send_err_msg;
 	}
@@ -913,8 +913,9 @@ static void process_read(struct ibtrs_srv_con *con,
 send_err_msg:
 	ret = send_io_resp_imm(con, id, ret);
 	if (ret < 0) {
-		ibtrs_err_rl(sess, "Sending err msg for failed RDMA-Write-Req"
-			     " failed, msg_id %d, err: %d\n", buf_id, ret);
+		ibtrs_err_rl(sess,
+			     "Sending err msg for failed RDMA-Write-Req failed, msg_id %d, err: %d\n",
+			     buf_id, ret);
 		close_sess(sess);
 	}
 	ibtrs_srv_put_ops_ids(sess);
@@ -934,8 +935,8 @@ static void process_write(struct ibtrs_srv_con *con,
 	int ret;
 
 	if (unlikely(sess->state != IBTRS_SRV_CONNECTED)) {
-		ibtrs_err_rl(sess, "Processing write request failed, "
-			     " session is disconnected, sess state %s\n",
+		ibtrs_err_rl(sess,
+			     "Processing write request failed,  session is disconnected, sess state %s\n",
 			     ibtrs_srv_state_str(sess->state));
 		return;
 	}
@@ -952,8 +953,9 @@ static void process_write(struct ibtrs_srv_con *con,
 	ret = ctx->rdma_ev(srv, srv->priv, id, WRITE, data, data_len,
 			   data + data_len, usr_len);
 	if (unlikely(ret)) {
-		ibtrs_err_rl(sess, "Processing write request failed, user"
-			     " module callback reports err: %d\n", ret);
+		ibtrs_err_rl(sess,
+			     "Processing write request failed, user module callback reports err: %d\n",
+			     ret);
 		goto send_err_msg;
 	}
 
@@ -962,8 +964,8 @@ static void process_write(struct ibtrs_srv_con *con,
 send_err_msg:
 	ret = send_io_resp_imm(con, id, ret);
 	if (ret < 0) {
-		ibtrs_err_rl(sess, "Processing write request failed, sending"
-			     " I/O response failed, msg_id %d, err: %d\n",
+		ibtrs_err_rl(sess,
+			     "Processing write request failed, sending I/O response failed, msg_id %d, err: %d\n",
 			     buf_id, ret);
 		close_sess(sess);
 	}
@@ -990,8 +992,9 @@ static void process_io_req(struct ibtrs_srv_con *con, void *msg,
 		process_read(con, msg, id, off);
 		break;
 	default:
-		ibtrs_err(sess, "Processing I/O request failed, "
-			  "unknown message type received: 0x%02x\n", type);
+		ibtrs_err(sess,
+			  "Processing I/O request failed, unknown message type received: 0x%02x\n",
+			  type);
 		goto err;
 	}
 
@@ -1011,8 +1014,8 @@ static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 
 	if (unlikely(wc->status != IB_WC_SUCCESS)) {
 		if (wc->status != IB_WC_WR_FLUSH_ERR) {
-			ibtrs_err(sess, "%s (wr_cqe: %p,"
-				  " type: %d, vendor_err: 0x%x, len: %u)\n",
+			ibtrs_err(sess,
+				  "%s (wr_cqe: %p, type: %d, vendor_err: 0x%x, len: %u)\n",
 				  ib_wc_status_msg(wc->status), wc->wr_cqe,
 				  wc->opcode, wc->vendor_err, wc->byte_len);
 			close_sess(sess);
@@ -1566,9 +1569,9 @@ static int ibtrs_rdma_connect(struct rdma_cm_id *cm_id,
 		put_srv(srv);
 
 		if (unlikely(sess->s.recon_cnt != recon_cnt)) {
-			ibtrs_err(sess, "Reconnect detected %d != %d, but "
-				  "previous session is still alive, reconnect "
-				  "later\n", sess->s.recon_cnt, recon_cnt);
+			ibtrs_err(sess,
+				  "Reconnect detected %d != %d, but previous session is still alive, reconnect later\n",
+				  sess->s.recon_cnt, recon_cnt);
 			mutex_unlock(&srv->paths_mutex);
 			goto reject_w_ebusy;
 		}
@@ -1867,14 +1870,12 @@ EXPORT_SYMBOL(ibtrs_srv_close);
 static int check_module_params(void)
 {
 	if (sess_queue_depth < 1 || sess_queue_depth > MAX_SESS_QUEUE_DEPTH) {
-		pr_err("Invalid sess_queue_depth value %d, has to be"
-		       " >= %d, <= %d.\n",
+		pr_err("Invalid sess_queue_depth value %d, has to be >= %d, <= %d.\n",
 		       sess_queue_depth, 1, MAX_SESS_QUEUE_DEPTH);
 		return -EINVAL;
 	}
 	if (max_chunk_size < 4096 || !is_power_of_2(max_chunk_size)) {
-		pr_err("Invalid max_chunk_size value %d, has to be"
-		       " >= %d and should be power of two.\n",
+		pr_err("Invalid max_chunk_size value %d, has to be >= %d and should be power of two.\n",
 		       max_chunk_size, 4096);
 		return -EINVAL;
 	}
@@ -1885,10 +1886,8 @@ static int check_module_params(void)
 	 */
 	if ((ilog2(sess_queue_depth - 1) + 1) +
 	    (ilog2(max_chunk_size - 1) + 1) > MAX_IMM_PAYL_BITS) {
-		pr_err("RDMA immediate size (%db) not enough to encode "
-		       "%d buffers of size %dB. Reduce 'sess_queue_depth' "
-		       "or 'max_chunk_size' parameters.\n", MAX_IMM_PAYL_BITS,
-		       sess_queue_depth, max_chunk_size);
+		pr_err("RDMA immediate size (%db) not enough to encode %d buffers of size %dB. Reduce 'sess_queue_depth' or 'max_chunk_size' parameters.\n",
+		       MAX_IMM_PAYL_BITS, sess_queue_depth, max_chunk_size);
 		return -EINVAL;
 	}
 
@@ -1902,10 +1901,7 @@ static int __init ibtrs_server_init(void)
 	if (!strlen(cq_affinity_list))
 		init_cq_affinity();
 
-	pr_info("Loading module %s, version %s, proto %s: "
-		"(cq_affinity_list: %s, "
-		"max_chunk_size: %d (pure IO %ld, headers %ld) , "
-		"sess_queue_depth: %d)\n",
+	pr_info("Loading module %s, version %s, proto %s: (cq_affinity_list: %s, max_chunk_size: %d (pure IO %ld, headers %ld) , sess_queue_depth: %d)\n",
 		KBUILD_MODNAME, IBTRS_VER_STRING, IBTRS_PROTO_VER_STRING,
 		cq_affinity_list, max_chunk_size,
 		max_chunk_size - MAX_HDR_SIZE, MAX_HDR_SIZE,
@@ -1915,8 +1911,8 @@ static int __init ibtrs_server_init(void)
 
 	err = check_module_params();
 	if (err) {
-		pr_err("Failed to load module, invalid module parameters,"
-		       " err: %d\n", err);
+		pr_err("Failed to load module, invalid module parameters, err: %d\n",
+		       err);
 		return err;
 	}
 	chunk_pool = mempool_create_page_pool(sess_queue_depth * CHUNK_POOL_SZ,

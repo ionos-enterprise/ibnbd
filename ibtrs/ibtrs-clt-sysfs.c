@@ -64,8 +64,8 @@ static ssize_t max_reconnect_attempts_store(struct device *dev,
 	}
 	if (unlikely(value > MAX_MAX_RECONN_ATT ||
 		     value < MIN_MAX_RECONN_ATT)) {
-		ibtrs_err(clt, "%s: invalid range"
-			  " (provided: '%s', accepted: min: %d, max: %d)\n",
+		ibtrs_err(clt,
+			  "%s: invalid range (provided: '%s', accepted: min: %d, max: %d)\n",
 			  attr->attr.name, buf, MIN_MAX_RECONN_ATT,
 			  MAX_MAX_RECONN_ATT);
 		return -EINVAL;
@@ -130,9 +130,8 @@ static DEVICE_ATTR_RW(mpath_policy);
 static ssize_t add_path_show(struct device *dev,
 			     struct device_attribute *attr, char *page)
 {
-	return scnprintf(page, PAGE_SIZE, "Usage: echo"
-			 " [<source addr>,]<destination addr> > %s\n\n"
-			"*addr ::= [ ip:<ipv4|ipv6> | gid:<gid> ]\n",
+	return scnprintf(page, PAGE_SIZE,
+			 "Usage: echo [<source addr>,]<destination addr> > %s\n\n*addr ::= [ ip:<ipv4|ipv6> | gid:<gid> ]\n",
 			 attr->attr.name);
 }
 

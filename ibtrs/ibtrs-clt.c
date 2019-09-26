@@ -40,20 +40,20 @@ MODULE_LICENSE("GPL");
 
 static ushort nr_cons_per_session;
 module_param(nr_cons_per_session, ushort, 0444);
-MODULE_PARM_DESC(nr_cons_per_session, "Number of connections per session."
-		 " (default: nr_cpu_ids)");
+MODULE_PARM_DESC(nr_cons_per_session,
+		 "Number of connections per session. (default: nr_cpu_ids)");
 
 static int retry_cnt = 7;
 module_param_named(retry_cnt, retry_cnt, int, 0644);
-MODULE_PARM_DESC(retry_cnt, "Number of times to send the message if the"
-		 " remote side didn't respond with Ack or Nack (default: 7,"
-		 " min: " __stringify(MIN_RTR_CNT) ", max: "
+MODULE_PARM_DESC(retry_cnt,
+		 "Number of times to send the message if the remote side didn't respond with Ack or Nack (default: 7, min: "
+		 __stringify(MIN_RTR_CNT) ", max: "
 		 __stringify(MAX_RTR_CNT) ")");
 
-static int __read_mostly noreg_cnt = 0;
+static int __read_mostly noreg_cnt;
 module_param_named(noreg_cnt, noreg_cnt, int, 0444);
-MODULE_PARM_DESC(noreg_cnt, "Max number of SG entries when MR registration "
-		 "does not happen (default: 0)");
+MODULE_PARM_DESC(noreg_cnt,
+		 "Max number of SG entries when MR registration does not happen (default: 0)");
 
 static const struct ibtrs_ib_dev_pool_ops dev_pool_ops;
 static struct ibtrs_ib_dev_pool dev_pool = {
@@ -1015,6 +1015,7 @@ static enum ibtrs_clt_state ibtrs_clt_state(struct ibtrs_clt_sess *sess)
 static void ibtrs_clt_hb_err_handler(struct ibtrs_con *c)
 {
 	struct ibtrs_clt_con *con = container_of(c, typeof(*con), c);
+
 	ibtrs_rdma_error_recovery(con);
 }
 
@@ -1719,8 +1720,9 @@ static int ibtrs_rdma_conn_established(struct ibtrs_clt_con *con,
 			sess->rbufs = kcalloc(queue_depth, sizeof(*sess->rbufs),
 					      GFP_KERNEL);
 			if (unlikely(!sess->rbufs)) {
-				ibtrs_err(sess, "Failed to allocate "
-					  "queue_depth=%d\n", queue_depth);
+				ibtrs_err(sess,
+					  "Failed to allocate queue_depth=%d\n",
+					  queue_depth);
 				return -ENOMEM;
 			}
 		}
@@ -1773,16 +1775,15 @@ static int ibtrs_rdma_conn_rejected(struct ibtrs_clt_con *con,
 		errno = (int16_t)le16_to_cpu(msg->errno);
 		if (errno == -EBUSY)
 			ibtrs_err(sess,
-				  "Previous session is still exists on the "
-				  "server, please reconnect later\n");
+				  "Previous session is still exists on the server, please reconnect later\n");
 		else
 			ibtrs_err(sess,
-				  "Connect rejected: status %d (%s), ibtrs "
-				  "errno %d\n", status, rej_msg, errno);
+				  "Connect rejected: status %d (%s), ibtrs errno %d\n",
+				  status, rej_msg, errno);
 	} else {
 		ibtrs_err(sess,
-			  "Connect rejected but with malformed message: "
-			  "status %d (%s)\n", status, rej_msg);
+			  "Connect rejected but with malformed message: status %d (%s)\n",
+			  status, rej_msg);
 	}
 
 	return -ECONNRESET;
@@ -1933,9 +1934,9 @@ static int process_info_rsp(struct ibtrs_clt_sess *sess,
 	if (unlikely((ilog2(sg_cnt - 1) + 1) +
 		     (ilog2(sess->chunk_size - 1) + 1) >
 		     MAX_IMM_PAYL_BITS)) {
-		ibtrs_err(sess, "RDMA immediate size (%db) not enough to "
-			  "encode %d buffers of size %dB\n",  MAX_IMM_PAYL_BITS,
-			  sg_cnt, sess->chunk_size);
+		ibtrs_err(sess,
+			  "RDMA immediate size (%db) not enough to encode %d buffers of size %dB\n",
+			  MAX_IMM_PAYL_BITS, sg_cnt, sess->chunk_size);
 		return -EINVAL;
 	}
 	if (unlikely(!sg_cnt || (sess->queue_depth % sg_cnt))) {
@@ -2574,9 +2575,9 @@ static int ibtrs_clt_read_req(struct ibtrs_clt_io_req *req)
 	dev = sess->s.dev;
 
 	if (unlikely(tsize > sess->chunk_size)) {
-		ibtrs_wrn(sess, "Read request failed, message size is"
-			  " %zu, bigger than CHUNK_SIZE %d\n", tsize,
-			  sess->chunk_size);
+		ibtrs_wrn(sess,
+			  "Read request failed, message size is %zu, bigger than CHUNK_SIZE %d\n",
+			  tsize, sess->chunk_size);
 		return -EMSGSIZE;
 	}
 
@@ -2584,8 +2585,8 @@ static int ibtrs_clt_read_req(struct ibtrs_clt_io_req *req)
 		count = ib_dma_map_sg(dev->ib_dev, req->sglist, req->sg_cnt,
 				      req->dir);
 		if (unlikely(!count)) {
-			ibtrs_wrn(sess, "Read request failed, "
-				  "dma map failed\n");
+			ibtrs_wrn(sess,
+				  "Read request failed, dma map failed\n");
 			return -EINVAL;
 		}
 	}
@@ -2598,8 +2599,8 @@ static int ibtrs_clt_read_req(struct ibtrs_clt_io_req *req)
 		ret = ibtrs_map_sg_fr(req, count);
 		if (ret < 0) {
 			ibtrs_err_rl(sess,
-				     "Read request failed, failed to map "
-				     " fast reg. data, err: %d\n", ret);
+				     "Read request failed, failed to map  fast reg. data, err: %d\n",
+				     ret);
 			ib_dma_unmap_sg(dev->ib_dev, req->sglist, req->sg_cnt,
 					req->dir);
 			return ret;
@@ -2699,9 +2700,8 @@ int ibtrs_clt_request(int dir, ibtrs_conf_fn *conf, struct ibtrs_clt *clt,
 			continue;
 
 		if (unlikely(usr_len + hdr_len > sess->max_hdr_size)) {
-			ibtrs_wrn_rl(sess, "%s request failed, user message "
-				     "size is %zu and header length %zu, but "
-				     "max size is %u\n",
+			ibtrs_wrn_rl(sess,
+				     "%s request failed, user message size is %zu and header length %zu, but max size is %u\n",
 				     dir == READ ? "Read" : "Write",
 				     usr_len, hdr_len, sess->max_hdr_size);
 			err = -EMSGSIZE;
@@ -2801,8 +2801,7 @@ static int __init ibtrs_client_init(void)
 {
 	int err;
 
-	pr_info("Loading module %s, version %s, proto %s: "
-		"(retry_cnt: %d, noreg_cnt: %d)\n",
+	pr_info("Loading module %s, version %s, proto %s: (retry_cnt: %d, noreg_cnt: %d)\n",
 		KBUILD_MODNAME, IBTRS_VER_STRING, IBTRS_PROTO_VER_STRING,
 		retry_cnt, noreg_cnt);
 
@@ -2811,8 +2810,8 @@ static int __init ibtrs_client_init(void)
 
 	err = check_module_params();
 	if (unlikely(err)) {
-		pr_err("Failed to load module, invalid module parameters,"
-		       " err: %d\n", err);
+		pr_err("Failed to load module, invalid module parameters, err: %d\n",
+		       err);
 		return err;
 	}
 	ibtrs_dev_class = class_create(THIS_MODULE, "ibtrs-client");

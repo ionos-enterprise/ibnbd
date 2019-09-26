@@ -93,8 +93,8 @@ int ibtrs_iu_post_recv(struct ibtrs_con *con, struct ibtrs_iu *iu)
 	list.lkey   = sess->dev->ib_pd->local_dma_lkey;
 
 	if (WARN_ON(list.length == 0)) {
-		ibtrs_wrn(con, "Posting receive work request failed,"
-			  " sg list is empty\n");
+		ibtrs_wrn(con,
+			  "Posting receive work request failed, sg list is empty\n");
 		return -EINVAL;
 	}
 
