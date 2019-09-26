@@ -129,8 +129,8 @@ static int ibnbd_clt_parse_map_options(const char *buf,
 
 		case IBNBD_OPT_PATH:
 			if (p_cnt >= max_path_cnt) {
-				pr_err("map_device: too many (> %zu) paths "
-				       "provided\n", max_path_cnt);
+				pr_err("map_device: too many (> %zu) paths provided\n",
+				       max_path_cnt);
 				ret = -ENOMEM;
 				goto out;
 			}
@@ -183,8 +183,8 @@ static int ibnbd_clt_parse_map_options(const char *buf,
 			} else if (!strcmp(p, "migration")) {
 				*access_mode = IBNBD_ACCESS_MIGRATION;
 			} else {
-				pr_err("map_device: Invalid access_mode:"
-				       " '%s'\n", p);
+				pr_err("map_device: Invalid access_mode: '%s'\n",
+				       p);
 				ret = -EINVAL;
 				kfree(p);
 				goto out;
@@ -214,8 +214,8 @@ static int ibnbd_clt_parse_map_options(const char *buf,
 			break;
 
 		default:
-			pr_err("map_device: Unknown parameter or missing value"
-			       " '%s'\n", p);
+			pr_err("map_device: Unknown parameter or missing value '%s'\n",
+			       p);
 			ret = -EINVAL;
 			goto out;
 		}
@@ -332,7 +332,9 @@ static ssize_t ibnbd_clt_unmap_dev_store(struct kobject *kobj,
 	} else if (sysfs_streq(options, "force")) {
 		force = true;
 	} else {
-		ibnbd_clt_err(dev, "unmap_device: Invalid value: %s\n", options);
+		ibnbd_clt_err(dev,
+			      "unmap_device: Invalid value: %s\n",
+			      options);
 		err = -EINVAL;
 		goto out;
 	}
@@ -431,7 +433,9 @@ static ssize_t ibnbd_clt_remap_dev_store(struct kobject *kobj,
 
 	dev = container_of(kobj, struct ibnbd_clt_dev, kobj);
 	if (!sysfs_streq(options, "1")) {
-		ibnbd_clt_err(dev, "remap_device: Invalid value: %s\n", options);
+		ibnbd_clt_err(dev,
+			      "remap_device: Invalid value: %s\n",
+			      options);
 		err = -EINVAL;
 		goto out;
 	}
@@ -508,14 +512,8 @@ static ssize_t ibnbd_clt_map_device_show(struct kobject *kobj,
 					 struct kobj_attribute *attr,
 					 char *page)
 {
-	return scnprintf(page, PAGE_SIZE, "Usage: echo \""
-			 "sessname=<name of the ibtrs session>"
-			 " path=<[srcaddr,]dstaddr>"
-			 " [path=<[srcaddr,]dstaddr>]"
-			 " device_path=<full path on remote side>"
-			 " [access_mode=<ro|rw|migration>]"
-			 " [io_mode=<fileio|blockio>]\" > %s\n\n"
-			 "addr ::= [ ip:<ipv4> | ip:<ipv6> | gid:<gid> ]\n",
+	return scnprintf(page, PAGE_SIZE,
+			 "Usage: echo \"sessname=<name of the ibtrs session> path=<[srcaddr,]dstaddr> [path=<[srcaddr,]dstaddr>] device_path=<full path on remote side> [access_mode=<ro|rw|migration>] [io_mode=<fileio|blockio>]\" > %s\n\naddr ::= [ ip:<ipv4> | ip:<ipv6> | gid:<gid> ]\n",
 			 attr->attr.name);
 }
 
@@ -594,8 +592,8 @@ static ssize_t ibnbd_clt_map_device_store(struct kobject *kobj,
 	if (ret)
 		goto out;
 
-	pr_info("Mapping device %s on session %s, (access_mode: %s, "
-		"io_mode: %s)\n", pathname, sessname,
+	pr_info("Mapping device %s on session %s, (access_mode: %s, io_mode: %s)\n",
+		pathname, sessname,
 		ibnbd_access_mode_str(access_mode), ibnbd_io_mode_str(io_mode));
 
 	dev = ibnbd_clt_map_device(sessname, paths, path_cnt, pathname,

@@ -364,8 +364,8 @@ static int ibnbd_dev_file_submit_io(struct ibnbd_dev *dev, sector_t sector,
 	struct ibnbd_dev_file_io_work *w;
 
 	if (!ibnbd_flags_supported(flags)) {
-		pr_info_ratelimited("Unsupported I/O flags: 0x%x on device "
-				    "%s\n", flags, dev->name);
+		pr_info_ratelimited("Unsupported I/O flags: 0x%x on device %s\n",
+				    flags, dev->name);
 		return -ENOTSUPP;
 	}
 
@@ -401,8 +401,8 @@ int ibnbd_dev_submit_io(struct ibnbd_dev *dev, sector_t sector, void *data,
 		return ibnbd_dev_blk_submit_io(dev, sector, data, len, bi_size,
 					       flags, prio, priv);
 
-	pr_warn("Submitting I/O to %s failed, dev->mode contains invalid "
-		"value: '%d', memory corrupted?", dev->name, dev->mode);
+	pr_warn("Submitting I/O to %s failed, dev->mode contains invalid value: '%d', memory corrupted?",
+		dev->name, dev->mode);
 
 	return -EINVAL;
 }

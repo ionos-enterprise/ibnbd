@@ -31,10 +31,10 @@ void unknown_type(void);
 #define ibnbd_clt_log(fn, dev, fmt, ...) (				\
 		fn("<%s@%s> " fmt, (dev)->pathname,			\
 		(dev)->sess->sessname,					\
-		   ##__VA_ARGS__));
+		   ##__VA_ARGS__))
 #define ibnbd_srv_log(fn, dev, fmt, ...) (				\
 			fn("<%s@%s>: " fmt, (dev)->pathname,		\
-			   (dev)->sess->sessname, ##__VA_ARGS__));
+			   (dev)->sess->sessname, ##__VA_ARGS__))
 
 #define ibnbd_clt_err(dev, fmt, ...)	\
 	ibnbd_clt_log(pr_err, dev, fmt, ##__VA_ARGS__)

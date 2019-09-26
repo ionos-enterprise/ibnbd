@@ -139,9 +139,9 @@ static int ibnbd_clt_revalidate_disk(struct ibnbd_clt_dev *dev,
 				      SECTOR_SIZE));
 	err = revalidate_disk(dev->gd);
 	if (err)
-		ibnbd_clt_err(dev, "Failed to change device size from"
-			  " %zu to %zu, err: %d\n", dev->nsectors,
-			  new_nsectors, err);
+		ibnbd_clt_err(dev,
+			      "Failed to change device size from %zu to %zu, err: %d\n",
+			      dev->nsectors, new_nsectors, err);
 	return err;
 }
 
@@ -152,8 +152,8 @@ static int process_msg_open_rsp(struct ibnbd_clt_dev *dev,
 
 	mutex_lock(&dev->lock);
 	if (dev->dev_state == DEV_STATE_UNMAPPED) {
-		ibnbd_clt_info(dev, "Ignoring Open-Response message from server for "
-			   " unmapped device\n");
+		ibnbd_clt_info(dev,
+			       "Ignoring Open-Response message from server for  unmapped device\n");
 		err = -ENOENT;
 		goto out;
 	}
@@ -185,8 +185,7 @@ int ibnbd_clt_resize_disk(struct ibnbd_clt_dev *dev, size_t newsize)
 
 	mutex_lock(&dev->lock);
 	if (dev->dev_state != DEV_STATE_MAPPED) {
-		pr_err("Failed to set new size of the device, "
-		       "device is not opened\n");
+		pr_err("Failed to set new size of the device, device is not opened\n");
 		ret = -ENOENT;
 		goto out;
 	}
@@ -537,7 +536,9 @@ static void msg_open_conf(struct work_struct *work)
 	int errno = iu->errno;
 
 	if (errno) {
-		ibnbd_clt_err(dev, "Opening failed, server responded: %d\n", errno);
+		ibnbd_clt_err(dev,
+			      "Opening failed, server responded: %d\n",
+			      errno);
 	} else {
 		errno = process_msg_open_rsp(dev, rsp);
 		if (unlikely(errno)) {
@@ -820,8 +821,8 @@ static struct ibnbd_clt_session *alloc_sess(const char *sessname)
 
 	sess = kzalloc_node(sizeof(*sess), GFP_KERNEL, NUMA_NO_NODE);
 	if (unlikely(!sess)) {
-		pr_err("Failed to create session %s,"
-		       " allocating session struct failed\n", sessname);
+		pr_err("Failed to create session %s, allocating session struct failed\n",
+		       sessname);
 		return ERR_PTR(-ENOMEM);
 	}
 	strlcpy(sess->sessname, sessname, sizeof(sess->sessname));
@@ -835,8 +836,8 @@ static struct ibnbd_clt_session *alloc_sess(const char *sessname)
 
 	sess->cpu_queues = alloc_percpu(struct ibnbd_cpu_qlist);
 	if (unlikely(!sess->cpu_queues)) {
-		pr_err("Failed to create session to %s,"
-		       " alloc of percpu var (cpu_queues) failed\n", sessname);
+		pr_err("Failed to create session to %s, alloc of percpu var (cpu_queues) failed\n",
+		       sessname);
 		err = -ENOMEM;
 		goto err;
 	}
@@ -849,8 +850,8 @@ static struct ibnbd_clt_session *alloc_sess(const char *sessname)
 	 */
 	sess->cpu_rr = alloc_percpu(int);
 	if (unlikely(!sess->cpu_rr)) {
-		pr_err("Failed to create session %s,"
-		       " alloc of percpu var (cpu_rr) failed\n", sessname);
+		pr_err("Failed to create session %s, alloc of percpu var (cpu_rr) failed\n",
+		       sessname);
 		err = -ENOMEM;
 		goto err;
 	}
@@ -1444,9 +1445,8 @@ static struct ibnbd_clt_dev *init_dev(struct ibnbd_clt_session *sess,
 	dev->hw_queues = kcalloc(nr_cpu_ids, sizeof(*dev->hw_queues),
 				 GFP_KERNEL);
 	if (unlikely(!dev->hw_queues)) {
-		pr_err("Failed to initialize device '%s' from session"
-		       " %s, allocating hw_queues failed.", pathname,
-		       sess->sessname);
+		pr_err("Failed to initialize device '%s' from session %s, allocating hw_queues failed.",
+		       pathname, sess->sessname);
 		ret = -ENOMEM;
 		goto out_alloc;
 	}
@@ -1456,9 +1456,8 @@ static struct ibnbd_clt_dev *init_dev(struct ibnbd_clt_session *sess,
 			     GFP_KERNEL);
 	mutex_unlock(&ida_lock);
 	if (ret < 0) {
-		pr_err("Failed to initialize device '%s' from session %s,"
-		       " allocating idr failed, err: %d\n", pathname,
-		       sess->sessname, ret);
+		pr_err("Failed to initialize device '%s' from session %s, allocating idr failed, err: %d\n",
+		       pathname, sess->sessname, ret);
 		goto out_queues;
 	}
 	dev->clt_device_id	= ret;
@@ -1566,9 +1565,8 @@ struct ibnbd_clt_dev *ibnbd_clt_map_device(const char *sessname,
 
 	dev = init_dev(sess, access_mode, io_mode, pathname);
 	if (unlikely(IS_ERR(dev))) {
-		pr_err("map_device: failed to map device '%s' from session %s,"
-		       " can't initialize device, err: %ld\n", pathname,
-		       sess->sessname, PTR_ERR(dev));
+		pr_err("map_device: failed to map device '%s' from session %s, can't initialize device, err: %ld\n",
+		       pathname, sess->sessname, PTR_ERR(dev));
 		ret = PTR_ERR(dev);
 		goto put_sess;
 	}
@@ -1578,8 +1576,9 @@ struct ibnbd_clt_dev *ibnbd_clt_map_device(const char *sessname,
 	}
 	ret = send_msg_open(dev, WAIT);
 	if (unlikely(ret)) {
-		ibnbd_clt_err(dev, "map_device: failed, can't open remote device,"
-			  " err: %d\n", ret);
+		ibnbd_clt_err(dev,
+			      "map_device: failed, can't open remote device, err: %d\n",
+			      ret);
 		goto del_dev;
 	}
 	mutex_lock(&dev->lock);
@@ -1587,23 +1586,21 @@ struct ibnbd_clt_dev *ibnbd_clt_map_device(const char *sessname,
 		 sess->sessname, pathname);
 	ret = ibnbd_client_setup_device(sess, dev, dev->clt_device_id);
 	if (ret) {
-		ibnbd_clt_err(dev, "map_device: Failed to configure device, err: %d\n",
-			  ret);
+		ibnbd_clt_err(dev,
+			      "map_device: Failed to configure device, err: %d\n",
+			      ret);
 		mutex_unlock(&dev->lock);
 		goto del_dev;
 	}
 
-	ibnbd_clt_info(dev, "map_device: Device mapped as %s (nsectors: %zu,"
-		   " logical_block_size: %d, physical_block_size: %d,"
-		   " max_write_same_sectors: %d, max_discard_sectors: %d,"
-		   " discard_granularity: %d, discard_alignment: %d, "
-		   "secure_discard: %d, max_segments: %d, max_hw_sectors: %d, "
-		   "rotational: %d)\n",
-		   dev->gd->disk_name, dev->nsectors, dev->logical_block_size,
-		   dev->physical_block_size, dev->max_write_same_sectors,
-		   dev->max_discard_sectors, dev->discard_granularity,
-		   dev->discard_alignment, dev->secure_discard,
-		   dev->max_segments, dev->max_hw_sectors, dev->rotational);
+	ibnbd_clt_info(dev,
+		       "map_device: Device mapped as %s (nsectors: %zu, logical_block_size: %d, physical_block_size: %d, max_write_same_sectors: %d, max_discard_sectors: %d, discard_granularity: %d, discard_alignment: %d, secure_discard: %d, max_segments: %d, max_hw_sectors: %d, rotational: %d)\n",
+		       dev->gd->disk_name, dev->nsectors,
+		       dev->logical_block_size, dev->physical_block_size,
+		       dev->max_write_same_sectors, dev->max_discard_sectors,
+		       dev->discard_granularity, dev->discard_alignment,
+		       dev->secure_discard, dev->max_segments,
+		       dev->max_hw_sectors, dev->rotational);
 
 	mutex_unlock(&dev->lock);
 
@@ -1657,8 +1654,9 @@ int ibnbd_clt_unmap_device(struct ibnbd_clt_dev *dev, bool force,
 	}
 	refcount = refcount_read(&dev->refcount);
 	if (!force && refcount > 1) {
-		ibnbd_clt_err(dev, "Closing device failed, device is in use,"
-			  " (%d device users)\n", refcount - 1);
+		ibnbd_clt_err(dev,
+			      "Closing device failed, device is in use, (%d device users)\n",
+			      refcount - 1);
 		ret = -EBUSY;
 		goto err;
 	}
@@ -1768,21 +1766,19 @@ static int __init ibnbd_client_init(void)
 {
 	int err;
 
-	pr_info("Loading module %s, proto %s: \n", KBUILD_MODNAME,
-		IBNBD_PROTO_VER_STRING);
+	pr_info("Loading module %s, proto %s:\n",
+		KBUILD_MODNAME, IBNBD_PROTO_VER_STRING);
 
 	ibnbd_client_major = register_blkdev(ibnbd_client_major, "ibnbd");
 	if (ibnbd_client_major <= 0) {
-		pr_err("Failed to load module,"
-		       " block device registration failed\n");
+		pr_err("Failed to load module, block device registration failed\n");
 		err = -EBUSY;
 		goto out;
 	}
 
 	err = ibnbd_clt_create_sysfs_files();
 	if (err) {
-		pr_err("Failed to load module,"
-		       " creating sysfs device files failed, err: %d\n",
+		pr_err("Failed to load module, creating sysfs device files failed, err: %d\n",
 		       err);
 		goto out_unregister_blk;
 	}
