@@ -63,7 +63,7 @@ MODULE_PARM_DESC(sess_queue_depth,
 		 __stringify(MAX_SESS_QUEUE_DEPTH) " (default: "
 		 __stringify(DEFAULT_SESS_QUEUE_DEPTH) ")");
 
-static char cq_affinity_list[256] = "";
+static char cq_affinity_list[256];
 static cpumask_t cq_affinity_mask = { CPU_BITS_ALL };
 
 static void init_cq_affinity(void)
@@ -76,8 +76,7 @@ static int cq_affinity_list_set(const char *val, const struct kernel_param *kp)
 	int ret = 0, len = strlen(val);
 	cpumask_var_t new_value;
 
-	if (!strlen(cq_affinity_list))
-		init_cq_affinity();
+	init_cq_affinity();
 
 	if (len >= sizeof(cq_affinity_list))
 		return -EINVAL;
@@ -1898,8 +1897,7 @@ static int __init ibtrs_server_init(void)
 {
 	int err;
 
-	if (!strlen(cq_affinity_list))
-		init_cq_affinity();
+	init_cq_affinity();
 
 	pr_info("Loading module %s, version %s, proto %s: (cq_affinity_list: %s, max_chunk_size: %d (pure IO %ld, headers %ld) , sess_queue_depth: %d)\n",
 		KBUILD_MODNAME, IBTRS_VER_STRING, IBTRS_PROTO_VER_STRING,
