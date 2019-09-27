@@ -55,7 +55,7 @@ static int __read_mostly sess_queue_depth = DEFAULT_SESS_QUEUE_DEPTH;
 module_param_named(max_chunk_size, max_chunk_size, int, 0444);
 MODULE_PARM_DESC(max_chunk_size,
 		 "Max size for each IO request, when change the unit is in byte (default: "
-		 __stringify(DEFAULT_MAX_CHUNK_SIZE_KB) "KB)");
+		 __stringify(DEFAULT_MAX_CHUNK_SIZE) "KB)");
 
 module_param_named(sess_queue_depth, sess_queue_depth, int, 0444);
 MODULE_PARM_DESC(sess_queue_depth,
