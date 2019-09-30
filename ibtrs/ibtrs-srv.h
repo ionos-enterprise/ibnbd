@@ -88,6 +88,9 @@ struct ibtrs_srv_op {
 struct ibtrs_srv_mr {
 	struct ib_mr	*mr;
 	struct sg_table	sgt;
+	struct ib_cqe	inv_cqe; /* only for always_invalidate=true */
+	u32		msg_id; /* only for always_invalidate=true */
+	u32		msg_off; /* only for always_invalidate=true */
 };
 
 struct ibtrs_srv_sess {

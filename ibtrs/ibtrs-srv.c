@@ -52,6 +52,12 @@ struct class *ibtrs_dev_class;
 static int __read_mostly max_chunk_size = DEFAULT_MAX_CHUNK_SIZE;
 static int __read_mostly sess_queue_depth = DEFAULT_SESS_QUEUE_DEPTH;
 
+static bool always_invalidate;
+module_param(always_invalidate, bool, 0444);
+MODULE_PARM_DESC(always_invalidate,
+	 "Invalidate memory registration for contiguous memory regions"
+	 " before accessing.");
+
 module_param_named(max_chunk_size, max_chunk_size, int, 0444);
 MODULE_PARM_DESC(max_chunk_size,
 		 "Max size for each IO request, when change the unit is in byte (default: "
@@ -462,6 +468,11 @@ void ibtrs_srv_resp_rdma(struct ibtrs_srv_op *id, int status)
 			     ibtrs_srv_state_str(sess->state));
 		goto out;
 	}
+	if (always_invalidate) {
+		struct ibtrs_srv_mr *mr = &sess->mrs[id->msg_id];
+
+		ib_update_fast_reg_key(mr->mr, ib_inc_rkey(mr->mr->rkey));
+	}
 	if (status || id->dir == WRITE || !id->rd_msg->sg_cnt)
 		err = send_io_resp_imm(con, id, status);
 	else
@@ -502,16 +513,23 @@ static int map_cont_bufs(struct ibtrs_srv_sess *sess)
 	struct ibtrs_srv *srv = sess->srv;
 	int i, mri, err, mrs_num;
 	unsigned int chunk_bits;
-	int chunks_per_mr;
+	int chunks_per_mr = 1;
 
 	/*
 	 * Here we map queue_depth chunks to MR.  Firstly we have to
 	 * figure out how many chunks can we map per MR.
 	 */
-
-	chunks_per_mr = sess->s.dev->ib_dev->attrs.max_fast_reg_page_list_len;
-	mrs_num = DIV_ROUND_UP(srv->queue_depth, chunks_per_mr);
-	chunks_per_mr = DIV_ROUND_UP(srv->queue_depth, mrs_num);
+	if (always_invalidate) {
+		/*
+		 * in order to do invalidate for each chunks of memory, we needs
+		 * more memory regression.
+		 */
+		mrs_num = srv->queue_depth;
+	} else {
+		chunks_per_mr = sess->s.dev->ib_dev->attrs.max_fast_reg_page_list_len;
+		mrs_num = DIV_ROUND_UP(srv->queue_depth, chunks_per_mr);
+		chunks_per_mr = DIV_ROUND_UP(srv->queue_depth, mrs_num);
+	}
 
 	sess->mrs = kcalloc(mrs_num, sizeof(*sess->mrs), GFP_KERNEL);
 	if (unlikely(!sess->mrs))
@@ -1011,6 +1029,43 @@ err:
 	close_sess(sess);
 }
 
+static void ibtrs_srv_inv_rkey_done(struct ib_cq *cq, struct ib_wc *wc)
+{
+	struct ibtrs_srv_mr *mr =
+		container_of(wc->wr_cqe, typeof(*mr), inv_cqe);
+	struct ibtrs_srv_con *con = cq->cq_context;
+	struct ibtrs_srv_sess *sess = to_srv_sess(con->c.sess);
+	struct ibtrs_srv *srv = sess->srv;
+	u32 msg_id, off;
+	void *data;
+
+	if (unlikely(wc->status != IB_WC_SUCCESS)) {
+		ibtrs_err(sess, "Failed IB_WR_LOCAL_INV: %s\n",
+			  ib_wc_status_msg(wc->status));
+		close_sess(sess);
+	}
+	msg_id = mr->msg_id;
+	off = mr->msg_off;
+	data = page_address(srv->chunks[msg_id]) + off;
+	process_io_req(con, data, msg_id, off);
+}
+
+static int ibtrs_srv_inv_rkey(struct ibtrs_srv_con *con, struct ibtrs_srv_mr *mr)
+{
+	const struct ib_send_wr *bad_wr;
+	struct ib_send_wr wr = {
+		.opcode		    = IB_WR_LOCAL_INV,
+		.wr_cqe		    = &mr->inv_cqe,
+		.next		    = NULL,
+		.num_sge	    = 0,
+		.send_flags	    = IB_SEND_SIGNALED,
+		.ex.invalidate_rkey = mr->mr->rkey,
+	};
+	mr->inv_cqe.done = ibtrs_srv_inv_rkey_done;
+
+	return ib_post_send(con->c.qp, &wr, &bad_wr);
+}
+
 static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 {
 	struct ibtrs_srv_con *con = cq->cq_context;
@@ -1066,8 +1121,21 @@ static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 				close_sess(sess);
 				return;
 			}
-			data = page_address(srv->chunks[msg_id]) + off;
-			process_io_req(con, data, msg_id, off);
+			if (always_invalidate) {
+				struct ibtrs_srv_mr *mr = &sess->mrs[msg_id];
+
+				mr->msg_off = off;
+				mr->msg_id = msg_id;
+				err = ibtrs_srv_inv_rkey(con, mr);
+				if (unlikely(err)) {
+					ibtrs_err(sess, "ibtrs_post_recv(), err: %d\n", err);
+					close_sess(sess);
+					break;
+				}
+			} else {
+				data = page_address(srv->chunks[msg_id]) + off;
+				process_io_req(con, data, msg_id, off);
+			}
 		} else if (imm_type == IBTRS_HB_MSG_IMM) {
 			WARN_ON(con->c.cid);
 			ibtrs_send_hb_ack(&sess->s);
@@ -1892,11 +1960,11 @@ static int __init ibtrs_server_init(void)
 
 	init_cq_affinity();
 
-	pr_info("Loading module %s, version %s, proto %s: (cq_affinity_list: %s, max_chunk_size: %d (pure IO %ld, headers %ld) , sess_queue_depth: %d)\n",
+	pr_info("Loading module %s, version %s, proto %s: (cq_affinity_list: %s, max_chunk_size: %d (pure IO %ld, headers %ld) , sess_queue_depth: %d, always_invalidate: %d)\n",
 		KBUILD_MODNAME, IBTRS_VER_STRING, IBTRS_PROTO_VER_STRING,
 		cq_affinity_list, max_chunk_size,
 		max_chunk_size - MAX_HDR_SIZE, MAX_HDR_SIZE,
-		sess_queue_depth);
+		sess_queue_depth, always_invalidate);
 
 	ibtrs_ib_dev_pool_init(0, &dev_pool);
 
