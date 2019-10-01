@@ -1749,6 +1749,7 @@ static int ibtrs_rdma_conn_established(struct ibtrs_clt_con *con,
 		sess->queue_depth = queue_depth;
 		sess->max_hdr_size = le32_to_cpu(msg->max_hdr_size);
 		sess->max_io_size = le32_to_cpu(msg->max_io_size);
+		sess->flags = le32_to_cpu(msg->flags);
 		sess->chunk_size = sess->max_io_size + sess->max_hdr_size;
 
 		/*

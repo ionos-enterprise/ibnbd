@@ -1400,6 +1400,9 @@ static int ibtrs_rdma_do_accept(struct ibtrs_srv_sess *sess,
 	msg.max_io_size = cpu_to_le32(max_chunk_size - MAX_HDR_SIZE);
 	msg.max_hdr_size = cpu_to_le32(MAX_HDR_SIZE);
 
+	if (always_invalidate)
+		msg.flags = cpu_to_le32(IBTRS_MSG_NEW_RKEY_F);
+
 	err = rdma_accept(cm_id, &param);
 	if (err)
 		pr_err("rdma_accept(), err: %d\n", err);

@@ -152,20 +152,24 @@ struct ibtrs_iu {
  * @IBTRS_MSG_INFO_RSP:		Server additional info response to the client
  * @IBTRS_MSG_WRITE:		Client writes data per RDMA to server
  * @IBTRS_MSG_READ:		Client requests data transfer from server
+ * @IBTRS_MSG_RKEY_RSP:		Server refreshed rkey for rbuf
  */
 enum ibtrs_msg_types {
 	IBTRS_MSG_INFO_REQ,
 	IBTRS_MSG_INFO_RSP,
 	IBTRS_MSG_WRITE,
 	IBTRS_MSG_READ,
+	IBTRS_MSG_RKEY_RSP,
 };
 
 /**
  * enum ibtrs_msg_flags - IBTRS message flags.
  * @IBTRS_NEED_INVAL:	Send invalidation in response.
+ * @IBTRS_MSG_NEW_RKEY_F: Send refreshed rkey in response.
  */
 enum ibtrs_msg_flags {
-	IBTRS_MSG_NEED_INVAL_F = 1<<0
+	IBTRS_MSG_NEED_INVAL_F = 1 << 0,
+	IBTRS_MSG_NEW_RKEY_F = 1 << 1,
 };
 
 /**
@@ -226,7 +230,8 @@ struct ibtrs_msg_conn_rsp {
 	__le16		queue_depth;
 	__le32		max_io_size;
 	__le32		max_hdr_size;
-	u8		reserved[40];
+	__le32		flags;
+	u8		reserved[36];
 };
 
 /**
@@ -251,6 +256,18 @@ struct ibtrs_msg_info_rsp {
 	__le16          sg_cnt;
 	u8              reserved[4];
 	struct ibtrs_sg_desc desc[];
+};
+
+/**
+ * struct ibtrs_msg_rkey_rsp
+ * @type:		@IBTRS_MSG_RKEY_RSP
+ * @buf_id:		RDMA buf_id of the new rkey
+ * @rkey:		new remote key for RDMA buffers id from server
+ */
+struct ibtrs_msg_rkey_rsp {
+	__le16		type;
+	__le16          buf_id;
+	__le32		rkey;
 };
 
 /**

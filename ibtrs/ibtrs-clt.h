@@ -189,6 +189,7 @@ struct ibtrs_clt_sess {
 	size_t			queue_depth;
 	u32			max_pages_per_mr;
 	int			max_send_sge;
+	u32			flags;
 	struct kobject		kobj;
 	struct kobject		kobj_stats;
 	struct ibtrs_clt_stats  stats;
