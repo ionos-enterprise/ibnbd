@@ -91,6 +91,7 @@ struct ibtrs_srv_mr {
 	struct ib_cqe	inv_cqe; /* only for always_invalidate=true */
 	u32		msg_id; /* only for always_invalidate=true */
 	u32		msg_off; /* only for always_invalidate=true */
+	struct ibtrs_iu	*iu; /* send buffer for new rkey msg */
 };
 
 struct ibtrs_srv_sess {

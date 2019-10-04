@@ -500,6 +500,8 @@ static void unmap_cont_bufs(struct ibtrs_srv_sess *sess)
 		struct ibtrs_srv_mr *srv_mr;
 
 		srv_mr = &sess->mrs[i];
+		ibtrs_iu_free(srv_mr->iu, DMA_TO_DEVICE,
+			      sess->s.dev->ib_dev, 1);
 		ib_dereg_mr(srv_mr->mr);
 		ib_dma_unmap_sg(sess->s.dev->ib_dev, srv_mr->sgt.sgl,
 				srv_mr->sgt.nents, DMA_BIDIRECTIONAL);
@@ -522,7 +524,7 @@ static int map_cont_bufs(struct ibtrs_srv_sess *sess)
 	if (always_invalidate) {
 		/*
 		 * in order to do invalidate for each chunks of memory, we needs
-		 * more memory regression.
+		 * more memory regions.
 		 */
 		mrs_num = srv->queue_depth;
 	} else {
@@ -543,10 +545,12 @@ static int map_cont_bufs(struct ibtrs_srv_sess *sess)
 		struct scatterlist *s;
 		struct ib_mr *mr;
 		int nr, chunks;
+		struct ibtrs_msg_rkey_rsp *rsp;
 
 		chunks = chunks_per_mr * mri;
-		chunks_per_mr = min_t(int, chunks_per_mr,
-				      srv->queue_depth - chunks);
+		if (!always_invalidate)
+			chunks_per_mr = min_t(int, chunks_per_mr,
+					      srv->queue_depth - chunks);
 
 		err = sg_alloc_table(sgt, chunks_per_mr, GFP_KERNEL);
 		if (unlikely(err))
@@ -575,11 +579,23 @@ static int map_cont_bufs(struct ibtrs_srv_sess *sess)
 			goto dereg_mr;
 		}
 
+		if (always_invalidate) {
+			srv_mr->iu = ibtrs_iu_alloc(1, sizeof(*rsp), GFP_KERNEL,
+						    sess->s.dev->ib_dev,
+						    DMA_TO_DEVICE,
+						    ibtrs_srv_rdma_done);
+			if (unlikely(!srv_mr->iu)) {
+				ibtrs_err(sess, "ibtrs_iu_alloc(), err: %d\n",
+					  -ENOMEM);
+				goto free_iu;
+			}
+		}
 		/* Eventually dma addr for each chunk can be cached */
 		for_each_sg(sgt->sgl, s, sgt->orig_nents, i)
 			sess->dma_addr[chunks + i] = sg_dma_address(s);
 
 		ib_update_fast_reg_key(mr, ib_inc_rkey(mr->rkey));
+
 
 		srv_mr->mr = mr;
 
@@ -589,6 +605,9 @@ err:
 			srv_mr = &sess->mrs[mri];
 			sgt = &srv_mr->sgt;
 			mr = srv_mr->mr;
+free_iu:
+			ibtrs_iu_free(srv_mr->iu, DMA_TO_DEVICE,
+				      sess->s.dev->ib_dev, 1);
 dereg_mr:
 			ib_dereg_mr(mr);
 unmap_sg:
