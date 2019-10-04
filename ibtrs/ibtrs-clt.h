@@ -124,6 +124,8 @@ struct ibtrs_clt_stats {
 
 struct ibtrs_clt_con {
 	struct ibtrs_con	c;
+	struct ibtrs_iu		*rsp_ius;
+	u32			queue_size;
 	unsigned		cpu;
 	atomic_t		io_cnt;
 	int			cm_err;

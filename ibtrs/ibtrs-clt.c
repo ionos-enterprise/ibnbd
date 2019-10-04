@@ -1170,6 +1170,7 @@ static int create_con_cq_qp(struct ibtrs_clt_con *con)
 	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
 	u16 wr_queue_size;
 	int err, cq_vector;
+	struct ibtrs_msg_rkey_rsp *rsp;
 
 	/*
 	 * This function can fail, but still destroy_con_cq_qp() should
@@ -1224,6 +1225,16 @@ static int create_con_cq_qp(struct ibtrs_clt_con *con)
 			      /* QD * (REQ + RSP + FR REGS or INVS) + drain */
 			      sess->queue_depth * 3 + 1);
 	}
+	/* alloc iu to recv new rkey reply when server reports flags set */
+	if (sess->flags == IBTRS_MSG_NEW_RKEY_F || con->c.cid == 0) {
+		con->rsp_ius = ibtrs_iu_alloc(wr_queue_size, sizeof(*rsp),
+					      GFP_KERNEL,sess->s.dev->ib_dev,
+					      DMA_FROM_DEVICE,
+					      ibtrs_clt_rdma_done);
+		if (unlikely(!con->rsp_ius))
+			return -ENOMEM;
+		con->queue_size = wr_queue_size;
+	}
 	cq_vector = con->cpu % sess->s.dev->ib_dev->num_comp_vectors;
 	err = ibtrs_cq_qp_create(&sess->s, &con->c, sess->max_send_sge,
 				 cq_vector, wr_queue_size, wr_queue_size,
@@ -1235,7 +1246,6 @@ static int create_con_cq_qp(struct ibtrs_clt_con *con)
 
 	if (unlikely(err))
 		return err;
-
 	return err;
 }
 
@@ -1249,6 +1259,12 @@ static void destroy_con_cq_qp(struct ibtrs_clt_con *con)
 	 */
 
 	ibtrs_cq_qp_destroy(&con->c);
+	if (con->rsp_ius) {
+		ibtrs_iu_free(con->rsp_ius, DMA_FROM_DEVICE,
+			      sess->s.dev->ib_dev, con->queue_size);
+		con->rsp_ius = NULL;
+		con->queue_size = 0;
+	}
 	if (sess->s.dev_ref && !--sess->s.dev_ref) {
 		ibtrs_ib_dev_put(sess->s.dev);
 		sess->s.dev = NULL;
