@@ -576,6 +576,7 @@ static int post_recv_io(struct ibtrs_clt_con *con, size_t q_size)
 	int err, i;
 
 	for (i = 0; i < q_size; i++) {
+
 		err = ibtrs_post_recv_empty(&con->c, &io_comp_cqe);
 		if (unlikely(err))
 			return err;
@@ -884,7 +885,7 @@ static void free_sess_reqs(struct ibtrs_clt_sess *sess)
 			ib_dereg_mr(req->mr);
 		kfree(req->sge);
 		ibtrs_iu_free(req->iu, DMA_TO_DEVICE,
-			      sess->s.dev->ib_dev);
+			      sess->s.dev->ib_dev, 1);
 	}
 	kfree(sess->reqs);
 	sess->reqs = NULL;
@@ -903,8 +904,9 @@ static int alloc_sess_reqs(struct ibtrs_clt_sess *sess)
 
 	for (i = 0; i < sess->queue_depth; ++i) {
 		req = &sess->reqs[i];
-		req->iu = ibtrs_iu_alloc(sess->max_hdr_size, GFP_KERNEL,
-					 sess->s.dev->ib_dev, DMA_TO_DEVICE,
+		req->iu = ibtrs_iu_alloc(1, sess->max_hdr_size, GFP_KERNEL,
+					 sess->s.dev->ib_dev,
+					 DMA_TO_DEVICE,
 					 ibtrs_clt_rdma_done);
 		if (unlikely(!req->iu))
 			goto out;
@@ -1904,7 +1906,7 @@ static void ibtrs_clt_info_req_done(struct ib_cq *cq, struct ib_wc *wc)
 	struct ibtrs_iu *iu;
 
 	iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
-	ibtrs_iu_free(iu, DMA_TO_DEVICE, sess->s.dev->ib_dev);
+	ibtrs_iu_free(iu, DMA_TO_DEVICE, sess->s.dev->ib_dev, 1);
 
 	if (unlikely(wc->status != IB_WC_SUCCESS)) {
 		ibtrs_err(sess, "Sess info request send failed: %s\n",
@@ -2032,7 +2034,7 @@ static void ibtrs_clt_info_rsp_done(struct ib_cq *cq, struct ib_wc *wc)
 
 out:
 	ibtrs_clt_update_wc_stats(con);
-	ibtrs_iu_free(iu, DMA_FROM_DEVICE, sess->s.dev->ib_dev);
+	ibtrs_iu_free(iu, DMA_FROM_DEVICE, sess->s.dev->ib_dev, 1);
 	ibtrs_clt_change_state(sess, state);
 }
 
@@ -2047,10 +2049,10 @@ static int ibtrs_send_sess_info(struct ibtrs_clt_sess *sess)
 	rx_sz  = sizeof(struct ibtrs_msg_info_rsp);
 	rx_sz += sizeof(u64) * MAX_SESS_QUEUE_DEPTH;
 
-	tx_iu = ibtrs_iu_alloc(sizeof(struct ibtrs_msg_info_req), GFP_KERNEL,
+	tx_iu = ibtrs_iu_alloc(1, sizeof(struct ibtrs_msg_info_req), GFP_KERNEL,
 			       sess->s.dev->ib_dev, DMA_TO_DEVICE,
 			       ibtrs_clt_info_req_done);
-	rx_iu = ibtrs_iu_alloc(rx_sz, GFP_KERNEL, sess->s.dev->ib_dev,
+	rx_iu = ibtrs_iu_alloc(1, rx_sz, GFP_KERNEL, sess->s.dev->ib_dev,
 			       DMA_FROM_DEVICE, ibtrs_clt_info_rsp_done);
 	if (unlikely(!tx_iu || !rx_iu)) {
 		ibtrs_err(sess, "ibtrs_iu_alloc(): no memory\n");
@@ -2094,9 +2096,9 @@ static int ibtrs_send_sess_info(struct ibtrs_clt_sess *sess)
 
 out:
 	if (tx_iu)
-		ibtrs_iu_free(tx_iu, DMA_TO_DEVICE, sess->s.dev->ib_dev);
+		ibtrs_iu_free(tx_iu, DMA_TO_DEVICE, sess->s.dev->ib_dev, 1);
 	if (rx_iu)
-		ibtrs_iu_free(rx_iu, DMA_FROM_DEVICE, sess->s.dev->ib_dev);
+		ibtrs_iu_free(rx_iu, DMA_FROM_DEVICE, sess->s.dev->ib_dev, 1);
 	if (unlikely(err))
 		/* If we've never taken async path because of malloc problems */
 		ibtrs_clt_change_state(sess, IBTRS_CLT_CONNECTING_ERR);

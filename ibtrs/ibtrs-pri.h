@@ -305,11 +305,12 @@ struct ibtrs_msg_rdma_hdr {
 
 /* ibtrs.c */
 
-struct ibtrs_iu *ibtrs_iu_alloc(size_t size, gfp_t t,
-				struct ib_device *dev, enum dma_data_direction,
+struct ibtrs_iu *ibtrs_iu_alloc(u32 queue_size, size_t size, gfp_t t,
+				struct ib_device *dev,
+				enum dma_data_direction,
 				void (*done)(struct ib_cq *cq, struct ib_wc *wc));
 void ibtrs_iu_free(struct ibtrs_iu *iu, enum dma_data_direction dir,
-		   struct ib_device *dev);
+		   struct ib_device *dev, u32 queue_size);
 int ibtrs_iu_post_recv(struct ibtrs_con *con, struct ibtrs_iu *iu);
 int ibtrs_iu_post_send(struct ibtrs_con *con, struct ibtrs_iu *iu, size_t size,
 		       struct ib_send_wr *head);

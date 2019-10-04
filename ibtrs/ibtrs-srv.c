@@ -639,7 +639,7 @@ static void ibtrs_srv_info_rsp_done(struct ib_cq *cq, struct ib_wc *wc)
 	struct ibtrs_iu *iu;
 
 	iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
-	ibtrs_iu_free(iu, DMA_TO_DEVICE, sess->s.dev->ib_dev);
+	ibtrs_iu_free(iu, DMA_TO_DEVICE, sess->s.dev->ib_dev, 1);
 
 	if (unlikely(wc->status != IB_WC_SUCCESS)) {
 		ibtrs_err(sess, "Sess info response send failed: %s\n",
@@ -727,7 +727,7 @@ static int process_info_req(struct ibtrs_srv_con *con,
 
 	tx_sz  = sizeof(*rsp);
 	tx_sz += sizeof(rsp->desc[0]) * sess->mrs_num;
-	tx_iu = ibtrs_iu_alloc(tx_sz, GFP_KERNEL, sess->s.dev->ib_dev,
+	tx_iu = ibtrs_iu_alloc(1, tx_sz, GFP_KERNEL, sess->s.dev->ib_dev,
 			       DMA_TO_DEVICE, ibtrs_srv_info_rsp_done);
 	if (unlikely(!tx_iu)) {
 		ibtrs_err(sess, "ibtrs_iu_alloc(), err: %d\n", -ENOMEM);
@@ -784,7 +784,7 @@ static int process_info_req(struct ibtrs_srv_con *con,
 	if (unlikely(err)) {
 		ibtrs_err(sess, "ibtrs_iu_post_send(), err: %d\n", err);
 iu_free:
-		ibtrs_iu_free(tx_iu, DMA_TO_DEVICE, sess->s.dev->ib_dev);
+		ibtrs_iu_free(tx_iu, DMA_TO_DEVICE, sess->s.dev->ib_dev, 1);
 	}
 rwr_free:
 	kfree(rwr);
@@ -828,7 +828,7 @@ static void ibtrs_srv_info_req_done(struct ib_cq *cq, struct ib_wc *wc)
 		goto close;
 
 out:
-	ibtrs_iu_free(iu, DMA_FROM_DEVICE, sess->s.dev->ib_dev);
+	ibtrs_iu_free(iu, DMA_FROM_DEVICE, sess->s.dev->ib_dev, 1);
 	return;
 close:
 	close_sess(sess);
@@ -841,7 +841,7 @@ static int post_recv_info_req(struct ibtrs_srv_con *con)
 	struct ibtrs_iu *rx_iu;
 	int err;
 
-	rx_iu = ibtrs_iu_alloc(sizeof(struct ibtrs_msg_info_req),
+	rx_iu = ibtrs_iu_alloc(1, sizeof(struct ibtrs_msg_info_req),
 			       GFP_KERNEL, sess->s.dev->ib_dev,
 			       DMA_FROM_DEVICE, ibtrs_srv_info_req_done);
 	if (unlikely(!rx_iu)) {
@@ -852,7 +852,7 @@ static int post_recv_info_req(struct ibtrs_srv_con *con)
 	err = ibtrs_iu_post_recv(&con->c, rx_iu);
 	if (unlikely(err)) {
 		ibtrs_err(sess, "ibtrs_iu_post_recv(), err: %d\n", err);
-		ibtrs_iu_free(rx_iu, DMA_FROM_DEVICE, sess->s.dev->ib_dev);
+		ibtrs_iu_free(rx_iu, DMA_FROM_DEVICE, sess->s.dev->ib_dev, 1);
 		return err;
 	}
 

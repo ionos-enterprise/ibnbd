@@ -34,50 +34,59 @@ MODULE_DESCRIPTION("IBTRS Core");
 MODULE_VERSION(IBTRS_VER_STRING);
 MODULE_LICENSE("GPL");
 
-struct ibtrs_iu *ibtrs_iu_alloc(size_t size, gfp_t gfp_mask,
+struct ibtrs_iu *ibtrs_iu_alloc(u32 queue_size, size_t size, gfp_t gfp_mask,
 				struct ib_device *dma_dev,
-				enum dma_data_direction direction,
+				enum dma_data_direction dir,
 				void (*done)(struct ib_cq *cq,
 					     struct ib_wc *wc))
 {
-	struct ibtrs_iu *iu;
+	struct ibtrs_iu *ius, *iu;
+	int i;
 
-	iu = kmalloc(sizeof(*iu), gfp_mask);
-	if (unlikely(!iu))
+	WARN_ON(!queue_size);
+	ius = kcalloc(queue_size, sizeof(*ius), gfp_mask);
+
+	if (unlikely(!ius))
 		return NULL;
+	for (i = 0; i < queue_size; i++) {
+		iu = &ius[i];
+		iu->buf = kzalloc(size, gfp_mask);
+		if (unlikely(!iu->buf))
+			goto err;
 
-	iu->buf = kzalloc(size, gfp_mask);
-	if (unlikely(!iu->buf))
-		goto err1;
+		iu->dma_addr = ib_dma_map_single(dma_dev, iu->buf, size, dir);
+		if (unlikely(ib_dma_mapping_error(dma_dev, iu->dma_addr)))
+			goto err;
 
-	iu->dma_addr = ib_dma_map_single(dma_dev, iu->buf, size, direction);
-	if (unlikely(ib_dma_mapping_error(dma_dev, iu->dma_addr)))
-		goto err2;
+		iu->cqe.done  = done;
+		iu->size      = size;
+		iu->direction = dir;
+	}
 
-	iu->cqe.done  = done;
-	iu->size      = size;
-	iu->direction = direction;
+	return ius;
 
-	return iu;
-
-err2:
-	kfree(iu->buf);
-err1:
-	kfree(iu);
+err:
+	ibtrs_iu_free(ius, dir, dma_dev, i);
 
 	return NULL;
 }
 EXPORT_SYMBOL_GPL(ibtrs_iu_alloc);
 
-void ibtrs_iu_free(struct ibtrs_iu *iu, enum dma_data_direction dir,
-		   struct ib_device *ibdev)
+void ibtrs_iu_free(struct ibtrs_iu *ius, enum dma_data_direction dir,
+		   struct ib_device *ibdev, u32 queue_size)
 {
-	if (!iu)
+	struct ibtrs_iu *iu;
+	int i;
+
+	if (!ius)
 		return;
 
-	ib_dma_unmap_single(ibdev, iu->dma_addr, iu->size, dir);
-	kfree(iu->buf);
-	kfree(iu);
+	for (i = 0; i < queue_size; i++) {
+		iu = &ius[i];
+		ib_dma_unmap_single(ibdev, iu->dma_addr, iu->size, dir);
+		kfree(iu->buf);
+	}
+	kfree(ius);
 }
 EXPORT_SYMBOL_GPL(ibtrs_iu_free);
 
