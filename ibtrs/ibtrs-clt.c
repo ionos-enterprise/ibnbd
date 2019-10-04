@@ -492,6 +492,73 @@ static struct ib_cqe io_comp_cqe = {
 	.done = ibtrs_clt_rdma_done
 };
 
+static void ibtrs_clt_recv_done(struct ibtrs_clt_con *con, struct ib_wc *wc)
+{
+	struct ibtrs_iu *iu;
+	int err;
+	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
+
+	WARN_ON(sess->flags != IBTRS_MSG_NEW_RKEY_F);
+	iu = container_of(wc->wr_cqe, struct ibtrs_iu,
+			  cqe);
+	err = ibtrs_iu_post_recv(&con->c, iu);
+	if (unlikely(err)) {
+		ibtrs_err(sess, "post iu failed %d\n", err);
+		ibtrs_rdma_error_recovery(con);
+	}
+}
+
+static void ibtrs_clt_rkey_rsp_done(struct ibtrs_clt_con *con, struct ib_wc *wc)
+{
+	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
+	struct ibtrs_msg_rkey_rsp *msg;
+	u32 imm_type, imm_payload;
+	bool w_inval = false;
+	struct ibtrs_iu *iu;
+	u32 buf_id;
+	int err;
+
+	WARN_ON(sess->flags != IBTRS_MSG_NEW_RKEY_F);
+
+	iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
+
+	if (unlikely(wc->byte_len < sizeof(*msg))) {
+		ibtrs_err(sess, "rkey response is malformed: size %d\n",
+			  wc->byte_len);
+		goto out;
+	}
+	ib_dma_sync_single_for_cpu(sess->s.dev->ib_dev, iu->dma_addr,
+				   iu->size, DMA_FROM_DEVICE);
+	msg = iu->buf;
+	if (unlikely(le16_to_cpu(msg->type) != IBTRS_MSG_RKEY_RSP)) {
+		ibtrs_err(sess, "rkey response is malformed: type %d\n",
+			  le16_to_cpu(msg->type));
+		goto out;
+	}
+	buf_id = le16_to_cpu(msg->buf_id);
+	if (WARN_ON(buf_id >= sess->queue_depth))
+		goto out;
+
+	ibtrs_from_imm(be32_to_cpu(wc->ex.imm_data), &imm_type, &imm_payload);
+	if (likely(imm_type == IBTRS_IO_RSP_IMM ||
+		   imm_type == IBTRS_IO_RSP_W_INV_IMM)) {
+		u32 msg_id;
+
+		w_inval = (imm_type == IBTRS_IO_RSP_W_INV_IMM);
+		ibtrs_from_io_rsp_imm(imm_payload, &msg_id, &err);
+
+		if (WARN_ON(buf_id != msg_id))
+			goto out;
+		sess->rbufs[buf_id].rkey = le32_to_cpu(msg->rkey);
+		process_io_rsp(sess, msg_id, err, w_inval);
+	}
+	ib_dma_sync_single_for_device(sess->s.dev->ib_dev, iu->dma_addr,
+				      iu->size, DMA_FROM_DEVICE);
+	return ibtrs_clt_recv_done(con, wc);
+out:
+	ibtrs_rdma_error_recovery(con);
+}
+
 static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 {
 	struct ibtrs_clt_con *con = cq->cq_context;
@@ -511,28 +578,13 @@ static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 	ibtrs_clt_update_wc_stats(con);
 
 	switch (wc->opcode) {
-	case IB_WC_RDMA_WRITE:
-		/*
-		 * post_send() RDMA write completions of IO reqs (read/write)
-		 * and hb
-		 */
-		break;
-	case IB_WC_RECV:
-		/*
-		 * Key invalidations from server side
-		 */
-		WARN_ON(!(wc->wc_flags & IB_WC_WITH_INVALIDATE));
-		WARN_ON(wc->wr_cqe != &io_comp_cqe);
-		break;
-
 	case IB_WC_RECV_RDMA_WITH_IMM:
 		/*
 		 * post_recv() RDMA write completions of IO reqs (read/write)
 		 * and hb
 		 */
-		if (WARN_ON(wc->wr_cqe != &io_comp_cqe))
+		if (WARN_ON(wc->wr_cqe->done != ibtrs_clt_rdma_done))
 			return;
-
 		ibtrs_from_imm(be32_to_cpu(wc->ex.imm_data),
 			       &imm_type, &imm_payload);
 		if (likely(imm_type == IBTRS_IO_RSP_IMM ||
@@ -541,13 +593,18 @@ static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 
 			w_inval = (imm_type == IBTRS_IO_RSP_W_INV_IMM);
 			ibtrs_from_io_rsp_imm(imm_payload, &msg_id, &err);
+
 			process_io_rsp(sess, msg_id, err, w_inval);
 		} else if (imm_type == IBTRS_HB_MSG_IMM) {
 			WARN_ON(con->c.cid);
 			ibtrs_send_hb_ack(&sess->s);
+			if (sess->flags == IBTRS_MSG_NEW_RKEY_F)
+				return  ibtrs_clt_recv_done(con, wc);
 		} else if (imm_type == IBTRS_HB_ACK_IMM) {
 			WARN_ON(con->c.cid);
 			sess->s.hb_missed_cnt = 0;
+			if (sess->flags == IBTRS_MSG_NEW_RKEY_F)
+				return  ibtrs_clt_recv_done(con, wc);
 		} else {
 			ibtrs_wrn(sess, "Unknown IMM type %u\n", imm_type);
 		}
@@ -565,6 +622,27 @@ static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 			break;
 		}
 		break;
+	case IB_WC_RECV:
+		/*
+		 * Key invalidations from server side
+		 */
+		WARN_ON(!(wc->wc_flags & IB_WC_WITH_INVALIDATE ||
+			  wc->wc_flags & IB_WC_WITH_IMM));
+		WARN_ON(wc->wr_cqe->done != ibtrs_clt_rdma_done);
+		if (sess->flags == IBTRS_MSG_NEW_RKEY_F) {
+			if (wc->wc_flags & IB_WC_WITH_INVALIDATE)
+				return  ibtrs_clt_recv_done(con, wc);
+
+			return  ibtrs_clt_rkey_rsp_done(con, wc);
+		}
+		break;
+	case IB_WC_RDMA_WRITE:
+		/*
+		 * post_send() RDMA write completions of IO reqs (read/write)
+		 * and hb
+		 */
+		break;
+
 	default:
 		ibtrs_wrn(sess, "Unexpected WC type: %d\n", wc->opcode);
 		return;
@@ -574,10 +652,17 @@ static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 static int post_recv_io(struct ibtrs_clt_con *con, size_t q_size)
 {
 	int err, i;
+	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
 
 	for (i = 0; i < q_size; i++) {
 
-		err = ibtrs_post_recv_empty(&con->c, &io_comp_cqe);
+		if (sess->flags == IBTRS_MSG_NEW_RKEY_F) {
+			struct ibtrs_iu *iu = &con->rsp_ius[i];
+
+			err = ibtrs_iu_post_recv(&con->c, iu);
+		} else {
+			err = ibtrs_post_recv_empty(&con->c, &io_comp_cqe);
+		}
 		if (unlikely(err))
 			return err;
 	}
@@ -587,7 +672,7 @@ static int post_recv_io(struct ibtrs_clt_con *con, size_t q_size)
 
 static int post_recv_sess(struct ibtrs_clt_sess *sess)
 {
-	size_t q_size;
+	size_t q_size = 0;
 	int err, cid;
 
 	for (cid = 0; cid < sess->s.con_num; cid++) {

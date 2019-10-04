@@ -283,10 +283,28 @@ static struct ib_cqe io_comp_cqe = {
 	.done = ibtrs_srv_rdma_done
 };
 
+static void ibtrs_srv_reg_mr_done(struct ib_cq *cq, struct ib_wc *wc)
+{
+	struct ibtrs_srv_con *con = cq->cq_context;
+	struct ibtrs_srv_sess *sess = to_srv_sess(con->c.sess);
+
+	if (unlikely(wc->status != IB_WC_SUCCESS)) {
+		ibtrs_err(sess, "REG MR failed: %s\n",
+			  ib_wc_status_msg(wc->status));
+		close_sess(sess);
+		return;
+	}
+}
+
+static struct ib_cqe local_reg_cqe = {
+	.done = ibtrs_srv_reg_mr_done
+};
+
 static int rdma_write_sg(struct ibtrs_srv_op *id)
 {
 	struct ibtrs_srv_sess *sess = to_srv_sess(id->con->c.sess);
 	dma_addr_t dma_addr = sess->dma_addr[id->msg_id];
+	struct ibtrs_srv_mr *srv_mr;
 	struct ibtrs_srv *srv = sess->srv;
 	struct ib_send_wr inv_wr, imm_wr;
 	struct ib_rdma_wr *wr = NULL;
@@ -296,6 +314,7 @@ static int rdma_write_sg(struct ibtrs_srv_op *id)
 	int err, i, offset;
 	bool need_inval;
 	u32 rkey = 0;
+	struct ib_reg_wr rwr;
 
 	sg_cnt = le16_to_cpu(id->rd_msg->sg_cnt);
 	need_inval = le16_to_cpu(id->rd_msg->flags) & IBTRS_MSG_NEED_INVAL_F;
@@ -335,15 +354,25 @@ static int rdma_write_sg(struct ibtrs_srv_op *id)
 
 		if (i < (sg_cnt - 1))
 			wr->wr.next = &id->tx_wr[i + 1].wr;
-		else if (need_inval)
-			wr->wr.next = &inv_wr;
-		else
-			wr->wr.next = &imm_wr;
 
 		wr->wr.opcode = IB_WR_RDMA_WRITE;
 		wr->wr.ex.imm_data = 0;
 		wr->wr.send_flags  = 0;
 	}
+
+
+	if (need_inval && always_invalidate) {
+		wr->wr.next = &rwr.wr;
+		rwr.wr.next = &inv_wr;
+		inv_wr.next = &imm_wr;
+	} else if (always_invalidate) {
+		wr->wr.next = &rwr.wr;
+		rwr.wr.next = &imm_wr;
+	} else if (need_inval){
+		wr->wr.next = &inv_wr;
+		inv_wr.next = &imm_wr;
+	} else
+		wr->wr.next = &imm_wr;
 	/*
 	 * From time to time we have to post signalled sends,
 	 * or send queue will fill up and only QP reset can help.
@@ -352,7 +381,6 @@ static int rdma_write_sg(struct ibtrs_srv_op *id)
 			0 : IB_SEND_SIGNALED;
 
 	if (need_inval) {
-		inv_wr.next = &imm_wr;
 		inv_wr.wr_cqe = &io_comp_cqe;
 		inv_wr.sg_list = NULL;
 		inv_wr.num_sge = 0;
@@ -360,11 +388,41 @@ static int rdma_write_sg(struct ibtrs_srv_op *id)
 		inv_wr.send_flags = 0;
 		inv_wr.ex.invalidate_rkey = rkey;
 	}
+
 	imm_wr.next = NULL;
 	imm_wr.wr_cqe = &io_comp_cqe;
-	imm_wr.sg_list = NULL;
-	imm_wr.num_sge = 0;
-	imm_wr.opcode = IB_WR_RDMA_WRITE_WITH_IMM;
+	if (always_invalidate) {
+		struct ib_sge list;
+		struct ibtrs_msg_rkey_rsp *msg;
+
+		srv_mr = &sess->mrs[id->msg_id];
+		rwr.wr.opcode = IB_WR_REG_MR;
+		rwr.wr.wr_cqe = &local_reg_cqe;
+		rwr.wr.num_sge = 0;
+		rwr.mr = srv_mr->mr;
+		rwr.wr.send_flags = 0;
+		rwr.key = srv_mr->mr->rkey;
+		rwr.access = (IB_ACCESS_LOCAL_WRITE |
+			      IB_ACCESS_REMOTE_WRITE);
+		msg = srv_mr->iu->buf;
+		msg->buf_id = cpu_to_le16(id->msg_id);
+		msg->type = cpu_to_le16(IBTRS_MSG_RKEY_RSP);
+		msg->rkey = cpu_to_le32(srv_mr->mr->rkey);
+
+		list.addr   = srv_mr->iu->dma_addr;
+		list.length = sizeof(*msg);
+		list.lkey   = sess->s.dev->ib_pd->local_dma_lkey;
+		imm_wr.sg_list = &list;
+		imm_wr.num_sge = 1;
+		imm_wr.opcode = IB_WR_SEND_WITH_IMM;
+		ib_dma_sync_single_for_device(sess->s.dev->ib_dev,
+					      srv_mr->iu->dma_addr,
+					      srv_mr->iu->size, DMA_TO_DEVICE);
+	} else {
+		imm_wr.sg_list = NULL;
+		imm_wr.num_sge = 0;
+		imm_wr.opcode = IB_WR_RDMA_WRITE_WITH_IMM;
+	}
 	imm_wr.send_flags = flags;
 	imm_wr.ex.imm_data = cpu_to_be32(ibtrs_to_io_rsp_imm(id->msg_id,
 							     0, need_inval));
@@ -389,10 +447,13 @@ static int send_io_resp_imm(struct ibtrs_srv_con *con, struct ibtrs_srv_op *id,
 			    int errno)
 {
 	struct ibtrs_srv_sess *sess = to_srv_sess(con->c.sess);
-	struct ib_send_wr inv_wr, *wr = NULL;
+	struct ib_send_wr inv_wr, imm_wr, *wr = NULL;
+	struct ib_reg_wr rwr;
 	struct ibtrs_srv *srv = sess->srv;
+	struct ibtrs_srv_mr *srv_mr;
 	bool need_inval = false;
 	enum ib_send_flags flags;
+	const struct ib_send_wr *bad_wr;
 	u32 imm;
 	int err;
 
@@ -406,7 +467,6 @@ static int send_io_resp_imm(struct ibtrs_srv_con *con, struct ibtrs_srv_op *id,
 
 		if (need_inval) {
 			if (likely(sg_cnt)) {
-				inv_wr.next = NULL;
 				inv_wr.wr_cqe = &io_comp_cqe;
 				inv_wr.sg_list = NULL;
 				inv_wr.num_sge = 0;
@@ -415,7 +475,6 @@ static int send_io_resp_imm(struct ibtrs_srv_con *con, struct ibtrs_srv_op *id,
 				/* Only one key is actually used */
 				inv_wr.ex.invalidate_rkey =
 					le32_to_cpu(rd_msg->desc[0].key);
-				wr = &inv_wr;
 			} else {
 				WARN_ON_ONCE(1);
 				need_inval = false;
@@ -423,6 +482,18 @@ static int send_io_resp_imm(struct ibtrs_srv_con *con, struct ibtrs_srv_op *id,
 		}
 	}
 
+	if (need_inval && always_invalidate) {
+		wr = &inv_wr;
+		inv_wr.next = &rwr.wr;
+		rwr.wr.next = &imm_wr;
+	} else if (always_invalidate) {
+		wr = &rwr.wr;
+		rwr.wr.next = &imm_wr;
+	} else if (need_inval){
+		wr = &inv_wr;
+		inv_wr.next = &imm_wr;
+	} else
+		wr = &imm_wr;
 	/*
 	 * From time to time we have to post signalled sends,
 	 * or send queue will fill up and only QP reset can help.
@@ -430,10 +501,48 @@ static int send_io_resp_imm(struct ibtrs_srv_con *con, struct ibtrs_srv_op *id,
 	flags = atomic_inc_return(&con->wr_cnt) % srv->queue_depth ?
 			0 : IB_SEND_SIGNALED;
 	imm = ibtrs_to_io_rsp_imm(id->msg_id, errno, need_inval);
-	err = ibtrs_post_rdma_write_imm_empty(&con->c, &io_comp_cqe, imm,
-					      flags, wr);
+	imm_wr.next = NULL;
+	imm_wr.wr_cqe = &io_comp_cqe;
+	if (always_invalidate) {
+		struct ib_sge list;
+		struct ibtrs_msg_rkey_rsp *msg;
+
+		srv_mr = &sess->mrs[id->msg_id];
+		rwr.wr.next = &imm_wr;
+		rwr.wr.opcode = IB_WR_REG_MR;
+		rwr.wr.wr_cqe = &local_reg_cqe;
+		rwr.wr.num_sge = 0;
+		rwr.wr.send_flags = 0;
+		rwr.mr = srv_mr->mr;
+		rwr.key = srv_mr->mr->rkey;
+		rwr.access = (IB_ACCESS_LOCAL_WRITE |
+			      IB_ACCESS_REMOTE_WRITE);
+		msg = srv_mr->iu->buf;
+		msg->buf_id = cpu_to_le16(id->msg_id);
+		msg->type = cpu_to_le16(IBTRS_MSG_RKEY_RSP);
+		msg->rkey = cpu_to_le32(srv_mr->mr->rkey);
+
+		list.addr   = srv_mr->iu->dma_addr;
+		list.length = sizeof(*msg);
+		list.lkey   = sess->s.dev->ib_pd->local_dma_lkey;
+		imm_wr.sg_list = &list;
+		imm_wr.num_sge = 1;
+		imm_wr.opcode = IB_WR_SEND_WITH_IMM;
+		ib_dma_sync_single_for_device(sess->s.dev->ib_dev,
+					      srv_mr->iu->dma_addr,
+					      srv_mr->iu->size, DMA_TO_DEVICE);
+	} else {
+		imm_wr.sg_list = NULL;
+		imm_wr.num_sge = 0;
+		imm_wr.opcode = IB_WR_RDMA_WRITE_WITH_IMM;
+	}
+	imm_wr.send_flags = flags;
+	imm_wr.ex.imm_data = cpu_to_be32(imm);
+
+	err = ib_post_send(id->con->c.qp, wr, &bad_wr);
 	if (unlikely(err))
-		ibtrs_err_rl(sess, "ib_post_send(), err: %d\n", err);
+		ibtrs_err_rl(sess,
+			  "Posting RDMA-Reply to QP failed, err: %d\n", err);
 
 	return err;
 }
@@ -595,8 +704,6 @@ static int map_cont_bufs(struct ibtrs_srv_sess *sess)
 			sess->dma_addr[chunks + i] = sg_dma_address(s);
 
 		ib_update_fast_reg_key(mr, ib_inc_rkey(mr->rkey));
-
-
 		srv_mr->mr = mr;
 
 		continue;
@@ -702,23 +809,6 @@ static void ibtrs_srv_sess_down(struct ibtrs_srv_sess *sess)
 	mutex_unlock(&srv->paths_ev_mutex);
 }
 
-static void ibtrs_srv_reg_mr_done(struct ib_cq *cq, struct ib_wc *wc)
-{
-	struct ibtrs_srv_con *con = cq->cq_context;
-	struct ibtrs_srv_sess *sess = to_srv_sess(con->c.sess);
-
-	if (unlikely(wc->status != IB_WC_SUCCESS)) {
-		ibtrs_err(sess, "REG MR failed: %s\n",
-			  ib_wc_status_msg(wc->status));
-		close_sess(sess);
-		return;
-	}
-}
-
-static struct ib_cqe local_reg_cqe = {
-	.done = ibtrs_srv_reg_mr_done
-};
-
 static int post_recv_sess(struct ibtrs_srv_sess *sess);
 
 static int process_info_req(struct ibtrs_srv_con *con,
@@ -772,7 +862,7 @@ static int process_info_req(struct ibtrs_srv_con *con,
 		rwr[mri].wr.opcode = IB_WR_REG_MR;
 		rwr[mri].wr.wr_cqe = &local_reg_cqe;
 		rwr[mri].wr.num_sge = 0;
-		rwr[mri].wr.send_flags = 0;
+		rwr[mri].wr.send_flags = mri? 0 : IB_SEND_SIGNALED;
 		rwr[mri].mr = mr;
 		rwr[mri].key = mr->rkey;
 		rwr[mri].access = (IB_ACCESS_LOCAL_WRITE |
@@ -1106,12 +1196,6 @@ static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 	ibtrs_srv_update_wc_stats(&sess->stats);
 
 	switch (wc->opcode) {
-	case IB_WC_RDMA_WRITE:
-		/*
-		 * post_send() RDMA write completions of IO reqs (read/write)
-		 * and hb
-		 */
-		break;
 	case IB_WC_RECV_RDMA_WITH_IMM:
 		/*
 		 * post_recv() RDMA write completions of IO reqs (read/write)
@@ -1164,6 +1248,13 @@ static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 		} else {
 			ibtrs_wrn(sess, "Unknown IMM type %u\n", imm_type);
 		}
+		break;
+	case IB_WC_RDMA_WRITE:
+	case IB_WC_SEND:
+		/*
+		 * post_send() RDMA write completions of IO reqs (read/write)
+		 * and hb
+		 */
 		break;
 	default:
 		ibtrs_wrn(sess, "Unexpected WC type: %d\n", wc->opcode);
