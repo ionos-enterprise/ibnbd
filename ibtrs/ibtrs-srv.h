@@ -68,7 +68,6 @@ struct ibtrs_srv_stats_rdma_stats {
 
 struct ibtrs_srv_stats {
 	struct ibtrs_srv_stats_rdma_stats	rdma_stats;
-	atomic_t				apm_cnt;
 	struct ibtrs_stats_wc_comp		wc_comp;
 };
 
