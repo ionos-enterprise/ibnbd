@@ -46,7 +46,6 @@ enum {
 	IBNBD_OPT_PATH		= 1 << 0,
 	IBNBD_OPT_DEV_PATH	= 1 << 1,
 	IBNBD_OPT_ACCESS_MODE	= 1 << 3,
-	IBNBD_OPT_IO_MODE	= 1 << 5,
 	IBNBD_OPT_SESSNAME	= 1 << 6,
 };
 
@@ -60,7 +59,6 @@ static const match_table_t ibnbd_opt_tokens = {
 	{	IBNBD_OPT_PATH,		"path=%s"		},
 	{	IBNBD_OPT_DEV_PATH,	"device_path=%s"	},
 	{	IBNBD_OPT_ACCESS_MODE,	"access_mode=%s"	},
-	{	IBNBD_OPT_IO_MODE,	"io_mode=%s"		},
 	{	IBNBD_OPT_SESSNAME,	"sessname=%s"		},
 	{	IBNBD_OPT_ERR,		NULL			},
 };
@@ -85,8 +83,7 @@ static int ibnbd_clt_parse_map_options(const char *buf,
 				       size_t *path_cnt,
 				       size_t max_path_cnt,
 				       char *pathname,
-				       enum ibnbd_access_mode *access_mode,
-				       enum ibnbd_io_mode *io_mode)
+				       enum ibnbd_access_mode *access_mode)
 {
 	char *options, *sep_opt;
 	char *p;
@@ -193,26 +190,6 @@ static int ibnbd_clt_parse_map_options(const char *buf,
 			kfree(p);
 			break;
 
-		case IBNBD_OPT_IO_MODE:
-			p = match_strdup(args);
-			if (!p) {
-				ret = -ENOMEM;
-				goto out;
-			}
-			if (!strcmp(p, "blockio")) {
-				*io_mode = IBNBD_BLOCKIO;
-			} else if (!strcmp(p, "fileio")) {
-				*io_mode = IBNBD_FILEIO;
-			} else {
-				pr_err("map_device: Invalid io_mode: '%s'.\n",
-				       p);
-				ret = -EINVAL;
-				kfree(p);
-				goto out;
-			}
-			kfree(p);
-			break;
-
 		default:
 			pr_err("map_device: Unknown parameter or missing value '%s'\n",
 			       p);
@@ -274,19 +251,6 @@ static ssize_t mapping_path_show(struct kobject *kobj,
 
 static struct kobj_attribute ibnbd_clt_mapping_path_attr =
 	__ATTR_RO(mapping_path);
-
-static ssize_t io_mode_show(struct kobject *kobj,
-			    struct kobj_attribute *attr, char *page)
-{
-	struct ibnbd_clt_dev *dev;
-
-	dev = container_of(kobj, struct ibnbd_clt_dev, kobj);
-
-	return snprintf(page, PAGE_SIZE, "%s\n",
-			ibnbd_io_mode_str(dev->remote_io_mode));
-}
-
-static struct kobj_attribute ibnbd_clt_io_mode = __ATTR_RO(io_mode);
 
 static ssize_t access_mode_show(struct kobject *kobj,
 				struct kobj_attribute *attr, char *page)
@@ -473,7 +437,6 @@ static struct attribute *ibnbd_dev_attrs[] = {
 	&ibnbd_clt_mapping_path_attr.attr,
 	&ibnbd_clt_state_attr.attr,
 	&ibnbd_clt_session_attr.attr,
-	&ibnbd_clt_io_mode.attr,
 	&ibnbd_clt_access_mode.attr,
 	NULL,
 };
@@ -513,7 +476,7 @@ static ssize_t ibnbd_clt_map_device_show(struct kobject *kobj,
 					 char *page)
 {
 	return scnprintf(page, PAGE_SIZE,
-			 "Usage: echo \"sessname=<name of the ibtrs session> path=<[srcaddr,]dstaddr> [path=<[srcaddr,]dstaddr>] device_path=<full path on remote side> [access_mode=<ro|rw|migration>] [io_mode=<fileio|blockio>]\" > %s\n\naddr ::= [ ip:<ipv4> | ip:<ipv6> | gid:<gid> ]\n",
+			 "Usage: echo \"sessname=<name of the ibtrs session> path=<[srcaddr,]dstaddr> [path=<[srcaddr,]dstaddr>] device_path=<full path on remote side> [access_mode=<ro|rw|migration>]\" > %s\n\naddr ::= [ ip:<ipv4> | ip:<ipv6> | gid:<gid> ]\n",
 			 attr->attr.name);
 }
 
@@ -571,7 +534,6 @@ static ssize_t ibnbd_clt_map_device_store(struct kobject *kobj,
 	char pathname[NAME_MAX];
 	char sessname[NAME_MAX];
 	enum ibnbd_access_mode access_mode = IBNBD_ACCESS_RW;
-	enum ibnbd_io_mode io_mode = IBNBD_AUTOIO;
 
 	struct sockaddr_storage *addrs;
 	struct ibtrs_addr paths[6];
@@ -588,16 +550,16 @@ static ssize_t ibnbd_clt_map_device_store(struct kobject *kobj,
 
 	ret = ibnbd_clt_parse_map_options(buf, sessname, paths,
 					  &path_cnt, ARRAY_SIZE(paths),
-					  pathname, &access_mode, &io_mode);
+					  pathname, &access_mode);
 	if (ret)
 		goto out;
 
-	pr_info("Mapping device %s on session %s, (access_mode: %s, io_mode: %s)\n",
+	pr_info("Mapping device %s on session %s, (access_mode: %s)\n",
 		pathname, sessname,
-		ibnbd_access_mode_str(access_mode), ibnbd_io_mode_str(io_mode));
+		ibnbd_access_mode_str(access_mode));
 
 	dev = ibnbd_clt_map_device(sessname, paths, path_cnt, pathname,
-				   access_mode, io_mode);
+				   access_mode);
 	if (unlikely(IS_ERR(dev))) {
 		ret = PTR_ERR(dev);
 		goto out;

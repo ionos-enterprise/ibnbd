@@ -111,17 +111,14 @@ static int ibnbd_clt_set_dev_attr(struct ibnbd_clt_dev *dev,
 	dev->discard_alignment	    = le32_to_cpu(rsp->discard_alignment);
 	dev->secure_discard	    = le16_to_cpu(rsp->secure_discard);
 	dev->rotational		    = rsp->rotational;
-	dev->remote_io_mode	    = rsp->io_mode;
 
 	dev->max_hw_sectors = sess->max_io_size / dev->logical_block_size;
 	dev->max_segments = BMAX_SEGMENTS;
 
-	if (dev->remote_io_mode == IBNBD_BLOCKIO) {
-		dev->max_hw_sectors = min_t(u32, dev->max_hw_sectors,
-					    le32_to_cpu(rsp->max_hw_sectors));
-		dev->max_segments = min_t(u16, dev->max_segments,
-					  le16_to_cpu(rsp->max_segments));
-	}
+	dev->max_hw_sectors = min_t(u32, dev->max_hw_sectors,
+				    le32_to_cpu(rsp->max_hw_sectors));
+	dev->max_segments = min_t(u16, dev->max_segments,
+				  le16_to_cpu(rsp->max_segments));
 
 	return 0;
 }
@@ -600,7 +597,6 @@ static int send_msg_open(struct ibnbd_clt_dev *dev, bool wait)
 
 	msg.hdr.type	= cpu_to_le16(IBNBD_MSG_OPEN);
 	msg.access_mode	= dev->access_mode;
-	msg.io_mode	= dev->io_mode;
 	strlcpy(msg.dev_name, dev->pathname, sizeof(msg.dev_name));
 
 	WARN_ON(!ibnbd_clt_get_dev(dev));
@@ -1432,7 +1428,6 @@ static int ibnbd_client_setup_device(struct ibnbd_clt_session *sess,
 
 static struct ibnbd_clt_dev *init_dev(struct ibnbd_clt_session *sess,
 				      enum ibnbd_access_mode access_mode,
-				      enum ibnbd_io_mode io_mode,
 				      const char *pathname)
 {
 	struct ibnbd_clt_dev *dev;
@@ -1463,7 +1458,6 @@ static struct ibnbd_clt_dev *init_dev(struct ibnbd_clt_session *sess,
 	dev->clt_device_id	= ret;
 	dev->sess		= sess;
 	dev->access_mode	= access_mode;
-	dev->io_mode		= io_mode;
 	strlcpy(dev->pathname, pathname, sizeof(dev->pathname));
 	mutex_init(&dev->lock);
 	refcount_set(&dev->refcount, 1);
@@ -1549,8 +1543,7 @@ struct ibnbd_clt_dev *ibnbd_clt_map_device(const char *sessname,
 					   struct ibtrs_addr *paths,
 					   size_t path_cnt,
 					   const char *pathname,
-					   enum ibnbd_access_mode access_mode,
-					   enum ibnbd_io_mode io_mode)
+					   enum ibnbd_access_mode access_mode)
 {
 	struct ibnbd_clt_session *sess;
 	struct ibnbd_clt_dev *dev;
@@ -1563,7 +1556,7 @@ struct ibnbd_clt_dev *ibnbd_clt_map_device(const char *sessname,
 	if (unlikely(IS_ERR(sess)))
 		return ERR_CAST(sess);
 
-	dev = init_dev(sess, access_mode, io_mode, pathname);
+	dev = init_dev(sess, access_mode, pathname);
 	if (unlikely(IS_ERR(dev))) {
 		pr_err("map_device: failed to map device '%s' from session %s, can't initialize device, err: %ld\n",
 		       pathname, sess->sessname, PTR_ERR(dev));

@@ -115,8 +115,6 @@ struct ibnbd_clt_dev {
 	u32			clt_device_id;
 	struct mutex		lock;
 	enum ibnbd_clt_dev_state	dev_state;
-	enum ibnbd_io_mode	io_mode; /* user requested */
-	enum ibnbd_io_mode	remote_io_mode; /* server really used */
 	char			pathname[NAME_MAX];
 	enum ibnbd_access_mode	access_mode;
 	bool			read_only;
@@ -146,8 +144,7 @@ struct ibnbd_clt_dev *ibnbd_clt_map_device(const char *sessname,
 					   struct ibtrs_addr *paths,
 					   size_t path_cnt,
 					   const char *pathname,
-					   enum ibnbd_access_mode access_mode,
-					   enum ibnbd_io_mode io_mode);
+					   enum ibnbd_access_mode access_mode);
 int ibnbd_clt_unmap_device(struct ibnbd_clt_dev *dev, bool force,
 			   const struct attribute *sysfs_self);
 
