@@ -22,20 +22,6 @@
 
 #include "ibnbd-proto.h"
 
-const char *ibnbd_io_mode_str(enum ibnbd_io_mode mode)
-{
-	switch (mode) {
-	case IBNBD_FILEIO:
-		return "fileio";
-	case IBNBD_BLOCKIO:
-		return "blockio";
-	case IBNBD_AUTOIO:
-		return "autoio";
-	default:
-		return "unknown";
-	}
-}
-
 const char *ibnbd_access_mode_str(enum ibnbd_access_mode mode)
 {
 	switch (mode) {

@@ -77,12 +77,6 @@ enum ibnbd_access_mode {
 	IBNBD_ACCESS_MIGRATION,
 };
 
-enum ibnbd_io_mode {
-	IBNBD_FILEIO,
-	IBNBD_BLOCKIO,
-	IBNBD_AUTOIO,
-};
-
 /**
  * struct ibnbd_msg_sess_info - initial session info from client to server
  * @hdr:		message header
@@ -110,13 +104,12 @@ struct ibnbd_msg_sess_info_rsp {
  * @hdr:		message header
  * @access_mode:	the mode to open remote device, valid values see:
  *			enum ibnbd_access_mode
- * @io_mode:		Open volume on server as block device or as file
  * @device_name:	device path on remote side
  */
 struct ibnbd_msg_open {
 	struct ibnbd_msg_hdr hdr;
 	u8		access_mode;
-	u8		io_mode;
+	u8		resv1;
 	s8		dev_name[NAME_MAX];
 	u8		reserved[3];
 };
@@ -147,7 +140,6 @@ struct ibnbd_msg_close {
  * @max_segments:	max segments hardware support in one transfer
  * @secure_discard:	supports secure discard
  * @rotation:		is a rotational disc?
- * @io_mode:		io_mode device is opened.
  */
 struct ibnbd_msg_open_rsp {
 	struct ibnbd_msg_hdr	hdr;
@@ -163,8 +155,7 @@ struct ibnbd_msg_open_rsp {
 	__le16			max_segments;
 	__le16			secure_discard;
 	u8			rotational;
-	u8			io_mode;
-	u8			reserved[10];
+	u8			reserved[11];
 };
 
 /**
@@ -322,8 +313,6 @@ static inline u32 rq_to_ibnbd_flags(struct request *rq)
 
 	return ibnbd_opf;
 }
-
-const char *ibnbd_io_mode_str(enum ibnbd_io_mode mode);
 
 const char *ibnbd_access_mode_str(enum ibnbd_access_mode mode);
 
