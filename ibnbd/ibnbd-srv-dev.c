@@ -28,41 +28,10 @@
 
 #define IBNBD_DEV_MAX_FILEIO_ACTIVE_WORKERS 0
 
-struct ibnbd_dev_file_io_work {
-	struct ibnbd_dev	*dev;
-	void			*priv;
-
-	sector_t		sector;
-	void			*data;
-	size_t			len;
-	size_t			bi_size;
-	enum ibnbd_io_flags	flags;
-
-	struct work_struct	work;
-};
-
 struct ibnbd_dev_blk_io {
 	struct ibnbd_dev *dev;
 	void		 *priv;
 };
-
-static struct workqueue_struct *fileio_wq;
-
-int ibnbd_dev_init(void)
-{
-	fileio_wq = alloc_workqueue("%s", WQ_UNBOUND,
-				    IBNBD_DEV_MAX_FILEIO_ACTIVE_WORKERS,
-				    "ibnbd_server_fileio_wq");
-	if (!fileio_wq)
-		return -ENOMEM;
-
-	return 0;
-}
-
-void ibnbd_dev_destroy(void)
-{
-	destroy_workqueue(fileio_wq);
-}
 
 static inline struct block_device *ibnbd_dev_open_bdev(const char *path,
 						       fmode_t flags)
@@ -77,25 +46,8 @@ static int ibnbd_dev_blk_open(struct ibnbd_dev *dev, const char *path,
 	return PTR_ERR_OR_ZERO(dev->bdev);
 }
 
-static int ibnbd_dev_vfs_open(struct ibnbd_dev *dev, const char *path,
-			      fmode_t flags)
-{
-	int oflags = O_DSYNC; /* enable write-through */
-
-	if (flags & FMODE_WRITE)
-		oflags |= O_RDWR;
-	else if (flags & FMODE_READ)
-		oflags |= O_RDONLY;
-	else
-		return -EINVAL;
-
-	dev->file = filp_open(path, oflags, 0);
-	return PTR_ERR_OR_ZERO(dev->file);
-}
-
 struct ibnbd_dev *ibnbd_dev_open(const char *path, fmode_t flags,
-				 enum ibnbd_io_mode mode, struct bio_set *bs,
-				 ibnbd_dev_io_fn io_cb)
+				 struct bio_set *bs, ibnbd_dev_io_fn io_cb)
 {
 	struct ibnbd_dev *dev;
 	int ret;
@@ -104,35 +56,18 @@ struct ibnbd_dev *ibnbd_dev_open(const char *path, fmode_t flags,
 	if (!dev)
 		return ERR_PTR(-ENOMEM);
 
-	if (mode == IBNBD_BLOCKIO) {
-		dev->blk_open_flags = flags;
-		ret = ibnbd_dev_blk_open(dev, path, dev->blk_open_flags);
-		if (ret)
-			goto err;
-	} else if (mode == IBNBD_FILEIO) {
-		dev->blk_open_flags = FMODE_READ;
-		ret = ibnbd_dev_blk_open(dev, path, dev->blk_open_flags);
-		if (ret)
-			goto err;
-
-		ret = ibnbd_dev_vfs_open(dev, path, flags);
-		if (ret)
-			goto blk_put;
-	} else {
-		ret = -EINVAL;
+	dev->blk_open_flags = flags;
+	ret = ibnbd_dev_blk_open(dev, path, dev->blk_open_flags);
+	if (ret)
 		goto err;
-	}
 
 	dev->blk_open_flags	= flags;
-	dev->mode		= mode;
 	dev->io_cb		= io_cb;
 	bdevname(dev->bdev, dev->name);
 	dev->ibd_bio_set	= bs;
 
 	return dev;
 
-blk_put:
-	blkdev_put(dev->bdev, dev->blk_open_flags);
 err:
 	kfree(dev);
 	return ERR_PTR(ret);
@@ -140,10 +75,7 @@ err:
 
 void ibnbd_dev_close(struct ibnbd_dev *dev)
 {
-	flush_workqueue(fileio_wq);
 	blkdev_put(dev->bdev, dev->blk_open_flags);
-	if (dev->mode == IBNBD_FILEIO)
-		filp_close(dev->file, dev->file);
 	kfree(dev);
 }
 
@@ -213,10 +145,9 @@ static struct bio *ibnbd_bio_map_kern(struct request_queue *q, void *data,
 	return bio;
 }
 
-static int ibnbd_dev_blk_submit_io(struct ibnbd_dev *dev, sector_t sector,
-				   void *data, size_t len, u32 bi_size,
-				   enum ibnbd_io_flags flags, short prio,
-				   void *priv)
+int ibnbd_dev_submit_io(struct ibnbd_dev *dev, sector_t sector, void *data,
+			size_t len, u32 bi_size, enum ibnbd_io_flags flags,
+			short prio, void *priv)
 {
 	struct request_queue *q = bdev_get_queue(dev->bdev);
 	struct ibnbd_dev_blk_io *io;
@@ -251,158 +182,4 @@ static int ibnbd_dev_blk_submit_io(struct ibnbd_dev *dev, sector_t sector,
 	submit_bio(bio);
 
 	return 0;
-}
-
-static int ibnbd_dev_file_handle_flush(struct ibnbd_dev_file_io_work *w,
-				       loff_t start)
-{
-	int ret;
-	loff_t end;
-	int len = w->bi_size;
-
-	if (len)
-		end = start + len - 1;
-	else
-		end = LLONG_MAX;
-
-	ret = vfs_fsync_range(w->dev->file, start, end, 1);
-	if (unlikely(ret))
-		pr_info_ratelimited("I/O FLUSH failed on %s, vfs_sync err: %d\n",
-				    w->dev->name, ret);
-	return ret;
-}
-
-static int ibnbd_dev_file_handle_fua(struct ibnbd_dev_file_io_work *w,
-				     loff_t start)
-{
-	int ret;
-	loff_t end;
-	int len = w->bi_size;
-
-	if (len)
-		end = start + len - 1;
-	else
-		end = LLONG_MAX;
-
-	ret = vfs_fsync_range(w->dev->file, start, end, 1);
-	if (unlikely(ret))
-		pr_info_ratelimited("I/O FUA failed on %s, vfs_sync err: %d\n",
-				    w->dev->name, ret);
-	return ret;
-}
-
-static int ibnbd_dev_file_handle_write_same(struct ibnbd_dev_file_io_work *w)
-{
-	int i;
-
-	if (unlikely(WARN_ON(w->bi_size % w->len)))
-		return -EINVAL;
-
-	for (i = 1; i < w->bi_size / w->len; i++)
-		memcpy(w->data + i * w->len, w->data, w->len);
-
-	return 0;
-}
-
-static void ibnbd_dev_file_submit_io_worker(struct work_struct *w)
-{
-	struct ibnbd_dev_file_io_work *dev_work;
-	struct file *f;
-	int ret, len;
-	loff_t off;
-
-	dev_work = container_of(w, struct ibnbd_dev_file_io_work, work);
-	off = dev_work->sector * ibnbd_dev_get_logical_bsize(dev_work->dev);
-	f = dev_work->dev->file;
-	len = dev_work->bi_size;
-
-	if (ibnbd_op(dev_work->flags) == IBNBD_OP_FLUSH) {
-		ret = ibnbd_dev_file_handle_flush(dev_work, off);
-		if (unlikely(ret))
-			goto out;
-	}
-
-	if (ibnbd_op(dev_work->flags) == IBNBD_OP_WRITE_SAME) {
-		ret = ibnbd_dev_file_handle_write_same(dev_work);
-		if (unlikely(ret))
-			goto out;
-	}
-
-	/* TODO Implement support for DIRECT */
-	if (dev_work->bi_size) {
-		loff_t off_tmp = off;
-
-		if (ibnbd_op(dev_work->flags) == IBNBD_OP_WRITE)
-			ret = kernel_write(f, dev_work->data, dev_work->bi_size,
-					   &off_tmp);
-		else
-			ret = kernel_read(f, dev_work->data, dev_work->bi_size,
-					  &off_tmp);
-
-		if (unlikely(ret < 0)) {
-			goto out;
-		} else if (unlikely(ret != dev_work->bi_size)) {
-			/* TODO implement support for partial completions */
-			ret = -EIO;
-			goto out;
-		} else {
-			ret = 0;
-		}
-	}
-
-	if (dev_work->flags & IBNBD_F_FUA)
-		ret = ibnbd_dev_file_handle_fua(dev_work, off);
-out:
-	dev_work->dev->io_cb(dev_work->priv, ret);
-	kfree(dev_work);
-}
-
-static int ibnbd_dev_file_submit_io(struct ibnbd_dev *dev, sector_t sector,
-				    void *data, size_t len, size_t bi_size,
-				    enum ibnbd_io_flags flags, void *priv)
-{
-	struct ibnbd_dev_file_io_work *w;
-
-	if (!ibnbd_flags_supported(flags)) {
-		pr_info_ratelimited("Unsupported I/O flags: 0x%x on device %s\n",
-				    flags, dev->name);
-		return -ENOTSUPP;
-	}
-
-	w = kmalloc(sizeof(*w), GFP_KERNEL);
-	if (!w)
-		return -ENOMEM;
-
-	w->dev		= dev;
-	w->priv		= priv;
-	w->sector	= sector;
-	w->data		= data;
-	w->len		= len;
-	w->bi_size	= bi_size;
-	w->flags	= flags;
-	INIT_WORK(&w->work, ibnbd_dev_file_submit_io_worker);
-
-	if (unlikely(!queue_work(fileio_wq, &w->work))) {
-		kfree(w);
-		return -EEXIST;
-	}
-
-	return 0;
-}
-
-int ibnbd_dev_submit_io(struct ibnbd_dev *dev, sector_t sector, void *data,
-			size_t len, u32 bi_size, enum ibnbd_io_flags flags,
-			short prio, void *priv)
-{
-	if (dev->mode == IBNBD_FILEIO)
-		return ibnbd_dev_file_submit_io(dev, sector, data, len, bi_size,
-						flags, priv);
-	else if (dev->mode == IBNBD_BLOCKIO)
-		return ibnbd_dev_blk_submit_io(dev, sector, data, len, bi_size,
-					       flags, prio, priv);
-
-	pr_warn("Submitting I/O to %s failed, dev->mode contains invalid value: '%d', memory corrupted?",
-		dev->name, dev->mode);
-
-	return -EINVAL;
 }

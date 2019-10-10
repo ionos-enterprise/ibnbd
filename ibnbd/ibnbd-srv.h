@@ -58,7 +58,6 @@ struct ibnbd_srv_dev {
 	struct list_head		sess_dev_list;
 	struct mutex			lock;
 	int				open_write_cnt;
-	enum ibnbd_io_mode		mode;
 };
 
 /* Structure which binds N devices and N sessions */

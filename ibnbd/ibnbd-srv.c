@@ -80,47 +80,6 @@ MODULE_PARM_DESC(dev_search_path,
 		 "Sets the dev_search_path. When a device is mapped this path is prepended to the device path from the map device operation.  If %SESSNAME% is specified in a path, then device will be searched in a session namespace. (default: "
 		 DEFAULT_DEV_SEARCH_PATH ")");
 
-static int def_io_mode = IBNBD_BLOCKIO;
-static char def_io_mode_str[10] = "blockio";
-
-static int def_io_mode_set(const char *val, const struct kernel_param *kp)
-{
-	char *io_mode, *io_mode_tmp;
-
-	io_mode_tmp = kstrdup(val, GFP_KERNEL);
-	if (!io_mode_tmp)
-		return -ENOMEM;
-
-	io_mode = strstrip(io_mode_tmp);
-
-	if (sysfs_streq(io_mode, "fileio") || sysfs_streq(io_mode, "0")) {
-		def_io_mode = IBNBD_FILEIO;
-		strlcpy(def_io_mode_str, io_mode, sizeof(def_io_mode_str));
-	} else if (sysfs_streq(io_mode, "blockio") ||
-		   sysfs_streq(io_mode, "1")) {
-		def_io_mode = IBNBD_BLOCKIO;
-		strlcpy(def_io_mode_str, io_mode, sizeof(def_io_mode_str));
-	} else {
-		kfree(io_mode_tmp);
-		return -EINVAL;
-	}
-	kfree(io_mode_tmp);
-	return 0;
-}
-
-static struct kparam_string def_io_mode_kparam_str = {
-	.maxlen	= sizeof(def_io_mode_str),
-	.string	= def_io_mode_str
-};
-
-static const struct kernel_param_ops def_io_mode_ops = {
-	.set	= def_io_mode_set,
-	.get	= param_get_string,
-};
-module_param_cb(def_io_mode, &def_io_mode_ops, &def_io_mode_kparam_str, 0444);
-MODULE_PARM_DESC(def_io_mode,
-		 "By default, export devices in blockio or fileio mode. (default: (blockio))");
-
 static DEFINE_MUTEX(sess_lock);
 static DEFINE_SPINLOCK(dev_lock);
 
@@ -483,8 +442,7 @@ out_unlock:
 	return sess_dev;
 }
 
-static struct ibnbd_srv_dev *ibnbd_srv_init_srv_dev(const char *id,
-						    enum ibnbd_io_mode mode)
+static struct ibnbd_srv_dev *ibnbd_srv_init_srv_dev(const char *id)
 {
 	struct ibnbd_srv_dev *dev;
 
@@ -493,7 +451,6 @@ static struct ibnbd_srv_dev *ibnbd_srv_init_srv_dev(const char *id,
 		return ERR_PTR(-ENOMEM);
 
 	strlcpy(dev->id, id, sizeof(dev->id));
-	dev->mode = mode;
 	kref_init(&dev->kref);
 	INIT_LIST_HEAD(&dev->sess_dev_list);
 	mutex_init(&dev->lock);
@@ -527,20 +484,11 @@ ibnbd_srv_find_or_add_srv_dev(struct ibnbd_srv_dev *new_dev)
 
 static int ibnbd_srv_check_update_open_perm(struct ibnbd_srv_dev *srv_dev,
 					    struct ibnbd_srv_session *srv_sess,
-					    enum ibnbd_io_mode io_mode,
 					    enum ibnbd_access_mode access_mode)
 {
 	int ret = -EPERM;
 
 	mutex_lock(&srv_dev->lock);
-
-	if (srv_dev->mode != io_mode) {
-		pr_err("Mapping device '%s' for session %s in %s mode forbidden, device is already mapped from other client(s) in %s mode\n",
-		       srv_dev->id, srv_sess->sessname,
-		       ibnbd_io_mode_str(io_mode),
-		       ibnbd_io_mode_str(srv_dev->mode));
-		goto out;
-	}
 
 	switch (access_mode) {
 	case IBNBD_ACCESS_RO:
@@ -551,10 +499,9 @@ static int ibnbd_srv_check_update_open_perm(struct ibnbd_srv_dev *srv_dev,
 			srv_dev->open_write_cnt++;
 			ret = 0;
 		} else {
-			pr_err("Mapping device '%s' for session %s with RW permissions failed. Device already opened as 'RW' by %d client(s) in %s mode, access mode %s.\n",
+			pr_err("Mapping device '%s' for session %s with RW permissions failed. Device already opened as 'RW' by %d client(s), access mode %s.\n",
 			       srv_dev->id, srv_sess->sessname,
 			       srv_dev->open_write_cnt,
-			       ibnbd_io_mode_str(srv_dev->mode),
 			       ibnbd_access_mode_str(access_mode));
 		}
 		break;
@@ -563,10 +510,9 @@ static int ibnbd_srv_check_update_open_perm(struct ibnbd_srv_dev *srv_dev,
 			srv_dev->open_write_cnt++;
 			ret = 0;
 		} else {
-			pr_err("Mapping device '%s' for session %s with migration permissions failed. Device already opened as 'RW' by %d client(s) in %s mode, access mode %s.\n",
+			pr_err("Mapping device '%s' for session %s with migration permissions failed. Device already opened as 'RW' by %d client(s), access mode %s.\n",
 			       srv_dev->id, srv_sess->sessname,
 			       srv_dev->open_write_cnt,
-			       ibnbd_io_mode_str(srv_dev->mode),
 			       ibnbd_access_mode_str(access_mode));
 		}
 		break;
@@ -576,7 +522,6 @@ static int ibnbd_srv_check_update_open_perm(struct ibnbd_srv_dev *srv_dev,
 		ret = -EINVAL;
 	}
 
-out:
 	mutex_unlock(&srv_dev->lock);
 
 	return ret;
@@ -585,13 +530,12 @@ out:
 static struct ibnbd_srv_dev *
 ibnbd_srv_get_or_create_srv_dev(struct ibnbd_dev *ibnbd_dev,
 				struct ibnbd_srv_session *srv_sess,
-				enum ibnbd_io_mode io_mode,
 				enum ibnbd_access_mode access_mode)
 {
 	int ret;
 	struct ibnbd_srv_dev *new_dev, *dev;
 
-	new_dev = ibnbd_srv_init_srv_dev(ibnbd_dev->name, io_mode);
+	new_dev = ibnbd_srv_init_srv_dev(ibnbd_dev->name);
 	if (IS_ERR(new_dev))
 		return new_dev;
 
@@ -599,8 +543,7 @@ ibnbd_srv_get_or_create_srv_dev(struct ibnbd_dev *ibnbd_dev,
 	if (dev != new_dev)
 		kfree(new_dev);
 
-	ret = ibnbd_srv_check_update_open_perm(dev, srv_sess, io_mode,
-					       access_mode);
+	ret = ibnbd_srv_check_update_open_perm(dev, srv_sess, access_mode);
 	if (ret) {
 		ibnbd_put_srv_dev(dev);
 		return ERR_PTR(ret);
@@ -639,8 +582,6 @@ static void ibnbd_srv_fill_msg_open_rsp(struct ibnbd_msg_open_rsp *rsp,
 		cpu_to_le16(ibnbd_dev_get_secure_discard(ibnbd_dev));
 	rsp->rotational =
 		!blk_queue_nonrot(bdev_get_queue(ibnbd_dev->bdev));
-	rsp->io_mode =
-		ibnbd_dev->mode;
 }
 
 static struct ibnbd_srv_sess_dev *
@@ -768,12 +709,11 @@ static int process_msg_open(struct ibtrs_srv *ibtrs,
 	fmode_t open_flags;
 	char *full_path;
 	struct ibnbd_dev *ibnbd_dev;
-	enum ibnbd_io_mode io_mode;
 	struct ibnbd_msg_open_rsp *rsp = data;
 
-	pr_debug("Open message received: session='%s' path='%s' access_mode=%d io_mode=%d\n",
+	pr_debug("Open message received: session='%s' path='%s' access_mode=%d\n",
 		 srv_sess->sessname, open_msg->dev_name,
-		 open_msg->access_mode, open_msg->io_mode);
+		 open_msg->access_mode);
 	open_flags = FMODE_READ;
 	if (open_msg->access_mode != IBNBD_ACCESS_RO)
 		open_flags |= FMODE_WRITE;
@@ -806,14 +746,7 @@ static int process_msg_open(struct ibtrs_srv *ibtrs,
 		goto reject;
 	}
 
-	if (open_msg->io_mode == IBNBD_BLOCKIO)
-		io_mode = IBNBD_BLOCKIO;
-	else if (open_msg->io_mode == IBNBD_FILEIO)
-		io_mode = IBNBD_FILEIO;
-	else
-		io_mode = def_io_mode;
-
-	ibnbd_dev = ibnbd_dev_open(full_path, open_flags, io_mode,
+	ibnbd_dev = ibnbd_dev_open(full_path, open_flags,
 				   &srv_sess->sess_bio_set, ibnbd_endio);
 	if (IS_ERR(ibnbd_dev)) {
 		pr_err("Opening device '%s' on session %s failed, failed to open the block device, err: %ld\n",
@@ -822,7 +755,7 @@ static int process_msg_open(struct ibtrs_srv *ibtrs,
 		goto free_path;
 	}
 
-	srv_dev = ibnbd_srv_get_or_create_srv_dev(ibnbd_dev, srv_sess, io_mode,
+	srv_dev = ibnbd_srv_get_or_create_srv_dev(ibnbd_dev, srv_sess,
 						  open_msg->access_mode);
 	if (IS_ERR(srv_dev)) {
 		pr_err("Opening device '%s' on session %s failed, creating srv_dev failed, err: %ld\n",
@@ -872,8 +805,7 @@ static int process_msg_open(struct ibtrs_srv *ibtrs,
 
 	list_add(&srv_sess_dev->sess_list, &srv_sess->sess_dev_list);
 
-	ibnbd_srv_info(srv_sess_dev, "Opened device '%s' in %s mode\n",
-		   srv_dev->id, ibnbd_io_mode_str(io_mode));
+	ibnbd_srv_info(srv_sess_dev, "Opened device '%s'\n", srv_dev->id);
 
 	kfree(full_path);
 
@@ -917,29 +849,17 @@ static int __init ibnbd_srv_init_module(void)
 	if (unlikely(IS_ERR(ibtrs_ctx))) {
 		err = PTR_ERR(ibtrs_ctx);
 		pr_err("ibtrs_srv_open(), err: %d\n", err);
-		goto out;
-	}
-	err = ibnbd_dev_init();
-	if (err) {
-		pr_err("ibnbd_dev_init(), err: %d\n", err);
-		goto srv_close;
+		return err;
 	}
 
 	err = ibnbd_srv_create_sysfs_files();
 	if (err) {
 		pr_err("ibnbd_srv_create_sysfs_files(), err: %d\n", err);
-		goto dev_destroy;
+		ibtrs_srv_close(ibtrs_ctx);
+		return err;
 	}
 
 	return 0;
-
-dev_destroy:
-	ibnbd_dev_destroy();
-srv_close:
-	ibtrs_srv_close(ibtrs_ctx);
-out:
-
-	return err;
 }
 
 static void __exit ibnbd_srv_cleanup_module(void)
@@ -947,7 +867,6 @@ static void __exit ibnbd_srv_cleanup_module(void)
 	ibtrs_srv_close(ibtrs_ctx);
 	WARN_ON(!list_empty(&sess_list));
 	ibnbd_srv_destroy_sysfs_files();
-	ibnbd_dev_destroy();
 	pr_info("Module unloaded\n");
 }
 

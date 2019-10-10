@@ -38,29 +38,6 @@ static struct device *ibnbd_dev;
 static struct class *ibnbd_dev_class;
 static struct kobject *ibnbd_devs_kobj;
 
-static ssize_t io_mode_show(struct kobject *kobj, struct kobj_attribute *attr,
-			    char *page)
-{
-	struct ibnbd_srv_dev *srv_dev;
-
-	srv_dev = container_of(kobj, struct ibnbd_srv_dev, dev_kobj);
-
-	return scnprintf(page, PAGE_SIZE, "%s\n",
-			 ibnbd_io_mode_str(srv_dev->mode));
-}
-
-static struct kobj_attribute ibnbd_srv_dev_mode_attr =
-	__ATTR_RO(io_mode);
-
-static struct attribute *ibnbd_srv_default_dev_attrs[] = {
-	&ibnbd_srv_dev_mode_attr.attr,
-	NULL,
-};
-
-static struct attribute_group ibnbd_srv_default_dev_attr_group = {
-	.attrs = ibnbd_srv_default_dev_attrs,
-};
-
 static struct kobj_type ktype = {
 	.sysfs_ops	= &kobj_sysfs_ops,
 };
@@ -83,21 +60,13 @@ int ibnbd_srv_create_dev_sysfs(struct ibnbd_srv_dev *dev,
 	if (ret)
 		goto err;
 
-	ret = sysfs_create_group(&dev->dev_kobj,
-				 &ibnbd_srv_default_dev_attr_group);
-	if (ret)
-		goto err2;
-
 	bdev_kobj = &disk_to_dev(bdev->bd_disk)->kobj;
 	ret = sysfs_create_link(&dev->dev_kobj, bdev_kobj, "block_dev");
 	if (ret)
-		goto err3;
+		goto err2;
 
 	return 0;
 
-err3:
-	sysfs_remove_group(&dev->dev_kobj,
-			   &ibnbd_srv_default_dev_attr_group);
 err2:
 	kobject_del(&dev->dev_sessions_kobj);
 	kobject_put(&dev->dev_sessions_kobj);
@@ -110,7 +79,6 @@ err:
 void ibnbd_srv_destroy_dev_sysfs(struct ibnbd_srv_dev *dev)
 {
 	sysfs_remove_link(&dev->dev_kobj, "block_dev");
-	sysfs_remove_group(&dev->dev_kobj, &ibnbd_srv_default_dev_attr_group);
 	kobject_del(&dev->dev_sessions_kobj);
 	kobject_put(&dev->dev_sessions_kobj);
 	kobject_del(&dev->dev_kobj);
