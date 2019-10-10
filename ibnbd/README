@@ -52,8 +52,7 @@ Example:
 
   > Usage: echo "sessname=<name of the ibtrs session> path=<[srcaddr,]dstaddr>
   > [path=<[srcaddr,]dstaddr>] device_path=<full path on remote side>
-  > [access_mode=<ro|rw|migration>]
-  > [io_mode=<fileio|blockio>]" > map_device
+  > [access_mode=<ro|rw|migration>] > map_device
   >
   > addr ::= [ ip:<ipv4> | ip:<ipv6> | gid:<gid> ]
 
@@ -69,7 +68,6 @@ Expected format is the following:
     path=<[srcaddr,]dstaddr> [path=<[srcaddr,]dstaddr> ...]
     device_path=<full path on remote side>
     [access_mode=<ro|rw|migration>]
-    [io_mode=<fileio|blockio>]
 
 Where:
 
@@ -124,15 +122,6 @@ access_mode: the access_mode parameter specifies if the device is to be
              mode is desired.
 
              By default "rw" is used.
-
-io_mode:  the io_mode parameter specifies if the device on the server
-          will be opened as block device "blockio" or as file "fileio".
-          When the device is opened as file, the VFS page cache is used
-          for read I/O operations, write I/O operations bypass the page
-          cache and go directly to disk (except meta updates, like file
-          access time).
-
-          By default "blockio" mode is used.
 
 Exit Codes:
 
@@ -207,11 +196,6 @@ mapping_path (RO)
 Contains the path that was passed as "device_path" to the map_device
 operation.
 
-io_mode (RO)
-------------
-
-Contains the way device is accessed: blockio or fileio
-
 access_mode (RO)
 ----------------
 
@@ -238,11 +222,6 @@ Is a symlink to the sysfs entry of the exported device.
 Example:
 
   block_dev -> ../../../../devices/virtual/block/ram0
-
-io_mode (RO)
------------
-
-Contains the way device is accessed: blockio or fileio
 
 Entries under /sys/devices/virtual/ibnbd-server/ctl/devices/<device_name>/sessions/
 ===================================================================================
@@ -300,10 +279,9 @@ IBNBD_MSG_SESS_INFO_RSP. Currently the messages only contain the protocol
 version for backward compatibility.
 
 2. Client requests to open a device by sending IBNBD_MSG_OPEN message. This
-contains the path to the device, access mode (read-only or writable), and
-io_mode which specifies if the device should be opened as block device or
-using file io. Server responds to the message with IBNBD_MSG_OPEN_RSP. This
-contains a 32 bit device id to be used for  IOs and device "geometry" related
+contains the path to the device and access mode (read-only or writable).
+Server responds to the message with IBNBD_MSG_OPEN_RSP. This contains
+a 32 bit device id to be used for  IOs and device "geometry" related
 information: side, max_hw_sectors, etc.
 
 3. Client attaches IBNBD_MSG_IO to each IO message send to a device. This
