@@ -33,19 +33,6 @@ struct ibnbd_dev_blk_io {
 	void		 *priv;
 };
 
-static inline struct block_device *ibnbd_dev_open_bdev(const char *path,
-						       fmode_t flags)
-{
-	return blkdev_get_by_path(path, flags, THIS_MODULE);
-}
-
-static int ibnbd_dev_blk_open(struct ibnbd_dev *dev, const char *path,
-			      fmode_t flags)
-{
-	dev->bdev = ibnbd_dev_open_bdev(path, flags);
-	return PTR_ERR_OR_ZERO(dev->bdev);
-}
-
 struct ibnbd_dev *ibnbd_dev_open(const char *path, fmode_t flags,
 				 struct bio_set *bs, ibnbd_dev_io_fn io_cb)
 {
@@ -57,7 +44,8 @@ struct ibnbd_dev *ibnbd_dev_open(const char *path, fmode_t flags,
 		return ERR_PTR(-ENOMEM);
 
 	dev->blk_open_flags = flags;
-	ret = ibnbd_dev_blk_open(dev, path, dev->blk_open_flags);
+	dev->bdev = blkdev_get_by_path(path, flags, THIS_MODULE);
+	ret = PTR_ERR_OR_ZERO(dev->bdev);
 	if (ret)
 		goto err;
 
