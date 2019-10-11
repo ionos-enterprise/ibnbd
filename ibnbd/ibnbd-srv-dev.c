@@ -76,11 +76,6 @@ static void ibnbd_dev_bi_end_io(struct bio *bio)
 	kfree(io);
 }
 
-static void bio_map_kern_endio(struct bio *bio)
-{
-	bio_put(bio);
-}
-
 /**
  *	ibnbd_bio_map_kern	-	map kernel address into bio
  *	@q: the struct request_queue for the bio
@@ -129,7 +124,7 @@ static struct bio *ibnbd_bio_map_kern(struct request_queue *q, void *data,
 		offset = 0;
 	}
 
-	bio->bi_end_io = bio_map_kern_endio;
+	bio->bi_end_io = bio_put;
 	return bio;
 }
 
