@@ -703,7 +703,7 @@ static int process_info_req(struct ibtrs_srv_con *con,
 
 	tx_sz  = sizeof(*rsp);
 	tx_sz += sizeof(rsp->desc[0]) * sess->mrs_num;
-	tx_iu = ibtrs_iu_alloc(0, tx_sz, GFP_KERNEL, sess->s.dev->ib_dev,
+	tx_iu = ibtrs_iu_alloc(tx_sz, GFP_KERNEL, sess->s.dev->ib_dev,
 			       DMA_TO_DEVICE, ibtrs_srv_info_rsp_done);
 	if (unlikely(!tx_iu)) {
 		ibtrs_err(sess, "ibtrs_iu_alloc(), err: %d\n", -ENOMEM);
@@ -817,7 +817,7 @@ static int post_recv_info_req(struct ibtrs_srv_con *con)
 	struct ibtrs_iu *rx_iu;
 	int err;
 
-	rx_iu = ibtrs_iu_alloc(0, sizeof(struct ibtrs_msg_info_req),
+	rx_iu = ibtrs_iu_alloc(sizeof(struct ibtrs_msg_info_req),
 			       GFP_KERNEL, sess->s.dev->ib_dev,
 			       DMA_FROM_DEVICE, ibtrs_srv_info_req_done);
 	if (unlikely(!rx_iu)) {

@@ -144,7 +144,6 @@ struct ibtrs_iu {
 	void                    *buf;
 	size_t                  size;
 	enum dma_data_direction direction;
-	u32			tag;
 };
 
 /**
@@ -289,7 +288,7 @@ struct ibtrs_msg_rdma_hdr {
 
 /* ibtrs.c */
 
-struct ibtrs_iu *ibtrs_iu_alloc(u32 tag, size_t size, gfp_t t,
+struct ibtrs_iu *ibtrs_iu_alloc(size_t size, gfp_t t,
 				struct ib_device *dev, enum dma_data_direction,
 				void (*done)(struct ib_cq *cq, struct ib_wc *wc));
 void ibtrs_iu_free(struct ibtrs_iu *iu, enum dma_data_direction dir,

@@ -782,7 +782,7 @@ static int alloc_sess_reqs(struct ibtrs_clt_sess *sess)
 
 	for (i = 0; i < sess->queue_depth; ++i) {
 		req = &sess->reqs[i];
-		req->iu = ibtrs_iu_alloc(i, sess->max_hdr_size, GFP_KERNEL,
+		req->iu = ibtrs_iu_alloc(sess->max_hdr_size, GFP_KERNEL,
 					 sess->s.dev->ib_dev, DMA_TO_DEVICE,
 					 ibtrs_clt_rdma_done);
 		if (unlikely(!req->iu))
@@ -2051,10 +2051,10 @@ static int ibtrs_send_sess_info(struct ibtrs_clt_sess *sess)
 	rx_sz  = sizeof(struct ibtrs_msg_info_rsp);
 	rx_sz += sizeof(u64) * MAX_SESS_QUEUE_DEPTH;
 
-	tx_iu = ibtrs_iu_alloc(0, sizeof(struct ibtrs_msg_info_req), GFP_KERNEL,
+	tx_iu = ibtrs_iu_alloc(sizeof(struct ibtrs_msg_info_req), GFP_KERNEL,
 			       sess->s.dev->ib_dev, DMA_TO_DEVICE,
 			       ibtrs_clt_info_req_done);
-	rx_iu = ibtrs_iu_alloc(0, rx_sz, GFP_KERNEL, sess->s.dev->ib_dev,
+	rx_iu = ibtrs_iu_alloc(rx_sz, GFP_KERNEL, sess->s.dev->ib_dev,
 			       DMA_FROM_DEVICE, ibtrs_clt_info_rsp_done);
 	if (unlikely(!tx_iu || !rx_iu)) {
 		ibtrs_err(sess, "ibtrs_iu_alloc(): no memory\n");
