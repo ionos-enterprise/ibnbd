@@ -409,7 +409,6 @@ static void complete_rdma_req(struct ibtrs_clt_io_req *req, int errno,
 {
 	struct ibtrs_clt_con *con = req->con;
 	struct ibtrs_clt_sess *sess;
-	struct ibtrs_clt *clt;
 	int err;
 
 	if (WARN_ON(!req->in_use))
@@ -417,7 +416,6 @@ static void complete_rdma_req(struct ibtrs_clt_io_req *req, int errno,
 	if (WARN_ON(!req->con))
 		return;
 	sess = to_clt_sess(con->c.sess);
-	clt = sess->clt;
 
 	if (req->sg_cnt) {
 		if (unlikely(req->dir == DMA_FROM_DEVICE && req->need_inv)) {
