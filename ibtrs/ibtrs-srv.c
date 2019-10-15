@@ -52,7 +52,7 @@ struct class *ibtrs_dev_class;
 static int __read_mostly max_chunk_size = DEFAULT_MAX_CHUNK_SIZE;
 static int __read_mostly sess_queue_depth = DEFAULT_SESS_QUEUE_DEPTH;
 
-static bool always_invalidate;
+static bool always_invalidate = true;
 module_param(always_invalidate, bool, 0444);
 MODULE_PARM_DESC(always_invalidate,
 	 "Invalidate memory registration for contiguous memory regions"
