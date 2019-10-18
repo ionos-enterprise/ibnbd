@@ -9,14 +9,11 @@
 
 #include <linux/version.h>
 
-#if LINUX_VERSION_CODE == KERNEL_VERSION(4,4,112)
-#include "compat-4.4.h"
-#elif LINUX_VERSION_CODE == KERNEL_VERSION(4,14,86) || \
-	LINUX_VERSION_CODE == KERNEL_VERSION(4,14,120) || \
-	LINUX_VERSION_CODE == KERNEL_VERSION(4,14,137) || \
+#if LINUX_VERSION_CODE == KERNEL_VERSION(4,14,86) || \
+	LINUX_VERSION_CODE == KERNEL_VERSION(4,14,150) || \
 	LINUX_VERSION_CODE == KERNEL_VERSION(4,14,144)
 #include "compat-4.14.h"
-#elif LINUX_VERSION_CODE == KERNEL_VERSION(4,19,73)
+#elif LINUX_VERSION_CODE == KERNEL_VERSION(4,19,80)
 #include "compat-4.19.h"
 #else
 #error Unsupported kernel version
