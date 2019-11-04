@@ -131,7 +131,7 @@ static ssize_t add_path_show(struct device *dev,
 			     struct device_attribute *attr, char *page)
 {
 	return scnprintf(page, PAGE_SIZE,
-			 "Usage: echo [<source addr>,]<destination addr> > %s\n\n*addr ::= [ ip:<ipv4|ipv6> | gid:<gid> ]\n",
+			 "Usage: echo [<source addr>@]<destination addr> > %s\n\n*addr ::= [ ip:<ipv4|ipv6> | gid:<gid> ]\n",
 			 attr->attr.name);
 }
 
