@@ -28,11 +28,6 @@
 
 #define IBNBD_DEV_MAX_FILEIO_ACTIVE_WORKERS 0
 
-struct ibnbd_dev_blk_io {
-	struct ibnbd_dev *dev;
-	void		 *priv;
-};
-
 struct ibnbd_dev *ibnbd_dev_open(const char *path, fmode_t flags,
 				 struct bio_set *bs, ibnbd_dev_io_fn io_cb)
 {
@@ -73,7 +68,6 @@ static void ibnbd_dev_bi_end_io(struct bio *bio)
 
 	io->dev->io_cb(io->priv, blk_status_to_errno(bio->bi_status));
 	bio_put(bio);
-	kfree(io);
 }
 
 /**
@@ -145,11 +139,7 @@ int ibnbd_dev_submit_io(struct ibnbd_dev *dev, sector_t sector, void *data,
 	if (unlikely(IS_ERR(bio)))
 		return PTR_ERR(bio);
 
-	io = kmalloc(sizeof(*io), GFP_KERNEL);
-	if (unlikely(!io)) {
-		bio_put(bio);
-		return -ENOMEM;
-	}
+	io = container_of(bio, struct ibnbd_dev_blk_io, bio);;
 
 	io->dev		= dev;
 	io->priv	= priv;

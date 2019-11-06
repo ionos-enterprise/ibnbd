@@ -36,6 +36,13 @@ struct ibnbd_dev {
 	ibnbd_dev_io_fn		*io_cb;
 };
 
+struct ibnbd_dev_blk_io {
+	struct ibnbd_dev *dev;
+	void		 *priv;
+	/* have to be last member for front_pad usage of bioset_init */
+	struct bio	bio;
+};
+
 /**
  * ibnbd_dev_open() - Open a device
  * @flags:	open flags

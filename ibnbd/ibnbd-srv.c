@@ -289,7 +289,8 @@ static int create_sess(struct ibtrs_srv *ibtrs)
 		return -ENOMEM;
 	srv_sess->queue_depth = ibtrs_srv_get_queue_depth(ibtrs);
 
-	err = bioset_init(&srv_sess->sess_bio_set, srv_sess->queue_depth, 0,
+	err = bioset_init(&srv_sess->sess_bio_set, srv_sess->queue_depth,
+			  offsetof(struct ibnbd_dev_blk_io, bio),
 			  BIOSET_NEED_BVECS);
 	if (err) {
 		pr_err("Allocating srv_session for session %s failed\n",
