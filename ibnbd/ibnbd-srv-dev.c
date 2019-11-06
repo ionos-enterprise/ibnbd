@@ -26,8 +26,6 @@
 #include "ibnbd-srv-dev.h"
 #include "ibnbd-log.h"
 
-#define IBNBD_DEV_MAX_FILEIO_ACTIVE_WORKERS 0
-
 struct ibnbd_dev *ibnbd_dev_open(const char *path, fmode_t flags,
 				 struct bio_set *bs, ibnbd_dev_io_fn io_cb)
 {
