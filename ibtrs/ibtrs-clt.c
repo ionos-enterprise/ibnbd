@@ -2495,7 +2495,9 @@ reconnect_again:
 
 static void ibtrs_clt_dev_release(struct device *dev)
 {
-	/* Nobody plays with device references, so nop */
+	struct ibtrs_clt *clt  = container_of(dev, struct ibtrs_clt, dev);
+
+	kfree(clt);
 }
 
 static struct ibtrs_clt *alloc_clt(const char *sessname, size_t paths_num,
@@ -2556,12 +2558,10 @@ static struct ibtrs_clt *alloc_clt(const char *sessname, size_t paths_num,
 	return clt;
 
 dev_unregister:
-	/* Nobody plays with dev refs, so dev.release() is nop */
 	device_unregister(&clt->dev);
 percpu_free:
 	free_percpu(clt->pcpu_path);
 	kfree(clt);
-
 	return ERR_PTR(err);
 }
 
@@ -2581,9 +2581,8 @@ static void free_clt(struct ibtrs_clt *clt)
 	wait_for_inflight_tags(clt);
 	free_tags(clt);
 	free_percpu(clt->pcpu_path);
-	/* Nobody plays with dev refs, so dev.release() is nop */
+	/* release callback will free clt in last put */
 	device_unregister(&clt->dev);
-	kfree(clt);
 }
 
 struct ibtrs_clt *ibtrs_clt_open(void *priv, link_clt_ev_fn *link_ev,
