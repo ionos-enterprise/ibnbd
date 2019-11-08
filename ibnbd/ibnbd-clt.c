@@ -53,7 +53,6 @@ static LIST_HEAD(sess_list);
  * 6 bits = 64 minors = 63 partitions (one minor is used for the device itself)
  */
 #define IBNBD_PART_BITS		6
-#define KERNEL_SECTOR_SIZE      512
 
 static inline bool ibnbd_clt_get_sess(struct ibnbd_clt_session *sess)
 {
@@ -137,7 +136,7 @@ static int ibnbd_clt_revalidate_disk(struct ibnbd_clt_dev *dev,
 	dev->nsectors = new_nsectors;
 	set_capacity(dev->gd,
 		     dev->nsectors * (dev->logical_block_size /
-				      KERNEL_SECTOR_SIZE));
+				      SECTOR_SIZE));
 	err = revalidate_disk(dev->gd);
 	if (err)
 		ibnbd_err(dev, "Failed to change device size from"
@@ -996,7 +995,7 @@ static int ibnbd_client_getgeo(struct block_device *block_device,
 	struct ibnbd_clt_dev *dev;
 
 	dev = block_device->bd_disk->private_data;
-	size = dev->size * (dev->logical_block_size / KERNEL_SECTOR_SIZE);
+	size = dev->size * (dev->logical_block_size / SECTOR_SIZE);
 	geo->cylinders	= (size & ~0x3f) >> 6;	/* size/64 */
 	geo->heads	= 4;
 	geo->sectors	= 16;
@@ -1384,11 +1383,11 @@ static void ibnbd_clt_setup_gen_disk(struct ibnbd_clt_dev *dev, int idx)
 		 idx);
 	pr_debug("disk_name=%s, capacity=%zu\n",
 		 dev->gd->disk_name,
-		 dev->nsectors * (dev->logical_block_size / KERNEL_SECTOR_SIZE)
+		 dev->nsectors * (dev->logical_block_size / SECTOR_SIZE)
 		 );
 
 	set_capacity(dev->gd, dev->nsectors * (dev->logical_block_size /
-					       KERNEL_SECTOR_SIZE));
+					       SECTOR_SIZE));
 
 	if (dev->access_mode == IBNBD_ACCESS_RO) {
 		dev->read_only = true;
