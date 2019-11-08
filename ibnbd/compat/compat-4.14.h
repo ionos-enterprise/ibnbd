@@ -15,6 +15,7 @@
 #include <linux/device.h>
 #undef sysfs_remove_file_self
 
+#define SECTOR_SIZE 512
 static inline
 void sysfs_remove_file_self(struct kobject *kobj,
 			    const struct attribute *attr)
