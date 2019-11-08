@@ -1019,33 +1019,6 @@ static size_t ibnbd_clt_get_sg_size(struct scatterlist *sglist, u32 len)
 	return tsize;
 }
 
-/*
- * Get iorio of current task
- */
-static short ibnbd_current_ioprio(void)
-{
-	struct task_struct *tsp = current;
-	unsigned short prio = IOPRIO_PRIO_VALUE(IOPRIO_CLASS_NONE, 0);
-
-	if (likely(tsp->io_context))
-		prio = tsp->io_context->ioprio;
-	return prio;
-}
-
-static short ibnbd_ioprio_best(unsigned short prio1, unsigned short prio2)
-{
-	if (!ioprio_valid(prio1)) {
-		if (!ioprio_valid(prio2))
-			return IOPRIO_PRIO_VALUE(IOPRIO_CLASS_NONE, 0);
-		else
-			return prio2;
-	}
-	if (!ioprio_valid(prio2))
-		return prio1;
-
-	return min(prio1, prio2);
-}
-
 static int ibnbd_client_xfer_request(struct ibnbd_clt_dev *dev,
 				     struct request *rq,
 				     struct ibnbd_iu *iu)
@@ -1063,9 +1036,7 @@ static int ibnbd_client_xfer_request(struct ibnbd_clt_dev *dev,
 	msg.sector	= cpu_to_le64(blk_rq_pos(rq));
 	msg.bi_size	= cpu_to_le32(blk_rq_bytes(rq));
 	msg.rw		= cpu_to_le32(rq_to_ibnbd_flags(rq));
-	msg.prio	= cpu_to_le16(ibnbd_ioprio_best(
-						req_get_ioprio(rq),
-						ibnbd_current_ioprio()));
+	msg.prio	= cpu_to_le16(req_get_ioprio(rq));
 
 	/*
 	 * We only support discards with single segment for now.
