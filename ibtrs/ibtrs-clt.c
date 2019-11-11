@@ -63,7 +63,6 @@ static struct ibtrs_ib_dev_pool dev_pool = {
 static struct workqueue_struct *ibtrs_wq;
 static struct class *ibtrs_dev_class;
 
-static void ibtrs_rdma_error_recovery(struct ibtrs_clt_con *con);
 static int ibtrs_clt_rdma_cm_handler(struct rdma_cm_id *cm_id,
 				     struct rdma_cm_event *ev);
 static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc);
@@ -192,6 +191,130 @@ static struct ibtrs_clt_con *ibtrs_tag_to_clt_con(struct ibtrs_clt_sess *sess,
 		id = (tag->cpu_id % (sess->s.con_num - 1)) + 1;
 
 	return to_clt_con(sess->s.con[id]);
+}
+
+static bool __ibtrs_clt_change_state(struct ibtrs_clt_sess *sess,
+				     enum ibtrs_clt_state new_state)
+{
+	enum ibtrs_clt_state old_state;
+	bool changed = false;
+
+	old_state = sess->state;
+	switch (new_state) {
+	case IBTRS_CLT_CONNECTING:
+		switch (old_state) {
+		case IBTRS_CLT_RECONNECTING:
+			changed = true;
+			/* FALLTHRU */
+		default:
+			break;
+		}
+		break;
+	case IBTRS_CLT_RECONNECTING:
+		switch (old_state) {
+		case IBTRS_CLT_CONNECTED:
+		case IBTRS_CLT_CONNECTING_ERR:
+		case IBTRS_CLT_CLOSED:
+			changed = true;
+			/* FALLTHRU */
+		default:
+			break;
+		}
+		break;
+	case IBTRS_CLT_CONNECTED:
+		switch (old_state) {
+		case IBTRS_CLT_CONNECTING:
+			changed = true;
+			/* FALLTHRU */
+		default:
+			break;
+		}
+		break;
+	case IBTRS_CLT_CONNECTING_ERR:
+		switch (old_state) {
+		case IBTRS_CLT_CONNECTING:
+			changed = true;
+			/* FALLTHRU */
+		default:
+			break;
+		}
+		break;
+	case IBTRS_CLT_CLOSING:
+		switch (old_state) {
+		case IBTRS_CLT_CONNECTING:
+		case IBTRS_CLT_CONNECTING_ERR:
+		case IBTRS_CLT_RECONNECTING:
+		case IBTRS_CLT_CONNECTED:
+			changed = true;
+			/* FALLTHRU */
+		default:
+			break;
+		}
+		break;
+	case IBTRS_CLT_CLOSED:
+		switch (old_state) {
+		case IBTRS_CLT_CLOSING:
+			changed = true;
+			/* FALLTHRU */
+		default:
+			break;
+		}
+		break;
+	case IBTRS_CLT_DEAD:
+		switch (old_state) {
+		case IBTRS_CLT_CLOSED:
+			changed = true;
+			/* FALLTHRU */
+		default:
+			break;
+		}
+		break;
+	default:
+		break;
+	}
+	if (changed) {
+		sess->state = new_state;
+		wake_up_locked(&sess->state_wq);
+	}
+
+	return changed;
+}
+
+static bool ibtrs_clt_change_state_from_to(struct ibtrs_clt_sess *sess,
+					   enum ibtrs_clt_state old_state,
+					   enum ibtrs_clt_state new_state)
+{
+	bool changed = false;
+
+	spin_lock_irq(&sess->state_wq.lock);
+	if (sess->state == old_state)
+		changed = __ibtrs_clt_change_state(sess, new_state);
+	spin_unlock_irq(&sess->state_wq.lock);
+
+	return changed;
+}
+
+static void ibtrs_rdma_error_recovery(struct ibtrs_clt_con *con)
+{
+	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
+
+	if (ibtrs_clt_change_state_from_to(sess,
+					   IBTRS_CLT_CONNECTED,
+					   IBTRS_CLT_RECONNECTING)) {
+		/*
+		 * Normal scenario, reconnect if we were successfully connected
+		 */
+		queue_delayed_work(ibtrs_wq, &sess->reconnect_dwork, 0);
+	} else {
+		/*
+		 * Error can happen just on establishing new connection,
+		 * so notify waiter with error state, waiter is responsible
+		 * for cleaning the rest and reconnect if needed.
+		 */
+		ibtrs_clt_change_state_from_to(sess,
+					       IBTRS_CLT_CONNECTING,
+					       IBTRS_CLT_CONNECTING_ERR);
+	}
 }
 
 static void ibtrs_clt_fast_reg_done(struct ib_cq *cq, struct ib_wc *wc)
@@ -876,107 +999,6 @@ static void query_fast_reg_mode(struct ibtrs_clt_sess *sess)
 		min3(sess->max_pages_per_mr, (u32)max_pages_per_mr,
 		     ib_dev->attrs.max_fast_reg_page_list_len);
 	sess->max_send_sge = ib_dev->attrs.max_send_sge;
-}
-
-static bool __ibtrs_clt_change_state(struct ibtrs_clt_sess *sess,
-				     enum ibtrs_clt_state new_state)
-{
-	enum ibtrs_clt_state old_state;
-	bool changed = false;
-
-	old_state = sess->state;
-	switch (new_state) {
-	case IBTRS_CLT_CONNECTING:
-		switch (old_state) {
-		case IBTRS_CLT_RECONNECTING:
-			changed = true;
-			/* FALLTHRU */
-		default:
-			break;
-		}
-		break;
-	case IBTRS_CLT_RECONNECTING:
-		switch (old_state) {
-		case IBTRS_CLT_CONNECTED:
-		case IBTRS_CLT_CONNECTING_ERR:
-		case IBTRS_CLT_CLOSED:
-			changed = true;
-			/* FALLTHRU */
-		default:
-			break;
-		}
-		break;
-	case IBTRS_CLT_CONNECTED:
-		switch (old_state) {
-		case IBTRS_CLT_CONNECTING:
-			changed = true;
-			/* FALLTHRU */
-		default:
-			break;
-		}
-		break;
-	case IBTRS_CLT_CONNECTING_ERR:
-		switch (old_state) {
-		case IBTRS_CLT_CONNECTING:
-			changed = true;
-			/* FALLTHRU */
-		default:
-			break;
-		}
-		break;
-	case IBTRS_CLT_CLOSING:
-		switch (old_state) {
-		case IBTRS_CLT_CONNECTING:
-		case IBTRS_CLT_CONNECTING_ERR:
-		case IBTRS_CLT_RECONNECTING:
-		case IBTRS_CLT_CONNECTED:
-			changed = true;
-			/* FALLTHRU */
-		default:
-			break;
-		}
-		break;
-	case IBTRS_CLT_CLOSED:
-		switch (old_state) {
-		case IBTRS_CLT_CLOSING:
-			changed = true;
-			/* FALLTHRU */
-		default:
-			break;
-		}
-		break;
-	case IBTRS_CLT_DEAD:
-		switch (old_state) {
-		case IBTRS_CLT_CLOSED:
-			changed = true;
-			/* FALLTHRU */
-		default:
-			break;
-		}
-		break;
-	default:
-		break;
-	}
-	if (changed) {
-		sess->state = new_state;
-		wake_up_locked(&sess->state_wq);
-	}
-
-	return changed;
-}
-
-static bool ibtrs_clt_change_state_from_to(struct ibtrs_clt_sess *sess,
-					   enum ibtrs_clt_state old_state,
-					   enum ibtrs_clt_state new_state)
-{
-	bool changed = false;
-
-	spin_lock_irq(&sess->state_wq.lock);
-	if (sess->state == old_state)
-		changed = __ibtrs_clt_change_state(sess, new_state);
-	spin_unlock_irq(&sess->state_wq.lock);
-
-	return changed;
 }
 
 static bool ibtrs_clt_change_state_get_old(struct ibtrs_clt_sess *sess,
@@ -1787,29 +1809,6 @@ static int ibtrs_rdma_conn_rejected(struct ibtrs_clt_con *con,
 	}
 
 	return -ECONNRESET;
-}
-
-static void ibtrs_rdma_error_recovery(struct ibtrs_clt_con *con)
-{
-	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
-
-	if (ibtrs_clt_change_state_from_to(sess,
-					   IBTRS_CLT_CONNECTED,
-					   IBTRS_CLT_RECONNECTING)) {
-		/*
-		 * Normal scenario, reconnect if we were successfully connected
-		 */
-		queue_delayed_work(ibtrs_wq, &sess->reconnect_dwork, 0);
-	} else {
-		/*
-		 * Error can happen just on establishing new connection,
-		 * so notify waiter with error state, waiter is responsible
-		 * for cleaning the rest and reconnect if needed.
-		 */
-		ibtrs_clt_change_state_from_to(sess,
-					       IBTRS_CLT_CONNECTING,
-					       IBTRS_CLT_CONNECTING_ERR);
-	}
 }
 
 static inline void flag_success_on_conn(struct ibtrs_clt_con *con)
