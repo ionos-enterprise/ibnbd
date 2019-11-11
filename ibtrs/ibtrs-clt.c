@@ -63,7 +63,6 @@ static struct ibtrs_ib_dev_pool dev_pool = {
 static struct workqueue_struct *ibtrs_wq;
 static struct class *ibtrs_dev_class;
 
-static int ibtrs_clt_write_req(struct ibtrs_clt_io_req *req);
 static int ibtrs_clt_read_req(struct ibtrs_clt_io_req *req);
 
 bool ibtrs_clt_sess_is_connected(const struct ibtrs_clt_sess *sess)
@@ -900,6 +899,101 @@ ibtrs_clt_get_copy_req(struct ibtrs_clt_sess *alive_sess,
 			   fail_req->sglist, fail_req->sg_cnt,
 			   fail_req->data_len, fail_req->dir);
 	return req;
+}
+
+static int ibtrs_post_rdma_write_sg(struct ibtrs_clt_con *con,
+				    struct ibtrs_clt_io_req *req,
+				    struct ibtrs_rbuf *rbuf,
+				    u32 size, u32 imm)
+{
+	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
+	struct ib_sge *sge = req->sge;
+	enum ib_send_flags flags;
+	struct scatterlist *sg;
+	size_t num_sge;
+	int i;
+
+	for_each_sg(req->sglist, sg, req->sg_cnt, i) {
+		sge[i].addr   = sg_dma_address(sg);
+		sge[i].length = sg_dma_len(sg);
+		sge[i].lkey   = sess->s.dev->ib_pd->local_dma_lkey;
+	}
+	sge[i].addr   = req->iu->dma_addr;
+	sge[i].length = size;
+	sge[i].lkey   = sess->s.dev->ib_pd->local_dma_lkey;
+
+	num_sge = 1 + req->sg_cnt;
+
+	/*
+	 * From time to time we have to post signalled sends,
+	 * or send queue will fill up and only QP reset can help.
+	 */
+	flags = atomic_inc_return(&con->io_cnt) % sess->queue_depth ?
+			0 : IB_SEND_SIGNALED;
+
+	ib_dma_sync_single_for_device(sess->s.dev->ib_dev, req->iu->dma_addr,
+				      size, DMA_TO_DEVICE);
+
+	return ibtrs_iu_post_rdma_write_imm(&con->c, req->iu, sge, num_sge,
+					    rbuf->rkey, rbuf->addr, imm,
+					    flags, NULL);
+}
+
+static int ibtrs_clt_write_req(struct ibtrs_clt_io_req *req)
+{
+	struct ibtrs_clt_con *con = req->con;
+	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
+	struct ibtrs_msg_rdma_write *msg;
+
+	struct ibtrs_rbuf *rbuf;
+	int ret, count = 0;
+	u32 imm, buf_id;
+
+	const size_t tsize = sizeof(*msg) + req->data_len + req->usr_len;
+
+	if (unlikely(tsize > sess->chunk_size)) {
+		ibtrs_wrn(sess, "Write request failed, size too big %zu > %d\n",
+			  tsize, sess->chunk_size);
+		return -EMSGSIZE;
+	}
+	if (req->sg_cnt) {
+		count = ib_dma_map_sg(sess->s.dev->ib_dev, req->sglist,
+				      req->sg_cnt, req->dir);
+		if (unlikely(!count)) {
+			ibtrs_wrn(sess, "Write request failed, map failed\n");
+			return -EINVAL;
+		}
+	}
+	/* put ibtrs msg after sg and user message */
+	msg = req->iu->buf + req->usr_len;
+	msg->type = cpu_to_le16(IBTRS_MSG_WRITE);
+	msg->usr_len = cpu_to_le16(req->usr_len);
+
+	/* ibtrs message on server side will be after user data and message */
+	imm = req->tag->mem_off + req->data_len + req->usr_len;
+	imm = ibtrs_to_io_req_imm(imm);
+	buf_id = req->tag->mem_id;
+	req->sg_size = tsize;
+	rbuf = &sess->rbufs[buf_id];
+
+	/*
+	 * Update stats now, after request is successfully sent it is not
+	 * safe anymore to touch it.
+	 */
+	ibtrs_clt_update_all_stats(req, WRITE);
+
+	ret = ibtrs_post_rdma_write_sg(req->con, req, rbuf,
+				       req->usr_len + sizeof(*msg),
+				       imm);
+	if (unlikely(ret)) {
+		ibtrs_err(sess, "Write request failed: %d\n", ret);
+		ibtrs_clt_decrease_inflight(&sess->stats);
+		if (req->sg_cnt)
+			ib_dma_unmap_sg(sess->s.dev->ib_dev, req->sglist,
+					req->sg_cnt, req->dir);
+	}
+
+	return ret;
 }
 
 static int ibtrs_clt_failover_req(struct ibtrs_clt *clt,
@@ -2544,101 +2638,6 @@ void ibtrs_clt_set_max_reconnect_attempts(struct ibtrs_clt *clt, int value)
 int ibtrs_clt_get_max_reconnect_attempts(const struct ibtrs_clt *clt)
 {
 	return (int)clt->max_reconnect_attempts;
-}
-
-static int ibtrs_post_rdma_write_sg(struct ibtrs_clt_con *con,
-				    struct ibtrs_clt_io_req *req,
-				    struct ibtrs_rbuf *rbuf,
-				    u32 size, u32 imm)
-{
-	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
-	struct ib_sge *sge = req->sge;
-	enum ib_send_flags flags;
-	struct scatterlist *sg;
-	size_t num_sge;
-	int i;
-
-	for_each_sg(req->sglist, sg, req->sg_cnt, i) {
-		sge[i].addr   = sg_dma_address(sg);
-		sge[i].length = sg_dma_len(sg);
-		sge[i].lkey   = sess->s.dev->ib_pd->local_dma_lkey;
-	}
-	sge[i].addr   = req->iu->dma_addr;
-	sge[i].length = size;
-	sge[i].lkey   = sess->s.dev->ib_pd->local_dma_lkey;
-
-	num_sge = 1 + req->sg_cnt;
-
-	/*
-	 * From time to time we have to post signalled sends,
-	 * or send queue will fill up and only QP reset can help.
-	 */
-	flags = atomic_inc_return(&con->io_cnt) % sess->queue_depth ?
-			0 : IB_SEND_SIGNALED;
-
-	ib_dma_sync_single_for_device(sess->s.dev->ib_dev, req->iu->dma_addr,
-				      size, DMA_TO_DEVICE);
-
-	return ibtrs_iu_post_rdma_write_imm(&con->c, req->iu, sge, num_sge,
-					    rbuf->rkey, rbuf->addr, imm,
-					    flags, NULL);
-}
-
-static int ibtrs_clt_write_req(struct ibtrs_clt_io_req *req)
-{
-	struct ibtrs_clt_con *con = req->con;
-	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
-	struct ibtrs_msg_rdma_write *msg;
-
-	struct ibtrs_rbuf *rbuf;
-	int ret, count = 0;
-	u32 imm, buf_id;
-
-	const size_t tsize = sizeof(*msg) + req->data_len + req->usr_len;
-
-	if (unlikely(tsize > sess->chunk_size)) {
-		ibtrs_wrn(sess, "Write request failed, size too big %zu > %d\n",
-			  tsize, sess->chunk_size);
-		return -EMSGSIZE;
-	}
-	if (req->sg_cnt) {
-		count = ib_dma_map_sg(sess->s.dev->ib_dev, req->sglist,
-				      req->sg_cnt, req->dir);
-		if (unlikely(!count)) {
-			ibtrs_wrn(sess, "Write request failed, map failed\n");
-			return -EINVAL;
-		}
-	}
-	/* put ibtrs msg after sg and user message */
-	msg = req->iu->buf + req->usr_len;
-	msg->type = cpu_to_le16(IBTRS_MSG_WRITE);
-	msg->usr_len = cpu_to_le16(req->usr_len);
-
-	/* ibtrs message on server side will be after user data and message */
-	imm = req->tag->mem_off + req->data_len + req->usr_len;
-	imm = ibtrs_to_io_req_imm(imm);
-	buf_id = req->tag->mem_id;
-	req->sg_size = tsize;
-	rbuf = &sess->rbufs[buf_id];
-
-	/*
-	 * Update stats now, after request is successfully sent it is not
-	 * safe anymore to touch it.
-	 */
-	ibtrs_clt_update_all_stats(req, WRITE);
-
-	ret = ibtrs_post_rdma_write_sg(req->con, req, rbuf,
-				       req->usr_len + sizeof(*msg),
-				       imm);
-	if (unlikely(ret)) {
-		ibtrs_err(sess, "Write request failed: %d\n", ret);
-		ibtrs_clt_decrease_inflight(&sess->stats);
-		if (req->sg_cnt)
-			ib_dma_unmap_sg(sess->s.dev->ib_dev, req->sglist,
-					req->sg_cnt, req->dir);
-	}
-
-	return ret;
 }
 
 static int ibtrs_map_sg_fr(struct ibtrs_clt_io_req *req, size_t count)
