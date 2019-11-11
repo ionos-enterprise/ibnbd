@@ -1125,6 +1125,9 @@ static int ibtrs_clt_read_req(struct ibtrs_clt_io_req *req)
 	return ret;
 }
 
+/**
+ * ibtrs_clt_failover_req() Try to find an active path for a failed request
+ */
 static int ibtrs_clt_failover_req(struct ibtrs_clt *clt,
 				  struct ibtrs_clt_io_req *fail_req)
 {
