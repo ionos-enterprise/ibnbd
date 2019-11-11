@@ -141,6 +141,9 @@ struct ibtrs_tag {
 	unsigned int mem_off;
 };
 
+/**
+ * ibtrs_clt_io_req - describes one inflight IO request
+ */
 struct ibtrs_clt_io_req {
 	struct list_head        list;
 	struct ibtrs_iu		*iu;
