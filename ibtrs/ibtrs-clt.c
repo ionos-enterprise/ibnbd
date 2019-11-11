@@ -827,6 +827,13 @@ static inline void path_it_deinit(struct path_it *it)
 		list_del_init(skip);
 }
 
+/**
+ * ibtrs_clt_init_req() Initialize an ibtrs_clt_io_req holding information
+ * about an inflight IO.
+ * The user buffer holding user control message (not data) is copied into
+ * the corresponding buffer of ibtrs_iu (req->iu->buf), which later on will
+ * also hold the control message of ibtrs.
+ */
 static inline void ibtrs_clt_init_req(struct ibtrs_clt_io_req *req,
 				      struct ibtrs_clt_sess *sess,
 				      ibtrs_conf_fn *conf,
