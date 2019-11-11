@@ -186,6 +186,8 @@ static bool __ibtrs_clt_change_state(struct ibtrs_clt_sess *sess,
 	enum ibtrs_clt_state old_state;
 	bool changed = false;
 
+	lockdep_assert_held(&sess->state_wq.lock);
+
 	old_state = sess->state;
 	switch (new_state) {
 	case IBTRS_CLT_CONNECTING:
