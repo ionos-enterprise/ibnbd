@@ -63,8 +63,6 @@ static struct ibtrs_ib_dev_pool dev_pool = {
 static struct workqueue_struct *ibtrs_wq;
 static struct class *ibtrs_dev_class;
 
-static int ibtrs_clt_read_req(struct ibtrs_clt_io_req *req);
-
 bool ibtrs_clt_sess_is_connected(const struct ibtrs_clt_sess *sess)
 {
 	return sess->state == IBTRS_CLT_CONNECTED;
@@ -990,6 +988,135 @@ static int ibtrs_clt_write_req(struct ibtrs_clt_io_req *req)
 		ibtrs_clt_decrease_inflight(&sess->stats);
 		if (req->sg_cnt)
 			ib_dma_unmap_sg(sess->s.dev->ib_dev, req->sglist,
+					req->sg_cnt, req->dir);
+	}
+
+	return ret;
+}
+
+static int ibtrs_map_sg_fr(struct ibtrs_clt_io_req *req, size_t count)
+{
+	int nr;
+
+	/* Align the MR to a 4K page size to match the block virt boundary */
+	nr = ib_map_mr_sg(req->mr, req->sglist, count, NULL, SZ_4K);
+	if (unlikely(nr < req->sg_cnt)) {
+		if (nr < 0)
+			return nr;
+		return -EINVAL;
+	}
+	ib_update_fast_reg_key(req->mr, ib_inc_rkey(req->mr->rkey));
+
+	return nr;
+}
+
+static int ibtrs_clt_read_req(struct ibtrs_clt_io_req *req)
+{
+	struct ibtrs_clt_con *con = req->con;
+	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
+	struct ibtrs_msg_rdma_read *msg;
+	struct ibtrs_ib_dev *dev;
+	struct scatterlist *sg;
+
+	struct ib_reg_wr rwr;
+	struct ib_send_wr *wr = NULL;
+
+	int i, ret, count = 0;
+	u32 imm, buf_id;
+
+	const size_t tsize = sizeof(*msg) + req->data_len + req->usr_len;
+
+	dev = sess->s.dev;
+
+	if (unlikely(tsize > sess->chunk_size)) {
+		ibtrs_wrn(sess,
+			  "Read request failed, message size is %zu, bigger than CHUNK_SIZE %d\n",
+			  tsize, sess->chunk_size);
+		return -EMSGSIZE;
+	}
+
+	if (req->sg_cnt) {
+		count = ib_dma_map_sg(dev->ib_dev, req->sglist, req->sg_cnt,
+				      req->dir);
+		if (unlikely(!count)) {
+			ibtrs_wrn(sess,
+				  "Read request failed, dma map failed\n");
+			return -EINVAL;
+		}
+	}
+	/* put our message into req->buf after user message*/
+	msg = req->iu->buf + req->usr_len;
+	msg->type = cpu_to_le16(IBTRS_MSG_READ);
+	msg->usr_len = cpu_to_le16(req->usr_len);
+
+	if (count > noreg_cnt) {
+		ret = ibtrs_map_sg_fr(req, count);
+		if (ret < 0) {
+			ibtrs_err_rl(sess,
+				     "Read request failed, failed to map  fast reg. data, err: %d\n",
+				     ret);
+			ib_dma_unmap_sg(dev->ib_dev, req->sglist, req->sg_cnt,
+					req->dir);
+			return ret;
+		}
+		memset(&rwr, 0, sizeof(rwr));
+		rwr.wr.next = NULL;
+		rwr.wr.opcode = IB_WR_REG_MR;
+		rwr.wr.wr_cqe = &fast_reg_cqe;
+		rwr.wr.num_sge = 0;
+		rwr.mr = req->mr;
+		rwr.key = req->mr->rkey;
+		rwr.access = (IB_ACCESS_LOCAL_WRITE |
+			      IB_ACCESS_REMOTE_WRITE);
+		wr = &rwr.wr;
+
+		msg->sg_cnt = cpu_to_le16(1);
+		msg->flags = cpu_to_le16(ibtrs_invalidate_flag());
+
+		msg->desc[0].addr = cpu_to_le64(req->mr->iova);
+		msg->desc[0].key = cpu_to_le32(req->mr->rkey);
+		msg->desc[0].len = cpu_to_le32(req->mr->length);
+
+		/* Further invalidation is required */
+		req->need_inv = !!ibtrs_invalidate_flag();
+
+	} else {
+		msg->sg_cnt = cpu_to_le16(count);
+		msg->flags = 0;
+
+		for_each_sg(req->sglist, sg, req->sg_cnt, i) {
+			msg->desc[i].addr = cpu_to_le64(sg_dma_address(sg));
+			msg->desc[i].key =
+				cpu_to_le32(dev->ib_pd->unsafe_global_rkey);
+			msg->desc[i].len = cpu_to_le32(sg_dma_len(sg));
+		}
+	}
+	/*
+	 * ibtrs message will be after the space reserved for disk data and
+	 * user message
+	 */
+	imm = req->tag->mem_off + req->data_len + req->usr_len;
+	imm = ibtrs_to_io_req_imm(imm);
+	buf_id = req->tag->mem_id;
+
+	req->sg_size  = sizeof(*msg);
+	req->sg_size += le16_to_cpu(msg->sg_cnt) * sizeof(struct ibtrs_sg_desc);
+	req->sg_size += req->usr_len;
+
+	/*
+	 * Update stats now, after request is successfully sent it is not
+	 * safe anymore to touch it.
+	 */
+	ibtrs_clt_update_all_stats(req, READ);
+
+	ret = ibtrs_post_send_rdma(req->con, req, &sess->rbufs[buf_id],
+				   req->data_len, imm, wr);
+	if (unlikely(ret)) {
+		ibtrs_err(sess, "Read request failed: %d\n", ret);
+		ibtrs_clt_decrease_inflight(&sess->stats);
+		req->need_inv = false;
+		if (req->sg_cnt)
+			ib_dma_unmap_sg(dev->ib_dev, req->sglist,
 					req->sg_cnt, req->dir);
 	}
 
@@ -2638,135 +2765,6 @@ void ibtrs_clt_set_max_reconnect_attempts(struct ibtrs_clt *clt, int value)
 int ibtrs_clt_get_max_reconnect_attempts(const struct ibtrs_clt *clt)
 {
 	return (int)clt->max_reconnect_attempts;
-}
-
-static int ibtrs_map_sg_fr(struct ibtrs_clt_io_req *req, size_t count)
-{
-	int nr;
-
-	/* Align the MR to a 4K page size to match the block virt boundary */
-	nr = ib_map_mr_sg(req->mr, req->sglist, count, NULL, SZ_4K);
-	if (unlikely(nr < req->sg_cnt)) {
-		if (nr < 0)
-			return nr;
-		return -EINVAL;
-	}
-	ib_update_fast_reg_key(req->mr, ib_inc_rkey(req->mr->rkey));
-
-	return nr;
-}
-
-static int ibtrs_clt_read_req(struct ibtrs_clt_io_req *req)
-{
-	struct ibtrs_clt_con *con = req->con;
-	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
-	struct ibtrs_msg_rdma_read *msg;
-	struct ibtrs_ib_dev *dev;
-	struct scatterlist *sg;
-
-	struct ib_reg_wr rwr;
-	struct ib_send_wr *wr = NULL;
-
-	int i, ret, count = 0;
-	u32 imm, buf_id;
-
-	const size_t tsize = sizeof(*msg) + req->data_len + req->usr_len;
-
-	dev = sess->s.dev;
-
-	if (unlikely(tsize > sess->chunk_size)) {
-		ibtrs_wrn(sess,
-			  "Read request failed, message size is %zu, bigger than CHUNK_SIZE %d\n",
-			  tsize, sess->chunk_size);
-		return -EMSGSIZE;
-	}
-
-	if (req->sg_cnt) {
-		count = ib_dma_map_sg(dev->ib_dev, req->sglist, req->sg_cnt,
-				      req->dir);
-		if (unlikely(!count)) {
-			ibtrs_wrn(sess,
-				  "Read request failed, dma map failed\n");
-			return -EINVAL;
-		}
-	}
-	/* put our message into req->buf after user message*/
-	msg = req->iu->buf + req->usr_len;
-	msg->type = cpu_to_le16(IBTRS_MSG_READ);
-	msg->usr_len = cpu_to_le16(req->usr_len);
-
-	if (count > noreg_cnt) {
-		ret = ibtrs_map_sg_fr(req, count);
-		if (ret < 0) {
-			ibtrs_err_rl(sess,
-				     "Read request failed, failed to map  fast reg. data, err: %d\n",
-				     ret);
-			ib_dma_unmap_sg(dev->ib_dev, req->sglist, req->sg_cnt,
-					req->dir);
-			return ret;
-		}
-		memset(&rwr, 0, sizeof(rwr));
-		rwr.wr.next = NULL;
-		rwr.wr.opcode = IB_WR_REG_MR;
-		rwr.wr.wr_cqe = &fast_reg_cqe;
-		rwr.wr.num_sge = 0;
-		rwr.mr = req->mr;
-		rwr.key = req->mr->rkey;
-		rwr.access = (IB_ACCESS_LOCAL_WRITE |
-			      IB_ACCESS_REMOTE_WRITE);
-		wr = &rwr.wr;
-
-		msg->sg_cnt = cpu_to_le16(1);
-		msg->flags = cpu_to_le16(ibtrs_invalidate_flag());
-
-		msg->desc[0].addr = cpu_to_le64(req->mr->iova);
-		msg->desc[0].key = cpu_to_le32(req->mr->rkey);
-		msg->desc[0].len = cpu_to_le32(req->mr->length);
-
-		/* Further invalidation is required */
-		req->need_inv = !!ibtrs_invalidate_flag();
-
-	} else {
-		msg->sg_cnt = cpu_to_le16(count);
-		msg->flags = 0;
-
-		for_each_sg(req->sglist, sg, req->sg_cnt, i) {
-			msg->desc[i].addr = cpu_to_le64(sg_dma_address(sg));
-			msg->desc[i].key =
-				cpu_to_le32(dev->ib_pd->unsafe_global_rkey);
-			msg->desc[i].len = cpu_to_le32(sg_dma_len(sg));
-		}
-	}
-	/*
-	 * ibtrs message will be after the space reserved for disk data and
-	 * user message
-	 */
-	imm = req->tag->mem_off + req->data_len + req->usr_len;
-	imm = ibtrs_to_io_req_imm(imm);
-	buf_id = req->tag->mem_id;
-
-	req->sg_size  = sizeof(*msg);
-	req->sg_size += le16_to_cpu(msg->sg_cnt) * sizeof(struct ibtrs_sg_desc);
-	req->sg_size += req->usr_len;
-
-	/*
-	 * Update stats now, after request is successfully sent it is not
-	 * safe anymore to touch it.
-	 */
-	ibtrs_clt_update_all_stats(req, READ);
-
-	ret = ibtrs_post_send_rdma(req->con, req, &sess->rbufs[buf_id],
-				   req->data_len, imm, wr);
-	if (unlikely(ret)) {
-		ibtrs_err(sess, "Read request failed: %d\n", ret);
-		ibtrs_clt_decrease_inflight(&sess->stats);
-		req->need_inv = false;
-		if (req->sg_cnt)
-			ib_dma_unmap_sg(dev->ib_dev, req->sglist,
-					req->sg_cnt, req->dir);
-	}
-
-	return ret;
 }
 
 int ibtrs_clt_request(int dir, ibtrs_conf_fn *conf, struct ibtrs_clt *clt,
