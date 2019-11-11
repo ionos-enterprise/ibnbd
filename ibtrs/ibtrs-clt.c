@@ -63,8 +63,6 @@ static struct ibtrs_ib_dev_pool dev_pool = {
 static struct workqueue_struct *ibtrs_wq;
 static struct class *ibtrs_dev_class;
 
-static void complete_rdma_req(struct ibtrs_clt_io_req *req, int errno,
-			      bool notify, bool can_wait);
 static int ibtrs_clt_write_req(struct ibtrs_clt_io_req *req);
 static int ibtrs_clt_read_req(struct ibtrs_clt_io_req *req);
 
@@ -330,6 +328,9 @@ static struct ib_cqe fast_reg_cqe = {
 	.done = ibtrs_clt_fast_reg_done
 };
 
+static void complete_rdma_req(struct ibtrs_clt_io_req *req, int errno,
+			      bool notify, bool can_wait);
+
 static void ibtrs_clt_inv_rkey_done(struct ib_cq *cq, struct ib_wc *wc)
 {
 	struct ibtrs_clt_io_req *req =
@@ -365,40 +366,6 @@ static int ibtrs_inv_rkey(struct ibtrs_clt_io_req *req)
 	req->inv_cqe.done = ibtrs_clt_inv_rkey_done;
 
 	return ib_post_send(con->c.qp, &wr, &bad_wr);
-}
-
-static int ibtrs_post_send_rdma(struct ibtrs_clt_con *con,
-				struct ibtrs_clt_io_req *req,
-				struct ibtrs_rbuf *rbuf, u32 off,
-				u32 imm, struct ib_send_wr *wr)
-{
-	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
-	enum ib_send_flags flags;
-	struct ib_sge sge;
-
-	if (unlikely(!req->sg_size)) {
-		ibtrs_wrn(sess, "Doing RDMA Write failed, no data supplied\n");
-		return -EINVAL;
-	}
-
-	/* user data and user message in the first list element */
-	sge.addr   = req->iu->dma_addr;
-	sge.length = req->sg_size;
-	sge.lkey   = sess->s.dev->ib_pd->local_dma_lkey;
-
-	/*
-	 * From time to time we have to post signalled sends,
-	 * or send queue will fill up and only QP reset can help.
-	 */
-	flags = atomic_inc_return(&con->io_cnt) % sess->queue_depth ?
-			0 : IB_SEND_SIGNALED;
-
-	ib_dma_sync_single_for_device(sess->s.dev->ib_dev, req->iu->dma_addr,
-				      req->sg_size, DMA_TO_DEVICE);
-
-	return ibtrs_iu_post_rdma_write_imm(&con->c, req->iu, &sge, 1,
-					    rbuf->rkey, rbuf->addr + off,
-					    imm, flags, wr);
 }
 
 static void complete_rdma_req(struct ibtrs_clt_io_req *req, int errno,
@@ -469,6 +436,40 @@ static void complete_rdma_req(struct ibtrs_clt_io_req *req, int errno,
 
 	if (notify)
 		req->conf(req->priv, errno);
+}
+
+static int ibtrs_post_send_rdma(struct ibtrs_clt_con *con,
+				struct ibtrs_clt_io_req *req,
+				struct ibtrs_rbuf *rbuf, u32 off,
+				u32 imm, struct ib_send_wr *wr)
+{
+	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
+	enum ib_send_flags flags;
+	struct ib_sge sge;
+
+	if (unlikely(!req->sg_size)) {
+		ibtrs_wrn(sess, "Doing RDMA Write failed, no data supplied\n");
+		return -EINVAL;
+	}
+
+	/* user data and user message in the first list element */
+	sge.addr   = req->iu->dma_addr;
+	sge.length = req->sg_size;
+	sge.lkey   = sess->s.dev->ib_pd->local_dma_lkey;
+
+	/*
+	 * From time to time we have to post signalled sends,
+	 * or send queue will fill up and only QP reset can help.
+	 */
+	flags = atomic_inc_return(&con->io_cnt) % sess->queue_depth ?
+			0 : IB_SEND_SIGNALED;
+
+	ib_dma_sync_single_for_device(sess->s.dev->ib_dev, req->iu->dma_addr,
+				      req->sg_size, DMA_TO_DEVICE);
+
+	return ibtrs_iu_post_rdma_write_imm(&con->c, req->iu, &sge, 1,
+					    rbuf->rkey, rbuf->addr + off,
+					    imm, flags, wr);
 }
 
 static void process_io_rsp(struct ibtrs_clt_sess *sess, u32 msg_id,
