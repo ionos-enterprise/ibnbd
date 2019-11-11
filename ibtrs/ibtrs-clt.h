@@ -292,7 +292,6 @@ int ibtrs_clt_stats_wc_completion_to_str(struct ibtrs_clt_stats *stats, char *bu
 int ibtrs_clt_reset_rdma_stats(struct ibtrs_clt_stats *stats, bool enable);
 ssize_t ibtrs_clt_stats_rdma_to_str(struct ibtrs_clt_stats *stats,
 				    char *page, size_t len);
-bool ibtrs_clt_sess_is_connected(const struct ibtrs_clt_sess *sess);
 int ibtrs_clt_reset_all_stats(struct ibtrs_clt_stats *stats, bool enable);
 ssize_t ibtrs_clt_reset_all_help(struct ibtrs_clt_stats *stats,
 				 char *page, size_t len);

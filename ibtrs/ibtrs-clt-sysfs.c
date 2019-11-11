@@ -175,7 +175,7 @@ static ssize_t ibtrs_clt_state_show(struct kobject *kobj,
 	struct ibtrs_clt_sess *sess;
 
 	sess = container_of(kobj, struct ibtrs_clt_sess, kobj);
-	if (ibtrs_clt_sess_is_connected(sess))
+	if (sess->state == IBTRS_CLT_CONNECTED)
 		return sprintf(page, "connected\n");
 
 	return sprintf(page, "disconnected\n");

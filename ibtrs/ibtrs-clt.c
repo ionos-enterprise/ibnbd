@@ -63,11 +63,6 @@ static struct ibtrs_ib_dev_pool dev_pool = {
 static struct workqueue_struct *ibtrs_wq;
 static struct class *ibtrs_dev_class;
 
-bool ibtrs_clt_sess_is_connected(const struct ibtrs_clt_sess *sess)
-{
-	return sess->state == IBTRS_CLT_CONNECTED;
-}
-
 static inline bool ibtrs_clt_is_connected(const struct ibtrs_clt *clt)
 {
 	struct ibtrs_clt_sess *sess;
@@ -75,7 +70,7 @@ static inline bool ibtrs_clt_is_connected(const struct ibtrs_clt *clt)
 
 	rcu_read_lock();
 	list_for_each_entry_rcu(sess, &clt->paths_list, s.entry)
-		connected |= ibtrs_clt_sess_is_connected(sess);
+		connected |= (sess->state == IBTRS_CLT_CONNECTED);
 	rcu_read_unlock();
 
 	return connected;
@@ -2702,7 +2697,7 @@ int ibtrs_clt_reconnect_from_sysfs(struct ibtrs_clt_sess *sess)
 		 * right now or work is pending.
 		 */
 		flush_delayed_work(&sess->reconnect_dwork);
-		err = ibtrs_clt_sess_is_connected(sess) ? 0 : -ENOTCONN;
+		err = (sess->state == IBTRS_CLT_CONNECTED ? 0 : -ENOTCONN);
 	}
 
 	return err;
