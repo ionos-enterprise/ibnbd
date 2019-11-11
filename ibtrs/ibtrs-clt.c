@@ -63,8 +63,6 @@ static struct ibtrs_ib_dev_pool dev_pool = {
 static struct workqueue_struct *ibtrs_wq;
 static struct class *ibtrs_dev_class;
 
-static int ibtrs_clt_rdma_cm_handler(struct rdma_cm_id *cm_id,
-				     struct rdma_cm_event *ev);
 static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc);
 static void complete_rdma_req(struct ibtrs_clt_io_req *req, int errno,
 			      bool notify, bool can_wait);
@@ -1369,6 +1367,272 @@ static void destroy_cm(struct ibtrs_clt_con *con)
 	con->c.cm_id = NULL;
 }
 
+static int ibtrs_rdma_addr_resolved(struct ibtrs_clt_con *con)
+{
+	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
+	int err;
+
+	err = create_con_cq_qp(con);
+	if (unlikely(err)) {
+		ibtrs_err(sess, "create_con_cq_qp(), err: %d\n", err);
+		return err;
+	}
+	err = rdma_resolve_route(con->c.cm_id, IBTRS_CONNECT_TIMEOUT_MS);
+	if (unlikely(err)) {
+		ibtrs_err(sess, "Resolving route failed, err: %d\n", err);
+		destroy_con_cq_qp(con);
+	}
+
+	return err;
+}
+
+static int ibtrs_rdma_route_resolved(struct ibtrs_clt_con *con)
+{
+	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
+	struct ibtrs_clt *clt = sess->clt;
+	struct ibtrs_msg_conn_req msg;
+	struct rdma_conn_param param;
+
+	int err;
+
+	memset(&param, 0, sizeof(param));
+	param.retry_count = clamp(retry_cnt, MIN_RTR_CNT, MAX_RTR_CNT);
+	param.rnr_retry_count = 7;
+	param.private_data = &msg;
+	param.private_data_len = sizeof(msg);
+
+	/*
+	 * Those two are the part of struct cma_hdr which is shared
+	 * with private_data in case of AF_IB, so put zeroes to avoid
+	 * wrong validation inside cma.c on receiver side.
+	 */
+	msg.__cma_version = 0;
+	msg.__ip_version = 0;
+	msg.magic = cpu_to_le16(IBTRS_MAGIC);
+	msg.version = cpu_to_le16(IBTRS_PROTO_VER);
+	msg.cid = cpu_to_le16(con->c.cid);
+	msg.cid_num = cpu_to_le16(sess->s.con_num);
+	msg.recon_cnt = cpu_to_le16(sess->s.recon_cnt);
+	uuid_copy(&msg.sess_uuid, &sess->s.uuid);
+	uuid_copy(&msg.paths_uuid, &clt->paths_uuid);
+
+	err = rdma_connect(con->c.cm_id, &param);
+	if (err)
+		ibtrs_err(sess, "rdma_connect(): %d\n", err);
+
+	return err;
+}
+
+static int ibtrs_rdma_conn_established(struct ibtrs_clt_con *con,
+				       struct rdma_cm_event *ev)
+{
+	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
+	struct ibtrs_clt *clt = sess->clt;
+	const struct ibtrs_msg_conn_rsp *msg;
+	u16 version, queue_depth;
+	int errno;
+	u8 len;
+
+	msg = ev->param.conn.private_data;
+	len = ev->param.conn.private_data_len;
+	if (unlikely(len < sizeof(*msg))) {
+		ibtrs_err(sess, "Invalid IBTRS connection response\n");
+		return -ECONNRESET;
+	}
+	if (unlikely(le16_to_cpu(msg->magic) != IBTRS_MAGIC)) {
+		ibtrs_err(sess, "Invalid IBTRS magic\n");
+		return -ECONNRESET;
+	}
+	version = le16_to_cpu(msg->version);
+	if (unlikely(version >> 8 != IBTRS_PROTO_VER_MAJOR)) {
+		ibtrs_err(sess, "Unsupported major IBTRS version: %d, expected %d\n",
+			  version >> 8, IBTRS_PROTO_VER_MAJOR);
+		return -ECONNRESET;
+	}
+	errno = le16_to_cpu(msg->errno);
+	if (unlikely(errno)) {
+		ibtrs_err(sess, "Invalid IBTRS message: errno %d\n",
+			  errno);
+		return -ECONNRESET;
+	}
+	if (con->c.cid == 0) {
+		queue_depth = le16_to_cpu(msg->queue_depth);
+
+		if (queue_depth > MAX_SESS_QUEUE_DEPTH) {
+			ibtrs_err(sess, "Invalid IBTRS message: queue=%d\n",
+				  queue_depth);
+			return -ECONNRESET;
+		}
+		if (!sess->rbufs || sess->queue_depth < queue_depth) {
+			kfree(sess->rbufs);
+			sess->rbufs = kcalloc(queue_depth, sizeof(*sess->rbufs),
+					      GFP_KERNEL);
+			if (unlikely(!sess->rbufs)) {
+				ibtrs_err(sess,
+					  "Failed to allocate queue_depth=%d\n",
+					  queue_depth);
+				return -ENOMEM;
+			}
+		}
+		sess->queue_depth = queue_depth;
+		sess->max_hdr_size = le32_to_cpu(msg->max_hdr_size);
+		sess->max_io_size = le32_to_cpu(msg->max_io_size);
+		sess->flags = le32_to_cpu(msg->flags);
+		sess->chunk_size = sess->max_io_size + sess->max_hdr_size;
+
+		/*
+		 * Global queue depth and IO size is always a minimum.
+		 * If while a reconnection server sends us a value a bit
+		 * higher - client does not care and uses cached minimum.
+		 *
+		 * Since we can have several sessions (paths) restablishing
+		 * connections in parallel, use lock.
+		 */
+		mutex_lock(&clt->paths_mutex);
+		clt->queue_depth = min_not_zero(sess->queue_depth,
+						clt->queue_depth);
+		clt->max_io_size = min_not_zero(sess->max_io_size,
+						clt->max_io_size);
+		mutex_unlock(&clt->paths_mutex);
+
+		/*
+		 * Cache the hca_port and hca_name for sysfs
+		 */
+		sess->hca_port = con->c.cm_id->port_num;
+		scnprintf(sess->hca_name, sizeof(sess->hca_name),
+			  sess->s.dev->ib_dev->name);
+		sess->s.src_addr = con->c.cm_id->route.addr.src_addr;
+	}
+
+	return 0;
+}
+
+static inline void flag_success_on_conn(struct ibtrs_clt_con *con)
+{
+	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
+
+	atomic_inc(&sess->connected_cnt);
+	con->cm_err = 1;
+}
+
+static int ibtrs_rdma_conn_rejected(struct ibtrs_clt_con *con,
+				    struct rdma_cm_event *ev)
+{
+	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
+	const struct ibtrs_msg_conn_rsp *msg;
+	const char *rej_msg;
+	int status, errno;
+	u8 data_len;
+
+	status = ev->status;
+	rej_msg = rdma_reject_msg(con->c.cm_id, status);
+	msg = rdma_consumer_reject_data(con->c.cm_id, ev, &data_len);
+
+	if (msg && data_len >= sizeof(*msg)) {
+		errno = (int16_t)le16_to_cpu(msg->errno);
+		if (errno == -EBUSY)
+			ibtrs_err(sess,
+				  "Previous session is still exists on the server, please reconnect later\n");
+		else
+			ibtrs_err(sess,
+				  "Connect rejected: status %d (%s), ibtrs errno %d\n",
+				  status, rej_msg, errno);
+	} else {
+		ibtrs_err(sess,
+			  "Connect rejected but with malformed message: status %d (%s)\n",
+			  status, rej_msg);
+	}
+
+	return -ECONNRESET;
+}
+
+static void ibtrs_clt_close_conns(struct ibtrs_clt_sess *sess, bool wait)
+{
+	if (ibtrs_clt_change_state(sess, IBTRS_CLT_CLOSING))
+		queue_work(ibtrs_wq, &sess->close_work);
+	if (wait)
+		flush_work(&sess->close_work);
+}
+
+static inline void flag_error_on_conn(struct ibtrs_clt_con *con, int cm_err)
+{
+	if (con->cm_err == 1) {
+		struct ibtrs_clt_sess *sess;
+
+		sess = to_clt_sess(con->c.sess);
+		if (atomic_dec_and_test(&sess->connected_cnt))
+			wake_up(&sess->state_wq);
+	}
+	con->cm_err = cm_err;
+}
+
+static int ibtrs_clt_rdma_cm_handler(struct rdma_cm_id *cm_id,
+				     struct rdma_cm_event *ev)
+{
+	struct ibtrs_clt_con *con = cm_id->context;
+	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
+	int cm_err = 0;
+
+	switch (ev->event) {
+	case RDMA_CM_EVENT_ADDR_RESOLVED:
+		cm_err = ibtrs_rdma_addr_resolved(con);
+		break;
+	case RDMA_CM_EVENT_ROUTE_RESOLVED:
+		cm_err = ibtrs_rdma_route_resolved(con);
+		break;
+	case RDMA_CM_EVENT_ESTABLISHED:
+		con->cm_err = ibtrs_rdma_conn_established(con, ev);
+		if (likely(!con->cm_err)) {
+			/*
+			 * Report success and wake up. Here we abuse state_wq,
+			 * i.e. wake up without state change, but we set cm_err.
+			 */
+			flag_success_on_conn(con);
+			wake_up(&sess->state_wq);
+			return 0;
+		}
+		break;
+	case RDMA_CM_EVENT_REJECTED:
+		cm_err = ibtrs_rdma_conn_rejected(con, ev);
+		break;
+	case RDMA_CM_EVENT_CONNECT_ERROR:
+	case RDMA_CM_EVENT_UNREACHABLE:
+		ibtrs_wrn(sess, "CM error event %d\n", ev->event);
+		cm_err = -ECONNRESET;
+		break;
+	case RDMA_CM_EVENT_ADDR_ERROR:
+	case RDMA_CM_EVENT_ROUTE_ERROR:
+		cm_err = -EHOSTUNREACH;
+		break;
+	case RDMA_CM_EVENT_DISCONNECTED:
+	case RDMA_CM_EVENT_ADDR_CHANGE:
+	case RDMA_CM_EVENT_TIMEWAIT_EXIT:
+		cm_err = -ECONNRESET;
+		break;
+	case RDMA_CM_EVENT_DEVICE_REMOVAL:
+		/*
+		 * Device removal is a special case.  Queue close and return 0.
+		 */
+		ibtrs_clt_close_conns(sess, false);
+		return 0;
+	default:
+		ibtrs_err(sess, "Unexpected RDMA CM event (%d)\n", ev->event);
+		cm_err = -ECONNRESET;
+		break;
+	}
+
+	if (cm_err) {
+		/*
+		 * cm error makes sense only on connection establishing,
+		 * in other cases we rely on normal procedure of reconnecting.
+		 */
+		flag_error_on_conn(con, cm_err);
+		ibtrs_rdma_error_recovery(con);
+	}
+
+	return 0;
+}
+
 static int create_cm(struct ibtrs_clt_con *con)
 {
 	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
@@ -1683,14 +1947,6 @@ static void ibtrs_clt_close_work(struct work_struct *work)
 	ibtrs_clt_change_state(sess, IBTRS_CLT_CLOSED);
 }
 
-static void ibtrs_clt_close_conns(struct ibtrs_clt_sess *sess, bool wait)
-{
-	if (ibtrs_clt_change_state(sess, IBTRS_CLT_CLOSING))
-		queue_work(ibtrs_wq, &sess->close_work);
-	if (wait)
-		flush_work(&sess->close_work);
-}
-
 static int init_conns(struct ibtrs_clt_sess *sess)
 {
 	unsigned int cid;
@@ -1740,264 +1996,6 @@ destroy:
 	ibtrs_clt_change_state(sess, IBTRS_CLT_CONNECTING_ERR);
 
 	return err;
-}
-
-static int ibtrs_rdma_addr_resolved(struct ibtrs_clt_con *con)
-{
-	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
-	int err;
-
-	err = create_con_cq_qp(con);
-	if (unlikely(err)) {
-		ibtrs_err(sess, "create_con_cq_qp(), err: %d\n", err);
-		return err;
-	}
-	err = rdma_resolve_route(con->c.cm_id, IBTRS_CONNECT_TIMEOUT_MS);
-	if (unlikely(err)) {
-		ibtrs_err(sess, "Resolving route failed, err: %d\n", err);
-		destroy_con_cq_qp(con);
-	}
-
-	return err;
-}
-
-static int ibtrs_rdma_route_resolved(struct ibtrs_clt_con *con)
-{
-	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
-	struct ibtrs_clt *clt = sess->clt;
-	struct ibtrs_msg_conn_req msg;
-	struct rdma_conn_param param;
-
-	int err;
-
-	memset(&param, 0, sizeof(param));
-	param.retry_count = clamp(retry_cnt, MIN_RTR_CNT, MAX_RTR_CNT);
-	param.rnr_retry_count = 7;
-	param.private_data = &msg;
-	param.private_data_len = sizeof(msg);
-
-	/*
-	 * Those two are the part of struct cma_hdr which is shared
-	 * with private_data in case of AF_IB, so put zeroes to avoid
-	 * wrong validation inside cma.c on receiver side.
-	 */
-	msg.__cma_version = 0;
-	msg.__ip_version = 0;
-	msg.magic = cpu_to_le16(IBTRS_MAGIC);
-	msg.version = cpu_to_le16(IBTRS_PROTO_VER);
-	msg.cid = cpu_to_le16(con->c.cid);
-	msg.cid_num = cpu_to_le16(sess->s.con_num);
-	msg.recon_cnt = cpu_to_le16(sess->s.recon_cnt);
-	uuid_copy(&msg.sess_uuid, &sess->s.uuid);
-	uuid_copy(&msg.paths_uuid, &clt->paths_uuid);
-
-	err = rdma_connect(con->c.cm_id, &param);
-	if (err)
-		ibtrs_err(sess, "rdma_connect(): %d\n", err);
-
-	return err;
-}
-
-static int ibtrs_rdma_conn_established(struct ibtrs_clt_con *con,
-				       struct rdma_cm_event *ev)
-{
-	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
-	struct ibtrs_clt *clt = sess->clt;
-	const struct ibtrs_msg_conn_rsp *msg;
-	u16 version, queue_depth;
-	int errno;
-	u8 len;
-
-	msg = ev->param.conn.private_data;
-	len = ev->param.conn.private_data_len;
-	if (unlikely(len < sizeof(*msg))) {
-		ibtrs_err(sess, "Invalid IBTRS connection response\n");
-		return -ECONNRESET;
-	}
-	if (unlikely(le16_to_cpu(msg->magic) != IBTRS_MAGIC)) {
-		ibtrs_err(sess, "Invalid IBTRS magic\n");
-		return -ECONNRESET;
-	}
-	version = le16_to_cpu(msg->version);
-	if (unlikely(version >> 8 != IBTRS_PROTO_VER_MAJOR)) {
-		ibtrs_err(sess, "Unsupported major IBTRS version: %d, expected %d\n",
-			  version >> 8, IBTRS_PROTO_VER_MAJOR);
-		return -ECONNRESET;
-	}
-	errno = le16_to_cpu(msg->errno);
-	if (unlikely(errno)) {
-		ibtrs_err(sess, "Invalid IBTRS message: errno %d\n",
-			  errno);
-		return -ECONNRESET;
-	}
-	if (con->c.cid == 0) {
-		queue_depth = le16_to_cpu(msg->queue_depth);
-
-		if (queue_depth > MAX_SESS_QUEUE_DEPTH) {
-			ibtrs_err(sess, "Invalid IBTRS message: queue=%d\n",
-				  queue_depth);
-			return -ECONNRESET;
-		}
-		if (!sess->rbufs || sess->queue_depth < queue_depth) {
-			kfree(sess->rbufs);
-			sess->rbufs = kcalloc(queue_depth, sizeof(*sess->rbufs),
-					      GFP_KERNEL);
-			if (unlikely(!sess->rbufs)) {
-				ibtrs_err(sess,
-					  "Failed to allocate queue_depth=%d\n",
-					  queue_depth);
-				return -ENOMEM;
-			}
-		}
-		sess->queue_depth = queue_depth;
-		sess->max_hdr_size = le32_to_cpu(msg->max_hdr_size);
-		sess->max_io_size = le32_to_cpu(msg->max_io_size);
-		sess->flags = le32_to_cpu(msg->flags);
-		sess->chunk_size = sess->max_io_size + sess->max_hdr_size;
-
-		/*
-		 * Global queue depth and IO size is always a minimum.
-		 * If while a reconnection server sends us a value a bit
-		 * higher - client does not care and uses cached minimum.
-		 *
-		 * Since we can have several sessions (paths) restablishing
-		 * connections in parallel, use lock.
-		 */
-		mutex_lock(&clt->paths_mutex);
-		clt->queue_depth = min_not_zero(sess->queue_depth,
-						clt->queue_depth);
-		clt->max_io_size = min_not_zero(sess->max_io_size,
-						clt->max_io_size);
-		mutex_unlock(&clt->paths_mutex);
-
-		/*
-		 * Cache the hca_port and hca_name for sysfs
-		 */
-		sess->hca_port = con->c.cm_id->port_num;
-		scnprintf(sess->hca_name, sizeof(sess->hca_name),
-			  sess->s.dev->ib_dev->name);
-		sess->s.src_addr = con->c.cm_id->route.addr.src_addr;
-	}
-
-	return 0;
-}
-
-static int ibtrs_rdma_conn_rejected(struct ibtrs_clt_con *con,
-				    struct rdma_cm_event *ev)
-{
-	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
-	const struct ibtrs_msg_conn_rsp *msg;
-	const char *rej_msg;
-	int status, errno;
-	u8 data_len;
-
-	status = ev->status;
-	rej_msg = rdma_reject_msg(con->c.cm_id, status);
-	msg = rdma_consumer_reject_data(con->c.cm_id, ev, &data_len);
-
-	if (msg && data_len >= sizeof(*msg)) {
-		errno = (int16_t)le16_to_cpu(msg->errno);
-		if (errno == -EBUSY)
-			ibtrs_err(sess,
-				  "Previous session is still exists on the server, please reconnect later\n");
-		else
-			ibtrs_err(sess,
-				  "Connect rejected: status %d (%s), ibtrs errno %d\n",
-				  status, rej_msg, errno);
-	} else {
-		ibtrs_err(sess,
-			  "Connect rejected but with malformed message: status %d (%s)\n",
-			  status, rej_msg);
-	}
-
-	return -ECONNRESET;
-}
-
-static inline void flag_success_on_conn(struct ibtrs_clt_con *con)
-{
-	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
-
-	atomic_inc(&sess->connected_cnt);
-	con->cm_err = 1;
-}
-
-static inline void flag_error_on_conn(struct ibtrs_clt_con *con, int cm_err)
-{
-	if (con->cm_err == 1) {
-		struct ibtrs_clt_sess *sess;
-
-		sess = to_clt_sess(con->c.sess);
-		if (atomic_dec_and_test(&sess->connected_cnt))
-			wake_up(&sess->state_wq);
-	}
-	con->cm_err = cm_err;
-}
-
-static int ibtrs_clt_rdma_cm_handler(struct rdma_cm_id *cm_id,
-				     struct rdma_cm_event *ev)
-{
-	struct ibtrs_clt_con *con = cm_id->context;
-	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
-	int cm_err = 0;
-
-	switch (ev->event) {
-	case RDMA_CM_EVENT_ADDR_RESOLVED:
-		cm_err = ibtrs_rdma_addr_resolved(con);
-		break;
-	case RDMA_CM_EVENT_ROUTE_RESOLVED:
-		cm_err = ibtrs_rdma_route_resolved(con);
-		break;
-	case RDMA_CM_EVENT_ESTABLISHED:
-		con->cm_err = ibtrs_rdma_conn_established(con, ev);
-		if (likely(!con->cm_err)) {
-			/*
-			 * Report success and wake up. Here we abuse state_wq,
-			 * i.e. wake up without state change, but we set cm_err.
-			 */
-			flag_success_on_conn(con);
-			wake_up(&sess->state_wq);
-			return 0;
-		}
-		break;
-	case RDMA_CM_EVENT_REJECTED:
-		cm_err = ibtrs_rdma_conn_rejected(con, ev);
-		break;
-	case RDMA_CM_EVENT_CONNECT_ERROR:
-	case RDMA_CM_EVENT_UNREACHABLE:
-		ibtrs_wrn(sess, "CM error event %d\n", ev->event);
-		cm_err = -ECONNRESET;
-		break;
-	case RDMA_CM_EVENT_ADDR_ERROR:
-	case RDMA_CM_EVENT_ROUTE_ERROR:
-		cm_err = -EHOSTUNREACH;
-		break;
-	case RDMA_CM_EVENT_DISCONNECTED:
-	case RDMA_CM_EVENT_ADDR_CHANGE:
-	case RDMA_CM_EVENT_TIMEWAIT_EXIT:
-		cm_err = -ECONNRESET;
-		break;
-	case RDMA_CM_EVENT_DEVICE_REMOVAL:
-		/*
-		 * Device removal is a special case.  Queue close and return 0.
-		 */
-		ibtrs_clt_close_conns(sess, false);
-		return 0;
-	default:
-		ibtrs_err(sess, "Unexpected RDMA CM event (%d)\n", ev->event);
-		cm_err = -ECONNRESET;
-		break;
-	}
-
-	if (cm_err) {
-		/*
-		 * cm error makes sense only on connection establishing,
-		 * in other cases we rely on normal procedure of reconnecting.
-		 */
-		flag_error_on_conn(con, cm_err);
-		ibtrs_rdma_error_recovery(con);
-	}
-
-	return 0;
 }
 
 static void ibtrs_clt_info_req_done(struct ib_cq *cq, struct ib_wc *wc)
