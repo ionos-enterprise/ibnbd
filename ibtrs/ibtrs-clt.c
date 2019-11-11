@@ -63,7 +63,6 @@ static struct ibtrs_ib_dev_pool dev_pool = {
 static struct workqueue_struct *ibtrs_wq;
 static struct class *ibtrs_dev_class;
 
-static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc);
 static void complete_rdma_req(struct ibtrs_clt_io_req *req, int errno,
 			      bool notify, bool can_wait);
 static int ibtrs_clt_write_req(struct ibtrs_clt_io_req *req);
@@ -486,10 +485,6 @@ static void process_io_rsp(struct ibtrs_clt_sess *sess, u32 msg_id,
 	complete_rdma_req(req, errno, true, false);
 }
 
-static struct ib_cqe io_comp_cqe = {
-	.done = ibtrs_clt_rdma_done
-};
-
 static void ibtrs_clt_recv_done(struct ibtrs_clt_con *con, struct ib_wc *wc)
 {
 	struct ibtrs_iu *iu;
@@ -556,6 +551,12 @@ static void ibtrs_clt_rkey_rsp_done(struct ibtrs_clt_con *con, struct ib_wc *wc)
 out:
 	ibtrs_rdma_error_recovery(con);
 }
+
+static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc);
+
+static struct ib_cqe io_comp_cqe = {
+	.done = ibtrs_clt_rdma_done
+};
 
 static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 {
