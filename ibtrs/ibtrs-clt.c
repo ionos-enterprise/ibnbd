@@ -1336,17 +1336,6 @@ static bool ibtrs_clt_change_state(struct ibtrs_clt_sess *sess,
 	return ibtrs_clt_change_state_get_old(sess, new_state, &old_state);
 }
 
-static enum ibtrs_clt_state ibtrs_clt_state(struct ibtrs_clt_sess *sess)
-{
-	enum ibtrs_clt_state state;
-
-	spin_lock_irq(&sess->state_wq.lock);
-	state = sess->state;
-	spin_unlock_irq(&sess->state_wq.lock);
-
-	return state;
-}
-
 static void ibtrs_clt_hb_err_handler(struct ibtrs_con *c)
 {
 	struct ibtrs_clt_con *con = container_of(c, typeof(*con), c);
@@ -2474,7 +2463,7 @@ static void ibtrs_clt_reconnect_work(struct work_struct *work)
 			    reconnect_dwork);
 	clt = sess->clt;
 
-	if (ibtrs_clt_state(sess) == IBTRS_CLT_CLOSING)
+	if (sess->state == IBTRS_CLT_CLOSING)
 		/* User requested closing */
 		return;
 
