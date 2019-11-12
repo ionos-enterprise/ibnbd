@@ -70,7 +70,7 @@ static inline bool ibtrs_clt_is_connected(const struct ibtrs_clt *clt)
 
 	rcu_read_lock();
 	list_for_each_entry_rcu(sess, &clt->paths_list, s.entry)
-		connected |= (sess->state == IBTRS_CLT_CONNECTED);
+		connected |= (READ_ONCE(sess->state) == IBTRS_CLT_CONNECTED);
 	rcu_read_unlock();
 
 	return connected;
@@ -1139,7 +1139,7 @@ static int ibtrs_clt_failover_req(struct ibtrs_clt *clt,
 	struct path_it it;
 
 	do_each_path(alive_sess, clt, &it) {
-		if (unlikely(alive_sess->state != IBTRS_CLT_CONNECTED))
+		if (unlikely(READ_ONCE(alive_sess->state) != IBTRS_CLT_CONNECTED))
 			continue;
 		req = ibtrs_clt_get_copy_req(alive_sess, fail_req);
 		if (req->dir == DMA_TO_DEVICE)
@@ -1900,7 +1900,7 @@ static int create_cm(struct ibtrs_clt_con *con)
 		err = con->cm_err;
 		goto errr;
 	}
-	if (unlikely(sess->state != IBTRS_CLT_CONNECTING)) {
+	if (unlikely(READ_ONCE(sess->state) != IBTRS_CLT_CONNECTING)) {
 		/* Device removal */
 		err = -ECONNABORTED;
 		goto errr;
@@ -1969,7 +1969,7 @@ static void ibtrs_clt_stop_and_destroy_conns(struct ibtrs_clt_sess *sess)
 	struct ibtrs_clt_con *con;
 	unsigned int cid;
 
-	WARN_ON(sess->state == IBTRS_CLT_CONNECTED);
+	WARN_ON(READ_ONCE(sess->state) == IBTRS_CLT_CONNECTED);
 
 	/*
 	 * Possible race with ibtrs_clt_open(), when DEVICE_REMOVAL comes
@@ -2404,8 +2404,8 @@ static int ibtrs_send_sess_info(struct ibtrs_clt_sess *sess)
 	wait_event_interruptible_timeout(sess->state_wq,
 				sess->state != IBTRS_CLT_CONNECTING,
 				msecs_to_jiffies(IBTRS_CONNECT_TIMEOUT_MS));
-	if (unlikely(sess->state != IBTRS_CLT_CONNECTED)) {
-		if (sess->state == IBTRS_CLT_CONNECTING_ERR)
+	if (unlikely(READ_ONCE(sess->state) != IBTRS_CLT_CONNECTED)) {
+		if (READ_ONCE(sess->state) == IBTRS_CLT_CONNECTING_ERR)
 			err = -ECONNRESET;
 		else
 			err = -ETIMEDOUT;
@@ -2463,7 +2463,7 @@ static void ibtrs_clt_reconnect_work(struct work_struct *work)
 			    reconnect_dwork);
 	clt = sess->clt;
 
-	if (sess->state == IBTRS_CLT_CLOSING)
+	if (READ_ONCE(sess->state) == IBTRS_CLT_CLOSING)
 		/* User requested closing */
 		return;
 
@@ -2697,7 +2697,8 @@ int ibtrs_clt_reconnect_from_sysfs(struct ibtrs_clt_sess *sess)
 		 * right now or work is pending.
 		 */
 		flush_delayed_work(&sess->reconnect_dwork);
-		err = (sess->state == IBTRS_CLT_CONNECTED ? 0 : -ENOTCONN);
+		err = (READ_ONCE(sess->state) ==
+		       IBTRS_CLT_CONNECTED ? 0 : -ENOTCONN);
 	}
 
 	return err;
@@ -2789,7 +2790,7 @@ int ibtrs_clt_request(int dir, ibtrs_conf_fn *conf, struct ibtrs_clt *clt,
 	}
 
 	do_each_path(sess, clt, &it) {
-		if (unlikely(sess->state != IBTRS_CLT_CONNECTED))
+		if (unlikely(READ_ONCE(sess->state) != IBTRS_CLT_CONNECTED))
 			continue;
 
 		if (unlikely(usr_len + hdr_len > sess->max_hdr_size)) {
