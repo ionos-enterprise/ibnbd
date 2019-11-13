@@ -873,7 +873,7 @@ static int process_info_req(struct ibtrs_srv_con *con,
 	err = ibtrs_srv_create_sess_files(sess);
 	if (unlikely(err))
 		goto iu_free;
-
+	get_device(&sess->srv->dev);
 	ibtrs_srv_change_state(sess, IBTRS_SRV_CONNECTED);
 	ibtrs_srv_start_hb(sess);
 
@@ -1359,7 +1359,8 @@ static void free_srv(struct ibtrs_srv *srv)
 	for (i = 0; i < srv->queue_depth; i++)
 		mempool_free(srv->chunks[i], chunk_pool);
 	kfree(srv->chunks);
-	kfree(srv);
+	/* last put to release the srv structure */
+	put_device(&srv->dev);
 }
 
 static inline struct ibtrs_srv *__find_srv_and_get(struct ibtrs_srv_ctx *ctx,

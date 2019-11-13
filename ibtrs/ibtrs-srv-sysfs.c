@@ -167,7 +167,9 @@ static struct attribute_group ibtrs_srv_stats_attr_group = {
 
 static void ibtrs_srv_dev_release(struct device *dev)
 {
-	/* Nobody plays with device references, so nop */
+	struct ibtrs_srv *srv = container_of(dev, struct ibtrs_srv, dev);
+
+	kfree(srv);
 }
 
 static int ibtrs_srv_create_once_sysfs_root_folders(struct ibtrs_srv_sess *sess)
