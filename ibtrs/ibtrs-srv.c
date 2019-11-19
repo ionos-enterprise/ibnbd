@@ -118,8 +118,6 @@ MODULE_PARM_DESC(cq_affinity_list,
 
 static struct workqueue_struct *ibtrs_wq;
 
-void close_sess(struct ibtrs_srv_sess *sess);
-
 static inline struct ibtrs_srv_con *to_srv_con(struct ibtrs_con *c)
 {
 	return container_of(c, struct ibtrs_srv_con, c);
@@ -432,6 +430,16 @@ static int send_io_resp_imm(struct ibtrs_srv_con *con, struct ibtrs_srv_op *id,
 		ibtrs_err_rl(sess, "ib_post_send(), err: %d\n", err);
 
 	return err;
+}
+
+void close_sess(struct ibtrs_srv_sess *sess)
+{
+	enum ibtrs_srv_state old_state;
+
+	if (ibtrs_srv_change_state_get_old(sess, IBTRS_SRV_CLOSING,
+					   &old_state))
+		queue_work(ibtrs_wq, &sess->close_work);
+	WARN_ON(sess->state != IBTRS_SRV_CLOSING);
 }
 
 /*
@@ -1819,16 +1827,6 @@ struct ibtrs_srv_ctx *ibtrs_srv_open(rdma_ev_fn *rdma_ev, link_ev_fn *link_ev,
 	return ctx;
 }
 EXPORT_SYMBOL(ibtrs_srv_open);
-
-void close_sess(struct ibtrs_srv_sess *sess)
-{
-	enum ibtrs_srv_state old_state;
-
-	if (ibtrs_srv_change_state_get_old(sess, IBTRS_SRV_CLOSING,
-					   &old_state))
-		queue_work(ibtrs_wq, &sess->close_work);
-	WARN_ON(sess->state != IBTRS_SRV_CLOSING);
-}
 
 static void close_sessions(struct ibtrs_srv *srv)
 {
