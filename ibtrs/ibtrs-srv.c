@@ -118,7 +118,7 @@ MODULE_PARM_DESC(cq_affinity_list,
 
 static struct workqueue_struct *ibtrs_wq;
 
-static void close_sess(struct ibtrs_srv_sess *sess);
+void close_sess(struct ibtrs_srv_sess *sess);
 
 static inline struct ibtrs_srv_con *to_srv_con(struct ibtrs_con *c)
 {
@@ -1820,12 +1820,7 @@ struct ibtrs_srv_ctx *ibtrs_srv_open(rdma_ev_fn *rdma_ev, link_ev_fn *link_ev,
 }
 EXPORT_SYMBOL(ibtrs_srv_open);
 
-void ibtrs_srv_queue_close(struct ibtrs_srv_sess *sess)
-{
-	close_sess(sess);
-}
-
-static void close_sess(struct ibtrs_srv_sess *sess)
+void close_sess(struct ibtrs_srv_sess *sess)
 {
 	enum ibtrs_srv_state old_state;
 

@@ -143,7 +143,7 @@ extern struct class *ibtrs_dev_class;
 #define TYPES_TO_SESSNAME(obj)						\
 	LIST(CASE(obj, struct ibtrs_srv_sess *, s.sessname))
 
-void ibtrs_srv_queue_close(struct ibtrs_srv_sess *sess);
+void close_sess(struct ibtrs_srv_sess *sess);
 
 /* ibtrs-srv-stats.c */
 

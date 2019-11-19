@@ -56,7 +56,7 @@ static ssize_t ibtrs_srv_disconnect_store(struct kobject *kobj,
 	sockaddr_to_str((struct sockaddr *)&sess->s.dst_addr, str, sizeof(str));
 
 	ibtrs_info(sess, "disconnect for path %s requested\n", str);
-	ibtrs_srv_queue_close(sess);
+	close_sess(sess);
 
 	return count;
 }
