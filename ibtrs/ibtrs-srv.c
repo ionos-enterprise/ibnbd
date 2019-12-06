@@ -140,6 +140,7 @@ static bool __ibtrs_srv_change_state(struct ibtrs_srv_sess *sess,
 	enum ibtrs_srv_state old_state;
 	bool changed = false;
 
+	lockdep_assert_held(&sess->state_lock);
 	old_state = sess->state;
 	switch (new_state) {
 	case IBTRS_SRV_CONNECTED:
