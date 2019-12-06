@@ -430,8 +430,8 @@ static inline void ibtrs_from_io_rsp_imm(u32 payload, u32 *msg_id, int *errno)
 	*errno = -(int)((payload >> 19) & 0x1ff);
 }
 
-#define STAT_STORE_FUNC(type, store, reset)				\
-static ssize_t store##_store(struct kobject *kobj,			\
+#define STAT_STORE_FUNC(type, set_value, reset)				\
+static ssize_t set_value##_store(struct kobject *kobj,			\
 			     struct kobj_attribute *attr,		\
 			     const char *buf, size_t count)		\
 {									\
@@ -448,8 +448,8 @@ static ssize_t store##_store(struct kobject *kobj,			\
 	return count;							\
 }
 
-#define STAT_SHOW_FUNC(type, show, print)				\
-static ssize_t show##_show(struct kobject *kobj,			\
+#define STAT_SHOW_FUNC(type, get_value, print)				\
+static ssize_t get_value##_show(struct kobject *kobj,			\
 			   struct kobj_attribute *attr,			\
 			   char *page)					\
 {									\
