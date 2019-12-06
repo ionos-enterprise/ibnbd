@@ -1596,7 +1596,7 @@ static void destroy_sysfs(struct ibnbd_clt_dev *dev,
 	ibnbd_clt_remove_dev_symlink(dev);
 	if (dev->kobj.state_initialized) {
 		if (sysfs_self)
-			/* To avoid deadlock firstly commit suicide */
+			/* To avoid deadlock firstly remove itself */
 			sysfs_remove_file_self(&dev->kobj, sysfs_self);
 		kobject_del(&dev->kobj);
 		kobject_put(&dev->kobj);
