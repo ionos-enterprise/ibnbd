@@ -123,7 +123,7 @@ static int ibnbd_clt_set_dev_attr(struct ibnbd_clt_dev *dev,
 	return 0;
 }
 
-static int ibnbd_clt_revalidate_disk(struct ibnbd_clt_dev *dev,
+static int ibnbd_clt_change_capacity(struct ibnbd_clt_dev *dev,
 				     size_t new_nsectors)
 {
 	int err = 0;
@@ -162,7 +162,7 @@ static int process_msg_open_rsp(struct ibnbd_clt_dev *dev,
 		 * meantime we need to revalidate it
 		 */
 		if (dev->nsectors != nsectors)
-			ibnbd_clt_revalidate_disk(dev, nsectors);
+			ibnbd_clt_change_capacity(dev, nsectors);
 		ibnbd_clt_info(dev, "Device online, device remapped successfully\n");
 	}
 	err = ibnbd_clt_set_dev_attr(dev, rsp);
@@ -186,7 +186,7 @@ int ibnbd_clt_resize_disk(struct ibnbd_clt_dev *dev, size_t newsize)
 		ret = -ENOENT;
 		goto out;
 	}
-	ret = ibnbd_clt_revalidate_disk(dev, newsize);
+	ret = ibnbd_clt_change_capacity(dev, newsize);
 
 out:
 	mutex_unlock(&dev->lock);
