@@ -26,8 +26,6 @@
 #include "ibnbd-clt.h"
 #include "ibnbd-srv.h"
 
-void unknown_type(void);
-
 #define ibnbd_clt_log(fn, dev, fmt, ...) (				\
 		fn("<%s@%s> " fmt, (dev)->pathname,			\
 		(dev)->sess->sessname,					\
