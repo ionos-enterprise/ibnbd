@@ -309,10 +309,9 @@ static void ibtrs_rdma_error_recovery(struct ibtrs_clt_con *con)
 static void ibtrs_clt_fast_reg_done(struct ib_cq *cq, struct ib_wc *wc)
 {
 	struct ibtrs_clt_con *con = cq->cq_context;
-	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
 
 	if (unlikely(wc->status != IB_WC_SUCCESS)) {
-		ibtrs_err(sess, "Failed IB_WR_REG_MR: %s\n",
+		ibtrs_err(con->c.sess, "Failed IB_WR_REG_MR: %s\n",
 			  ib_wc_status_msg(wc->status));
 		ibtrs_rdma_error_recovery(con);
 	}
@@ -330,10 +329,9 @@ static void ibtrs_clt_inv_rkey_done(struct ib_cq *cq, struct ib_wc *wc)
 	struct ibtrs_clt_io_req *req =
 		container_of(wc->wr_cqe, typeof(*req), inv_cqe);
 	struct ibtrs_clt_con *con = cq->cq_context;
-	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
 
 	if (unlikely(wc->status != IB_WC_SUCCESS)) {
-		ibtrs_err(sess, "Failed IB_WR_LOCAL_INV: %s\n",
+		ibtrs_err(con->c.sess, "Failed IB_WR_LOCAL_INV: %s\n",
 			  ib_wc_status_msg(wc->status));
 		ibtrs_rdma_error_recovery(con);
 	}
@@ -402,7 +400,7 @@ static void complete_rdma_req(struct ibtrs_clt_io_req *req, int errno,
 
 			err = ibtrs_inv_rkey(req);
 			if (unlikely(err)) {
-				ibtrs_err(sess, "Send INV WR key=%#x: %d\n",
+				ibtrs_err(con->c.sess, "Send INV WR key=%#x: %d\n",
 					  req->mr->rkey, err);
 			} else if (likely(can_wait)) {
 				wait_for_completion(&req->inv_comp);
@@ -442,7 +440,7 @@ static int ibtrs_post_send_rdma(struct ibtrs_clt_con *con,
 	struct ib_sge sge;
 
 	if (unlikely(!req->sg_size)) {
-		ibtrs_wrn(sess, "Doing RDMA Write failed, no data supplied\n");
+		ibtrs_wrn(con->c.sess, "Doing RDMA Write failed, no data supplied\n");
 		return -EINVAL;
 	}
 
@@ -491,7 +489,7 @@ static void ibtrs_clt_recv_done(struct ibtrs_clt_con *con, struct ib_wc *wc)
 			  cqe);
 	err = ibtrs_iu_post_recv(&con->c, iu);
 	if (unlikely(err)) {
-		ibtrs_err(sess, "post iu failed %d\n", err);
+		ibtrs_err(con->c.sess, "post iu failed %d\n", err);
 		ibtrs_rdma_error_recovery(con);
 	}
 }
@@ -511,7 +509,7 @@ static void ibtrs_clt_rkey_rsp_done(struct ibtrs_clt_con *con, struct ib_wc *wc)
 	iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
 
 	if (unlikely(wc->byte_len < sizeof(*msg))) {
-		ibtrs_err(sess, "rkey response is malformed: size %d\n",
+		ibtrs_err(con->c.sess, "rkey response is malformed: size %d\n",
 			  wc->byte_len);
 		goto out;
 	}
@@ -519,7 +517,7 @@ static void ibtrs_clt_rkey_rsp_done(struct ibtrs_clt_con *con, struct ib_wc *wc)
 				   iu->size, DMA_FROM_DEVICE);
 	msg = iu->buf;
 	if (unlikely(le16_to_cpu(msg->type) != IBTRS_MSG_RKEY_RSP)) {
-		ibtrs_err(sess, "rkey response is malformed: type %d\n",
+		ibtrs_err(sess->clt, "rkey response is malformed: type %d\n",
 			  le16_to_cpu(msg->type));
 		goto out;
 	}
@@ -563,7 +561,7 @@ static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 
 	if (unlikely(wc->status != IB_WC_SUCCESS)) {
 		if (wc->status != IB_WC_WR_FLUSH_ERR) {
-			ibtrs_err(sess, "RDMA failed: %s\n",
+			ibtrs_err(sess->clt, "RDMA failed: %s\n",
 				  ib_wc_status_msg(wc->status));
 			ibtrs_rdma_error_recovery(con);
 		}
@@ -600,7 +598,7 @@ static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 			if (sess->flags == IBTRS_MSG_NEW_RKEY_F)
 				return  ibtrs_clt_recv_done(con, wc);
 		} else {
-			ibtrs_wrn(sess, "Unknown IMM type %u\n", imm_type);
+			ibtrs_wrn(con->c.sess, "Unknown IMM type %u\n", imm_type);
 		}
 		if (w_inval)
 			/*
@@ -611,7 +609,7 @@ static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 		else
 			err = ibtrs_post_recv_empty(&con->c, &io_comp_cqe);
 		if (unlikely(err)) {
-			ibtrs_err(sess, "ibtrs_post_recv_empty(): %d\n", err);
+			ibtrs_err(con->c.sess, "ibtrs_post_recv_empty(): %d\n", err);
 			ibtrs_rdma_error_recovery(con);
 			break;
 		}
@@ -638,7 +636,7 @@ static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 		break;
 
 	default:
-		ibtrs_wrn(sess, "Unexpected WC type: %d\n", wc->opcode);
+		ibtrs_wrn(sess->clt, "Unexpected WC type: %d\n", wc->opcode);
 		return;
 	}
 }
@@ -683,7 +681,7 @@ static int post_recv_sess(struct ibtrs_clt_sess *sess)
 
 		err = post_recv_io(to_clt_con(sess->s.con[cid]), q_size);
 		if (unlikely(err)) {
-			ibtrs_err(sess, "post_recv_io(), err: %d\n", err);
+			ibtrs_err(sess->clt, "post_recv_io(), err: %d\n", err);
 			return err;
 		}
 	}
@@ -944,7 +942,8 @@ static int ibtrs_post_rdma_write_sg(struct ibtrs_clt_con *con,
 static int ibtrs_clt_write_req(struct ibtrs_clt_io_req *req)
 {
 	struct ibtrs_clt_con *con = req->con;
-	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
+	struct ibtrs_sess *s = con->c.sess;
+	struct ibtrs_clt_sess *sess = to_clt_sess(s);
 	struct ibtrs_msg_rdma_write *msg;
 
 	struct ibtrs_rbuf *rbuf;
@@ -954,7 +953,7 @@ static int ibtrs_clt_write_req(struct ibtrs_clt_io_req *req)
 	const size_t tsize = sizeof(*msg) + req->data_len + req->usr_len;
 
 	if (unlikely(tsize > sess->chunk_size)) {
-		ibtrs_wrn(sess, "Write request failed, size too big %zu > %d\n",
+		ibtrs_wrn(s, "Write request failed, size too big %zu > %d\n",
 			  tsize, sess->chunk_size);
 		return -EMSGSIZE;
 	}
@@ -962,7 +961,7 @@ static int ibtrs_clt_write_req(struct ibtrs_clt_io_req *req)
 		count = ib_dma_map_sg(sess->s.dev->ib_dev, req->sglist,
 				      req->sg_cnt, req->dir);
 		if (unlikely(!count)) {
-			ibtrs_wrn(sess, "Write request failed, map failed\n");
+			ibtrs_wrn(s, "Write request failed, map failed\n");
 			return -EINVAL;
 		}
 	}
@@ -988,7 +987,7 @@ static int ibtrs_clt_write_req(struct ibtrs_clt_io_req *req)
 				       req->usr_len + sizeof(*msg),
 				       imm);
 	if (unlikely(ret)) {
-		ibtrs_err(sess, "Write request failed: %d\n", ret);
+		ibtrs_err(s, "Write request failed: %d\n", ret);
 		ibtrs_clt_decrease_inflight(&sess->stats);
 		if (req->sg_cnt)
 			ib_dma_unmap_sg(sess->s.dev->ib_dev, req->sglist,
@@ -1017,7 +1016,8 @@ static int ibtrs_map_sg_fr(struct ibtrs_clt_io_req *req, size_t count)
 static int ibtrs_clt_read_req(struct ibtrs_clt_io_req *req)
 {
 	struct ibtrs_clt_con *con = req->con;
-	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
+	struct ibtrs_sess *s = con->c.sess;
+	struct ibtrs_clt_sess *sess = to_clt_sess(s);
 	struct ibtrs_msg_rdma_read *msg;
 	struct ibtrs_ib_dev *dev;
 	struct scatterlist *sg;
@@ -1030,10 +1030,11 @@ static int ibtrs_clt_read_req(struct ibtrs_clt_io_req *req)
 
 	const size_t tsize = sizeof(*msg) + req->data_len + req->usr_len;
 
+	s = &sess->s;
 	dev = sess->s.dev;
 
 	if (unlikely(tsize > sess->chunk_size)) {
-		ibtrs_wrn(sess,
+		ibtrs_wrn(s,
 			  "Read request failed, message size is %zu, bigger than CHUNK_SIZE %d\n",
 			  tsize, sess->chunk_size);
 		return -EMSGSIZE;
@@ -1043,7 +1044,7 @@ static int ibtrs_clt_read_req(struct ibtrs_clt_io_req *req)
 		count = ib_dma_map_sg(dev->ib_dev, req->sglist, req->sg_cnt,
 				      req->dir);
 		if (unlikely(!count)) {
-			ibtrs_wrn(sess,
+			ibtrs_wrn(s,
 				  "Read request failed, dma map failed\n");
 			return -EINVAL;
 		}
@@ -1056,7 +1057,7 @@ static int ibtrs_clt_read_req(struct ibtrs_clt_io_req *req)
 	if (count > noreg_cnt) {
 		ret = ibtrs_map_sg_fr(req, count);
 		if (ret < 0) {
-			ibtrs_err_rl(sess,
+			ibtrs_err_rl(s,
 				     "Read request failed, failed to map  fast reg. data, err: %d\n",
 				     ret);
 			ib_dma_unmap_sg(dev->ib_dev, req->sglist, req->sg_cnt,
@@ -1116,7 +1117,7 @@ static int ibtrs_clt_read_req(struct ibtrs_clt_io_req *req)
 	ret = ibtrs_post_send_rdma(req->con, req, &sess->rbufs[buf_id],
 				   req->data_len, imm, wr);
 	if (unlikely(ret)) {
-		ibtrs_err(sess, "Read request failed: %d\n", ret);
+		ibtrs_err(s, "Read request failed: %d\n", ret);
 		ibtrs_clt_decrease_inflight(&sess->stats);
 		req->need_inv = false;
 		if (req->sg_cnt)
@@ -1503,7 +1504,7 @@ static int create_con_cq_qp(struct ibtrs_clt_con *con)
 		sess->s.dev = ibtrs_ib_dev_find_or_add(con->c.cm_id->device,
 						       &dev_pool);
 		if (unlikely(!sess->s.dev)) {
-			ibtrs_wrn(sess,
+			ibtrs_wrn(sess->clt,
 				  "ibtrs_ib_dev_find_get_or_add(): no memory\n");
 			return -ENOMEM;
 		}
@@ -1588,17 +1589,17 @@ static void destroy_cm(struct ibtrs_clt_con *con)
 
 static int ibtrs_rdma_addr_resolved(struct ibtrs_clt_con *con)
 {
-	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
+	struct ibtrs_sess *s = con->c.sess;
 	int err;
 
 	err = create_con_cq_qp(con);
 	if (unlikely(err)) {
-		ibtrs_err(sess, "create_con_cq_qp(), err: %d\n", err);
+		ibtrs_err(s, "create_con_cq_qp(), err: %d\n", err);
 		return err;
 	}
 	err = rdma_resolve_route(con->c.cm_id, IBTRS_CONNECT_TIMEOUT_MS);
 	if (unlikely(err)) {
-		ibtrs_err(sess, "Resolving route failed, err: %d\n", err);
+		ibtrs_err(s, "Resolving route failed, err: %d\n", err);
 		destroy_con_cq_qp(con);
 	}
 
@@ -1637,7 +1638,7 @@ static int ibtrs_rdma_route_resolved(struct ibtrs_clt_con *con)
 
 	err = rdma_connect(con->c.cm_id, &param);
 	if (err)
-		ibtrs_err(sess, "rdma_connect(): %d\n", err);
+		ibtrs_err(clt, "rdma_connect(): %d\n", err);
 
 	return err;
 }
@@ -1655,22 +1656,22 @@ static int ibtrs_rdma_conn_established(struct ibtrs_clt_con *con,
 	msg = ev->param.conn.private_data;
 	len = ev->param.conn.private_data_len;
 	if (unlikely(len < sizeof(*msg))) {
-		ibtrs_err(sess, "Invalid IBTRS connection response\n");
+		ibtrs_err(clt, "Invalid IBTRS connection response\n");
 		return -ECONNRESET;
 	}
 	if (unlikely(le16_to_cpu(msg->magic) != IBTRS_MAGIC)) {
-		ibtrs_err(sess, "Invalid IBTRS magic\n");
+		ibtrs_err(clt, "Invalid IBTRS magic\n");
 		return -ECONNRESET;
 	}
 	version = le16_to_cpu(msg->version);
 	if (unlikely(version >> 8 != IBTRS_PROTO_VER_MAJOR)) {
-		ibtrs_err(sess, "Unsupported major IBTRS version: %d, expected %d\n",
+		ibtrs_err(clt, "Unsupported major IBTRS version: %d, expected %d\n",
 			  version >> 8, IBTRS_PROTO_VER_MAJOR);
 		return -ECONNRESET;
 	}
 	errno = le16_to_cpu(msg->errno);
 	if (unlikely(errno)) {
-		ibtrs_err(sess, "Invalid IBTRS message: errno %d\n",
+		ibtrs_err(clt, "Invalid IBTRS message: errno %d\n",
 			  errno);
 		return -ECONNRESET;
 	}
@@ -1678,7 +1679,7 @@ static int ibtrs_rdma_conn_established(struct ibtrs_clt_con *con,
 		queue_depth = le16_to_cpu(msg->queue_depth);
 
 		if (queue_depth > MAX_SESS_QUEUE_DEPTH) {
-			ibtrs_err(sess, "Invalid IBTRS message: queue=%d\n",
+			ibtrs_err(clt, "Invalid IBTRS message: queue=%d\n",
 				  queue_depth);
 			return -ECONNRESET;
 		}
@@ -1687,7 +1688,7 @@ static int ibtrs_rdma_conn_established(struct ibtrs_clt_con *con,
 			sess->rbufs = kcalloc(queue_depth, sizeof(*sess->rbufs),
 					      GFP_KERNEL);
 			if (unlikely(!sess->rbufs)) {
-				ibtrs_err(sess,
+				ibtrs_err(clt,
 					  "Failed to allocate queue_depth=%d\n",
 					  queue_depth);
 				return -ENOMEM;
@@ -1737,7 +1738,7 @@ static inline void flag_success_on_conn(struct ibtrs_clt_con *con)
 static int ibtrs_rdma_conn_rejected(struct ibtrs_clt_con *con,
 				    struct rdma_cm_event *ev)
 {
-	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
+	struct ibtrs_sess *s = con->c.sess;
 	const struct ibtrs_msg_conn_rsp *msg;
 	const char *rej_msg;
 	int status, errno;
@@ -1750,14 +1751,14 @@ static int ibtrs_rdma_conn_rejected(struct ibtrs_clt_con *con,
 	if (msg && data_len >= sizeof(*msg)) {
 		errno = (int16_t)le16_to_cpu(msg->errno);
 		if (errno == -EBUSY)
-			ibtrs_err(sess,
+			ibtrs_err(s,
 				  "Previous session is still exists on the server, please reconnect later\n");
 		else
-			ibtrs_err(sess,
+			ibtrs_err(s,
 				  "Connect rejected: status %d (%s), ibtrs errno %d\n",
 				  status, rej_msg, errno);
 	} else {
-		ibtrs_err(sess,
+		ibtrs_err(s,
 			  "Connect rejected but with malformed message: status %d (%s)\n",
 			  status, rej_msg);
 	}
@@ -1789,7 +1790,8 @@ static int ibtrs_clt_rdma_cm_handler(struct rdma_cm_id *cm_id,
 				     struct rdma_cm_event *ev)
 {
 	struct ibtrs_clt_con *con = cm_id->context;
-	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
+	struct ibtrs_sess *s = con->c.sess;
+	struct ibtrs_clt_sess *sess = to_clt_sess(s);
 	int cm_err = 0;
 
 	switch (ev->event) {
@@ -1816,7 +1818,7 @@ static int ibtrs_clt_rdma_cm_handler(struct rdma_cm_id *cm_id,
 		break;
 	case RDMA_CM_EVENT_CONNECT_ERROR:
 	case RDMA_CM_EVENT_UNREACHABLE:
-		ibtrs_wrn(sess, "CM error event %d\n", ev->event);
+		ibtrs_wrn(s, "CM error event %d\n", ev->event);
 		cm_err = -ECONNRESET;
 		break;
 	case RDMA_CM_EVENT_ADDR_ERROR:
@@ -1835,7 +1837,7 @@ static int ibtrs_clt_rdma_cm_handler(struct rdma_cm_id *cm_id,
 		ibtrs_clt_close_conns(sess, false);
 		return 0;
 	default:
-		ibtrs_err(sess, "Unexpected RDMA CM event (%d)\n", ev->event);
+		ibtrs_err(s, "Unexpected RDMA CM event (%d)\n", ev->event);
 		cm_err = -ECONNRESET;
 		break;
 	}
@@ -1854,7 +1856,8 @@ static int ibtrs_clt_rdma_cm_handler(struct rdma_cm_id *cm_id,
 
 static int create_cm(struct ibtrs_clt_con *con)
 {
-	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
+	struct ibtrs_sess *s = con->c.sess;
+	struct ibtrs_clt_sess *sess = to_clt_sess(s);
 	struct rdma_cm_id *cm_id;
 	int err;
 
@@ -1863,7 +1866,7 @@ static int create_cm(struct ibtrs_clt_con *con)
 			       RDMA_PS_IB : RDMA_PS_TCP, IB_QPT_RC);
 	if (unlikely(IS_ERR(cm_id))) {
 		err = PTR_ERR(cm_id);
-		ibtrs_err(sess, "Failed to create CM ID, err: %d\n", err);
+		ibtrs_err(s, "Failed to create CM ID, err: %d\n", err);
 
 		return err;
 	}
@@ -1872,14 +1875,14 @@ static int create_cm(struct ibtrs_clt_con *con)
 	/* allow the port to be reused */
 	err = rdma_set_reuseaddr(cm_id, 1);
 	if (err != 0) {
-		ibtrs_err(sess, "Set address reuse failed, err: %d\n", err);
+		ibtrs_err(s, "Set address reuse failed, err: %d\n", err);
 		goto destroy_cm;
 	}
 	err = rdma_resolve_addr(cm_id, (struct sockaddr *)&sess->s.src_addr,
 				(struct sockaddr *)&sess->s.dst_addr,
 				IBTRS_CONNECT_TIMEOUT_MS);
 	if (unlikely(err)) {
-		ibtrs_err(sess, "Failed to resolve address, err: %d\n", err);
+		ibtrs_err(s, "Failed to resolve address, err: %d\n", err);
 		goto destroy_cm;
 	}
 	/*
@@ -2227,7 +2230,7 @@ static void ibtrs_clt_info_req_done(struct ib_cq *cq, struct ib_wc *wc)
 	ibtrs_iu_free(iu, DMA_TO_DEVICE, sess->s.dev->ib_dev, 1);
 
 	if (unlikely(wc->status != IB_WC_SUCCESS)) {
-		ibtrs_err(sess, "Sess info request send failed: %s\n",
+		ibtrs_err(sess->clt, "Sess info request send failed: %s\n",
 			  ib_wc_status_msg(wc->status));
 		ibtrs_clt_change_state(sess, IBTRS_CLT_CONNECTING_ERR);
 		return;
@@ -2252,13 +2255,13 @@ static int process_info_rsp(struct ibtrs_clt_sess *sess,
 	if (unlikely((ilog2(sg_cnt - 1) + 1) +
 		     (ilog2(sess->chunk_size - 1) + 1) >
 		     MAX_IMM_PAYL_BITS)) {
-		ibtrs_err(sess,
+		ibtrs_err(sess->clt,
 			  "RDMA immediate size (%db) not enough to encode %d buffers of size %dB\n",
 			  MAX_IMM_PAYL_BITS, sg_cnt, sess->chunk_size);
 		return -EINVAL;
 	}
 	if (unlikely(!sg_cnt || (sess->queue_depth % sg_cnt))) {
-		ibtrs_err(sess, "Incorrect sg_cnt %d, is not multiple\n",
+		ibtrs_err(sess->clt, "Incorrect sg_cnt %d, is not multiple\n",
 			  sg_cnt);
 		return -EINVAL;
 	}
@@ -2275,7 +2278,7 @@ static int process_info_rsp(struct ibtrs_clt_sess *sess,
 		total_len += len;
 
 		if (unlikely(!len || (len % sess->chunk_size))) {
-			ibtrs_err(sess, "Incorrect [%d].len %d\n", sgi, len);
+			ibtrs_err(sess->clt, "Incorrect [%d].len %d\n", sgi, len);
 			return -EINVAL;
 		}
 		for ( ; len && i < sess->queue_depth; i++) {
@@ -2288,11 +2291,11 @@ static int process_info_rsp(struct ibtrs_clt_sess *sess,
 	}
 	/* Sanity check */
 	if (unlikely(sgi != sg_cnt || i != sess->queue_depth)) {
-		ibtrs_err(sess, "Incorrect sg vector, not fully mapped\n");
+		ibtrs_err(sess->clt, "Incorrect sg vector, not fully mapped\n");
 		return -EINVAL;
 	}
 	if (unlikely(total_len != sess->chunk_size * sess->queue_depth)) {
-		ibtrs_err(sess, "Incorrect total_len %d\n", total_len);
+		ibtrs_err(sess->clt, "Incorrect total_len %d\n", total_len);
 		return -EINVAL;
 	}
 
@@ -2314,14 +2317,14 @@ static void ibtrs_clt_info_rsp_done(struct ib_cq *cq, struct ib_wc *wc)
 	WARN_ON(con->c.cid);
 	iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
 	if (unlikely(wc->status != IB_WC_SUCCESS)) {
-		ibtrs_err(sess, "Sess info response recv failed: %s\n",
+		ibtrs_err(sess->clt, "Sess info response recv failed: %s\n",
 			  ib_wc_status_msg(wc->status));
 		goto out;
 	}
 	WARN_ON(wc->opcode != IB_WC_RECV);
 
 	if (unlikely(wc->byte_len < sizeof(*msg))) {
-		ibtrs_err(sess, "Sess info response is malformed: size %d\n",
+		ibtrs_err(sess->clt, "Sess info response is malformed: size %d\n",
 			  wc->byte_len);
 		goto out;
 	}
@@ -2329,14 +2332,14 @@ static void ibtrs_clt_info_rsp_done(struct ib_cq *cq, struct ib_wc *wc)
 				   iu->size, DMA_FROM_DEVICE);
 	msg = iu->buf;
 	if (unlikely(le16_to_cpu(msg->type) != IBTRS_MSG_INFO_RSP)) {
-		ibtrs_err(sess, "Sess info response is malformed: type %d\n",
+		ibtrs_err(sess->clt, "Sess info response is malformed: type %d\n",
 			  le16_to_cpu(msg->type));
 		goto out;
 	}
 	rx_sz  = sizeof(*msg);
 	rx_sz += sizeof(msg->desc[0]) * le16_to_cpu(msg->sg_cnt);
 	if (unlikely(wc->byte_len < rx_sz)) {
-		ibtrs_err(sess, "Sess info response is malformed: size %d\n",
+		ibtrs_err(sess->clt, "Sess info response is malformed: size %d\n",
 			  wc->byte_len);
 		goto out;
 	}
@@ -2373,14 +2376,14 @@ static int ibtrs_send_sess_info(struct ibtrs_clt_sess *sess)
 	rx_iu = ibtrs_iu_alloc(1, rx_sz, GFP_KERNEL, sess->s.dev->ib_dev,
 			       DMA_FROM_DEVICE, ibtrs_clt_info_rsp_done);
 	if (unlikely(!tx_iu || !rx_iu)) {
-		ibtrs_err(sess, "ibtrs_iu_alloc(): no memory\n");
+		ibtrs_err(sess->clt, "ibtrs_iu_alloc(): no memory\n");
 		err = -ENOMEM;
 		goto out;
 	}
 	/* Prepare for getting info response */
 	err = ibtrs_iu_post_recv(&usr_con->c, rx_iu);
 	if (unlikely(err)) {
-		ibtrs_err(sess, "ibtrs_iu_post_recv(), err: %d\n", err);
+		ibtrs_err(sess->clt, "ibtrs_iu_post_recv(), err: %d\n", err);
 		goto out;
 	}
 	rx_iu = NULL;
@@ -2395,7 +2398,7 @@ static int ibtrs_send_sess_info(struct ibtrs_clt_sess *sess)
 	/* Send info request */
 	err = ibtrs_iu_post_send(&usr_con->c, tx_iu, sizeof(*msg), NULL);
 	if (unlikely(err)) {
-		ibtrs_err(sess, "ibtrs_iu_post_send(), err: %d\n", err);
+		ibtrs_err(sess->clt, "ibtrs_iu_post_send(), err: %d\n", err);
 		goto out;
 	}
 	tx_iu = NULL;
@@ -2437,12 +2440,12 @@ static int init_sess(struct ibtrs_clt_sess *sess)
 	mutex_lock(&sess->init_mutex);
 	err = init_conns(sess);
 	if (unlikely(err)) {
-		ibtrs_err(sess, "init_conns(), err: %d\n", err);
+		ibtrs_err(sess->clt, "init_conns(), err: %d\n", err);
 		goto out;
 	}
 	err = ibtrs_send_sess_info(sess);
 	if (unlikely(err)) {
-		ibtrs_err(sess, "ibtrs_send_sess_info(), err: %d\n", err);
+		ibtrs_err(sess->clt, "ibtrs_send_sess_info(), err: %d\n", err);
 		goto out;
 	}
 	ibtrs_clt_sess_up(sess);
@@ -2794,7 +2797,7 @@ int ibtrs_clt_request(int dir, ibtrs_conf_fn *conf, struct ibtrs_clt *clt,
 			continue;
 
 		if (unlikely(usr_len + hdr_len > sess->max_hdr_size)) {
-			ibtrs_wrn_rl(sess,
+			ibtrs_wrn_rl(sess->clt,
 				     "%s request failed, user message size is %zu and header length %zu, but max size is %u\n",
 				     dir == READ ? "Read" : "Write",
 				     usr_len, hdr_len, sess->max_hdr_size);

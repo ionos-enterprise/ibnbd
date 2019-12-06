@@ -44,18 +44,20 @@ static ssize_t ibtrs_srv_disconnect_store(struct kobject *kobj,
 					  const char *buf, size_t count)
 {
 	struct ibtrs_srv_sess *sess;
+	struct ibtrs_sess *s;
 	char str[MAXHOSTNAMELEN];
 
 	sess = container_of(kobj, struct ibtrs_srv_sess, kobj);
+	s = &sess->s;
 	if (!sysfs_streq(buf, "1")) {
-		ibtrs_err(sess, "%s: invalid value: '%s'\n",
+		ibtrs_err(s, "%s: invalid value: '%s'\n",
 			  attr->attr.name, buf);
 		return -EINVAL;
 	}
 
 	sockaddr_to_str((struct sockaddr *)&sess->s.dst_addr, str, sizeof(str));
 
-	ibtrs_info(sess, "disconnect for path %s requested\n", str);
+	ibtrs_info(s, "disconnect for path %s requested\n", str);
 	close_sess(sess);
 
 	return count;
@@ -225,17 +227,18 @@ ibtrs_srv_destroy_once_sysfs_root_folders(struct ibtrs_srv_sess *sess)
 static int ibtrs_srv_create_stats_files(struct ibtrs_srv_sess *sess)
 {
 	int err;
+	struct ibtrs_sess *s = &sess->s;
 
 	err = kobject_init_and_add(&sess->kobj_stats, &ktype,
 				   &sess->kobj, "stats");
 	if (unlikely(err)) {
-		ibtrs_err(sess, "kobject_init_and_add(): %d\n", err);
+		ibtrs_err(s, "kobject_init_and_add(): %d\n", err);
 		return err;
 	}
 	err = sysfs_create_group(&sess->kobj_stats,
 				 &ibtrs_srv_stats_attr_group);
 	if (unlikely(err)) {
-		ibtrs_err(sess, "sysfs_create_group(): %d\n", err);
+		ibtrs_err(s, "sysfs_create_group(): %d\n", err);
 		goto err;
 	}
 
@@ -251,6 +254,7 @@ err:
 int ibtrs_srv_create_sess_files(struct ibtrs_srv_sess *sess)
 {
 	struct ibtrs_srv *srv = sess->srv;
+	struct ibtrs_sess *s = &sess->s;
 	char str[NAME_MAX];
 	int err, cnt;
 
@@ -267,12 +271,12 @@ int ibtrs_srv_create_sess_files(struct ibtrs_srv_sess *sess)
 	err = kobject_init_and_add(&sess->kobj, &ktype, &srv->kobj_paths,
 				   "%s", str);
 	if (unlikely(err)) {
-		ibtrs_err(sess, "kobject_init_and_add(): %d\n", err);
+		ibtrs_err(s, "kobject_init_and_add(): %d\n", err);
 		goto destroy_root;
 	}
 	err = sysfs_create_group(&sess->kobj, &ibtrs_srv_sess_attr_group);
 	if (unlikely(err)) {
-		ibtrs_err(sess, "sysfs_create_group(): %d\n", err);
+		ibtrs_err(s, "sysfs_create_group(): %d\n", err);
 		goto put_kobj;
 	}
 	err = ibtrs_srv_create_stats_files(sess);

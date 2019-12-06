@@ -127,10 +127,6 @@ struct ibtrs_srv_ctx {
 
 extern struct class *ibtrs_dev_class;
 
-/* See ibtrs-log.h */
-#define TYPES_TO_SESSNAME(obj)						\
-	LIST(CASE(obj, struct ibtrs_srv_sess *, s.sessname))
-
 void close_sess(struct ibtrs_srv_sess *sess);
 
 /* ibtrs-srv-stats.c */

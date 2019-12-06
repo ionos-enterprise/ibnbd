@@ -102,7 +102,7 @@ int ibtrs_iu_post_recv(struct ibtrs_con *con, struct ibtrs_iu *iu)
 	list.lkey   = sess->dev->ib_pd->local_dma_lkey;
 
 	if (WARN_ON(list.length == 0)) {
-		ibtrs_wrn(con,
+		ibtrs_wrn(con->sess,
 			  "Posting receive work request failed, sg list is empty\n");
 		return -EINVAL;
 	}
@@ -261,12 +261,12 @@ static void qp_event_handler(struct ib_event *ev, void *ctx)
 
 	switch (ev->event) {
 	case IB_EVENT_COMM_EST:
-		ibtrs_info(con, "QP event %s (%d) received\n",
+		ibtrs_info(con->sess, "QP event %s (%d) received\n",
 			   ib_event_msg(ev->event), ev->event);
 		rdma_notify(con->cm_id, IB_EVENT_COMM_EST);
 		break;
 	default:
-		ibtrs_info(con, "Unhandled QP event %s (%d) received\n",
+		ibtrs_info(con->sess, "Unhandled QP event %s (%d) received\n",
 			   ib_event_msg(ev->event), ev->event);
 		break;
 	}
@@ -281,7 +281,7 @@ static int create_cq(struct ibtrs_con *con, int cq_vector, u16 cq_size,
 	cq = ib_alloc_cq(cm_id->device, con, cq_size,
 			 cq_vector, poll_ctx);
 	if (unlikely(IS_ERR(cq))) {
-		ibtrs_err(con, "Creating completion queue failed, errno: %ld\n",
+		ibtrs_err(con->sess, "Creating completion queue failed, errno: %ld\n",
 			  PTR_ERR(cq));
 		return PTR_ERR(cq);
 	}
@@ -312,7 +312,7 @@ static int create_qp(struct ibtrs_con *con, struct ib_pd *pd,
 
 	ret = rdma_create_qp(cm_id, pd, &init_attr);
 	if (unlikely(ret)) {
-		ibtrs_err(con, "Creating QP failed, err: %d\n", ret);
+		ibtrs_err(con->sess, "Creating QP failed, err: %d\n", ret);
 		return ret;
 	}
 	con->qp = cm_id->qp;

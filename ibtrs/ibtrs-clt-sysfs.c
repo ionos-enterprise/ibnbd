@@ -201,7 +201,7 @@ static ssize_t ibtrs_clt_reconnect_store(struct kobject *kobj,
 
 	sess = container_of(kobj, struct ibtrs_clt_sess, kobj);
 	if (!sysfs_streq(buf, "1")) {
-		ibtrs_err(sess, "%s: unknown value: '%s'\n",
+		ibtrs_err(sess->clt, "%s: unknown value: '%s'\n",
 			  attr->attr.name, buf);
 		return -EINVAL;
 	}
@@ -233,7 +233,7 @@ static ssize_t ibtrs_clt_disconnect_store(struct kobject *kobj,
 
 	sess = container_of(kobj, struct ibtrs_clt_sess, kobj);
 	if (!sysfs_streq(buf, "1")) {
-		ibtrs_err(sess, "%s: unknown value: '%s'\n",
+		ibtrs_err(sess->clt, "%s: unknown value: '%s'\n",
 			  attr->attr.name, buf);
 		return -EINVAL;
 	}
@@ -265,7 +265,7 @@ static ssize_t ibtrs_clt_remove_path_store(struct kobject *kobj,
 
 	sess = container_of(kobj, struct ibtrs_clt_sess, kobj);
 	if (!sysfs_streq(buf, "1")) {
-		ibtrs_err(sess, "%s: unknown value: '%s'\n",
+		ibtrs_err(sess->clt, "%s: unknown value: '%s'\n",
 			  attr->attr.name, buf);
 		return -EINVAL;
 	}

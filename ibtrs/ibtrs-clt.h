@@ -244,11 +244,6 @@ static inline struct ibtrs_clt_sess *to_clt_sess(struct ibtrs_sess *s)
 	return container_of(s, struct ibtrs_clt_sess, s);
 }
 
-/* See ibtrs-log.h */
-#define TYPES_TO_SESSNAME(obj)						\
-	LIST(CASE(obj, struct ibtrs_clt_sess *, s.sessname),		\
-	     CASE(obj, struct ibtrs_clt *, sessname))
-
 #define TAG_SIZE(clt) (sizeof(struct ibtrs_tag) + (clt)->pdu_sz)
 #define GET_TAG(clt, idx) ((clt)->tags + TAG_SIZE(clt) * idx)
 
