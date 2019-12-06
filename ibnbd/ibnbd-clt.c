@@ -446,7 +446,7 @@ static void wake_up_iu_comp(struct ibnbd_iu *iu, int errno)
 
 static void msg_conf(void *priv, int errno)
 {
-	struct ibnbd_iu *iu = (struct ibnbd_iu *)priv;
+	struct ibnbd_iu *iu = priv;
 
 	iu->errno = errno;
 	schedule_work(&iu->work);
