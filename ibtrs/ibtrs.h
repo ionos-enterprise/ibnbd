@@ -315,4 +315,6 @@ int ibtrs_srv_get_sess_name(struct ibtrs_srv *sess, char *sessname, size_t len);
  */
 int ibtrs_addr_to_sockaddr(const char *str, size_t len, short port,
 			   struct ibtrs_addr *addr);
+
+int sockaddr_to_str(const struct sockaddr *addr, char *buf, size_t len);
 #endif

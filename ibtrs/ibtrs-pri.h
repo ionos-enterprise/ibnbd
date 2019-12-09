@@ -347,30 +347,6 @@ struct ibtrs_ib_dev *ibtrs_ib_dev_find_or_add(struct ib_device *ib_dev,
 					      struct ibtrs_ib_dev_pool *pool);
 int ibtrs_ib_dev_put(struct ibtrs_ib_dev *dev);
 
-static inline int sockaddr_to_str(const struct sockaddr *addr,
-				   char *buf, size_t len)
-{
-	int cnt;
-
-	switch (addr->sa_family) {
-	case AF_IB:
-		cnt = scnprintf(buf, len, "gid:%pI6",
-			&((struct sockaddr_ib *)addr)->sib_addr.sib_raw);
-		return cnt;
-	case AF_INET:
-		cnt = scnprintf(buf, len, "ip:%pI4",
-			&((struct sockaddr_in *)addr)->sin_addr);
-		return cnt;
-	case AF_INET6:
-		cnt = scnprintf(buf, len, "ip:%pI6c",
-			  &((struct sockaddr_in6 *)addr)->sin6_addr);
-		return cnt;
-	}
-	cnt = scnprintf(buf, len, "<invalid address family>");
-	pr_err("Invalid address family\n");
-	return cnt;
-}
-
 static inline u32 ibtrs_to_imm(u32 type, u32 payload)
 {
 	BUILD_BUG_ON(32 != MAX_IMM_PAYL_BITS + MAX_IMM_TYPE_BITS);
