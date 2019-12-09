@@ -596,6 +596,11 @@ static struct attribute_group default_attr_group = {
 	.attrs = default_attrs,
 };
 
+static const struct attribute_group *default_attr_groups[] = {
+	&default_attr_group,
+	NULL,
+};
+
 int ibnbd_clt_create_sysfs_files(void)
 {
 	int err;
@@ -604,8 +609,9 @@ int ibnbd_clt_create_sysfs_files(void)
 	if (unlikely(IS_ERR(ibnbd_dev_class)))
 		return PTR_ERR(ibnbd_dev_class);
 
-	ibnbd_dev = device_create(ibnbd_dev_class, NULL,
-				  MKDEV(0, 0), NULL, "ctl");
+	ibnbd_dev = device_create_with_groups(ibnbd_dev_class, NULL,
+					      MKDEV(0, 0), NULL,
+					      default_attr_groups, "ctl");
 	if (unlikely(IS_ERR(ibnbd_dev))) {
 		err = PTR_ERR(ibnbd_dev);
 		goto cls_destroy;
@@ -615,15 +621,9 @@ int ibnbd_clt_create_sysfs_files(void)
 		err = -ENOMEM;
 		goto dev_destroy;
 	}
-	err = sysfs_create_group(&ibnbd_dev->kobj, &default_attr_group);
-	if (unlikely(err))
-		goto put_devs_kobj;
 
 	return 0;
 
-put_devs_kobj:
-	kobject_del(ibnbd_devs_kobj);
-	kobject_put(ibnbd_devs_kobj);
 dev_destroy:
 	device_destroy(ibnbd_dev_class, MKDEV(0, 0));
 cls_destroy:
