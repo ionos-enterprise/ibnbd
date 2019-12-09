@@ -38,22 +38,6 @@ enum ibtrs_srv_state {
 	IBTRS_SRV_CLOSED,
 };
 
-static inline const char *ibtrs_srv_state_str(enum ibtrs_srv_state state)
-{
-	switch (state) {
-	case IBTRS_SRV_CONNECTING:
-		return "IBTRS_SRV_CONNECTING";
-	case IBTRS_SRV_CONNECTED:
-		return "IBTRS_SRV_CONNECTED";
-	case IBTRS_SRV_CLOSING:
-		return "IBTRS_SRV_CLOSING";
-	case IBTRS_SRV_CLOSED:
-		return "IBTRS_SRV_CLOSED";
-	default:
-		return "UNKNOWN";
-	}
-}
-
 struct ibtrs_stats_wc_comp {
 	atomic64_t	calls;
 	atomic64_t	total_wc_cnt;

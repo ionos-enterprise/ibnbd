@@ -558,6 +558,22 @@ void close_sess(struct ibtrs_srv_sess *sess)
 	WARN_ON(sess->state != IBTRS_SRV_CLOSING);
 }
 
+static inline const char *ibtrs_srv_state_str(enum ibtrs_srv_state state)
+{
+	switch (state) {
+	case IBTRS_SRV_CONNECTING:
+		return "IBTRS_SRV_CONNECTING";
+	case IBTRS_SRV_CONNECTED:
+		return "IBTRS_SRV_CONNECTED";
+	case IBTRS_SRV_CLOSING:
+		return "IBTRS_SRV_CLOSING";
+	case IBTRS_SRV_CLOSED:
+		return "IBTRS_SRV_CLOSED";
+	default:
+		return "UNKNOWN";
+	}
+}
+
 /*
  * ibtrs_srv_resp_rdma() - sends response to the client.
  *
