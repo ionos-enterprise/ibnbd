@@ -209,12 +209,12 @@ enum {
 };
 
 /**
- * ibnbd_get_cpu_qlist() - finds a list with HW queues to be requeued
- * @sess:	Session to find a queue on
+ * ibnbd_get_cpu_qlist() - finds a list with HW queues to be rerun
+ * @sess:	Session to find a queue for
  * @cpu:	Cpu to start the search from
  *
  * Description:
- *     Each CPU has a list of HW queues, which needs to be requeed.  If a list
+ *     Each CPU has a list of HW queues, which needs to be rerun.  If a list
  *     is not empty - it is marked with a bit.  This function finds first
  *     set bit in a bitmap and returns corresponding CPU list.
  */
@@ -243,11 +243,11 @@ static inline int nxt_cpu(int cpu)
 }
 
 /**
- * ibnbd_requeue_if_needed() - requeue if CPU queue is marked as non empty
+ * ibnbd_rerun_if_needed() - rerun next queue marked as stopped
  * @sess:	Session to rerun a queue on
  *
  * Description:
- *     Each CPU has it's own list of HW queues, which should be requeued.
+ *     Each CPU has it's own list of HW queues, which should be rerun.
  *     Function finds such list with HW queues, takes a list lock, picks up
  *     the first HW queue out of the list and requeues it.
  *
@@ -257,7 +257,7 @@ static inline int nxt_cpu(int cpu)
  * Context:
  *     Does not matter.
  */
-static inline bool ibnbd_requeue_if_needed(struct ibnbd_clt_session *sess)
+static inline bool ibnbd_rerun_if_needed(struct ibnbd_clt_session *sess)
 {
 	struct ibnbd_queue *q = NULL;
 	struct ibnbd_cpu_qlist *cpu_q;
@@ -312,7 +312,7 @@ clear_bit:
 }
 
 /**
- * ibnbd_requeue_all_if_idle() - requeue all queues left in the list if
+ * ibnbd_rerun_all_if_idle() - rerun all queues left in the list if
  *				 session is idling (there are no requests
  *				 in-flight).
  * @sess:	Session to rerun the queues on
@@ -336,12 +336,12 @@ clear_bit:
  * Context:
  *     Does not matter.
  */
-static inline void ibnbd_requeue_all_if_idle(struct ibnbd_clt_session *sess)
+static inline void ibnbd_rerun_all_if_idle(struct ibnbd_clt_session *sess)
 {
 	bool requeued;
 
 	do {
-		requeued = ibnbd_requeue_if_needed(sess);
+		requeued = ibnbd_rerun_if_needed(sess);
 	} while (atomic_read(&sess->busy) == 0 && requeued);
 }
 
@@ -372,7 +372,7 @@ static void ibnbd_put_tag(struct ibnbd_clt_session *sess, struct ibtrs_tag *tag)
 	 * and then check queue bits.
 	 */
 	smp_mb__after_atomic();
-	ibnbd_requeue_all_if_idle(sess);
+	ibnbd_rerun_all_if_idle(sess);
 }
 
 static struct ibnbd_iu *ibnbd_get_iu(struct ibnbd_clt_session *sess,
