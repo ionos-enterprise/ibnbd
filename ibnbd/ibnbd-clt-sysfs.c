@@ -77,13 +77,16 @@ static void strip(char *s)
 	*p = '\0';
 }
 
-static int ibnbd_clt_parse_map_options(const char *buf,
-				       char *sessname,
-				       struct ibtrs_addr *paths,
-				       size_t *path_cnt,
-				       size_t max_path_cnt,
-				       char *pathname,
-				       enum ibnbd_access_mode *access_mode)
+struct ibnbd_map_options {
+	char *sessname;
+	struct ibtrs_addr *paths;
+	size_t *path_cnt;
+	char *pathname;
+	enum ibnbd_access_mode *access_mode;
+};
+
+static int ibnbd_clt_parse_map_options(const char *buf, size_t max_path_cnt,
+				       struct ibnbd_map_options *opt)
 {
 	char *options, *sep_opt;
 	char *p;
@@ -120,7 +123,7 @@ static int ibnbd_clt_parse_map_options(const char *buf,
 				kfree(p);
 				goto out;
 			}
-			strlcpy(sessname, p, NAME_MAX);
+			strlcpy(opt->sessname, p, NAME_MAX);
 			kfree(p);
 			break;
 
@@ -138,7 +141,7 @@ static int ibnbd_clt_parse_map_options(const char *buf,
 			}
 
 			ret = ibtrs_addr_to_sockaddr(p, strlen(p), IBTRS_PORT,
-						     &paths[p_cnt]);
+						     &opt->paths[p_cnt]);
 			if (ret) {
 				pr_err("Can't parse path %s: %d\n", p, ret);
 				kfree(p);
@@ -162,7 +165,7 @@ static int ibnbd_clt_parse_map_options(const char *buf,
 				kfree(p);
 				goto out;
 			}
-			strlcpy(pathname, p, NAME_MAX);
+			strlcpy(opt->pathname, p, NAME_MAX);
 			kfree(p);
 			break;
 
@@ -174,11 +177,11 @@ static int ibnbd_clt_parse_map_options(const char *buf,
 			}
 
 			if (!strcmp(p, "ro")) {
-				*access_mode = IBNBD_ACCESS_RO;
+				*opt->access_mode = IBNBD_ACCESS_RO;
 			} else if (!strcmp(p, "rw")) {
-				*access_mode = IBNBD_ACCESS_RW;
+				*opt->access_mode = IBNBD_ACCESS_RW;
 			} else if (!strcmp(p, "migration")) {
-				*access_mode = IBNBD_ACCESS_MIGRATION;
+				*opt->access_mode = IBNBD_ACCESS_MIGRATION;
 			} else {
 				pr_err("map_device: Invalid access_mode: '%s'\n",
 				       p);
@@ -209,7 +212,7 @@ static int ibnbd_clt_parse_map_options(const char *buf,
 	}
 
 out:
-	*path_cnt = p_cnt;
+	*opt->path_cnt = p_cnt;
 	kfree(options);
 	return ret;
 }
@@ -530,6 +533,7 @@ static ssize_t ibnbd_clt_map_device_store(struct kobject *kobj,
 					  const char *buf, size_t count)
 {
 	struct ibnbd_clt_dev *dev;
+	struct ibnbd_map_options opt;
 	int ret;
 	char pathname[NAME_MAX];
 	char sessname[NAME_MAX];
@@ -539,6 +543,11 @@ static ssize_t ibnbd_clt_map_device_store(struct kobject *kobj,
 	struct ibtrs_addr paths[6];
 	size_t path_cnt;
 
+	opt.sessname = sessname;
+	opt.paths = paths;
+	opt.path_cnt = &path_cnt;
+	opt.pathname = pathname;
+	opt.access_mode = &access_mode;
 	addrs = kcalloc(ARRAY_SIZE(paths) * 2, sizeof(*addrs), GFP_KERNEL);
 	if (!addrs)
 		return -ENOMEM;
@@ -548,9 +557,7 @@ static ssize_t ibnbd_clt_map_device_store(struct kobject *kobj,
 		paths[path_cnt].dst = &addrs[path_cnt * 2 + 1];
 	}
 
-	ret = ibnbd_clt_parse_map_options(buf, sessname, paths,
-					  &path_cnt, ARRAY_SIZE(paths),
-					  pathname, &access_mode);
+	ret = ibnbd_clt_parse_map_options(buf, ARRAY_SIZE(paths), &opt);
 	if (ret)
 		goto out;
 
