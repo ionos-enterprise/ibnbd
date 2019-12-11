@@ -132,9 +132,9 @@ struct ibtrs_clt_con {
 };
 
 /**
- * ibtrs_tag - tags the memory allocation for future RDMA operation
+ * ibtrs_permit - permits the memory allocation for future RDMA operation
  */
-struct ibtrs_tag {
+struct ibtrs_permit {
 	enum ibtrs_clt_con_type con_type;
 	unsigned int cpu_id;
 	unsigned int mem_id;
@@ -157,7 +157,7 @@ struct ibtrs_clt_io_req {
 	struct ibtrs_clt_con	*con;
 	struct ibtrs_sg_desc	*desc;
 	struct ib_sge		*sge;
-	struct ibtrs_tag	*tag;
+	struct ibtrs_permit	*permit;
 	enum dma_data_direction dir;
 	ibtrs_conf_fn		*conf;
 	unsigned long		start_jiffies;
@@ -221,11 +221,11 @@ struct ibtrs_clt {
 	unsigned		max_reconnect_attempts;
 	unsigned		reconnect_delay_sec;
 	unsigned		max_segments;
-	void			*tags;
-	unsigned long		*tags_map;
+	void			*permits;
+	unsigned long		*permits_map;
 	size_t			queue_depth;
 	size_t			max_io_size;
-	wait_queue_head_t	tags_wait;
+	wait_queue_head_t	permits_wait;
 	size_t			pdu_sz;
 	void			*priv;
 	link_clt_ev_fn		*link_ev;
@@ -244,8 +244,8 @@ static inline struct ibtrs_clt_sess *to_clt_sess(struct ibtrs_sess *s)
 	return container_of(s, struct ibtrs_clt_sess, s);
 }
 
-#define TAG_SIZE(clt) (sizeof(struct ibtrs_tag) + (clt)->pdu_sz)
-#define GET_TAG(clt, idx) ((clt)->tags + TAG_SIZE(clt) * idx)
+#define PERMIT_SIZE(clt) (sizeof(struct ibtrs_permit) + (clt)->pdu_sz)
+#define GET_PERMIT(clt, idx) ((clt)->permits + PERMIT_SIZE(clt) * idx)
 
 int ibtrs_clt_reconnect_from_sysfs(struct ibtrs_clt_sess *sess);
 int ibtrs_clt_disconnect_from_sysfs(struct ibtrs_clt_sess *sess);

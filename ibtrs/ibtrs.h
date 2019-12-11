@@ -26,7 +26,7 @@
 #include <linux/socket.h>
 #include <linux/scatterlist.h>
 
-struct ibtrs_tag;
+struct ibtrs_permit;
 struct ibtrs_clt;
 struct ibtrs_srv_ctx;
 struct ibtrs_srv;
@@ -66,7 +66,7 @@ typedef void (link_clt_ev_fn)(void *priv, enum ibtrs_clt_link_ev ev);
  * @paths: Paths to be established defined by their src and dst addresses
  * @path_cnt: Number of elemnts in the @paths array
  * @port: port to be used by the IBTRS session
- * @pdu_sz: Size of extra payload which can be accessed after tag allocation.
+ * @pdu_sz: Size of extra payload which can be accessed after permit allocation.
  * @max_inflight_msg: Max. number of parallel inflight messages for the session
  * @max_segments: Max. number of segments per IO request
  * @reconnect_delay_sec: time between reconnect tries
@@ -93,24 +93,24 @@ struct ibtrs_clt *ibtrs_clt_open(void *priv, link_clt_ev_fn *link_ev,
 void ibtrs_clt_close(struct ibtrs_clt *sess);
 
 /**
- * ibtrs_tag_from_pdu() - converts opaque pdu pointer to ibtrs_tag
+ * ibtrs_permit_from_pdu() - converts opaque pdu pointer to ibtrs_permit
  * @pdu: opaque pointer
  */
-struct ibtrs_tag *ibtrs_tag_from_pdu(void *pdu);
+struct ibtrs_permit *ibtrs_permit_from_pdu(void *pdu);
 
 /**
- * ibtrs_tag_to_pdu() - converts ibtrs_tag to opaque pdu pointer
- * @tag: IBTRS tag pointer
+ * ibtrs_permit_to_pdu() - converts ibtrs_permit to opaque pdu pointer
+ * @permit: IBTRS permit pointer
  */
-void *ibtrs_tag_to_pdu(struct ibtrs_tag *tag);
+void *ibtrs_permit_to_pdu(struct ibtrs_permit *permit);
 
 enum {
-	IBTRS_TAG_NOWAIT = 0,
-	IBTRS_TAG_WAIT   = 1,
+	IBTRS_PERMIT_NOWAIT = 0,
+	IBTRS_PERMIT_WAIT   = 1,
 };
 
 /**
- * enum ibtrs_clt_con_type() type of ib connection to use with a given tag
+ * enum ibtrs_clt_con_type() type of ib connection to use with a given permit
  * @USR_CON - use connection reserved vor "service" messages
  * @IO_CON - use a connection reserved for IO
  */
@@ -120,32 +120,32 @@ enum ibtrs_clt_con_type {
 };
 
 /**
- * ibtrs_clt_get_tag() - allocates tag for future RDMA operation
+ * ibtrs_clt_get_permit() - allocates permit for future RDMA operation
  * @sess:	Current session
- * @con_type:	Type of connection to use with the tag
+ * @con_type:	Type of connection to use with the permit
  * @wait:	Wait type
  *
  * Description:
- *    Allocates tag for the following RDMA operation.  Tag is used
+ *    Allocates permit for the following RDMA operation.  Permit is used
  *    to preallocate all resources and to propagate memory pressure
  *    up earlier.
  *
  * Context:
  *    Can sleep if @wait == IBTRS_TAG_WAIT
  */
-struct ibtrs_tag *ibtrs_clt_get_tag(struct ibtrs_clt *sess,
+struct ibtrs_permit *ibtrs_clt_get_permit(struct ibtrs_clt *sess,
 				    enum ibtrs_clt_con_type con_type,
 				    int wait);
 
 /**
- * ibtrs_clt_put_tag() - puts allocated tag
+ * ibtrs_clt_put_permit() - puts allocated permit
  * @sess:	Current session
- * @tag:	Tag to be freed
+ * @permit:	Permit to be freed
  *
  * Context:
  *    Does not matter
  */
-void ibtrs_clt_put_tag(struct ibtrs_clt *sess, struct ibtrs_tag *tag);
+void ibtrs_clt_put_permit(struct ibtrs_clt *sess, struct ibtrs_permit *permit);
 
 typedef void (ibtrs_conf_fn)(void *priv, int errno);
 /**
@@ -154,7 +154,7 @@ typedef void (ibtrs_conf_fn)(void *priv, int errno);
  * @dir:	READ/WRITE
  * @conf:	callback function to be called as confirmation
  * @sess:	Session
- * @tag:	Preallocated tag
+ * @permit:	Preallocated permit
  * @priv:	User provided data, passed back with corresponding
  *		@(conf) confirmation.
  * @vec:	Message that is send to server together with the request.
@@ -175,7 +175,7 @@ typedef void (ibtrs_conf_fn)(void *priv, int errno);
  * On dir=WRITE ibtrs client will rdma write data in sg to server side.
  */
 int ibtrs_clt_request(int dir, ibtrs_conf_fn *conf, struct ibtrs_clt *sess,
-		      struct ibtrs_tag *tag, void *priv, const struct kvec *vec,
+		      struct ibtrs_permit *permit, void *priv, const struct kvec *vec,
 		      size_t nr, size_t len, struct scatterlist *sg,
 		      unsigned int sg_cnt);
 

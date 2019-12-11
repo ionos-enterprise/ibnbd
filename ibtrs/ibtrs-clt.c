@@ -76,106 +76,106 @@ static inline bool ibtrs_clt_is_connected(const struct ibtrs_clt *clt)
 	return connected;
 }
 
-static inline struct ibtrs_tag *
-__ibtrs_get_tag(struct ibtrs_clt *clt, enum ibtrs_clt_con_type con_type)
+static inline struct ibtrs_permit *
+__ibtrs_get_permit(struct ibtrs_clt *clt, enum ibtrs_clt_con_type con_type)
 {
 	size_t max_depth = clt->queue_depth;
-	struct ibtrs_tag *tag;
+	struct ibtrs_permit *permit;
 	int cpu, bit;
 
 	cpu = get_cpu();
 	do {
-		bit = find_first_zero_bit(clt->tags_map, max_depth);
+		bit = find_first_zero_bit(clt->permits_map, max_depth);
 		if (unlikely(bit >= max_depth)) {
 			put_cpu();
 			return NULL;
 		}
 
-	} while (unlikely(test_and_set_bit_lock(bit, clt->tags_map)));
+	} while (unlikely(test_and_set_bit_lock(bit, clt->permits_map)));
 	put_cpu();
 
-	tag = GET_TAG(clt, bit);
-	WARN_ON(tag->mem_id != bit);
-	tag->cpu_id = cpu;
-	tag->con_type = con_type;
+	permit = GET_PERMIT(clt, bit);
+	WARN_ON(permit->mem_id != bit);
+	permit->cpu_id = cpu;
+	permit->con_type = con_type;
 
-	return tag;
+	return permit;
 }
 
-static inline void __ibtrs_put_tag(struct ibtrs_clt *clt,
-				   struct ibtrs_tag *tag)
+static inline void __ibtrs_put_permit(struct ibtrs_clt *clt,
+				   struct ibtrs_permit *permit)
 {
-	clear_bit_unlock(tag->mem_id, clt->tags_map);
+	clear_bit_unlock(permit->mem_id, clt->permits_map);
 }
 
-struct ibtrs_tag *ibtrs_clt_get_tag(struct ibtrs_clt *clt,
+struct ibtrs_permit *ibtrs_clt_get_permit(struct ibtrs_clt *clt,
 				    enum ibtrs_clt_con_type con_type,
 				    int can_wait)
 {
-	struct ibtrs_tag *tag;
+	struct ibtrs_permit *permit;
 	DEFINE_WAIT(wait);
 
-	tag = __ibtrs_get_tag(clt, con_type);
-	if (likely(tag) || !can_wait)
-		return tag;
+	permit = __ibtrs_get_permit(clt, con_type);
+	if (likely(permit) || !can_wait)
+		return permit;
 
 	do {
-		prepare_to_wait(&clt->tags_wait, &wait, TASK_UNINTERRUPTIBLE);
-		tag = __ibtrs_get_tag(clt, con_type);
-		if (likely(tag))
+		prepare_to_wait(&clt->permits_wait, &wait, TASK_UNINTERRUPTIBLE);
+		permit = __ibtrs_get_permit(clt, con_type);
+		if (likely(permit))
 			break;
 
 		io_schedule();
 	} while (1);
 
-	finish_wait(&clt->tags_wait, &wait);
+	finish_wait(&clt->permits_wait, &wait);
 
-	return tag;
+	return permit;
 }
-EXPORT_SYMBOL(ibtrs_clt_get_tag);
+EXPORT_SYMBOL(ibtrs_clt_get_permit);
 
-void ibtrs_clt_put_tag(struct ibtrs_clt *clt, struct ibtrs_tag *tag)
+void ibtrs_clt_put_permit(struct ibtrs_clt *clt, struct ibtrs_permit *permit)
 {
-	if (WARN_ON(!test_bit(tag->mem_id, clt->tags_map)))
+	if (WARN_ON(!test_bit(permit->mem_id, clt->permits_map)))
 		return;
 
-	__ibtrs_put_tag(clt, tag);
+	__ibtrs_put_permit(clt, permit);
 
 	/*
-	 * Putting a tag is a barrier, so we will observe
+	 * Putting a permit is a barrier, so we will observe
 	 * new entry in the wait list, no worries.
 	 */
-	if (waitqueue_active(&clt->tags_wait))
-		wake_up(&clt->tags_wait);
+	if (waitqueue_active(&clt->permits_wait))
+		wake_up(&clt->permits_wait);
 }
-EXPORT_SYMBOL(ibtrs_clt_put_tag);
+EXPORT_SYMBOL(ibtrs_clt_put_permit);
 
-struct ibtrs_tag *ibtrs_tag_from_pdu(void *pdu)
+struct ibtrs_permit *ibtrs_permit_from_pdu(void *pdu)
 {
-	return pdu - sizeof(struct ibtrs_tag);
+	return pdu - sizeof(struct ibtrs_permit);
 }
-EXPORT_SYMBOL(ibtrs_tag_from_pdu);
+EXPORT_SYMBOL(ibtrs_permit_from_pdu);
 
-void *ibtrs_tag_to_pdu(struct ibtrs_tag *tag)
+void *ibtrs_permit_to_pdu(struct ibtrs_permit *permit)
 {
-	return tag + 1;
+	return permit + 1;
 }
-EXPORT_SYMBOL(ibtrs_tag_to_pdu);
+EXPORT_SYMBOL(ibtrs_permit_to_pdu);
 
 /**
- * ibtrs_tag_to_clt_con() - returns RDMA connection id by the tag
+ * ibtrs_permit_to_clt_con() - returns RDMA connection id by the permit
  *
  * Note:
  *     IO connection starts from 1.
  *     0 connection is for user messages.
  */
-static struct ibtrs_clt_con *ibtrs_tag_to_clt_con(struct ibtrs_clt_sess *sess,
-						  struct ibtrs_tag *tag)
+static struct ibtrs_clt_con *ibtrs_permit_to_clt_con(struct ibtrs_clt_sess *sess,
+						  struct ibtrs_permit *permit)
 {
 	int id = 0;
 
-	if (likely(tag->con_type == IBTRS_IO_CON))
-		id = (tag->cpu_id % (sess->s.con_num - 1)) + 1;
+	if (likely(permit->con_type == IBTRS_IO_CON))
+		id = (permit->cpu_id % (sess->s.con_num - 1)) + 1;
 
 	return to_clt_con(sess->s.con[id]);
 }
@@ -837,7 +837,7 @@ static inline void path_it_deinit(struct path_it *it)
 static inline void ibtrs_clt_init_req(struct ibtrs_clt_io_req *req,
 				      struct ibtrs_clt_sess *sess,
 				      ibtrs_conf_fn *conf,
-				      struct ibtrs_tag *tag, void *priv,
+				      struct ibtrs_permit *permit, void *priv,
 				      const struct kvec *vec, size_t usr_len,
 				      struct scatterlist *sg, size_t sg_cnt,
 				      size_t data_len, int dir)
@@ -845,7 +845,7 @@ static inline void ibtrs_clt_init_req(struct ibtrs_clt_io_req *req,
 	struct iov_iter iter;
 	size_t len;
 
-	req->tag = tag;
+	req->permit = permit;
 	req->in_use = true;
 	req->usr_len = usr_len;
 	req->data_len = data_len;
@@ -853,7 +853,7 @@ static inline void ibtrs_clt_init_req(struct ibtrs_clt_io_req *req,
 	req->sg_cnt = sg_cnt;
 	req->priv = priv;
 	req->dir = dir;
-	req->con = ibtrs_tag_to_clt_con(sess, tag);
+	req->con = ibtrs_permit_to_clt_con(sess, permit);
 	req->conf = conf;
 	req->need_inv = false;
 	req->need_inv_comp = false;
@@ -870,15 +870,15 @@ static inline void ibtrs_clt_init_req(struct ibtrs_clt_io_req *req,
 
 static inline struct ibtrs_clt_io_req *
 ibtrs_clt_get_req(struct ibtrs_clt_sess *sess, ibtrs_conf_fn *conf,
-		  struct ibtrs_tag *tag, void *priv,
+		  struct ibtrs_permit *permit, void *priv,
 		  const struct kvec *vec, size_t usr_len,
 		  struct scatterlist *sg, size_t sg_cnt,
 		  size_t data_len, int dir)
 {
 	struct ibtrs_clt_io_req *req;
 
-	req = &sess->reqs[tag->mem_id];
-	ibtrs_clt_init_req(req, sess, conf, tag, priv, vec, usr_len,
+	req = &sess->reqs[permit->mem_id];
+	ibtrs_clt_init_req(req, sess, conf, permit, priv, vec, usr_len,
 			   sg, sg_cnt, data_len, dir);
 	return req;
 }
@@ -893,8 +893,8 @@ ibtrs_clt_get_copy_req(struct ibtrs_clt_sess *alive_sess,
 		.iov_len  = fail_req->usr_len
 	};
 
-	req = &alive_sess->reqs[fail_req->tag->mem_id];
-	ibtrs_clt_init_req(req, alive_sess, fail_req->conf, fail_req->tag,
+	req = &alive_sess->reqs[fail_req->permit->mem_id];
+	ibtrs_clt_init_req(req, alive_sess, fail_req->conf, fail_req->permit,
 			   fail_req->priv, &vec, fail_req->usr_len,
 			   fail_req->sglist, fail_req->sg_cnt,
 			   fail_req->data_len, fail_req->dir);
@@ -971,9 +971,9 @@ static int ibtrs_clt_write_req(struct ibtrs_clt_io_req *req)
 	msg->usr_len = cpu_to_le16(req->usr_len);
 
 	/* ibtrs message on server side will be after user data and message */
-	imm = req->tag->mem_off + req->data_len + req->usr_len;
+	imm = req->permit->mem_off + req->data_len + req->usr_len;
 	imm = ibtrs_to_io_req_imm(imm);
-	buf_id = req->tag->mem_id;
+	buf_id = req->permit->mem_id;
 	req->sg_size = tsize;
 	rbuf = &sess->rbufs[buf_id];
 
@@ -1100,9 +1100,9 @@ static int ibtrs_clt_read_req(struct ibtrs_clt_io_req *req)
 	 * ibtrs message will be after the space reserved for disk data and
 	 * user message
 	 */
-	imm = req->tag->mem_off + req->data_len + req->usr_len;
+	imm = req->permit->mem_off + req->data_len + req->usr_len;
 	imm = ibtrs_to_io_req_imm(imm);
-	buf_id = req->tag->mem_id;
+	buf_id = req->permit->mem_id;
 
 	req->sg_size  = sizeof(*msg);
 	req->sg_size += le16_to_cpu(msg->sg_cnt) * sizeof(struct ibtrs_sg_desc);
@@ -1251,46 +1251,46 @@ out:
 	return err;
 }
 
-static int alloc_tags(struct ibtrs_clt *clt)
+static int alloc_permits(struct ibtrs_clt *clt)
 {
 	unsigned int chunk_bits;
 	int err, i;
 
-	clt->tags_map = kcalloc(BITS_TO_LONGS(clt->queue_depth), sizeof(long),
+	clt->permits_map = kcalloc(BITS_TO_LONGS(clt->queue_depth), sizeof(long),
 				GFP_KERNEL);
-	if (unlikely(!clt->tags_map)) {
+	if (unlikely(!clt->permits_map)) {
 		err = -ENOMEM;
 		goto out_err;
 	}
-	clt->tags = kcalloc(clt->queue_depth, TAG_SIZE(clt), GFP_KERNEL);
-	if (unlikely(!clt->tags)) {
+	clt->permits = kcalloc(clt->queue_depth, PERMIT_SIZE(clt), GFP_KERNEL);
+	if (unlikely(!clt->permits)) {
 		err = -ENOMEM;
 		goto err_map;
 	}
 	chunk_bits = ilog2(clt->queue_depth - 1) + 1;
 	for (i = 0; i < clt->queue_depth; i++) {
-		struct ibtrs_tag *tag;
+		struct ibtrs_permit *permit;
 
-		tag = GET_TAG(clt, i);
-		tag->mem_id = i;
-		tag->mem_off = i << (MAX_IMM_PAYL_BITS - chunk_bits);
+		permit = GET_PERMIT(clt, i);
+		permit->mem_id = i;
+		permit->mem_off = i << (MAX_IMM_PAYL_BITS - chunk_bits);
 	}
 
 	return 0;
 
 err_map:
-	kfree(clt->tags_map);
-	clt->tags_map = NULL;
+	kfree(clt->permits_map);
+	clt->permits_map = NULL;
 out_err:
 	return err;
 }
 
-static void free_tags(struct ibtrs_clt *clt)
+static void free_permits(struct ibtrs_clt *clt)
 {
-	kfree(clt->tags_map);
-	clt->tags_map = NULL;
-	kfree(clt->tags);
-	clt->tags = NULL;
+	kfree(clt->permits_map);
+	clt->permits_map = NULL;
+	kfree(clt->permits);
+	clt->permits = NULL;
 }
 
 static void query_fast_reg_mode(struct ibtrs_clt_sess *sess)
@@ -2542,7 +2542,7 @@ static struct ibtrs_clt *alloc_clt(const char *sessname, size_t paths_num,
 	clt->link_ev = link_ev;
 	clt->mp_policy = MP_POLICY_MIN_INFLIGHT;
 	strlcpy(clt->sessname, sessname, sizeof(clt->sessname));
-	init_waitqueue_head(&clt->tags_wait);
+	init_waitqueue_head(&clt->permits_wait);
 	mutex_init(&clt->paths_ev_mutex);
 	mutex_init(&clt->paths_mutex);
 
@@ -2568,21 +2568,21 @@ percpu_free:
 	return ERR_PTR(err);
 }
 
-static void wait_for_inflight_tags(struct ibtrs_clt *clt)
+static void wait_for_inflight_permits(struct ibtrs_clt *clt)
 {
-	if (clt->tags_map) {
+	if (clt->permits_map) {
 		size_t sz = clt->queue_depth;
 
-		wait_event(clt->tags_wait,
-			   find_first_bit(clt->tags_map, sz) >= sz);
+		wait_event(clt->permits_wait,
+			   find_first_bit(clt->permits_map, sz) >= sz);
 	}
 }
 
 static void free_clt(struct ibtrs_clt *clt)
 {
 	ibtrs_clt_destroy_sysfs_root_folders(clt);
-	wait_for_inflight_tags(clt);
-	free_tags(clt);
+	wait_for_inflight_permits(clt);
+	free_permits(clt);
 	free_percpu(clt->pcpu_path);
 	/* release callback will free clt in last put */
 	device_unregister(&clt->dev);
@@ -2628,9 +2628,9 @@ struct ibtrs_clt *ibtrs_clt_open(void *priv, link_clt_ev_fn *link_ev,
 		if (unlikely(err))
 			goto close_all_sess;
 	}
-	err = alloc_tags(clt);
+	err = alloc_permits(clt);
 	if (unlikely(err)) {
-		ibtrs_err(clt, "alloc_tags(), err: %d\n", err);
+		ibtrs_err(clt, "alloc_permits(), err: %d\n", err);
 		goto close_all_sess;
 	}
 	err = ibtrs_clt_create_sysfs_root_files(clt);
@@ -2767,7 +2767,7 @@ int ibtrs_clt_get_max_reconnect_attempts(const struct ibtrs_clt *clt)
 }
 
 int ibtrs_clt_request(int dir, ibtrs_conf_fn *conf, struct ibtrs_clt *clt,
-		      struct ibtrs_tag *tag, void *priv, const struct kvec *vec,
+		      struct ibtrs_permit *permit, void *priv, const struct kvec *vec,
 		      size_t nr, size_t data_len, struct scatterlist *sg,
 		      unsigned int sg_cnt)
 {
@@ -2804,7 +2804,7 @@ int ibtrs_clt_request(int dir, ibtrs_conf_fn *conf, struct ibtrs_clt *clt,
 			err = -EMSGSIZE;
 			break;
 		}
-		req = ibtrs_clt_get_req(sess, conf, tag, priv, vec, usr_len,
+		req = ibtrs_clt_get_req(sess, conf, permit, priv, vec, usr_len,
 					sg, sg_cnt, data_len, dma_dir);
 		if (dir == READ)
 			err = ibtrs_clt_read_req(req);
