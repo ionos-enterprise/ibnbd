@@ -55,7 +55,7 @@ struct ibnbd_iu {
 		struct request *rq; /* for block io */
 		void *buf; /* for user messages */
 	};
-	struct ibtrs_tag	*tag;
+	struct ibtrs_permit	*permit;
 	union {
 		/* use to send msg associated with a dev */
 		struct ibnbd_clt_dev *dev;

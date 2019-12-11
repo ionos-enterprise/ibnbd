@@ -315,16 +315,16 @@ clear_bit:
  *     This function tries to rerun all stopped queues if there are no
  *     requests in-flight anymore.  This function tries to solve an obvious
  *     problem, when number of tags < than number of queues (hctx), which
- *     are stopped and put to sleep.  If last tag, which has been just put,
+ *     are stopped and put to sleep.  If last permit, which has been just put,
  *     does not wake up all left queues (hctxs), IO requests hang forever.
  *
- *     That can happen when all number of tags, say N, have been exhausted
+ *     That can happen when all number of permits, say N, have been exhausted
  *     from one CPU, and we have many block devices per session, say M.
  *     Each block device has it's own queue (hctx) for each CPU, so eventually
  *     we can put that number of queues (hctxs) to sleep: M x nr_cpu_ids.
- *     If number of tags N < M x nr_cpu_ids finally we will get an IO hang.
+ *     If number of permits N < M x nr_cpu_ids finally we will get an IO hang.
  *
- *     To avoid this hang last caller of ibnbd_put_tag() (last caller is the
+ *     To avoid this hang last caller of ibnbd_put_permit() (last caller is the
  *     one who observes sess->busy == 0) must wake up all remaining queues.
  *
  * Context:
@@ -339,28 +339,28 @@ static inline void ibnbd_rerun_all_if_idle(struct ibnbd_clt_session *sess)
 	} while (atomic_read(&sess->busy) == 0 && requeued);
 }
 
-static struct ibtrs_tag *ibnbd_get_tag(struct ibnbd_clt_session *sess,
+static struct ibtrs_permit *ibnbd_get_permit(struct ibnbd_clt_session *sess,
 				       enum ibtrs_clt_con_type con_type,
 				       int wait)
 {
-	struct ibtrs_tag *tag;
+	struct ibtrs_permit *permit;
 
-	tag = ibtrs_clt_get_tag(sess->ibtrs, con_type,
-				wait ? IBTRS_TAG_WAIT : IBTRS_TAG_NOWAIT);
-	if (likely(tag))
-		/* We have a subtle rare case here, when all tags can be
+	permit = ibtrs_clt_get_permit(sess->ibtrs, con_type,
+				wait ? IBTRS_PERMIT_WAIT : IBTRS_PERMIT_NOWAIT);
+	if (likely(permit))
+		/* We have a subtle rare case here, when all permits can be
 		 * consumed before busy counter increased.  This is safe,
-		 * because loser will get NULL as a tag, observe 0 busy
+		 * because loser will get NULL as a permit, observe 0 busy
 		 * counter and immediately restart the queue himself.
 		 */
 		atomic_inc(&sess->busy);
 
-	return tag;
+	return permit;
 }
 
-static void ibnbd_put_tag(struct ibnbd_clt_session *sess, struct ibtrs_tag *tag)
+static void ibnbd_put_permit(struct ibnbd_clt_session *sess, struct ibtrs_permit *permit)
 {
-	ibtrs_clt_put_tag(sess->ibtrs, tag);
+	ibtrs_clt_put_permit(sess->ibtrs, permit);
 	atomic_dec(&sess->busy);
 	/* Paired with ibnbd_clt_dev_add_to_requeue().  Decrement first
 	 * and then check queue bits.
@@ -374,14 +374,14 @@ static struct ibnbd_iu *ibnbd_get_iu(struct ibnbd_clt_session *sess,
 				     int wait)
 {
 	struct ibnbd_iu *iu;
-	struct ibtrs_tag *tag;
+	struct ibtrs_permit *permit;
 
-	tag = ibnbd_get_tag(sess, con_type,
-			    wait ? IBTRS_TAG_WAIT : IBTRS_TAG_NOWAIT);
-	if (unlikely(!tag))
+	permit = ibnbd_get_permit(sess, con_type,
+			    wait ? IBTRS_PERMIT_WAIT : IBTRS_PERMIT_NOWAIT);
+	if (unlikely(!permit))
 		return NULL;
-	iu = ibtrs_tag_to_pdu(tag);
-	iu->tag = tag; /* yes, ibtrs_tag_from_pdu() can be nice here,
+	iu = ibtrs_permit_to_pdu(permit);
+	iu->permit = permit; /* yes, ibtrs_permit_from_pdu() can be nice here,
 			* but also we have to think about MQ mode
 			*/
 	/*
@@ -389,7 +389,7 @@ static struct ibnbd_iu *ibnbd_get_iu(struct ibnbd_clt_session *sess,
 	 * 2nd reference is dropped after confirmation with the response is
 	 * returned.
 	 * 1st and 2nd can happen in any order, so the ibnbd_iu should be
-	 * released (ibtrs_tag returned to ibbtrs) only leased after both
+	 * released (ibtrs_permit returned to ibbtrs) only leased after both
 	 * are finished.
 	 */
 	atomic_set(&iu->refcount, 2);
@@ -402,7 +402,7 @@ static struct ibnbd_iu *ibnbd_get_iu(struct ibnbd_clt_session *sess,
 static void ibnbd_put_iu(struct ibnbd_clt_session *sess, struct ibnbd_iu *iu)
 {
 	if (atomic_dec_and_test(&iu->refcount))
-		ibnbd_put_tag(sess, iu->tag);
+		ibnbd_put_permit(sess, iu->permit);
 }
 
 static void ibnbd_softirq_done_fn(struct request *rq)
@@ -412,7 +412,7 @@ static void ibnbd_softirq_done_fn(struct request *rq)
 	struct ibnbd_iu *iu;
 
 	iu = blk_mq_rq_to_pdu(rq);
-	ibnbd_put_tag(sess, iu->tag);
+	ibnbd_put_permit(sess, iu->permit);
 	blk_mq_end_request(rq, iu->status);
 }
 
@@ -460,7 +460,7 @@ static int send_usr_msg(struct ibtrs_clt *ibtrs, int dir,
 	int err;
 
 	INIT_WORK(&iu->work, conf);
-	err = ibtrs_clt_request(dir, msg_conf, ibtrs, iu->tag,
+	err = ibtrs_clt_request(dir, msg_conf, ibtrs, iu->permit,
 				iu, vec, nr, len, sg, sg_len);
 	if (!err && wait) {
 		wait_event(iu->comp.wait, iu->comp.errno != INT_MAX);
@@ -493,7 +493,7 @@ static int send_msg_close(struct ibnbd_clt_dev *dev, u32 device_id, bool wait)
 	};
 	int err, errno;
 
-	iu = ibnbd_get_iu(sess, IBTRS_USR_CON, IBTRS_TAG_WAIT);
+	iu = ibnbd_get_iu(sess, IBTRS_USR_CON, IBTRS_PERMIT_WAIT);
 	if (unlikely(!iu))
 		return -ENOMEM;
 
@@ -578,7 +578,7 @@ static int send_msg_open(struct ibnbd_clt_dev *dev, bool wait)
 	if (unlikely(!rsp))
 		return -ENOMEM;
 
-	iu = ibnbd_get_iu(sess, IBTRS_USR_CON, IBTRS_TAG_WAIT);
+	iu = ibnbd_get_iu(sess, IBTRS_USR_CON, IBTRS_PERMIT_WAIT);
 	if (unlikely(!iu)) {
 		kfree(rsp);
 		return -ENOMEM;
@@ -624,7 +624,7 @@ static int send_msg_sess_info(struct ibnbd_clt_session *sess, bool wait)
 	if (unlikely(!rsp))
 		return -ENOMEM;
 
-	iu = ibnbd_get_iu(sess, IBTRS_USR_CON, IBTRS_TAG_WAIT);
+	iu = ibnbd_get_iu(sess, IBTRS_USR_CON, IBTRS_PERMIT_WAIT);
 	if (unlikely(!iu)) {
 		kfree(rsp);
 		return -ENOMEM;
@@ -1018,7 +1018,7 @@ static int ibnbd_client_xfer_request(struct ibnbd_clt_dev *dev,
 				     struct ibnbd_iu *iu)
 {
 	struct ibtrs_clt *ibtrs = dev->sess->ibtrs;
-	struct ibtrs_tag *tag = iu->tag;
+	struct ibtrs_permit *permit = iu->permit;
 	struct ibnbd_msg_io msg;
 	unsigned int sg_cnt = 0;
 	struct kvec vec;
@@ -1051,7 +1051,7 @@ static int ibnbd_client_xfer_request(struct ibnbd_clt_dev *dev,
 		.iov_len  = sizeof(msg)
 	};
 	size = ibnbd_clt_get_sg_size(iu->sglist, sg_cnt);
-	err = ibtrs_clt_request(rq_data_dir(rq), msg_io_conf, ibtrs, tag,
+	err = ibtrs_clt_request(rq_data_dir(rq), msg_io_conf, ibtrs, permit,
 				iu, &vec, 1, size, iu->sglist, sg_cnt);
 	if (unlikely(err)) {
 		ibnbd_clt_err_rl(dev, "IBTRS failed to transfer IO, err: %d\n",
@@ -1091,7 +1091,7 @@ static inline bool ibnbd_clt_dev_add_to_requeue(struct ibnbd_clt_dev *dev,
 		need_set = !test_bit(cpu_q->cpu, sess->cpu_queues_bm);
 		if (need_set) {
 			set_bit(cpu_q->cpu, sess->cpu_queues_bm);
-			/* Paired with ibnbd_put_tag().	 Set a bit first
+			/* Paired with ibnbd_put_permit().	 Set a bit first
 			 * and then observe the busy counter.
 			 */
 			smp_mb__before_atomic();
@@ -1143,8 +1143,8 @@ static blk_status_t ibnbd_queue_rq(struct blk_mq_hw_ctx *hctx,
 	if (unlikely(!ibnbd_clt_dev_is_mapped(dev)))
 		return BLK_STS_IOERR;
 
-	iu->tag = ibnbd_get_tag(dev->sess, IBTRS_IO_CON, IBTRS_TAG_NOWAIT);
-	if (unlikely(!iu->tag)) {
+	iu->permit = ibnbd_get_permit(dev->sess, IBTRS_IO_CON, IBTRS_PERMIT_NOWAIT);
+	if (unlikely(!iu->permit)) {
 		ibnbd_clt_dev_kick_mq_queue(dev, hctx, IBNBD_DELAY_IFBUSY);
 		return BLK_STS_RESOURCE;
 	}
@@ -1155,11 +1155,11 @@ static blk_status_t ibnbd_queue_rq(struct blk_mq_hw_ctx *hctx,
 		return BLK_STS_OK;
 	if (unlikely(err == -EAGAIN || err == -ENOMEM)) {
 		ibnbd_clt_dev_kick_mq_queue(dev, hctx, IBNBD_DELAY_10ms);
-		ibnbd_put_tag(dev->sess, iu->tag);
+		ibnbd_put_permit(dev->sess, iu->permit);
 		return BLK_STS_RESOURCE;
 	}
 
-	ibnbd_put_tag(dev->sess, iu->tag);
+	ibnbd_put_permit(dev->sess, iu->permit);
 	return BLK_STS_IOERR;
 }
 
