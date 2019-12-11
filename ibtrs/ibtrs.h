@@ -56,12 +56,11 @@ struct ibtrs_addr {
 
 typedef void (link_clt_ev_fn)(void *priv, enum ibtrs_clt_link_ev ev);
 /**
- * ibtrs_clt_open() - Open a session to a IBTRS client
- * @priv:		User supplied private data.
- * @link_ev:		Event notification for connection state changes
- *	@priv:			user supplied data that was passed to
- *				ibtrs_clt_open()
- *	@ev:			Occurred event
+ * ibtrs_clt_open() - Open a session to an IBTRS server
+ * @priv: User supplied private data.
+ * @link_ev: Event notification for connection state changes
+ * 	@priv: User supplied data that was passed to ibtrs_clt_open()
+ * 	@ev: Occurred event
  * @sessname: name of the session
  * @paths: Paths to be established defined by their src and dst addresses
  * @path_cnt: Number of elemnts in the @paths array
@@ -88,7 +87,7 @@ struct ibtrs_clt *ibtrs_clt_open(void *priv, link_clt_ev_fn *link_ev,
 
 /**
  * ibtrs_clt_close() - Close a session
- * @sess: Session handler, is freed on return
+ * @sess: Session handle. Session is freed on return.
  */
 void ibtrs_clt_close(struct ibtrs_clt *sess);
 
