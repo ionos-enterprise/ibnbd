@@ -1812,13 +1812,6 @@ static int ibtrs_rdma_connect(struct rdma_cm_id *cm_id,
 		/* Session already holds a reference */
 		put_srv(srv);
 
-		if (unlikely(sess->s.recon_cnt != recon_cnt)) {
-			ibtrs_err(s,
-				  "Reconnect detected %d != %d, but previous session is still alive, reconnect later\n",
-				  sess->s.recon_cnt, recon_cnt);
-			mutex_unlock(&srv->paths_mutex);
-			goto reject_w_ebusy;
-		}
 		if (unlikely(sess->state != IBTRS_SRV_CONNECTING)) {
 			ibtrs_err(s, "Session in wrong state: %s\n",
 				  ibtrs_srv_state_str(sess->state));
@@ -1882,9 +1875,6 @@ reject_w_err:
 
 reject_w_econnreset:
 	return ibtrs_rdma_do_reject(cm_id, -ECONNRESET);
-
-reject_w_ebusy:
-	return ibtrs_rdma_do_reject(cm_id, -EBUSY);
 
 close_and_return_err:
 	close_sess(sess);
