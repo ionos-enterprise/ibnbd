@@ -769,8 +769,6 @@ static void destroy_mq_tags(struct ibnbd_clt_session *sess)
 
 static inline void wake_up_ibtrs_waiters(struct ibnbd_clt_session *sess)
 {
-	/* paired with rmb() in wait_for_ibtrs_connection() */
-	smp_wmb();
 	sess->ibtrs_ready = true;
 	wake_up_all(&sess->ibtrs_waitq);
 }
@@ -859,8 +857,6 @@ err:
 static int wait_for_ibtrs_connection(struct ibnbd_clt_session *sess)
 {
 	wait_event(sess->ibtrs_waitq, sess->ibtrs_ready);
-	/* paired with wmb() in wake_up_ibtrs_waiters() */
-	smp_rmb();
 	if (unlikely(IS_ERR_OR_NULL(sess->ibtrs)))
 		return -ECONNRESET;
 
