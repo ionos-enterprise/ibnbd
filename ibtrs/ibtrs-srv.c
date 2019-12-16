@@ -55,8 +55,7 @@ static int __read_mostly sess_queue_depth = DEFAULT_SESS_QUEUE_DEPTH;
 static bool always_invalidate = true;
 module_param(always_invalidate, bool, 0444);
 MODULE_PARM_DESC(always_invalidate,
-	 "Invalidate memory registration for contiguous memory regions"
-	 " before accessing.");
+		 "Invalidate memory registration for contiguous memory regions before accessing.");
 
 module_param_named(max_chunk_size, max_chunk_size, int, 0444);
 MODULE_PARM_DESC(max_chunk_size,
@@ -363,7 +362,6 @@ static int rdma_write_sg(struct ibtrs_srv_op *id)
 		wr->wr.send_flags  = 0;
 	}
 
-
 	if (need_inval && always_invalidate) {
 		wr->wr.next = &rwr.wr;
 		rwr.wr.next = &inv_wr;
@@ -371,11 +369,12 @@ static int rdma_write_sg(struct ibtrs_srv_op *id)
 	} else if (always_invalidate) {
 		wr->wr.next = &rwr.wr;
 		rwr.wr.next = &imm_wr;
-	} else if (need_inval){
+	} else if (need_inval) {
 		wr->wr.next = &inv_wr;
 		inv_wr.next = &imm_wr;
-	} else
+	} else {
 		wr->wr.next = &imm_wr;
+	}
 	/*
 	 * From time to time we have to post signalled sends,
 	 * or send queue will fill up and only QP reset can help.
@@ -493,11 +492,12 @@ static int send_io_resp_imm(struct ibtrs_srv_con *con, struct ibtrs_srv_op *id,
 	} else if (always_invalidate) {
 		wr = &rwr.wr;
 		rwr.wr.next = &imm_wr;
-	} else if (need_inval){
+	} else if (need_inval) {
 		wr = &inv_wr;
 		inv_wr.next = &imm_wr;
-	} else
+	} else {
 		wr = &imm_wr;
+	}
 	/*
 	 * From time to time we have to post signalled sends,
 	 * or send queue will fill up and only QP reset can help.
@@ -545,8 +545,8 @@ static int send_io_resp_imm(struct ibtrs_srv_con *con, struct ibtrs_srv_op *id,
 
 	err = ib_post_send(id->con->c.qp, wr, &bad_wr);
 	if (unlikely(err))
-		ibtrs_err_rl(s,
-			  "Posting RDMA-Reply to QP failed, err: %d\n", err);
+		ibtrs_err_rl(s, "Posting RDMA-Reply to QP failed, err: %d\n",
+			     err);
 
 	return err;
 }
@@ -659,7 +659,8 @@ static int map_cont_bufs(struct ibtrs_srv_sess *sess)
 		 */
 		mrs_num = srv->queue_depth;
 	} else {
-		chunks_per_mr = sess->s.dev->ib_dev->attrs.max_fast_reg_page_list_len;
+		chunks_per_mr =
+			sess->s.dev->ib_dev->attrs.max_fast_reg_page_list_len;
 		mrs_num = DIV_ROUND_UP(srv->queue_depth, chunks_per_mr);
 		chunks_per_mr = DIV_ROUND_UP(srv->queue_depth, mrs_num);
 	}
@@ -886,7 +887,7 @@ static int process_info_req(struct ibtrs_srv_con *con,
 		rwr[mri].wr.opcode = IB_WR_REG_MR;
 		rwr[mri].wr.wr_cqe = &local_reg_cqe;
 		rwr[mri].wr.num_sge = 0;
-		rwr[mri].wr.send_flags = mri? 0 : IB_SEND_SIGNALED;
+		rwr[mri].wr.send_flags = mri ? 0 : IB_SEND_SIGNALED;
 		rwr[mri].mr = mr;
 		rwr[mri].key = mr->rkey;
 		rwr[mri].access = (IB_ACCESS_LOCAL_WRITE |
@@ -1190,7 +1191,8 @@ static void ibtrs_srv_inv_rkey_done(struct ib_cq *cq, struct ib_wc *wc)
 	process_io_req(con, data, msg_id, off);
 }
 
-static int ibtrs_srv_inv_rkey(struct ibtrs_srv_con *con, struct ibtrs_srv_mr *mr)
+static int ibtrs_srv_inv_rkey(struct ibtrs_srv_con *con,
+			      struct ibtrs_srv_mr *mr)
 {
 	const struct ib_send_wr *bad_wr;
 	struct ib_send_wr wr = {
@@ -1263,7 +1265,8 @@ static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 				mr->msg_id = msg_id;
 				err = ibtrs_srv_inv_rkey(con, mr);
 				if (unlikely(err)) {
-					ibtrs_err(s, "ibtrs_post_recv(), err: %d\n", err);
+					ibtrs_err(s, "ibtrs_post_recv(), err: %d\n",
+						  err);
 					close_sess(sess);
 					break;
 				}
@@ -1807,7 +1810,7 @@ static int ibtrs_rdma_connect(struct rdma_cm_id *cm_id,
 	mutex_lock(&srv->paths_mutex);
 	sess = __find_sess(srv, &msg->sess_uuid);
 	if (sess) {
-	    struct ibtrs_sess *s = &sess->s;
+		struct ibtrs_sess *s = &sess->s;
 
 		/* Session already holds a reference */
 		put_srv(srv);

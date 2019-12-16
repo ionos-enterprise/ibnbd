@@ -495,15 +495,6 @@ static int ibtrs_str_to_sockaddr(const char *addr, size_t len,
 	return -EPROTONOSUPPORT;
 }
 
-/**
- * sockaddr_to_str() - convert sockaddr to a string.
- * @addr	the sockadddr structure to be converted.
- * @buf		string containing socket addr.
- * @len		string length.
- *
- * The return value is the number of characters written into buf not
- * including the trailing '\0'. If len is == 0 the function returns 0..
- */
 int sockaddr_to_str(const struct sockaddr *addr, char *buf, size_t len)
 {
 	int cnt;

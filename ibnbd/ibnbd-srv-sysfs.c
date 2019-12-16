@@ -85,9 +85,8 @@ void ibnbd_srv_destroy_dev_sysfs(struct ibnbd_srv_dev *dev)
 	kobject_put(&dev->dev_kobj);
 }
 
-static ssize_t read_only_show(struct kobject *kobj,
-					     struct kobj_attribute *attr,
-					     char *page)
+static ssize_t read_only_show(struct kobject *kobj, struct kobj_attribute *attr,
+			      char *page)
 {
 	struct ibnbd_srv_sess_dev *sess_dev;
 

@@ -123,7 +123,7 @@ static int ibnbd_clt_change_capacity(struct ibnbd_clt_dev *dev,
 	int err = 0;
 
 	ibnbd_clt_info(dev, "Device size changed from %zu to %zu sectors\n",
-		   dev->nsectors, new_nsectors);
+		       dev->nsectors, new_nsectors);
 	dev->nsectors = new_nsectors;
 	set_capacity(dev->gd,
 		     dev->nsectors * (dev->logical_block_size /
@@ -340,13 +340,14 @@ static inline void ibnbd_rerun_all_if_idle(struct ibnbd_clt_session *sess)
 }
 
 static struct ibtrs_permit *ibnbd_get_permit(struct ibnbd_clt_session *sess,
-				       enum ibtrs_clt_con_type con_type,
-				       int wait)
+					     enum ibtrs_clt_con_type con_type,
+					     int wait)
 {
 	struct ibtrs_permit *permit;
 
 	permit = ibtrs_clt_get_permit(sess->ibtrs, con_type,
-				wait ? IBTRS_PERMIT_WAIT : IBTRS_PERMIT_NOWAIT);
+				      wait ? IBTRS_PERMIT_WAIT :
+				      IBTRS_PERMIT_NOWAIT);
 	if (likely(permit))
 		/* We have a subtle rare case here, when all permits can be
 		 * consumed before busy counter increased.  This is safe,
@@ -358,7 +359,8 @@ static struct ibtrs_permit *ibnbd_get_permit(struct ibnbd_clt_session *sess,
 	return permit;
 }
 
-static void ibnbd_put_permit(struct ibnbd_clt_session *sess, struct ibtrs_permit *permit)
+static void ibnbd_put_permit(struct ibnbd_clt_session *sess,
+			     struct ibtrs_permit *permit)
 {
 	ibtrs_clt_put_permit(sess->ibtrs, permit);
 	atomic_dec(&sess->busy);
@@ -377,13 +379,15 @@ static struct ibnbd_iu *ibnbd_get_iu(struct ibnbd_clt_session *sess,
 	struct ibtrs_permit *permit;
 
 	permit = ibnbd_get_permit(sess, con_type,
-			    wait ? IBTRS_PERMIT_WAIT : IBTRS_PERMIT_NOWAIT);
+				  wait ? IBTRS_PERMIT_WAIT :
+				  IBTRS_PERMIT_NOWAIT);
 	if (unlikely(!permit))
 		return NULL;
 	iu = ibtrs_permit_to_pdu(permit);
-	iu->permit = permit; /* yes, ibtrs_permit_from_pdu() can be nice here,
-			* but also we have to think about MQ mode
-			*/
+	iu->permit = permit;
+	/* yes, ibtrs_permit_from_pdu() can be nice here,
+	 * but also we have to think about MQ mode
+	 */
 	/*
 	 * 1st reference is dropped after finishing sending a "user" message,
 	 * 2nd reference is dropped after confirmation with the response is
@@ -418,7 +422,7 @@ static void ibnbd_softirq_done_fn(struct request *rq)
 
 static void msg_io_conf(void *priv, int errno)
 {
-	struct ibnbd_iu *iu = (struct ibnbd_iu *)priv;
+	struct ibnbd_iu *iu = priv;
 	struct ibnbd_clt_dev *dev = iu->dev;
 	struct request *rq = iu->rq;
 
@@ -428,8 +432,8 @@ static void msg_io_conf(void *priv, int errno)
 
 	if (errno)
 		ibnbd_clt_info_rl(dev, "%s I/O failed with err: %d\n",
-			      rq_data_dir(rq) == READ ? "read" : "write",
-			      errno);
+				  rq_data_dir(rq) == READ ? "read" : "write",
+				  errno);
 }
 
 static void wake_up_iu_comp(struct ibnbd_iu *iu, int errno)
@@ -844,7 +848,7 @@ static struct ibnbd_clt_session *alloc_sess(const char *sessname)
 		goto err;
 	}
 	for_each_possible_cpu(cpu)
-		*per_cpu_ptr(sess->cpu_rr, cpu) = cpu;
+		* per_cpu_ptr(sess->cpu_rr, cpu) = cpu;
 
 	return sess;
 
@@ -1051,7 +1055,7 @@ static int ibnbd_client_xfer_request(struct ibnbd_clt_dev *dev,
 				iu, &vec, 1, size, iu->sglist, sg_cnt);
 	if (unlikely(err)) {
 		ibnbd_clt_err_rl(dev, "IBTRS failed to transfer IO, err: %d\n",
-			     err);
+				 err);
 		return err;
 	}
 
@@ -1139,7 +1143,8 @@ static blk_status_t ibnbd_queue_rq(struct blk_mq_hw_ctx *hctx,
 	if (unlikely(!ibnbd_clt_dev_is_mapped(dev)))
 		return BLK_STS_IOERR;
 
-	iu->permit = ibnbd_get_permit(dev->sess, IBTRS_IO_CON, IBTRS_PERMIT_NOWAIT);
+	iu->permit = ibnbd_get_permit(dev->sess, IBTRS_IO_CON,
+				      IBTRS_PERMIT_NOWAIT);
 	if (unlikely(!iu->permit)) {
 		ibnbd_clt_dev_kick_mq_queue(dev, hctx, IBNBD_DELAY_IFBUSY);
 		return BLK_STS_RESOURCE;
@@ -1289,9 +1294,8 @@ static int setup_mq_dev(struct ibnbd_clt_dev *dev)
 {
 	dev->queue = blk_mq_init_queue(&dev->sess->tag_set);
 	if (IS_ERR(dev->queue)) {
-		ibnbd_clt_err(dev,
-			  "Initializing multiqueue queue failed, err: %ld\n",
-			  PTR_ERR(dev->queue));
+		ibnbd_clt_err(dev, "Initializing multiqueue queue failed, err: %ld\n",
+			      PTR_ERR(dev->queue));
 		return PTR_ERR(dev->queue);
 	}
 	ibnbd_init_mq_hw_queues(dev);
@@ -1737,7 +1741,6 @@ static int __init ibnbd_client_init(void)
 	}
 
 	return err;
-
 }
 
 static void __exit ibnbd_client_exit(void)

@@ -315,5 +315,14 @@ int ibtrs_srv_get_sess_name(struct ibtrs_srv *sess, char *sessname, size_t len);
 int ibtrs_addr_to_sockaddr(const char *str, size_t len, short port,
 			   struct ibtrs_addr *addr);
 
+/**
+ * sockaddr_to_str() - convert sockaddr to a string.
+ * @addr	the sockadddr structure to be converted.
+ * @buf		string containing socket addr.
+ * @len		string length.
+ *
+ * The return value is the number of characters written into buf not
+ * including the trailing '\0'. If len is == 0 the function returns 0..
+ */
 int sockaddr_to_str(const struct sockaddr *addr, char *buf, size_t len);
 #endif

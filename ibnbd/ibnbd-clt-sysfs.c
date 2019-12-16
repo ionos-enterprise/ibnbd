@@ -307,7 +307,7 @@ static ssize_t ibnbd_clt_unmap_dev_store(struct kobject *kobj,
 	}
 
 	ibnbd_clt_info(dev, "Unmapping device, option: %s.\n",
-		   force ? "force" : "normal");
+		       force ? "force" : "normal");
 
 	/*
 	 * We take explicit module reference only for one reason: do not
@@ -469,7 +469,7 @@ static int ibnbd_clt_add_dev_kobj(struct ibnbd_clt_dev *dev)
 				   "ibnbd");
 	if (ret)
 		ibnbd_clt_err(dev, "Failed to create device sysfs dir, err: %d\n",
-			  ret);
+			      ret);
 
 	return ret;
 }
@@ -509,7 +509,7 @@ static int ibnbd_clt_add_dev_symlink(struct ibnbd_clt_dev *dev)
 				      sizeof(dev->blk_symlink_name));
 	if (ret) {
 		ibnbd_clt_err(dev, "Failed to get /sys/block symlink path, err: %d\n",
-			  ret);
+			      ret);
 		goto out_err;
 	}
 
@@ -517,7 +517,7 @@ static int ibnbd_clt_add_dev_symlink(struct ibnbd_clt_dev *dev)
 				dev->blk_symlink_name);
 	if (ret) {
 		ibnbd_clt_err(dev, "Creating /sys/block symlink failed, err: %d\n",
-			  ret);
+			      ret);
 		goto out_err;
 	}
 

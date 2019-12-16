@@ -137,7 +137,7 @@ int ibnbd_dev_submit_io(struct ibnbd_dev *dev, sector_t sector, void *data,
 	if (unlikely(IS_ERR(bio)))
 		return PTR_ERR(bio);
 
-	io = container_of(bio, struct ibnbd_dev_blk_io, bio);;
+	io = container_of(bio, struct ibnbd_dev_blk_io, bio);
 
 	io->dev		= dev;
 	io->priv	= priv;

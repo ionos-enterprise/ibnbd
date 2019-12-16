@@ -103,14 +103,14 @@ __ibtrs_get_permit(struct ibtrs_clt *clt, enum ibtrs_clt_con_type con_type)
 }
 
 static inline void __ibtrs_put_permit(struct ibtrs_clt *clt,
-				   struct ibtrs_permit *permit)
+				      struct ibtrs_permit *permit)
 {
 	clear_bit_unlock(permit->mem_id, clt->permits_map);
 }
 
 struct ibtrs_permit *ibtrs_clt_get_permit(struct ibtrs_clt *clt,
-				    enum ibtrs_clt_con_type con_type,
-				    int can_wait)
+					  enum ibtrs_clt_con_type con_type,
+					  int can_wait)
 {
 	struct ibtrs_permit *permit;
 	DEFINE_WAIT(wait);
@@ -120,7 +120,8 @@ struct ibtrs_permit *ibtrs_clt_get_permit(struct ibtrs_clt *clt,
 		return permit;
 
 	do {
-		prepare_to_wait(&clt->permits_wait, &wait, TASK_UNINTERRUPTIBLE);
+		prepare_to_wait(&clt->permits_wait, &wait,
+				TASK_UNINTERRUPTIBLE);
 		permit = __ibtrs_get_permit(clt, con_type);
 		if (likely(permit))
 			break;
@@ -169,8 +170,9 @@ EXPORT_SYMBOL(ibtrs_permit_to_pdu);
  *     IO connection starts from 1.
  *     0 connection is for user messages.
  */
-static struct ibtrs_clt_con *ibtrs_permit_to_clt_con(struct ibtrs_clt_sess *sess,
-						  struct ibtrs_permit *permit)
+static
+struct ibtrs_clt_con *ibtrs_permit_to_clt_con(struct ibtrs_clt_sess *sess,
+					      struct ibtrs_permit *permit)
 {
 	int id = 0;
 
@@ -419,8 +421,8 @@ static void complete_rdma_req(struct ibtrs_clt_io_req *req, int errno,
 	}
 	if (sess->stats.enable_rdma_lat)
 		ibtrs_clt_update_rdma_lat(&sess->stats,
-				req->dir == DMA_FROM_DEVICE,
-				jiffies_to_msecs(jiffies - req->start_jiffies));
+					  req->dir == DMA_FROM_DEVICE,
+					  jiffies_to_msecs(jiffies - req->start_jiffies));
 	ibtrs_clt_decrease_inflight(&sess->stats);
 
 	req->in_use = false;
@@ -598,7 +600,8 @@ static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 			if (sess->flags == IBTRS_MSG_NEW_RKEY_F)
 				return  ibtrs_clt_recv_done(con, wc);
 		} else {
-			ibtrs_wrn(con->c.sess, "Unknown IMM type %u\n", imm_type);
+			ibtrs_wrn(con->c.sess, "Unknown IMM type %u\n",
+				  imm_type);
 		}
 		if (w_inval)
 			/*
@@ -609,7 +612,8 @@ static void ibtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 		else
 			err = ibtrs_post_recv_empty(&con->c, &io_comp_cqe);
 		if (unlikely(err)) {
-			ibtrs_err(con->c.sess, "ibtrs_post_recv_empty(): %d\n", err);
+			ibtrs_err(con->c.sess, "ibtrs_post_recv_empty(): %d\n",
+				  err);
 			ibtrs_rdma_error_recovery(con);
 			break;
 		}
@@ -647,7 +651,6 @@ static int post_recv_io(struct ibtrs_clt_con *con, size_t q_size)
 	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
 
 	for (i = 0; i < q_size; i++) {
-
 		if (sess->flags == IBTRS_MSG_NEW_RKEY_F) {
 			struct ibtrs_iu *iu = &con->rsp_ius[i];
 
@@ -1140,7 +1143,8 @@ static int ibtrs_clt_failover_req(struct ibtrs_clt *clt,
 	struct path_it it;
 
 	do_each_path(alive_sess, clt, &it) {
-		if (unlikely(READ_ONCE(alive_sess->state) != IBTRS_CLT_CONNECTED))
+		if (unlikely(READ_ONCE(alive_sess->state) !=
+			     IBTRS_CLT_CONNECTED))
 			continue;
 		req = ibtrs_clt_get_copy_req(alive_sess, fail_req);
 		if (req->dir == DMA_TO_DEVICE)
@@ -1256,8 +1260,8 @@ static int alloc_permits(struct ibtrs_clt *clt)
 	unsigned int chunk_bits;
 	int err, i;
 
-	clt->permits_map = kcalloc(BITS_TO_LONGS(clt->queue_depth), sizeof(long),
-				GFP_KERNEL);
+	clt->permits_map = kcalloc(BITS_TO_LONGS(clt->queue_depth),
+				   sizeof(long), GFP_KERNEL);
 	if (unlikely(!clt->permits_map)) {
 		err = -ENOMEM;
 		goto out_err;
@@ -1531,7 +1535,7 @@ static int create_con_cq_qp(struct ibtrs_clt_con *con)
 	/* alloc iu to recv new rkey reply when server reports flags set */
 	if (sess->flags == IBTRS_MSG_NEW_RKEY_F || con->c.cid == 0) {
 		con->rsp_ius = ibtrs_iu_alloc(wr_queue_size, sizeof(*rsp),
-					      GFP_KERNEL,sess->s.dev->ib_dev,
+					      GFP_KERNEL, sess->s.dev->ib_dev,
 					      DMA_FROM_DEVICE,
 					      ibtrs_clt_rdma_done);
 		if (unlikely(!con->rsp_ius))
@@ -1890,9 +1894,10 @@ static int create_cm(struct ibtrs_clt_con *con)
 	 * for waiting two possible cases: cm_err has something meaningful
 	 * or session state was really changed to error by device removal.
 	 */
-	err = wait_event_interruptible_timeout(sess->state_wq,
-			con->cm_err || sess->state != IBTRS_CLT_CONNECTING,
-			msecs_to_jiffies(IBTRS_CONNECT_TIMEOUT_MS));
+	err = wait_event_interruptible_timeout(sess->state_wq,con->cm_err
+					       || sess->state !=
+					       IBTRS_CLT_CONNECTING,
+					       msecs_to_jiffies(IBTRS_CONNECT_TIMEOUT_MS));
 	if (unlikely(err == 0 || err == -ERESTARTSYS)) {
 		if (err == 0)
 			err = -ETIMEDOUT;
@@ -2278,7 +2283,8 @@ static int process_info_rsp(struct ibtrs_clt_sess *sess,
 		total_len += len;
 
 		if (unlikely(!len || (len % sess->chunk_size))) {
-			ibtrs_err(sess->clt, "Incorrect [%d].len %d\n", sgi, len);
+			ibtrs_err(sess->clt, "Incorrect [%d].len %d\n", sgi,
+				  len);
 			return -EINVAL;
 		}
 		for ( ; len && i < sess->queue_depth; i++) {
@@ -2405,8 +2411,8 @@ static int ibtrs_send_sess_info(struct ibtrs_clt_sess *sess)
 
 	/* Wait for state change */
 	wait_event_interruptible_timeout(sess->state_wq,
-				sess->state != IBTRS_CLT_CONNECTING,
-				msecs_to_jiffies(IBTRS_CONNECT_TIMEOUT_MS));
+					 sess->state != IBTRS_CLT_CONNECTING,
+					 msecs_to_jiffies(IBTRS_CONNECT_TIMEOUT_MS));
 	if (unlikely(READ_ONCE(sess->state) != IBTRS_CLT_CONNECTED)) {
 		if (READ_ONCE(sess->state) == IBTRS_CLT_CONNECTING_ERR)
 			err = -ECONNRESET;
@@ -2767,9 +2773,9 @@ int ibtrs_clt_get_max_reconnect_attempts(const struct ibtrs_clt *clt)
 }
 
 int ibtrs_clt_request(int dir, ibtrs_conf_fn *conf, struct ibtrs_clt *clt,
-		      struct ibtrs_permit *permit, void *priv, const struct kvec *vec,
-		      size_t nr, size_t data_len, struct scatterlist *sg,
-		      unsigned int sg_cnt)
+		      struct ibtrs_permit *permit, void *priv,
+		      const struct kvec *vec, size_t nr, size_t data_len,
+		      struct scatterlist *sg, unsigned int sg_cnt)
 {
 	struct ibtrs_clt_io_req *req;
 	struct ibtrs_clt_sess *sess;
