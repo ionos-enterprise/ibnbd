@@ -33,6 +33,6 @@ override_dh_auto_install:
 	# TODO: porting storage drivers: scst/srpt, pm8001, mpt3sas and megaraid_sas drivers.
 	#$(MAKE) storage_defconfig
 	#FLAVOUR=$(STORAGE_FLAVOUR) $(MAKE) -f debian/rules.flavour install
-	FLAVOUR=$(KVERS) $(MAKE) -f debian/rules.flavour install_common
+	#FLAVOUR=$(KVERS) $(MAKE) -f debian/rules.flavour install_common
 
 override_dh_strip:
