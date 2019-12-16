@@ -444,6 +444,11 @@ static int rdma_write_sg(struct ibtrs_srv_op *id)
 /**
  * send_io_resp_imm() - response with empty IMM on failed READ/WRITE requests or
  *                      on successful WRITE request.
+ * @con		the connection to send back result
+ * @id		the id associated to io
+ * @errno	the error number of the IO.
+ *
+ * Return 0 on success, errno otherwise.
  */
 static int send_io_resp_imm(struct ibtrs_srv_con *con, struct ibtrs_srv_op *id,
 			    int errno)

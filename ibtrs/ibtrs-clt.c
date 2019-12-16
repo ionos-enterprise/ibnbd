@@ -733,6 +733,7 @@ struct path_it {
 
 /**
  * get_next_path_rr() - Returns path in round-robin fashion.
+ * @it	the path pointer
  *
  * Related to @MP_POLICY_RR
  *
@@ -770,6 +771,7 @@ static struct ibtrs_clt_sess *get_next_path_rr(struct path_it *it)
 
 /**
  * get_next_path_min_inflight() - Returns path with minimal inflight count.
+ * @it	the path pointer
  *
  * Related to @MP_POLICY_MIN_INFLIGHT
  *
