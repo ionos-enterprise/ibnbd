@@ -20,6 +20,12 @@
  *          Danil Kipnis <danil.kipnis@cloud.ionos.com>
  */
 
+/* Copyright (c) 2019 1&1 IONOS SE. All rights reserved.
+ * Authors: Jack Wang <jinpu.wang@cloud.ionos.com>
+ *          Danil Kipnis <danil.kipnis@cloud.ionos.com>
+ *          Guoqing Jiang <guoqing.jiang@cloud.ionos.com>
+ *          Lutz Pogrell <lutz.pogrell@cloud.ionos.com>
+ */
 #ifndef IBTRS_LOG_H
 #define IBTRS_LOG_H
 
