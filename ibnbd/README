@@ -156,14 +156,14 @@ The <device_id> of each device is created as follows:
   <device_id>. Otherwise, the <device_id> will be the same as the
   "device_path" provided.
 
-Entries under /sys/block/ibnbd<N>/ibnbd_client/
+Entries under /sys/block/ibnbd<N>/ibnbd/
 ===============================================
 
 unmap_device (RW)
 -----------------
 
 To unmap a volume, "normal" or "force" has to be written to:
-  /sys/block/ibnbd<N>/ibnbd_client/unmap_device
+  /sys/block/ibnbd<N>/ibnbd/unmap_device
 
 When "normal" is used, the operation will fail with EBUSY if any process
 is using the device.  When "force" is used, the device is also unmapped
