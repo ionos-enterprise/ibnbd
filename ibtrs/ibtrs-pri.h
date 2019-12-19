@@ -43,11 +43,6 @@
 #define IBTRS_PROTO_VER_STRING __stringify(IBTRS_PROTO_VER_MAJOR) "." \
 			       __stringify(IBTRS_PROTO_VER_MINOR)
 
-#ifndef IBTRS_VER_STRING
-#define IBTRS_VER_STRING __stringify(IBTRS_PROTO_VER_MAJOR) "." \
-			 __stringify(IBTRS_PROTO_VER_MINOR)
-#endif
-
 enum ibtrs_imm_const {
 	MAX_IMM_TYPE_BITS = 4,
 	MAX_IMM_TYPE_MASK = ((1 << MAX_IMM_TYPE_BITS) - 1),

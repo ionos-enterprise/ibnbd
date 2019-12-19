@@ -37,7 +37,6 @@
 
 MODULE_AUTHOR("ibnbd@profitbricks.com");
 MODULE_DESCRIPTION("IBTRS Core");
-MODULE_VERSION(IBTRS_VER_STRING);
 MODULE_LICENSE("GPL");
 
 struct ibtrs_iu *ibtrs_iu_alloc(u32 queue_size, size_t size, gfp_t gfp_mask,

@@ -38,7 +38,6 @@
 
 MODULE_AUTHOR("ibnbd@profitbricks.com");
 MODULE_DESCRIPTION("IBTRS Server");
-MODULE_VERSION(IBTRS_VER_STRING);
 MODULE_LICENSE("GPL");
 
 /* Must be power of 2, see mask from mr->page_size in ib_sg_to_pages() */
@@ -2135,8 +2134,8 @@ static int __init ibtrs_server_init(void)
 
 	init_cq_affinity();
 
-	pr_info("Loading module %s, version %s, proto %s: (cq_affinity_list: %s, max_chunk_size: %d (pure IO %ld, headers %ld) , sess_queue_depth: %d, always_invalidate: %d)\n",
-		KBUILD_MODNAME, IBTRS_VER_STRING, IBTRS_PROTO_VER_STRING,
+	pr_info("Loading module %s, proto %s: (cq_affinity_list: %s, max_chunk_size: %d (pure IO %ld, headers %ld) , sess_queue_depth: %d, always_invalidate: %d)\n",
+		KBUILD_MODNAME, IBTRS_PROTO_VER_STRING,
 		cq_affinity_list, max_chunk_size,
 		max_chunk_size - MAX_HDR_SIZE, MAX_HDR_SIZE,
 		sess_queue_depth, always_invalidate);

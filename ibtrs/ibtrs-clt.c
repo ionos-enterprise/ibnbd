@@ -41,7 +41,6 @@
 
 MODULE_AUTHOR("ibnbd@profitbricks.com");
 MODULE_DESCRIPTION("IBTRS Client");
-MODULE_VERSION(IBTRS_VER_STRING);
 MODULE_LICENSE("GPL");
 
 static ushort nr_cons_per_session;
@@ -2912,8 +2911,8 @@ static int __init ibtrs_client_init(void)
 {
 	int err;
 
-	pr_info("Loading module %s, version %s, proto %s: (retry_cnt: %d, noreg_cnt: %d)\n",
-		KBUILD_MODNAME, IBTRS_VER_STRING, IBTRS_PROTO_VER_STRING,
+	pr_info("Loading module %s, proto %s: (retry_cnt: %d, noreg_cnt: %d)\n",
+		KBUILD_MODNAME, IBTRS_PROTO_VER_STRING,
 		retry_cnt, noreg_cnt);
 
 	ibtrs_ib_dev_pool_init(noreg_cnt ? IB_PD_UNSAFE_GLOBAL_RKEY : 0,
