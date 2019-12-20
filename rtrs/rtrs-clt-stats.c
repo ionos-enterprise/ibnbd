@@ -29,22 +29,22 @@
 #undef pr_fmt
 #define pr_fmt(fmt) KBUILD_MODNAME " L" __stringify(__LINE__) ": " fmt
 
-#include "ibtrs-clt.h"
+#include "rtrs-clt.h"
 
-static inline int ibtrs_clt_ms_to_id(unsigned long ms)
+static inline int rtrs_clt_ms_to_id(unsigned long ms)
 {
 	int id = ms ? ilog2(ms) - MIN_LOG_LAT + 1 : 0;
 
 	return clamp(id, 0, LOG_LAT_SZ - 1);
 }
 
-void ibtrs_clt_update_rdma_lat(struct ibtrs_clt_stats *stats, bool read,
+void rtrs_clt_update_rdma_lat(struct rtrs_clt_stats *stats, bool read,
 			       unsigned long ms)
 {
-	struct ibtrs_clt_stats_pcpu *s;
+	struct rtrs_clt_stats_pcpu *s;
 	int id;
 
-	id = ibtrs_clt_ms_to_id(ms);
+	id = rtrs_clt_ms_to_id(ms);
 	s = this_cpu_ptr(stats->pcpu_stats);
 	if (read) {
 		s->rdma_lat_distr[id].read++;
@@ -57,16 +57,16 @@ void ibtrs_clt_update_rdma_lat(struct ibtrs_clt_stats *stats, bool read,
 	}
 }
 
-void ibtrs_clt_decrease_inflight(struct ibtrs_clt_stats *stats)
+void rtrs_clt_decrease_inflight(struct rtrs_clt_stats *stats)
 {
 	atomic_dec(&stats->inflight);
 }
 
-void ibtrs_clt_update_wc_stats(struct ibtrs_clt_con *con)
+void rtrs_clt_update_wc_stats(struct rtrs_clt_con *con)
 {
-	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
-	struct ibtrs_clt_stats *stats = &sess->stats;
-	struct ibtrs_clt_stats_pcpu *s;
+	struct rtrs_clt_sess *sess = to_clt_sess(con->c.sess);
+	struct rtrs_clt_stats *stats = &sess->stats;
+	struct rtrs_clt_stats_pcpu *s;
 	int cpu;
 
 	cpu = raw_smp_processor_id();
@@ -82,22 +82,22 @@ void ibtrs_clt_update_wc_stats(struct ibtrs_clt_con *con)
 	}
 }
 
-void ibtrs_clt_inc_failover_cnt(struct ibtrs_clt_stats *stats)
+void rtrs_clt_inc_failover_cnt(struct rtrs_clt_stats *stats)
 {
-	struct ibtrs_clt_stats_pcpu *s;
+	struct rtrs_clt_stats_pcpu *s;
 
 	s = this_cpu_ptr(stats->pcpu_stats);
 	s->rdma.failover_cnt++;
 }
 
-static inline u32 ibtrs_clt_stats_get_avg_wc_cnt(struct ibtrs_clt_stats *stats)
+static inline u32 rtrs_clt_stats_get_avg_wc_cnt(struct rtrs_clt_stats *stats)
 {
 	u32 cnt = 0;
 	u64 sum = 0;
 	int cpu;
 
 	for_each_possible_cpu(cpu) {
-		struct ibtrs_clt_stats_pcpu *s;
+		struct rtrs_clt_stats_pcpu *s;
 
 		s = per_cpu_ptr(stats->pcpu_stats, cpu);
 		sum += s->wc_comp.total_cnt;
@@ -107,19 +107,19 @@ static inline u32 ibtrs_clt_stats_get_avg_wc_cnt(struct ibtrs_clt_stats *stats)
 	return cnt ? sum / cnt : 0;
 }
 
-int ibtrs_clt_stats_wc_completion_to_str(struct ibtrs_clt_stats *stats,
+int rtrs_clt_stats_wc_completion_to_str(struct rtrs_clt_stats *stats,
 					 char *buf, size_t len)
 {
 	return scnprintf(buf, len, "%u\n",
-			 ibtrs_clt_stats_get_avg_wc_cnt(stats));
+			 rtrs_clt_stats_get_avg_wc_cnt(stats));
 }
 
-ssize_t ibtrs_clt_stats_rdma_lat_distr_to_str(struct ibtrs_clt_stats *stats,
+ssize_t rtrs_clt_stats_rdma_lat_distr_to_str(struct rtrs_clt_stats *stats,
 					      char *page, size_t len)
 {
-	struct ibtrs_clt_stats_rdma_lat res[LOG_LAT_SZ];
-	struct ibtrs_clt_stats_rdma_lat max;
-	struct ibtrs_clt_stats_pcpu *s;
+	struct rtrs_clt_stats_rdma_lat res[LOG_LAT_SZ];
+	struct rtrs_clt_stats_rdma_lat max;
+	struct rtrs_clt_stats_pcpu *s;
 
 	ssize_t cnt = 0;
 	int i, cpu;
@@ -159,10 +159,10 @@ ssize_t ibtrs_clt_stats_rdma_lat_distr_to_str(struct ibtrs_clt_stats *stats,
 	return cnt;
 }
 
-int ibtrs_clt_stats_migration_cnt_to_str(struct ibtrs_clt_stats *stats,
+int rtrs_clt_stats_migration_cnt_to_str(struct rtrs_clt_stats *stats,
 					 char *buf, size_t len)
 {
-	struct ibtrs_clt_stats_pcpu *s;
+	struct rtrs_clt_stats_pcpu *s;
 
 	size_t used;
 	int cpu;
@@ -189,7 +189,7 @@ int ibtrs_clt_stats_migration_cnt_to_str(struct ibtrs_clt_stats *stats,
 	return used;
 }
 
-int ibtrs_clt_stats_reconnects_to_str(struct ibtrs_clt_stats *stats, char *buf,
+int rtrs_clt_stats_reconnects_to_str(struct rtrs_clt_stats *stats, char *buf,
 				      size_t len)
 {
 	return scnprintf(buf, len, "%d %d\n",
@@ -197,11 +197,11 @@ int ibtrs_clt_stats_reconnects_to_str(struct ibtrs_clt_stats *stats, char *buf,
 			 stats->reconnects.fail_cnt);
 }
 
-ssize_t ibtrs_clt_stats_rdma_to_str(struct ibtrs_clt_stats *stats,
+ssize_t rtrs_clt_stats_rdma_to_str(struct rtrs_clt_stats *stats,
 				    char *page, size_t len)
 {
-	struct ibtrs_clt_stats_rdma sum;
-	struct ibtrs_clt_stats_rdma *r;
+	struct rtrs_clt_stats_rdma sum;
+	struct rtrs_clt_stats_rdma *r;
 	int cpu;
 
 	memset(&sum, 0, sizeof(sum));
@@ -222,10 +222,10 @@ ssize_t ibtrs_clt_stats_rdma_to_str(struct ibtrs_clt_stats *stats,
 			 atomic_read(&stats->inflight), sum.failover_cnt);
 }
 
-int ibtrs_clt_stats_sg_list_distr_to_str(struct ibtrs_clt_stats *stats,
+int rtrs_clt_stats_sg_list_distr_to_str(struct rtrs_clt_stats *stats,
 					 char *buf, size_t len)
 {
-	struct ibtrs_clt_stats_pcpu *s;
+	struct rtrs_clt_stats_pcpu *s;
 
 	int i, cpu, cnt;
 
@@ -275,15 +275,15 @@ int ibtrs_clt_stats_sg_list_distr_to_str(struct ibtrs_clt_stats *stats,
 	return cnt;
 }
 
-ssize_t ibtrs_clt_reset_all_help(struct ibtrs_clt_stats *s,
+ssize_t rtrs_clt_reset_all_help(struct rtrs_clt_stats *s,
 				 char *page, size_t len)
 {
 	return scnprintf(page, len, "echo 1 to reset all statistics\n");
 }
 
-int ibtrs_clt_reset_rdma_stats(struct ibtrs_clt_stats *stats, bool enable)
+int rtrs_clt_reset_rdma_stats(struct rtrs_clt_stats *stats, bool enable)
 {
-	struct ibtrs_clt_stats_pcpu *s;
+	struct rtrs_clt_stats_pcpu *s;
 	int cpu;
 
 	if (unlikely(!enable))
@@ -297,10 +297,10 @@ int ibtrs_clt_reset_rdma_stats(struct ibtrs_clt_stats *stats, bool enable)
 	return 0;
 }
 
-int ibtrs_clt_reset_rdma_lat_distr_stats(struct ibtrs_clt_stats *stats,
+int rtrs_clt_reset_rdma_lat_distr_stats(struct rtrs_clt_stats *stats,
 					 bool enable)
 {
-	struct ibtrs_clt_stats_pcpu *s;
+	struct rtrs_clt_stats_pcpu *s;
 	int cpu;
 
 	if (enable) {
@@ -316,10 +316,10 @@ int ibtrs_clt_reset_rdma_lat_distr_stats(struct ibtrs_clt_stats *stats,
 	return 0;
 }
 
-int ibtrs_clt_reset_sg_list_distr_stats(struct ibtrs_clt_stats *stats,
+int rtrs_clt_reset_sg_list_distr_stats(struct rtrs_clt_stats *stats,
 					bool enable)
 {
-	struct ibtrs_clt_stats_pcpu *s;
+	struct rtrs_clt_stats_pcpu *s;
 	int cpu;
 
 	if (unlikely(!enable))
@@ -334,9 +334,9 @@ int ibtrs_clt_reset_sg_list_distr_stats(struct ibtrs_clt_stats *stats,
 	return 0;
 }
 
-int ibtrs_clt_reset_cpu_migr_stats(struct ibtrs_clt_stats *stats, bool enable)
+int rtrs_clt_reset_cpu_migr_stats(struct rtrs_clt_stats *stats, bool enable)
 {
-	struct ibtrs_clt_stats_pcpu *s;
+	struct rtrs_clt_stats_pcpu *s;
 	int cpu;
 
 	if (unlikely(!enable))
@@ -350,7 +350,7 @@ int ibtrs_clt_reset_cpu_migr_stats(struct ibtrs_clt_stats *stats, bool enable)
 	return 0;
 }
 
-int ibtrs_clt_reset_reconnects_stat(struct ibtrs_clt_stats *stats, bool enable)
+int rtrs_clt_reset_reconnects_stat(struct rtrs_clt_stats *stats, bool enable)
 {
 	if (unlikely(!enable))
 		return -EINVAL;
@@ -360,9 +360,9 @@ int ibtrs_clt_reset_reconnects_stat(struct ibtrs_clt_stats *stats, bool enable)
 	return 0;
 }
 
-int ibtrs_clt_reset_wc_comp_stats(struct ibtrs_clt_stats *stats, bool enable)
+int rtrs_clt_reset_wc_comp_stats(struct rtrs_clt_stats *stats, bool enable)
 {
-	struct ibtrs_clt_stats_pcpu *s;
+	struct rtrs_clt_stats_pcpu *s;
 	int cpu;
 
 	if (unlikely(!enable))
@@ -376,15 +376,15 @@ int ibtrs_clt_reset_wc_comp_stats(struct ibtrs_clt_stats *stats, bool enable)
 	return 0;
 }
 
-int ibtrs_clt_reset_all_stats(struct ibtrs_clt_stats *s, bool enable)
+int rtrs_clt_reset_all_stats(struct rtrs_clt_stats *s, bool enable)
 {
 	if (enable) {
-		ibtrs_clt_reset_rdma_stats(s, enable);
-		ibtrs_clt_reset_rdma_lat_distr_stats(s, enable);
-		ibtrs_clt_reset_sg_list_distr_stats(s, enable);
-		ibtrs_clt_reset_cpu_migr_stats(s, enable);
-		ibtrs_clt_reset_reconnects_stat(s, enable);
-		ibtrs_clt_reset_wc_comp_stats(s, enable);
+		rtrs_clt_reset_rdma_stats(s, enable);
+		rtrs_clt_reset_rdma_lat_distr_stats(s, enable);
+		rtrs_clt_reset_sg_list_distr_stats(s, enable);
+		rtrs_clt_reset_cpu_migr_stats(s, enable);
+		rtrs_clt_reset_reconnects_stat(s, enable);
+		rtrs_clt_reset_wc_comp_stats(s, enable);
 		atomic_set(&s->inflight, 0);
 		return 0;
 	}
@@ -392,7 +392,7 @@ int ibtrs_clt_reset_all_stats(struct ibtrs_clt_stats *s, bool enable)
 	return -EINVAL;
 }
 
-static inline void ibtrs_clt_record_sg_distr(u64 stat[SG_DISTR_SZ], u64 *total,
+static inline void rtrs_clt_record_sg_distr(u64 stat[SG_DISTR_SZ], u64 *total,
 					     unsigned int cnt)
 {
 	int i;
@@ -404,34 +404,34 @@ static inline void ibtrs_clt_record_sg_distr(u64 stat[SG_DISTR_SZ], u64 *total,
 	(*total)++;
 }
 
-static inline void ibtrs_clt_update_rdma_stats(struct ibtrs_clt_stats *stats,
+static inline void rtrs_clt_update_rdma_stats(struct rtrs_clt_stats *stats,
 					       size_t size, int d)
 {
-	struct ibtrs_clt_stats_pcpu *s;
+	struct rtrs_clt_stats_pcpu *s;
 
 	s = this_cpu_ptr(stats->pcpu_stats);
 	s->rdma.dir[d].cnt++;
 	s->rdma.dir[d].size_total += size;
 }
 
-void ibtrs_clt_update_all_stats(struct ibtrs_clt_io_req *req, int dir)
+void rtrs_clt_update_all_stats(struct rtrs_clt_io_req *req, int dir)
 {
-	struct ibtrs_clt_con *con = req->con;
-	struct ibtrs_clt_sess *sess = to_clt_sess(con->c.sess);
-	struct ibtrs_clt_stats *stats = &sess->stats;
+	struct rtrs_clt_con *con = req->con;
+	struct rtrs_clt_sess *sess = to_clt_sess(con->c.sess);
+	struct rtrs_clt_stats *stats = &sess->stats;
 	unsigned int len;
 
-	struct ibtrs_clt_stats_pcpu *s;
+	struct rtrs_clt_stats_pcpu *s;
 
 	s = this_cpu_ptr(stats->pcpu_stats);
-	ibtrs_clt_record_sg_distr(s->sg_list_distr, &s->sg_list_total,
+	rtrs_clt_record_sg_distr(s->sg_list_distr, &s->sg_list_total,
 				  req->sg_cnt);
 	len = req->usr_len + req->data_len;
-	ibtrs_clt_update_rdma_stats(stats, len, dir);
+	rtrs_clt_update_rdma_stats(stats, len, dir);
 	atomic_inc(&stats->inflight);
 }
 
-int ibtrs_clt_init_stats(struct ibtrs_clt_stats *stats)
+int rtrs_clt_init_stats(struct rtrs_clt_stats *stats)
 {
 	stats->enable_rdma_lat = false;
 	stats->pcpu_stats = alloc_percpu(typeof(*stats->pcpu_stats));
@@ -447,7 +447,7 @@ int ibtrs_clt_init_stats(struct ibtrs_clt_stats *stats)
 	return 0;
 }
 
-void ibtrs_clt_free_stats(struct ibtrs_clt_stats *stats)
+void rtrs_clt_free_stats(struct rtrs_clt_stats *stats)
 {
 	free_percpu(stats->pcpu_stats);
 }

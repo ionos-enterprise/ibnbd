@@ -33,26 +33,26 @@
 #include <linux/module.h>
 #include <linux/mempool.h>
 
-#include "ibtrs-srv.h"
-#include "ibtrs-log.h"
+#include "rtrs-srv.h"
+#include "rtrs-log.h"
 
-MODULE_AUTHOR("ibnbd@profitbricks.com");
-MODULE_DESCRIPTION("IBTRS Server");
+MODULE_AUTHOR("rnbd@profitbricks.com");
+MODULE_DESCRIPTION("RTRS Server");
 MODULE_LICENSE("GPL");
 
 /* Must be power of 2, see mask from mr->page_size in ib_sg_to_pages() */
 #define DEFAULT_MAX_CHUNK_SIZE (128 << 10)
 #define DEFAULT_SESS_QUEUE_DEPTH 512
 #define MAX_HDR_SIZE PAGE_SIZE
-#define MAX_SG_COUNT ((MAX_HDR_SIZE - sizeof(struct ibtrs_msg_rdma_read)) \
-		      / sizeof(struct ibtrs_sg_desc))
+#define MAX_SG_COUNT ((MAX_HDR_SIZE - sizeof(struct rtrs_msg_rdma_read)) \
+		      / sizeof(struct rtrs_sg_desc))
 
 /* We guarantee to serve 10 paths at least */
 #define CHUNK_POOL_SZ 10
 
-static struct ibtrs_ib_dev_pool dev_pool;
+static struct rtrs_ib_dev_pool dev_pool;
 static mempool_t *chunk_pool;
-struct class *ibtrs_dev_class;
+struct class *rtrs_dev_class;
 
 static int __read_mostly max_chunk_size = DEFAULT_MAX_CHUNK_SIZE;
 static int __read_mostly sess_queue_depth = DEFAULT_SESS_QUEUE_DEPTH;
@@ -126,49 +126,49 @@ module_param_cb(cq_affinity_list, &cq_affinity_list_ops,
 MODULE_PARM_DESC(cq_affinity_list,
 		 "Sets the list of cpus to use as cq vectors. (default: use all possible CPUs)");
 
-static struct workqueue_struct *ibtrs_wq;
+static struct workqueue_struct *rtrs_wq;
 
-static inline struct ibtrs_srv_con *to_srv_con(struct ibtrs_con *c)
+static inline struct rtrs_srv_con *to_srv_con(struct rtrs_con *c)
 {
-	return container_of(c, struct ibtrs_srv_con, c);
+	return container_of(c, struct rtrs_srv_con, c);
 }
 
-static inline struct ibtrs_srv_sess *to_srv_sess(struct ibtrs_sess *s)
+static inline struct rtrs_srv_sess *to_srv_sess(struct rtrs_sess *s)
 {
-	return container_of(s, struct ibtrs_srv_sess, s);
+	return container_of(s, struct rtrs_srv_sess, s);
 }
 
-static bool __ibtrs_srv_change_state(struct ibtrs_srv_sess *sess,
-				     enum ibtrs_srv_state new_state)
+static bool __rtrs_srv_change_state(struct rtrs_srv_sess *sess,
+				     enum rtrs_srv_state new_state)
 {
-	enum ibtrs_srv_state old_state;
+	enum rtrs_srv_state old_state;
 	bool changed = false;
 
 	lockdep_assert_held(&sess->state_lock);
 	old_state = sess->state;
 	switch (new_state) {
-	case IBTRS_SRV_CONNECTED:
+	case RTRS_SRV_CONNECTED:
 		switch (old_state) {
-		case IBTRS_SRV_CONNECTING:
+		case RTRS_SRV_CONNECTING:
 			changed = true;
 			/* FALLTHRU */
 		default:
 			break;
 		}
 		break;
-	case IBTRS_SRV_CLOSING:
+	case RTRS_SRV_CLOSING:
 		switch (old_state) {
-		case IBTRS_SRV_CONNECTING:
-		case IBTRS_SRV_CONNECTED:
+		case RTRS_SRV_CONNECTING:
+		case RTRS_SRV_CONNECTED:
 			changed = true;
 			/* FALLTHRU */
 		default:
 			break;
 		}
 		break;
-	case IBTRS_SRV_CLOSED:
+	case RTRS_SRV_CLOSED:
 		switch (old_state) {
-		case IBTRS_SRV_CLOSING:
+		case RTRS_SRV_CLOSING:
 			changed = true;
 			/* FALLTHRU */
 		default:
@@ -184,29 +184,29 @@ static bool __ibtrs_srv_change_state(struct ibtrs_srv_sess *sess,
 	return changed;
 }
 
-static bool ibtrs_srv_change_state_get_old(struct ibtrs_srv_sess *sess,
-					   enum ibtrs_srv_state new_state,
-					   enum ibtrs_srv_state *old_state)
+static bool rtrs_srv_change_state_get_old(struct rtrs_srv_sess *sess,
+					   enum rtrs_srv_state new_state,
+					   enum rtrs_srv_state *old_state)
 {
 	bool changed;
 
 	spin_lock_irq(&sess->state_lock);
 	*old_state = sess->state;
-	changed = __ibtrs_srv_change_state(sess, new_state);
+	changed = __rtrs_srv_change_state(sess, new_state);
 	spin_unlock_irq(&sess->state_lock);
 
 	return changed;
 }
 
-static bool ibtrs_srv_change_state(struct ibtrs_srv_sess *sess,
-				   enum ibtrs_srv_state new_state)
+static bool rtrs_srv_change_state(struct rtrs_srv_sess *sess,
+				   enum rtrs_srv_state new_state)
 {
-	enum ibtrs_srv_state old_state;
+	enum rtrs_srv_state old_state;
 
-	return ibtrs_srv_change_state_get_old(sess, new_state, &old_state);
+	return rtrs_srv_change_state_get_old(sess, new_state, &old_state);
 }
 
-static void free_id(struct ibtrs_srv_op *id)
+static void free_id(struct rtrs_srv_op *id)
 {
 	if (!id)
 		return;
@@ -215,9 +215,9 @@ static void free_id(struct ibtrs_srv_op *id)
 	kfree(id);
 }
 
-static void ibtrs_srv_free_ops_ids(struct ibtrs_srv_sess *sess)
+static void rtrs_srv_free_ops_ids(struct rtrs_srv_sess *sess)
 {
-	struct ibtrs_srv *srv = sess->srv;
+	struct rtrs_srv *srv = sess->srv;
 	int i;
 
 	WARN_ON(atomic_read(&sess->ids_inflight));
@@ -229,10 +229,10 @@ static void ibtrs_srv_free_ops_ids(struct ibtrs_srv_sess *sess)
 	}
 }
 
-static int ibtrs_srv_alloc_ops_ids(struct ibtrs_srv_sess *sess)
+static int rtrs_srv_alloc_ops_ids(struct rtrs_srv_sess *sess)
 {
-	struct ibtrs_srv *srv = sess->srv;
-	struct ibtrs_srv_op *id;
+	struct rtrs_srv *srv = sess->srv;
+	struct rtrs_srv_op *id;
 	int i;
 
 	sess->ops_ids = kcalloc(srv->queue_depth, sizeof(*sess->ops_ids),
@@ -262,40 +262,40 @@ static int ibtrs_srv_alloc_ops_ids(struct ibtrs_srv_sess *sess)
 	return 0;
 
 err:
-	ibtrs_srv_free_ops_ids(sess);
+	rtrs_srv_free_ops_ids(sess);
 	return -ENOMEM;
 }
 
-static void ibtrs_srv_get_ops_ids(struct ibtrs_srv_sess *sess)
+static void rtrs_srv_get_ops_ids(struct rtrs_srv_sess *sess)
 {
 	atomic_inc(&sess->ids_inflight);
 }
 
-static void ibtrs_srv_put_ops_ids(struct ibtrs_srv_sess *sess)
+static void rtrs_srv_put_ops_ids(struct rtrs_srv_sess *sess)
 {
 	if (atomic_dec_and_test(&sess->ids_inflight))
 		wake_up(&sess->ids_waitq);
 }
 
-static void ibtrs_srv_wait_ops_ids(struct ibtrs_srv_sess *sess)
+static void rtrs_srv_wait_ops_ids(struct rtrs_srv_sess *sess)
 {
 	wait_event(sess->ids_waitq, !atomic_read(&sess->ids_inflight));
 }
 
-static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc);
+static void rtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc);
 
 static struct ib_cqe io_comp_cqe = {
-	.done = ibtrs_srv_rdma_done
+	.done = rtrs_srv_rdma_done
 };
 
-static void ibtrs_srv_reg_mr_done(struct ib_cq *cq, struct ib_wc *wc)
+static void rtrs_srv_reg_mr_done(struct ib_cq *cq, struct ib_wc *wc)
 {
-	struct ibtrs_srv_con *con = cq->cq_context;
-	struct ibtrs_sess *s = con->c.sess;
-	struct ibtrs_srv_sess *sess = to_srv_sess(s);
+	struct rtrs_srv_con *con = cq->cq_context;
+	struct rtrs_sess *s = con->c.sess;
+	struct rtrs_srv_sess *sess = to_srv_sess(s);
 
 	if (unlikely(wc->status != IB_WC_SUCCESS)) {
-		ibtrs_err(s, "REG MR failed: %s\n",
+		rtrs_err(s, "REG MR failed: %s\n",
 			  ib_wc_status_msg(wc->status));
 		close_sess(sess);
 		return;
@@ -303,16 +303,16 @@ static void ibtrs_srv_reg_mr_done(struct ib_cq *cq, struct ib_wc *wc)
 }
 
 static struct ib_cqe local_reg_cqe = {
-	.done = ibtrs_srv_reg_mr_done
+	.done = rtrs_srv_reg_mr_done
 };
 
-static int rdma_write_sg(struct ibtrs_srv_op *id)
+static int rdma_write_sg(struct rtrs_srv_op *id)
 {
-	struct ibtrs_sess *s = id->con->c.sess;
-	struct ibtrs_srv_sess *sess = to_srv_sess(s);
+	struct rtrs_sess *s = id->con->c.sess;
+	struct rtrs_srv_sess *sess = to_srv_sess(s);
 	dma_addr_t dma_addr = sess->dma_addr[id->msg_id];
-	struct ibtrs_srv_mr *srv_mr;
-	struct ibtrs_srv *srv = sess->srv;
+	struct rtrs_srv_mr *srv_mr;
+	struct rtrs_srv *srv = sess->srv;
 	struct ib_send_wr inv_wr, imm_wr;
 	struct ib_rdma_wr *wr = NULL;
 	const struct ib_send_wr *bad_wr;
@@ -324,7 +324,7 @@ static int rdma_write_sg(struct ibtrs_srv_op *id)
 	struct ib_reg_wr rwr;
 
 	sg_cnt = le16_to_cpu(id->rd_msg->sg_cnt);
-	need_inval = le16_to_cpu(id->rd_msg->flags) & IBTRS_MSG_NEED_INVAL_F;
+	need_inval = le16_to_cpu(id->rd_msg->flags) & RTRS_MSG_NEED_INVAL_F;
 	if (unlikely(!sg_cnt))
 		return -EINVAL;
 
@@ -341,7 +341,7 @@ static int rdma_write_sg(struct ibtrs_srv_op *id)
 		 * if this is 0
 		 */
 		if (unlikely(list->length == 0)) {
-			ibtrs_err(s, "Invalid RDMA-Write sg list length 0\n");
+			rtrs_err(s, "Invalid RDMA-Write sg list length 0\n");
 			return -EINVAL;
 		}
 
@@ -400,7 +400,7 @@ static int rdma_write_sg(struct ibtrs_srv_op *id)
 	imm_wr.wr_cqe = &io_comp_cqe;
 	if (always_invalidate) {
 		struct ib_sge list;
-		struct ibtrs_msg_rkey_rsp *msg;
+		struct rtrs_msg_rkey_rsp *msg;
 
 		srv_mr = &sess->mrs[id->msg_id];
 		rwr.wr.opcode = IB_WR_REG_MR;
@@ -413,7 +413,7 @@ static int rdma_write_sg(struct ibtrs_srv_op *id)
 			      IB_ACCESS_REMOTE_WRITE);
 		msg = srv_mr->iu->buf;
 		msg->buf_id = cpu_to_le16(id->msg_id);
-		msg->type = cpu_to_le16(IBTRS_MSG_RKEY_RSP);
+		msg->type = cpu_to_le16(RTRS_MSG_RKEY_RSP);
 		msg->rkey = cpu_to_le32(srv_mr->mr->rkey);
 
 		list.addr   = srv_mr->iu->dma_addr;
@@ -431,7 +431,7 @@ static int rdma_write_sg(struct ibtrs_srv_op *id)
 		imm_wr.opcode = IB_WR_RDMA_WRITE_WITH_IMM;
 	}
 	imm_wr.send_flags = flags;
-	imm_wr.ex.imm_data = cpu_to_be32(ibtrs_to_io_rsp_imm(id->msg_id,
+	imm_wr.ex.imm_data = cpu_to_be32(rtrs_to_io_rsp_imm(id->msg_id,
 							     0, need_inval));
 
 	ib_dma_sync_single_for_device(sess->s.dev->ib_dev, dma_addr,
@@ -439,7 +439,7 @@ static int rdma_write_sg(struct ibtrs_srv_op *id)
 
 	err = ib_post_send(id->con->c.qp, &id->tx_wr[0].wr, &bad_wr);
 	if (unlikely(err))
-		ibtrs_err(s,
+		rtrs_err(s,
 			  "Posting RDMA-Write-Request to QP failed, err: %d\n",
 			  err);
 
@@ -455,15 +455,15 @@ static int rdma_write_sg(struct ibtrs_srv_op *id)
  *
  * Return 0 on success, errno otherwise.
  */
-static int send_io_resp_imm(struct ibtrs_srv_con *con, struct ibtrs_srv_op *id,
+static int send_io_resp_imm(struct rtrs_srv_con *con, struct rtrs_srv_op *id,
 			    int errno)
 {
-	struct ibtrs_sess *s = con->c.sess;
-	struct ibtrs_srv_sess *sess = to_srv_sess(s);
+	struct rtrs_sess *s = con->c.sess;
+	struct rtrs_srv_sess *sess = to_srv_sess(s);
 	struct ib_send_wr inv_wr, imm_wr, *wr = NULL;
 	struct ib_reg_wr rwr;
-	struct ibtrs_srv *srv = sess->srv;
-	struct ibtrs_srv_mr *srv_mr;
+	struct rtrs_srv *srv = sess->srv;
+	struct rtrs_srv_mr *srv_mr;
 	bool need_inval = false;
 	enum ib_send_flags flags;
 	const struct ib_send_wr *bad_wr;
@@ -471,11 +471,11 @@ static int send_io_resp_imm(struct ibtrs_srv_con *con, struct ibtrs_srv_op *id,
 	int err;
 
 	if (id->dir == READ) {
-		struct ibtrs_msg_rdma_read *rd_msg = id->rd_msg;
+		struct rtrs_msg_rdma_read *rd_msg = id->rd_msg;
 		size_t sg_cnt;
 
 		need_inval = le16_to_cpu(rd_msg->flags) &
-				IBTRS_MSG_NEED_INVAL_F;
+				RTRS_MSG_NEED_INVAL_F;
 		sg_cnt = le16_to_cpu(rd_msg->sg_cnt);
 
 		if (need_inval) {
@@ -514,12 +514,12 @@ static int send_io_resp_imm(struct ibtrs_srv_con *con, struct ibtrs_srv_op *id,
 	 */
 	flags = atomic_inc_return(&con->wr_cnt) % srv->queue_depth ?
 			0 : IB_SEND_SIGNALED;
-	imm = ibtrs_to_io_rsp_imm(id->msg_id, errno, need_inval);
+	imm = rtrs_to_io_rsp_imm(id->msg_id, errno, need_inval);
 	imm_wr.next = NULL;
 	imm_wr.wr_cqe = &io_comp_cqe;
 	if (always_invalidate) {
 		struct ib_sge list;
-		struct ibtrs_msg_rkey_rsp *msg;
+		struct rtrs_msg_rkey_rsp *msg;
 
 		srv_mr = &sess->mrs[id->msg_id];
 		rwr.wr.next = &imm_wr;
@@ -533,7 +533,7 @@ static int send_io_resp_imm(struct ibtrs_srv_con *con, struct ibtrs_srv_op *id,
 			      IB_ACCESS_REMOTE_WRITE);
 		msg = srv_mr->iu->buf;
 		msg->buf_id = cpu_to_le16(id->msg_id);
-		msg->type = cpu_to_le16(IBTRS_MSG_RKEY_RSP);
+		msg->type = cpu_to_le16(RTRS_MSG_RKEY_RSP);
 		msg->rkey = cpu_to_le32(srv_mr->mr->rkey);
 
 		list.addr   = srv_mr->iu->dma_addr;
@@ -555,61 +555,61 @@ static int send_io_resp_imm(struct ibtrs_srv_con *con, struct ibtrs_srv_op *id,
 
 	err = ib_post_send(id->con->c.qp, wr, &bad_wr);
 	if (unlikely(err))
-		ibtrs_err_rl(s, "Posting RDMA-Reply to QP failed, err: %d\n",
+		rtrs_err_rl(s, "Posting RDMA-Reply to QP failed, err: %d\n",
 			     err);
 
 	return err;
 }
 
-void close_sess(struct ibtrs_srv_sess *sess)
+void close_sess(struct rtrs_srv_sess *sess)
 {
-	enum ibtrs_srv_state old_state;
+	enum rtrs_srv_state old_state;
 
-	if (ibtrs_srv_change_state_get_old(sess, IBTRS_SRV_CLOSING,
+	if (rtrs_srv_change_state_get_old(sess, RTRS_SRV_CLOSING,
 					   &old_state))
-		queue_work(ibtrs_wq, &sess->close_work);
-	WARN_ON(sess->state != IBTRS_SRV_CLOSING);
+		queue_work(rtrs_wq, &sess->close_work);
+	WARN_ON(sess->state != RTRS_SRV_CLOSING);
 }
 
-static inline const char *ibtrs_srv_state_str(enum ibtrs_srv_state state)
+static inline const char *rtrs_srv_state_str(enum rtrs_srv_state state)
 {
 	switch (state) {
-	case IBTRS_SRV_CONNECTING:
-		return "IBTRS_SRV_CONNECTING";
-	case IBTRS_SRV_CONNECTED:
-		return "IBTRS_SRV_CONNECTED";
-	case IBTRS_SRV_CLOSING:
-		return "IBTRS_SRV_CLOSING";
-	case IBTRS_SRV_CLOSED:
-		return "IBTRS_SRV_CLOSED";
+	case RTRS_SRV_CONNECTING:
+		return "RTRS_SRV_CONNECTING";
+	case RTRS_SRV_CONNECTED:
+		return "RTRS_SRV_CONNECTED";
+	case RTRS_SRV_CLOSING:
+		return "RTRS_SRV_CLOSING";
+	case RTRS_SRV_CLOSED:
+		return "RTRS_SRV_CLOSED";
 	default:
 		return "UNKNOWN";
 	}
 }
 
 /*
- * ibtrs_srv_resp_rdma() - sends response to the client.
+ * rtrs_srv_resp_rdma() - sends response to the client.
  *
  * Context: any
  */
-void ibtrs_srv_resp_rdma(struct ibtrs_srv_op *id, int status)
+void rtrs_srv_resp_rdma(struct rtrs_srv_op *id, int status)
 {
-	struct ibtrs_srv_con *con = id->con;
-	struct ibtrs_sess *s = con->c.sess;
-	struct ibtrs_srv_sess *sess = to_srv_sess(s);
+	struct rtrs_srv_con *con = id->con;
+	struct rtrs_sess *s = con->c.sess;
+	struct rtrs_srv_sess *sess = to_srv_sess(s);
 	int err;
 
 	if (WARN_ON(!id))
 		return;
 
-	if (unlikely(sess->state != IBTRS_SRV_CONNECTED)) {
-		ibtrs_err_rl(s,
+	if (unlikely(sess->state != RTRS_SRV_CONNECTED)) {
+		rtrs_err_rl(s,
 			     "Sending I/O response failed,  session is disconnected, sess state %s\n",
-			     ibtrs_srv_state_str(sess->state));
+			     rtrs_srv_state_str(sess->state));
 		goto out;
 	}
 	if (always_invalidate) {
-		struct ibtrs_srv_mr *mr = &sess->mrs[id->msg_id];
+		struct rtrs_srv_mr *mr = &sess->mrs[id->msg_id];
 
 		ib_update_fast_reg_key(mr->mr, ib_inc_rkey(mr->mr->rkey));
 	}
@@ -618,29 +618,29 @@ void ibtrs_srv_resp_rdma(struct ibtrs_srv_op *id, int status)
 	else
 		err = rdma_write_sg(id);
 	if (unlikely(err)) {
-		ibtrs_err_rl(s, "IO response failed: %d\n", err);
+		rtrs_err_rl(s, "IO response failed: %d\n", err);
 		close_sess(sess);
 	}
 out:
-	ibtrs_srv_put_ops_ids(sess);
+	rtrs_srv_put_ops_ids(sess);
 }
-EXPORT_SYMBOL(ibtrs_srv_resp_rdma);
+EXPORT_SYMBOL(rtrs_srv_resp_rdma);
 
-void ibtrs_srv_set_sess_priv(struct ibtrs_srv *srv, void *priv)
+void rtrs_srv_set_sess_priv(struct rtrs_srv *srv, void *priv)
 {
 	srv->priv = priv;
 }
-EXPORT_SYMBOL(ibtrs_srv_set_sess_priv);
+EXPORT_SYMBOL(rtrs_srv_set_sess_priv);
 
-static void unmap_cont_bufs(struct ibtrs_srv_sess *sess)
+static void unmap_cont_bufs(struct rtrs_srv_sess *sess)
 {
 	int i;
 
 	for (i = 0; i < sess->mrs_num; i++) {
-		struct ibtrs_srv_mr *srv_mr;
+		struct rtrs_srv_mr *srv_mr;
 
 		srv_mr = &sess->mrs[i];
-		ibtrs_iu_free(srv_mr->iu, DMA_TO_DEVICE,
+		rtrs_iu_free(srv_mr->iu, DMA_TO_DEVICE,
 			      sess->s.dev->ib_dev, 1);
 		ib_dereg_mr(srv_mr->mr);
 		ib_dma_unmap_sg(sess->s.dev->ib_dev, srv_mr->sgt.sgl,
@@ -650,10 +650,10 @@ static void unmap_cont_bufs(struct ibtrs_srv_sess *sess)
 	kfree(sess->mrs);
 }
 
-static int map_cont_bufs(struct ibtrs_srv_sess *sess)
+static int map_cont_bufs(struct rtrs_srv_sess *sess)
 {
-	struct ibtrs_srv *srv = sess->srv;
-	struct ibtrs_sess *ss = &sess->s;
+	struct rtrs_srv *srv = sess->srv;
+	struct rtrs_sess *ss = &sess->s;
 	int i, mri, err, mrs_num;
 	unsigned int chunk_bits;
 	int chunks_per_mr = 1;
@@ -682,12 +682,12 @@ static int map_cont_bufs(struct ibtrs_srv_sess *sess)
 	sess->mrs_num = mrs_num;
 
 	for (mri = 0; mri < mrs_num; mri++) {
-		struct ibtrs_srv_mr *srv_mr = &sess->mrs[mri];
+		struct rtrs_srv_mr *srv_mr = &sess->mrs[mri];
 		struct sg_table *sgt = &srv_mr->sgt;
 		struct scatterlist *s;
 		struct ib_mr *mr;
 		int nr, chunks;
-		struct ibtrs_msg_rkey_rsp *rsp;
+		struct rtrs_msg_rkey_rsp *rsp;
 
 		chunks = chunks_per_mr * mri;
 		if (!always_invalidate)
@@ -722,12 +722,12 @@ static int map_cont_bufs(struct ibtrs_srv_sess *sess)
 		}
 
 		if (always_invalidate) {
-			srv_mr->iu = ibtrs_iu_alloc(1, sizeof(*rsp), GFP_KERNEL,
+			srv_mr->iu = rtrs_iu_alloc(1, sizeof(*rsp), GFP_KERNEL,
 						    sess->s.dev->ib_dev,
 						    DMA_TO_DEVICE,
-						    ibtrs_srv_rdma_done);
+						    rtrs_srv_rdma_done);
 			if (unlikely(!srv_mr->iu)) {
-				ibtrs_err(ss, "ibtrs_iu_alloc(), err: %d\n",
+				rtrs_err(ss, "rtrs_iu_alloc(), err: %d\n",
 					  -ENOMEM);
 				goto free_iu;
 			}
@@ -746,7 +746,7 @@ err:
 			sgt = &srv_mr->sgt;
 			mr = srv_mr->mr;
 free_iu:
-			ibtrs_iu_free(srv_mr->iu, DMA_TO_DEVICE,
+			rtrs_iu_free(srv_mr->iu, DMA_TO_DEVICE,
 				      sess->s.dev->ib_dev, 1);
 dereg_mr:
 			ib_dereg_mr(mr);
@@ -767,70 +767,70 @@ free_sg:
 	return 0;
 }
 
-static void ibtrs_srv_hb_err_handler(struct ibtrs_con *c)
+static void rtrs_srv_hb_err_handler(struct rtrs_con *c)
 {
 	close_sess(to_srv_sess(c->sess));
 }
 
-static void ibtrs_srv_init_hb(struct ibtrs_srv_sess *sess)
+static void rtrs_srv_init_hb(struct rtrs_srv_sess *sess)
 {
-	ibtrs_init_hb(&sess->s, &io_comp_cqe,
-		      IBTRS_HB_INTERVAL_MS,
-		      IBTRS_HB_MISSED_MAX,
-		      ibtrs_srv_hb_err_handler,
-		      ibtrs_wq);
+	rtrs_init_hb(&sess->s, &io_comp_cqe,
+		      RTRS_HB_INTERVAL_MS,
+		      RTRS_HB_MISSED_MAX,
+		      rtrs_srv_hb_err_handler,
+		      rtrs_wq);
 }
 
-static void ibtrs_srv_start_hb(struct ibtrs_srv_sess *sess)
+static void rtrs_srv_start_hb(struct rtrs_srv_sess *sess)
 {
-	ibtrs_start_hb(&sess->s);
+	rtrs_start_hb(&sess->s);
 }
 
-static void ibtrs_srv_stop_hb(struct ibtrs_srv_sess *sess)
+static void rtrs_srv_stop_hb(struct rtrs_srv_sess *sess)
 {
-	ibtrs_stop_hb(&sess->s);
+	rtrs_stop_hb(&sess->s);
 }
 
-static void ibtrs_srv_info_rsp_done(struct ib_cq *cq, struct ib_wc *wc)
+static void rtrs_srv_info_rsp_done(struct ib_cq *cq, struct ib_wc *wc)
 {
-	struct ibtrs_srv_con *con = cq->cq_context;
-	struct ibtrs_sess *s = con->c.sess;
-	struct ibtrs_srv_sess *sess = to_srv_sess(s);
-	struct ibtrs_iu *iu;
+	struct rtrs_srv_con *con = cq->cq_context;
+	struct rtrs_sess *s = con->c.sess;
+	struct rtrs_srv_sess *sess = to_srv_sess(s);
+	struct rtrs_iu *iu;
 
-	iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
-	ibtrs_iu_free(iu, DMA_TO_DEVICE, sess->s.dev->ib_dev, 1);
+	iu = container_of(wc->wr_cqe, struct rtrs_iu, cqe);
+	rtrs_iu_free(iu, DMA_TO_DEVICE, sess->s.dev->ib_dev, 1);
 
 	if (unlikely(wc->status != IB_WC_SUCCESS)) {
-		ibtrs_err(s, "Sess info response send failed: %s\n",
+		rtrs_err(s, "Sess info response send failed: %s\n",
 			  ib_wc_status_msg(wc->status));
 		close_sess(sess);
 		return;
 	}
 	WARN_ON(wc->opcode != IB_WC_SEND);
-	ibtrs_srv_update_wc_stats(&sess->stats);
+	rtrs_srv_update_wc_stats(&sess->stats);
 }
 
-static void ibtrs_srv_sess_up(struct ibtrs_srv_sess *sess)
+static void rtrs_srv_sess_up(struct rtrs_srv_sess *sess)
 {
-	struct ibtrs_srv *srv = sess->srv;
-	struct ibtrs_srv_ctx *ctx = srv->ctx;
+	struct rtrs_srv *srv = sess->srv;
+	struct rtrs_srv_ctx *ctx = srv->ctx;
 	int up;
 
 	mutex_lock(&srv->paths_ev_mutex);
 	up = ++srv->paths_up;
 	if (up == 1)
-		ctx->link_ev(srv, IBTRS_SRV_LINK_EV_CONNECTED, NULL);
+		ctx->link_ev(srv, RTRS_SRV_LINK_EV_CONNECTED, NULL);
 	mutex_unlock(&srv->paths_ev_mutex);
 
 	/* Mark session as established */
 	sess->established = true;
 }
 
-static void ibtrs_srv_sess_down(struct ibtrs_srv_sess *sess)
+static void rtrs_srv_sess_down(struct rtrs_srv_sess *sess)
 {
-	struct ibtrs_srv *srv = sess->srv;
-	struct ibtrs_srv_ctx *ctx = srv->ctx;
+	struct rtrs_srv *srv = sess->srv;
+	struct rtrs_srv_ctx *ctx = srv->ctx;
 
 	if (!sess->established)
 		return;
@@ -839,48 +839,48 @@ static void ibtrs_srv_sess_down(struct ibtrs_srv_sess *sess)
 	mutex_lock(&srv->paths_ev_mutex);
 	WARN_ON(!srv->paths_up);
 	if (--srv->paths_up == 0)
-		ctx->link_ev(srv, IBTRS_SRV_LINK_EV_DISCONNECTED, srv->priv);
+		ctx->link_ev(srv, RTRS_SRV_LINK_EV_DISCONNECTED, srv->priv);
 	mutex_unlock(&srv->paths_ev_mutex);
 }
 
-static int post_recv_sess(struct ibtrs_srv_sess *sess);
+static int post_recv_sess(struct rtrs_srv_sess *sess);
 
-static int process_info_req(struct ibtrs_srv_con *con,
-			    struct ibtrs_msg_info_req *msg)
+static int process_info_req(struct rtrs_srv_con *con,
+			    struct rtrs_msg_info_req *msg)
 {
-	struct ibtrs_sess *s = con->c.sess;
-	struct ibtrs_srv_sess *sess = to_srv_sess(s);
+	struct rtrs_sess *s = con->c.sess;
+	struct rtrs_srv_sess *sess = to_srv_sess(s);
 	struct ib_send_wr *reg_wr = NULL;
-	struct ibtrs_msg_info_rsp *rsp;
-	struct ibtrs_iu *tx_iu;
+	struct rtrs_msg_info_rsp *rsp;
+	struct rtrs_iu *tx_iu;
 	struct ib_reg_wr *rwr;
 	int mri, err;
 	size_t tx_sz;
 
 	err = post_recv_sess(sess);
 	if (unlikely(err)) {
-		ibtrs_err(s, "post_recv_sess(), err: %d\n", err);
+		rtrs_err(s, "post_recv_sess(), err: %d\n", err);
 		return err;
 	}
 	rwr = kcalloc(sess->mrs_num, sizeof(*rwr), GFP_KERNEL);
 	if (unlikely(!rwr)) {
-		ibtrs_err(s, "No memory\n");
+		rtrs_err(s, "No memory\n");
 		return -ENOMEM;
 	}
 	memcpy(sess->s.sessname, msg->sessname, sizeof(sess->s.sessname));
 
 	tx_sz  = sizeof(*rsp);
 	tx_sz += sizeof(rsp->desc[0]) * sess->mrs_num;
-	tx_iu = ibtrs_iu_alloc(1, tx_sz, GFP_KERNEL, sess->s.dev->ib_dev,
-			       DMA_TO_DEVICE, ibtrs_srv_info_rsp_done);
+	tx_iu = rtrs_iu_alloc(1, tx_sz, GFP_KERNEL, sess->s.dev->ib_dev,
+			       DMA_TO_DEVICE, rtrs_srv_info_rsp_done);
 	if (unlikely(!tx_iu)) {
-		ibtrs_err(s, "ibtrs_iu_alloc(), err: %d\n", -ENOMEM);
+		rtrs_err(s, "rtrs_iu_alloc(), err: %d\n", -ENOMEM);
 		err = -ENOMEM;
 		goto rwr_free;
 	}
 
 	rsp = tx_iu->buf;
-	rsp->type = cpu_to_le16(IBTRS_MSG_INFO_RSP);
+	rsp->type = cpu_to_le16(RTRS_MSG_INFO_RSP);
 	rsp->sg_cnt = cpu_to_le16(sess->mrs_num);
 
 	for (mri = 0; mri < sess->mrs_num; mri++) {
@@ -905,12 +905,12 @@ static int process_info_req(struct ibtrs_srv_con *con,
 		reg_wr = &rwr[mri].wr;
 	}
 
-	err = ibtrs_srv_create_sess_files(sess);
+	err = rtrs_srv_create_sess_files(sess);
 	if (unlikely(err))
 		goto iu_free;
 	get_device(&sess->srv->dev);
-	ibtrs_srv_change_state(sess, IBTRS_SRV_CONNECTED);
-	ibtrs_srv_start_hb(sess);
+	rtrs_srv_change_state(sess, RTRS_SRV_CONNECTED);
+	rtrs_srv_start_hb(sess);
 
 	/*
 	 * We do not account number of established connections at the current
@@ -918,17 +918,17 @@ static int process_info_req(struct ibtrs_srv_con *con,
 	 * all connections are successfully established.  Thus, simply notify
 	 * listener with a proper event if we are the first path.
 	 */
-	ibtrs_srv_sess_up(sess);
+	rtrs_srv_sess_up(sess);
 
 	ib_dma_sync_single_for_device(sess->s.dev->ib_dev, tx_iu->dma_addr,
 				      tx_iu->size, DMA_TO_DEVICE);
 
 	/* Send info response */
-	err = ibtrs_iu_post_send(&con->c, tx_iu, tx_sz, reg_wr);
+	err = rtrs_iu_post_send(&con->c, tx_iu, tx_sz, reg_wr);
 	if (unlikely(err)) {
-		ibtrs_err(s, "ibtrs_iu_post_send(), err: %d\n", err);
+		rtrs_err(s, "rtrs_iu_post_send(), err: %d\n", err);
 iu_free:
-		ibtrs_iu_free(tx_iu, DMA_TO_DEVICE, sess->s.dev->ib_dev, 1);
+		rtrs_iu_free(tx_iu, DMA_TO_DEVICE, sess->s.dev->ib_dev, 1);
 	}
 rwr_free:
 	kfree(rwr);
@@ -936,35 +936,35 @@ rwr_free:
 	return err;
 }
 
-static void ibtrs_srv_info_req_done(struct ib_cq *cq, struct ib_wc *wc)
+static void rtrs_srv_info_req_done(struct ib_cq *cq, struct ib_wc *wc)
 {
-	struct ibtrs_srv_con *con = cq->cq_context;
-	struct ibtrs_sess *s = con->c.sess;
-	struct ibtrs_srv_sess *sess = to_srv_sess(s);
-	struct ibtrs_msg_info_req *msg;
-	struct ibtrs_iu *iu;
+	struct rtrs_srv_con *con = cq->cq_context;
+	struct rtrs_sess *s = con->c.sess;
+	struct rtrs_srv_sess *sess = to_srv_sess(s);
+	struct rtrs_msg_info_req *msg;
+	struct rtrs_iu *iu;
 	int err;
 
 	WARN_ON(con->c.cid);
 
-	iu = container_of(wc->wr_cqe, struct ibtrs_iu, cqe);
+	iu = container_of(wc->wr_cqe, struct rtrs_iu, cqe);
 	if (unlikely(wc->status != IB_WC_SUCCESS)) {
-		ibtrs_err(s, "Sess info request receive failed: %s\n",
+		rtrs_err(s, "Sess info request receive failed: %s\n",
 			  ib_wc_status_msg(wc->status));
 		goto close;
 	}
 	WARN_ON(wc->opcode != IB_WC_RECV);
 
 	if (unlikely(wc->byte_len < sizeof(*msg))) {
-		ibtrs_err(s, "Sess info request is malformed: size %d\n",
+		rtrs_err(s, "Sess info request is malformed: size %d\n",
 			  wc->byte_len);
 		goto close;
 	}
 	ib_dma_sync_single_for_cpu(sess->s.dev->ib_dev, iu->dma_addr,
 				   iu->size, DMA_FROM_DEVICE);
 	msg = iu->buf;
-	if (unlikely(le16_to_cpu(msg->type) != IBTRS_MSG_INFO_REQ)) {
-		ibtrs_err(s, "Sess info request is malformed: type %d\n",
+	if (unlikely(le16_to_cpu(msg->type) != RTRS_MSG_INFO_REQ)) {
+		rtrs_err(s, "Sess info request is malformed: type %d\n",
 			  le16_to_cpu(msg->type));
 		goto close;
 	}
@@ -973,44 +973,44 @@ static void ibtrs_srv_info_req_done(struct ib_cq *cq, struct ib_wc *wc)
 		goto close;
 
 out:
-	ibtrs_iu_free(iu, DMA_FROM_DEVICE, sess->s.dev->ib_dev, 1);
+	rtrs_iu_free(iu, DMA_FROM_DEVICE, sess->s.dev->ib_dev, 1);
 	return;
 close:
 	close_sess(sess);
 	goto out;
 }
 
-static int post_recv_info_req(struct ibtrs_srv_con *con)
+static int post_recv_info_req(struct rtrs_srv_con *con)
 {
-	struct ibtrs_sess *s = con->c.sess;
-	struct ibtrs_srv_sess *sess = to_srv_sess(s);
-	struct ibtrs_iu *rx_iu;
+	struct rtrs_sess *s = con->c.sess;
+	struct rtrs_srv_sess *sess = to_srv_sess(s);
+	struct rtrs_iu *rx_iu;
 	int err;
 
-	rx_iu = ibtrs_iu_alloc(1, sizeof(struct ibtrs_msg_info_req),
+	rx_iu = rtrs_iu_alloc(1, sizeof(struct rtrs_msg_info_req),
 			       GFP_KERNEL, sess->s.dev->ib_dev,
-			       DMA_FROM_DEVICE, ibtrs_srv_info_req_done);
+			       DMA_FROM_DEVICE, rtrs_srv_info_req_done);
 	if (unlikely(!rx_iu)) {
-		ibtrs_err(s, "ibtrs_iu_alloc(): no memory\n");
+		rtrs_err(s, "rtrs_iu_alloc(): no memory\n");
 		return -ENOMEM;
 	}
 	/* Prepare for getting info response */
-	err = ibtrs_iu_post_recv(&con->c, rx_iu);
+	err = rtrs_iu_post_recv(&con->c, rx_iu);
 	if (unlikely(err)) {
-		ibtrs_err(s, "ibtrs_iu_post_recv(), err: %d\n", err);
-		ibtrs_iu_free(rx_iu, DMA_FROM_DEVICE, sess->s.dev->ib_dev, 1);
+		rtrs_err(s, "rtrs_iu_post_recv(), err: %d\n", err);
+		rtrs_iu_free(rx_iu, DMA_FROM_DEVICE, sess->s.dev->ib_dev, 1);
 		return err;
 	}
 
 	return 0;
 }
 
-static int post_recv_io(struct ibtrs_srv_con *con, size_t q_size)
+static int post_recv_io(struct rtrs_srv_con *con, size_t q_size)
 {
 	int i, err;
 
 	for (i = 0; i < q_size; i++) {
-		err = ibtrs_post_recv_empty(&con->c, &io_comp_cqe);
+		err = rtrs_post_recv_empty(&con->c, &io_comp_cqe);
 		if (unlikely(err))
 			return err;
 	}
@@ -1018,10 +1018,10 @@ static int post_recv_io(struct ibtrs_srv_con *con, size_t q_size)
 	return 0;
 }
 
-static int post_recv_sess(struct ibtrs_srv_sess *sess)
+static int post_recv_sess(struct rtrs_srv_sess *sess)
 {
-	struct ibtrs_srv *srv = sess->srv;
-	struct ibtrs_sess *s = &sess->s;
+	struct rtrs_srv *srv = sess->srv;
+	struct rtrs_sess *s = &sess->s;
 	size_t q_size;
 	int err, cid;
 
@@ -1033,7 +1033,7 @@ static int post_recv_sess(struct ibtrs_srv_sess *sess)
 
 		err = post_recv_io(to_srv_con(sess->s.con[cid]), q_size);
 		if (unlikely(err)) {
-			ibtrs_err(s, "post_recv_io(), err: %d\n", err);
+			rtrs_err(s, "post_recv_io(), err: %d\n", err);
 			return err;
 		}
 	}
@@ -1041,28 +1041,28 @@ static int post_recv_sess(struct ibtrs_srv_sess *sess)
 	return 0;
 }
 
-static void process_read(struct ibtrs_srv_con *con,
-			 struct ibtrs_msg_rdma_read *msg,
+static void process_read(struct rtrs_srv_con *con,
+			 struct rtrs_msg_rdma_read *msg,
 			 u32 buf_id, u32 off)
 {
-	struct ibtrs_sess *s = con->c.sess;
-	struct ibtrs_srv_sess *sess = to_srv_sess(s);
-	struct ibtrs_srv *srv = sess->srv;
-	struct ibtrs_srv_ctx *ctx = srv->ctx;
-	struct ibtrs_srv_op *id;
+	struct rtrs_sess *s = con->c.sess;
+	struct rtrs_srv_sess *sess = to_srv_sess(s);
+	struct rtrs_srv *srv = sess->srv;
+	struct rtrs_srv_ctx *ctx = srv->ctx;
+	struct rtrs_srv_op *id;
 
 	size_t usr_len, data_len;
 	void *data;
 	int ret;
 
-	if (unlikely(sess->state != IBTRS_SRV_CONNECTED)) {
-		ibtrs_err_rl(s,
+	if (unlikely(sess->state != RTRS_SRV_CONNECTED)) {
+		rtrs_err_rl(s,
 			     "Processing read request failed,  session is disconnected, sess state %s\n",
-			     ibtrs_srv_state_str(sess->state));
+			     rtrs_srv_state_str(sess->state));
 		return;
 	}
-	ibtrs_srv_get_ops_ids(sess);
-	ibtrs_srv_update_rdma_stats(&sess->stats, off, READ);
+	rtrs_srv_get_ops_ids(sess);
+	rtrs_srv_update_rdma_stats(&sess->stats, off, READ);
 	id = sess->ops_ids[buf_id];
 	id->con		= con;
 	id->dir		= READ;
@@ -1075,7 +1075,7 @@ static void process_read(struct ibtrs_srv_con *con,
 			   data + data_len, usr_len);
 
 	if (unlikely(ret)) {
-		ibtrs_err_rl(s,
+		rtrs_err_rl(s,
 			     "Processing read request failed, user module cb reported for msg_id %d, err: %d\n",
 			     buf_id, ret);
 		goto send_err_msg;
@@ -1086,36 +1086,36 @@ static void process_read(struct ibtrs_srv_con *con,
 send_err_msg:
 	ret = send_io_resp_imm(con, id, ret);
 	if (ret < 0) {
-		ibtrs_err_rl(s,
+		rtrs_err_rl(s,
 			     "Sending err msg for failed RDMA-Write-Req failed, msg_id %d, err: %d\n",
 			     buf_id, ret);
 		close_sess(sess);
 	}
-	ibtrs_srv_put_ops_ids(sess);
+	rtrs_srv_put_ops_ids(sess);
 }
 
-static void process_write(struct ibtrs_srv_con *con,
-			  struct ibtrs_msg_rdma_write *req,
+static void process_write(struct rtrs_srv_con *con,
+			  struct rtrs_msg_rdma_write *req,
 			  u32 buf_id, u32 off)
 {
-	struct ibtrs_sess *s = con->c.sess;
-	struct ibtrs_srv_sess *sess = to_srv_sess(s);
-	struct ibtrs_srv *srv = sess->srv;
-	struct ibtrs_srv_ctx *ctx = srv->ctx;
-	struct ibtrs_srv_op *id;
+	struct rtrs_sess *s = con->c.sess;
+	struct rtrs_srv_sess *sess = to_srv_sess(s);
+	struct rtrs_srv *srv = sess->srv;
+	struct rtrs_srv_ctx *ctx = srv->ctx;
+	struct rtrs_srv_op *id;
 
 	size_t data_len, usr_len;
 	void *data;
 	int ret;
 
-	if (unlikely(sess->state != IBTRS_SRV_CONNECTED)) {
-		ibtrs_err_rl(s,
+	if (unlikely(sess->state != RTRS_SRV_CONNECTED)) {
+		rtrs_err_rl(s,
 			     "Processing write request failed,  session is disconnected, sess state %s\n",
-			     ibtrs_srv_state_str(sess->state));
+			     rtrs_srv_state_str(sess->state));
 		return;
 	}
-	ibtrs_srv_get_ops_ids(sess);
-	ibtrs_srv_update_rdma_stats(&sess->stats, off, WRITE);
+	rtrs_srv_get_ops_ids(sess);
+	rtrs_srv_update_rdma_stats(&sess->stats, off, WRITE);
 	id = sess->ops_ids[buf_id];
 	id->con    = con;
 	id->dir    = WRITE;
@@ -1127,7 +1127,7 @@ static void process_write(struct ibtrs_srv_con *con,
 	ret = ctx->rdma_ev(srv, srv->priv, id, WRITE, data, data_len,
 			   data + data_len, usr_len);
 	if (unlikely(ret)) {
-		ibtrs_err_rl(s,
+		rtrs_err_rl(s,
 			     "Processing write request failed, user module callback reports err: %d\n",
 			     ret);
 		goto send_err_msg;
@@ -1138,20 +1138,20 @@ static void process_write(struct ibtrs_srv_con *con,
 send_err_msg:
 	ret = send_io_resp_imm(con, id, ret);
 	if (ret < 0) {
-		ibtrs_err_rl(s,
+		rtrs_err_rl(s,
 			     "Processing write request failed, sending I/O response failed, msg_id %d, err: %d\n",
 			     buf_id, ret);
 		close_sess(sess);
 	}
-	ibtrs_srv_put_ops_ids(sess);
+	rtrs_srv_put_ops_ids(sess);
 }
 
-static void process_io_req(struct ibtrs_srv_con *con, void *msg,
+static void process_io_req(struct rtrs_srv_con *con, void *msg,
 			   u32 id, u32 off)
 {
-	struct ibtrs_sess *s = con->c.sess;
-	struct ibtrs_srv_sess *sess = to_srv_sess(s);
-	struct ibtrs_msg_rdma_hdr *hdr;
+	struct rtrs_sess *s = con->c.sess;
+	struct rtrs_srv_sess *sess = to_srv_sess(s);
+	struct rtrs_msg_rdma_hdr *hdr;
 	unsigned int type;
 
 	ib_dma_sync_single_for_cpu(sess->s.dev->ib_dev, sess->dma_addr[id],
@@ -1160,14 +1160,14 @@ static void process_io_req(struct ibtrs_srv_con *con, void *msg,
 	type = le16_to_cpu(hdr->type);
 
 	switch (type) {
-	case IBTRS_MSG_WRITE:
+	case RTRS_MSG_WRITE:
 		process_write(con, msg, id, off);
 		break;
-	case IBTRS_MSG_READ:
+	case RTRS_MSG_READ:
 		process_read(con, msg, id, off);
 		break;
 	default:
-		ibtrs_err(s,
+		rtrs_err(s,
 			  "Processing I/O request failed, unknown message type received: 0x%02x\n",
 			  type);
 		goto err;
@@ -1179,19 +1179,19 @@ err:
 	close_sess(sess);
 }
 
-static void ibtrs_srv_inv_rkey_done(struct ib_cq *cq, struct ib_wc *wc)
+static void rtrs_srv_inv_rkey_done(struct ib_cq *cq, struct ib_wc *wc)
 {
-	struct ibtrs_srv_mr *mr =
+	struct rtrs_srv_mr *mr =
 		container_of(wc->wr_cqe, typeof(*mr), inv_cqe);
-	struct ibtrs_srv_con *con = cq->cq_context;
-	struct ibtrs_sess *s = con->c.sess;
-	struct ibtrs_srv_sess *sess = to_srv_sess(s);
-	struct ibtrs_srv *srv = sess->srv;
+	struct rtrs_srv_con *con = cq->cq_context;
+	struct rtrs_sess *s = con->c.sess;
+	struct rtrs_srv_sess *sess = to_srv_sess(s);
+	struct rtrs_srv *srv = sess->srv;
 	u32 msg_id, off;
 	void *data;
 
 	if (unlikely(wc->status != IB_WC_SUCCESS)) {
-		ibtrs_err(s, "Failed IB_WR_LOCAL_INV: %s\n",
+		rtrs_err(s, "Failed IB_WR_LOCAL_INV: %s\n",
 			  ib_wc_status_msg(wc->status));
 		close_sess(sess);
 	}
@@ -1201,8 +1201,8 @@ static void ibtrs_srv_inv_rkey_done(struct ib_cq *cq, struct ib_wc *wc)
 	process_io_req(con, data, msg_id, off);
 }
 
-static int ibtrs_srv_inv_rkey(struct ibtrs_srv_con *con,
-			      struct ibtrs_srv_mr *mr)
+static int rtrs_srv_inv_rkey(struct rtrs_srv_con *con,
+			      struct rtrs_srv_mr *mr)
 {
 	const struct ib_send_wr *bad_wr;
 	struct ib_send_wr wr = {
@@ -1213,23 +1213,23 @@ static int ibtrs_srv_inv_rkey(struct ibtrs_srv_con *con,
 		.send_flags	    = IB_SEND_SIGNALED,
 		.ex.invalidate_rkey = mr->mr->rkey,
 	};
-	mr->inv_cqe.done = ibtrs_srv_inv_rkey_done;
+	mr->inv_cqe.done = rtrs_srv_inv_rkey_done;
 
 	return ib_post_send(con->c.qp, &wr, &bad_wr);
 }
 
-static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
+static void rtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 {
-	struct ibtrs_srv_con *con = cq->cq_context;
-	struct ibtrs_sess *s = con->c.sess;
-	struct ibtrs_srv_sess *sess = to_srv_sess(s);
-	struct ibtrs_srv *srv = sess->srv;
+	struct rtrs_srv_con *con = cq->cq_context;
+	struct rtrs_sess *s = con->c.sess;
+	struct rtrs_srv_sess *sess = to_srv_sess(s);
+	struct rtrs_srv *srv = sess->srv;
 	u32 imm_type, imm_payload;
 	int err;
 
 	if (unlikely(wc->status != IB_WC_SUCCESS)) {
 		if (wc->status != IB_WC_WR_FLUSH_ERR) {
-			ibtrs_err(s,
+			rtrs_err(s,
 				  "%s (wr_cqe: %p, type: %d, vendor_err: 0x%x, len: %u)\n",
 				  ib_wc_status_msg(wc->status), wc->wr_cqe,
 				  wc->opcode, wc->vendor_err, wc->byte_len);
@@ -1237,7 +1237,7 @@ static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 		}
 		return;
 	}
-	ibtrs_srv_update_wc_stats(&sess->stats);
+	rtrs_srv_update_wc_stats(&sess->stats);
 
 	switch (wc->opcode) {
 	case IB_WC_RECV_RDMA_WITH_IMM:
@@ -1247,15 +1247,15 @@ static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 		 */
 		if (WARN_ON(wc->wr_cqe != &io_comp_cqe))
 			return;
-		err = ibtrs_post_recv_empty(&con->c, &io_comp_cqe);
+		err = rtrs_post_recv_empty(&con->c, &io_comp_cqe);
 		if (unlikely(err)) {
-			ibtrs_err(s, "ibtrs_post_recv(), err: %d\n", err);
+			rtrs_err(s, "rtrs_post_recv(), err: %d\n", err);
 			close_sess(sess);
 			break;
 		}
-		ibtrs_from_imm(be32_to_cpu(wc->ex.imm_data),
+		rtrs_from_imm(be32_to_cpu(wc->ex.imm_data),
 			       &imm_type, &imm_payload);
-		if (likely(imm_type == IBTRS_IO_REQ_IMM)) {
+		if (likely(imm_type == RTRS_IO_REQ_IMM)) {
 			u32 msg_id, off;
 			void *data;
 
@@ -1263,19 +1263,19 @@ static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 			off = imm_payload & ((1 << sess->mem_bits) - 1);
 			if (unlikely(msg_id > srv->queue_depth ||
 				     off > max_chunk_size)) {
-				ibtrs_err(s, "Wrong msg_id %u, off %u\n",
+				rtrs_err(s, "Wrong msg_id %u, off %u\n",
 					  msg_id, off);
 				close_sess(sess);
 				return;
 			}
 			if (always_invalidate) {
-				struct ibtrs_srv_mr *mr = &sess->mrs[msg_id];
+				struct rtrs_srv_mr *mr = &sess->mrs[msg_id];
 
 				mr->msg_off = off;
 				mr->msg_id = msg_id;
-				err = ibtrs_srv_inv_rkey(con, mr);
+				err = rtrs_srv_inv_rkey(con, mr);
 				if (unlikely(err)) {
-					ibtrs_err(s, "ibtrs_post_recv(), err: %d\n",
+					rtrs_err(s, "rtrs_post_recv(), err: %d\n",
 						  err);
 					close_sess(sess);
 					break;
@@ -1284,14 +1284,14 @@ static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 				data = page_address(srv->chunks[msg_id]) + off;
 				process_io_req(con, data, msg_id, off);
 			}
-		} else if (imm_type == IBTRS_HB_MSG_IMM) {
+		} else if (imm_type == RTRS_HB_MSG_IMM) {
 			WARN_ON(con->c.cid);
-			ibtrs_send_hb_ack(&sess->s);
-		} else if (imm_type == IBTRS_HB_ACK_IMM) {
+			rtrs_send_hb_ack(&sess->s);
+		} else if (imm_type == RTRS_HB_ACK_IMM) {
 			WARN_ON(con->c.cid);
 			sess->s.hb_missed_cnt = 0;
 		} else {
-			ibtrs_wrn(s, "Unknown IMM type %u\n", imm_type);
+			rtrs_wrn(s, "Unknown IMM type %u\n", imm_type);
 		}
 		break;
 	case IB_WC_RDMA_WRITE:
@@ -1302,19 +1302,19 @@ static void ibtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 		 */
 		break;
 	default:
-		ibtrs_wrn(s, "Unexpected WC type: %d\n", wc->opcode);
+		rtrs_wrn(s, "Unexpected WC type: %d\n", wc->opcode);
 		return;
 	}
 }
 
-int ibtrs_srv_get_sess_name(struct ibtrs_srv *srv, char *sessname, size_t len)
+int rtrs_srv_get_sess_name(struct rtrs_srv *srv, char *sessname, size_t len)
 {
-	struct ibtrs_srv_sess *sess;
+	struct rtrs_srv_sess *sess;
 	int err = -ENOTCONN;
 
 	mutex_lock(&srv->paths_mutex);
 	list_for_each_entry(sess, &srv->paths_list, s.entry) {
-		if (sess->state != IBTRS_SRV_CONNECTED)
+		if (sess->state != RTRS_SRV_CONNECTED)
 			continue;
 		memcpy(sessname, sess->s.sessname,
 		       min_t(size_t, sizeof(sess->s.sessname), len));
@@ -1325,15 +1325,15 @@ int ibtrs_srv_get_sess_name(struct ibtrs_srv *srv, char *sessname, size_t len)
 
 	return err;
 }
-EXPORT_SYMBOL(ibtrs_srv_get_sess_name);
+EXPORT_SYMBOL(rtrs_srv_get_sess_name);
 
-int ibtrs_srv_get_queue_depth(struct ibtrs_srv *srv)
+int rtrs_srv_get_queue_depth(struct rtrs_srv *srv)
 {
 	return srv->queue_depth;
 }
-EXPORT_SYMBOL(ibtrs_srv_get_queue_depth);
+EXPORT_SYMBOL(rtrs_srv_get_queue_depth);
 
-static int find_next_bit_ring(struct ibtrs_srv_sess *sess)
+static int find_next_bit_ring(struct rtrs_srv_sess *sess)
 {
 	struct ib_device *ib_dev = sess->s.dev->ib_dev;
 	int v;
@@ -1344,17 +1344,17 @@ static int find_next_bit_ring(struct ibtrs_srv_sess *sess)
 	return v;
 }
 
-static int ibtrs_srv_get_next_cq_vector(struct ibtrs_srv_sess *sess)
+static int rtrs_srv_get_next_cq_vector(struct rtrs_srv_sess *sess)
 {
 	sess->cur_cq_vector = find_next_bit_ring(sess);
 
 	return sess->cur_cq_vector;
 }
 
-static struct ibtrs_srv *__alloc_srv(struct ibtrs_srv_ctx *ctx,
+static struct rtrs_srv *__alloc_srv(struct rtrs_srv_ctx *ctx,
 				     const uuid_t *paths_uuid)
 {
-	struct ibtrs_srv *srv;
+	struct rtrs_srv *srv;
 	int i;
 
 	srv = kzalloc(sizeof(*srv), GFP_KERNEL);
@@ -1396,7 +1396,7 @@ err_free_srv:
 	return NULL;
 }
 
-static void free_srv(struct ibtrs_srv *srv)
+static void free_srv(struct rtrs_srv *srv)
 {
 	int i;
 
@@ -1408,10 +1408,10 @@ static void free_srv(struct ibtrs_srv *srv)
 	put_device(&srv->dev);
 }
 
-static inline struct ibtrs_srv *__find_srv_and_get(struct ibtrs_srv_ctx *ctx,
+static inline struct rtrs_srv *__find_srv_and_get(struct rtrs_srv_ctx *ctx,
 						   const uuid_t *paths_uuid)
 {
-	struct ibtrs_srv *srv;
+	struct rtrs_srv *srv;
 
 	list_for_each_entry(srv, &ctx->srv_list, ctx_list) {
 		if (uuid_equal(&srv->paths_uuid, paths_uuid) &&
@@ -1422,10 +1422,10 @@ static inline struct ibtrs_srv *__find_srv_and_get(struct ibtrs_srv_ctx *ctx,
 	return NULL;
 }
 
-static struct ibtrs_srv *get_or_create_srv(struct ibtrs_srv_ctx *ctx,
+static struct rtrs_srv *get_or_create_srv(struct rtrs_srv_ctx *ctx,
 					   const uuid_t *paths_uuid)
 {
-	struct ibtrs_srv *srv;
+	struct rtrs_srv *srv;
 
 	mutex_lock(&ctx->srv_mutex);
 	srv = __find_srv_and_get(ctx, paths_uuid);
@@ -1436,10 +1436,10 @@ static struct ibtrs_srv *get_or_create_srv(struct ibtrs_srv_ctx *ctx,
 	return srv;
 }
 
-static void put_srv(struct ibtrs_srv *srv)
+static void put_srv(struct rtrs_srv *srv)
 {
 	if (refcount_dec_and_test(&srv->refcount)) {
-		struct ibtrs_srv_ctx *ctx = srv->ctx;
+		struct rtrs_srv_ctx *ctx = srv->ctx;
 
 		WARN_ON(srv->dev.kobj.state_in_sysfs);
 		WARN_ON(srv->kobj_paths.state_in_sysfs);
@@ -1451,17 +1451,17 @@ static void put_srv(struct ibtrs_srv *srv)
 	}
 }
 
-static void __add_path_to_srv(struct ibtrs_srv *srv,
-			      struct ibtrs_srv_sess *sess)
+static void __add_path_to_srv(struct rtrs_srv *srv,
+			      struct rtrs_srv_sess *sess)
 {
 	list_add_tail(&sess->s.entry, &srv->paths_list);
 	srv->paths_num++;
 	WARN_ON(srv->paths_num >= MAX_PATHS_NUM);
 }
 
-static void del_path_from_srv(struct ibtrs_srv_sess *sess)
+static void del_path_from_srv(struct rtrs_srv_sess *sess)
 {
-	struct ibtrs_srv *srv = sess->srv;
+	struct rtrs_srv *srv = sess->srv;
 
 	if (WARN_ON(!srv))
 		return;
@@ -1494,10 +1494,10 @@ static inline int sockaddr_cmp(const struct sockaddr *a,
 	}
 }
 
-static inline bool __is_path_w_addr_exists(struct ibtrs_srv *srv,
+static inline bool __is_path_w_addr_exists(struct rtrs_srv *srv,
 					   struct rdma_addr *addr)
 {
-	struct ibtrs_srv_sess *sess;
+	struct rtrs_srv_sess *sess;
 
 	list_for_each_entry(sess, &srv->paths_list, s.entry)
 		if (!sockaddr_cmp((struct sockaddr *)&sess->s.dst_addr,
@@ -1509,16 +1509,16 @@ static inline bool __is_path_w_addr_exists(struct ibtrs_srv *srv,
 	return false;
 }
 
-static void ibtrs_srv_close_work(struct work_struct *work)
+static void rtrs_srv_close_work(struct work_struct *work)
 {
-	struct ibtrs_srv_sess *sess;
-	struct ibtrs_srv_con *con;
+	struct rtrs_srv_sess *sess;
+	struct rtrs_srv_con *con;
 	int i;
 
 	sess = container_of(work, typeof(*sess), close_work);
 
-	ibtrs_srv_destroy_sess_files(sess);
-	ibtrs_srv_stop_hb(sess);
+	rtrs_srv_destroy_sess_files(sess);
+	rtrs_srv_stop_hb(sess);
 
 	for (i = 0; i < sess->s.con_num; i++) {
 		if (!sess->s.con[i])
@@ -1528,39 +1528,39 @@ static void ibtrs_srv_close_work(struct work_struct *work)
 		ib_drain_qp(con->c.qp);
 	}
 	/* Wait for all inflights */
-	ibtrs_srv_wait_ops_ids(sess);
+	rtrs_srv_wait_ops_ids(sess);
 
 	/* Notify upper layer if we are the last path */
-	ibtrs_srv_sess_down(sess);
+	rtrs_srv_sess_down(sess);
 
 	unmap_cont_bufs(sess);
-	ibtrs_srv_free_ops_ids(sess);
+	rtrs_srv_free_ops_ids(sess);
 
 	for (i = 0; i < sess->s.con_num; i++) {
 		if (!sess->s.con[i])
 			continue;
 		con = to_srv_con(sess->s.con[i]);
-		ibtrs_cq_qp_destroy(&con->c);
+		rtrs_cq_qp_destroy(&con->c);
 		rdma_destroy_id(con->c.cm_id);
 		kfree(con);
 	}
-	ibtrs_ib_dev_put(sess->s.dev);
+	rtrs_ib_dev_put(sess->s.dev);
 
 	del_path_from_srv(sess);
 	put_srv(sess->srv);
 	sess->srv = NULL;
-	ibtrs_srv_change_state(sess, IBTRS_SRV_CLOSED);
+	rtrs_srv_change_state(sess, RTRS_SRV_CLOSED);
 
 	kfree(sess->dma_addr);
 	kfree(sess->s.con);
 	kfree(sess);
 }
 
-static int ibtrs_rdma_do_accept(struct ibtrs_srv_sess *sess,
+static int rtrs_rdma_do_accept(struct rtrs_srv_sess *sess,
 				struct rdma_cm_id *cm_id)
 {
-	struct ibtrs_srv *srv = sess->srv;
-	struct ibtrs_msg_conn_rsp msg;
+	struct rtrs_srv *srv = sess->srv;
+	struct rtrs_msg_conn_rsp msg;
 	struct rdma_conn_param param;
 	int err;
 
@@ -1570,15 +1570,15 @@ static int ibtrs_rdma_do_accept(struct ibtrs_srv_sess *sess,
 	param.private_data_len = sizeof(msg);
 
 	memset(&msg, 0, sizeof(msg));
-	msg.magic = cpu_to_le16(IBTRS_MAGIC);
-	msg.version = cpu_to_le16(IBTRS_PROTO_VER);
+	msg.magic = cpu_to_le16(RTRS_MAGIC);
+	msg.version = cpu_to_le16(RTRS_PROTO_VER);
 	msg.errno = 0;
 	msg.queue_depth = cpu_to_le16(srv->queue_depth);
 	msg.max_io_size = cpu_to_le32(max_chunk_size - MAX_HDR_SIZE);
 	msg.max_hdr_size = cpu_to_le32(MAX_HDR_SIZE);
 
 	if (always_invalidate)
-		msg.flags = cpu_to_le32(IBTRS_MSG_NEW_RKEY_F);
+		msg.flags = cpu_to_le32(RTRS_MSG_NEW_RKEY_F);
 
 	err = rdma_accept(cm_id, &param);
 	if (err)
@@ -1587,14 +1587,14 @@ static int ibtrs_rdma_do_accept(struct ibtrs_srv_sess *sess,
 	return err;
 }
 
-static int ibtrs_rdma_do_reject(struct rdma_cm_id *cm_id, int errno)
+static int rtrs_rdma_do_reject(struct rdma_cm_id *cm_id, int errno)
 {
-	struct ibtrs_msg_conn_rsp msg;
+	struct rtrs_msg_conn_rsp msg;
 	int err;
 
 	memset(&msg, 0, sizeof(msg));
-	msg.magic = cpu_to_le16(IBTRS_MAGIC);
-	msg.version = cpu_to_le16(IBTRS_PROTO_VER);
+	msg.magic = cpu_to_le16(RTRS_MAGIC);
+	msg.version = cpu_to_le16(RTRS_PROTO_VER);
 	msg.errno = cpu_to_le16(errno);
 
 	err = rdma_reject(cm_id, &msg, sizeof(msg));
@@ -1605,10 +1605,10 @@ static int ibtrs_rdma_do_reject(struct rdma_cm_id *cm_id, int errno)
 	return errno;
 }
 
-static struct ibtrs_srv_sess *
-__find_sess(struct ibtrs_srv *srv, const uuid_t *sess_uuid)
+static struct rtrs_srv_sess *
+__find_sess(struct rtrs_srv *srv, const uuid_t *sess_uuid)
 {
-	struct ibtrs_srv_sess *sess;
+	struct rtrs_srv_sess *sess;
 
 	list_for_each_entry(sess, &srv->paths_list, s.entry) {
 		if (uuid_equal(&sess->s.uuid, sess_uuid))
@@ -1618,20 +1618,20 @@ __find_sess(struct ibtrs_srv *srv, const uuid_t *sess_uuid)
 	return NULL;
 }
 
-static int create_con(struct ibtrs_srv_sess *sess,
+static int create_con(struct rtrs_srv_sess *sess,
 		      struct rdma_cm_id *cm_id,
 		      unsigned int cid)
 {
-	struct ibtrs_srv *srv = sess->srv;
-	struct ibtrs_sess *s = &sess->s;
-	struct ibtrs_srv_con *con;
+	struct rtrs_srv *srv = sess->srv;
+	struct rtrs_sess *s = &sess->s;
+	struct rtrs_srv_con *con;
 
 	u16 cq_size, wr_queue_size;
 	int err, cq_vector;
 
 	con = kzalloc(sizeof(*con), GFP_KERNEL);
 	if (unlikely(!con)) {
-		ibtrs_err(s, "kzalloc() failed\n");
+		rtrs_err(s, "kzalloc() failed\n");
 		err = -ENOMEM;
 		goto err;
 	}
@@ -1665,13 +1665,13 @@ static int create_con(struct ibtrs_srv_sess *sess,
 		wr_queue_size = sess->s.dev->ib_dev->attrs.max_qp_wr / 3;
 	}
 
-	cq_vector = ibtrs_srv_get_next_cq_vector(sess);
+	cq_vector = rtrs_srv_get_next_cq_vector(sess);
 
 	/* TODO: SOFTIRQ can be faster, but be careful with softirq context */
-	err = ibtrs_cq_qp_create(&sess->s, &con->c, 1, cq_vector, cq_size,
+	err = rtrs_cq_qp_create(&sess->s, &con->c, 1, cq_vector, cq_size,
 				 wr_queue_size, IB_POLL_WORKQUEUE);
 	if (unlikely(err)) {
-		ibtrs_err(s, "ibtrs_cq_qp_create(), err: %d\n", err);
+		rtrs_err(s, "rtrs_cq_qp_create(), err: %d\n", err);
 		goto free_con;
 	}
 	if (con->c.cid == 0) {
@@ -1691,7 +1691,7 @@ static int create_con(struct ibtrs_srv_sess *sess,
 	return 0;
 
 free_cqqp:
-	ibtrs_cq_qp_destroy(&con->c);
+	rtrs_cq_qp_destroy(&con->c);
 free_con:
 	kfree(con);
 
@@ -1699,13 +1699,13 @@ err:
 	return err;
 }
 
-static struct ibtrs_srv_sess *__alloc_sess(struct ibtrs_srv *srv,
+static struct rtrs_srv_sess *__alloc_sess(struct rtrs_srv *srv,
 					   struct rdma_cm_id *cm_id,
 					   unsigned int con_num,
 					   unsigned int recon_cnt,
 					   const uuid_t *uuid)
 {
-	struct ibtrs_srv_sess *sess;
+	struct rtrs_srv_sess *sess;
 	int err = -ENOMEM;
 
 	if (unlikely(srv->paths_num >= MAX_PATHS_NUM)) {
@@ -1729,7 +1729,7 @@ static struct ibtrs_srv_sess *__alloc_sess(struct ibtrs_srv *srv,
 	if (unlikely(!sess->s.con))
 		goto err_free_dma_addr;
 
-	sess->state = IBTRS_SRV_CONNECTING;
+	sess->state = RTRS_SRV_CONNECTING;
 	sess->srv = srv;
 	sess->cur_cq_vector = -1;
 	sess->s.dst_addr = cm_id->route.addr.dst_addr;
@@ -1738,10 +1738,10 @@ static struct ibtrs_srv_sess *__alloc_sess(struct ibtrs_srv *srv,
 	sess->s.recon_cnt = recon_cnt;
 	uuid_copy(&sess->s.uuid, uuid);
 	spin_lock_init(&sess->state_lock);
-	INIT_WORK(&sess->close_work, ibtrs_srv_close_work);
-	ibtrs_srv_init_hb(sess);
+	INIT_WORK(&sess->close_work, rtrs_srv_close_work);
+	rtrs_srv_init_hb(sess);
 
-	sess->s.dev = ibtrs_ib_dev_find_or_add(cm_id->device, &dev_pool);
+	sess->s.dev = rtrs_ib_dev_find_or_add(cm_id->device, &dev_pool);
 	if (unlikely(!sess->s.dev)) {
 		err = -ENOMEM;
 		goto err_free_con;
@@ -1750,7 +1750,7 @@ static struct ibtrs_srv_sess *__alloc_sess(struct ibtrs_srv *srv,
 	if (unlikely(err))
 		goto err_put_dev;
 
-	err = ibtrs_srv_alloc_ops_ids(sess);
+	err = rtrs_srv_alloc_ops_ids(sess);
 	if (unlikely(err))
 		goto err_unmap_bufs;
 
@@ -1761,7 +1761,7 @@ static struct ibtrs_srv_sess *__alloc_sess(struct ibtrs_srv *srv,
 err_unmap_bufs:
 	unmap_cont_bufs(sess);
 err_put_dev:
-	ibtrs_ib_dev_put(sess->s.dev);
+	rtrs_ib_dev_put(sess->s.dev);
 err_free_con:
 	kfree(sess->s.con);
 err_free_dma_addr:
@@ -1773,30 +1773,30 @@ err:
 	return ERR_PTR(err);
 }
 
-static int ibtrs_rdma_connect(struct rdma_cm_id *cm_id,
-			      const struct ibtrs_msg_conn_req *msg,
+static int rtrs_rdma_connect(struct rdma_cm_id *cm_id,
+			      const struct rtrs_msg_conn_req *msg,
 			      size_t len)
 {
-	struct ibtrs_srv_ctx *ctx = cm_id->context;
-	struct ibtrs_srv_sess *sess;
-	struct ibtrs_srv *srv;
+	struct rtrs_srv_ctx *ctx = cm_id->context;
+	struct rtrs_srv_sess *sess;
+	struct rtrs_srv *srv;
 
 	u16 version, con_num, cid;
 	u16 recon_cnt;
 	int err;
 
 	if (unlikely(len < sizeof(*msg))) {
-		pr_err("Invalid IBTRS connection request\n");
+		pr_err("Invalid RTRS connection request\n");
 		goto reject_w_econnreset;
 	}
-	if (unlikely(le16_to_cpu(msg->magic) != IBTRS_MAGIC)) {
-		pr_err("Invalid IBTRS magic\n");
+	if (unlikely(le16_to_cpu(msg->magic) != RTRS_MAGIC)) {
+		pr_err("Invalid RTRS magic\n");
 		goto reject_w_econnreset;
 	}
 	version = le16_to_cpu(msg->version);
-	if (unlikely(version >> 8 != IBTRS_PROTO_VER_MAJOR)) {
-		pr_err("Unsupported major IBTRS version: %d, expected %d\n",
-		       version >> 8, IBTRS_PROTO_VER_MAJOR);
+	if (unlikely(version >> 8 != RTRS_PROTO_VER_MAJOR)) {
+		pr_err("Unsupported major RTRS version: %d, expected %d\n",
+		       version >> 8, RTRS_PROTO_VER_MAJOR);
 		goto reject_w_econnreset;
 	}
 	con_num = le16_to_cpu(msg->cid_num);
@@ -1820,14 +1820,14 @@ static int ibtrs_rdma_connect(struct rdma_cm_id *cm_id,
 	mutex_lock(&srv->paths_mutex);
 	sess = __find_sess(srv, &msg->sess_uuid);
 	if (sess) {
-		struct ibtrs_sess *s = &sess->s;
+		struct rtrs_sess *s = &sess->s;
 
 		/* Session already holds a reference */
 		put_srv(srv);
 
-		if (unlikely(sess->state != IBTRS_SRV_CONNECTING)) {
-			ibtrs_err(s, "Session in wrong state: %s\n",
-				  ibtrs_srv_state_str(sess->state));
+		if (unlikely(sess->state != RTRS_SRV_CONNECTING)) {
+			rtrs_err(s, "Session in wrong state: %s\n",
+				  rtrs_srv_state_str(sess->state));
 			mutex_unlock(&srv->paths_mutex);
 			goto reject_w_econnreset;
 		}
@@ -1836,13 +1836,13 @@ static int ibtrs_rdma_connect(struct rdma_cm_id *cm_id,
 		 */
 		if (unlikely(con_num != sess->s.con_num ||
 			     cid >= sess->s.con_num)) {
-			ibtrs_err(s, "Incorrect request: %d, %d\n",
+			rtrs_err(s, "Incorrect request: %d, %d\n",
 				  cid, con_num);
 			mutex_unlock(&srv->paths_mutex);
 			goto reject_w_econnreset;
 		}
 		if (unlikely(sess->s.con[cid])) {
-			ibtrs_err(s, "Connection already exists: %d\n",
+			rtrs_err(s, "Connection already exists: %d\n",
 				  cid);
 			mutex_unlock(&srv->paths_mutex);
 			goto reject_w_econnreset;
@@ -1859,7 +1859,7 @@ static int ibtrs_rdma_connect(struct rdma_cm_id *cm_id,
 	}
 	err = create_con(sess, cm_id, cid);
 	if (unlikely(err)) {
-		(void)ibtrs_rdma_do_reject(cm_id, err);
+		(void)rtrs_rdma_do_reject(cm_id, err);
 		/*
 		 * Since session has other connections we follow normal way
 		 * through workqueue, but still return an error to tell cma.c
@@ -1867,9 +1867,9 @@ static int ibtrs_rdma_connect(struct rdma_cm_id *cm_id,
 		 */
 		goto close_and_return_err;
 	}
-	err = ibtrs_rdma_do_accept(sess, cm_id);
+	err = rtrs_rdma_do_accept(sess, cm_id);
 	if (unlikely(err)) {
-		(void)ibtrs_rdma_do_reject(cm_id, err);
+		(void)rtrs_rdma_do_reject(cm_id, err);
 		/*
 		 * Since current connection was successfully added to the
 		 * session we follow normal way through workqueue to close the
@@ -1884,10 +1884,10 @@ static int ibtrs_rdma_connect(struct rdma_cm_id *cm_id,
 	return 0;
 
 reject_w_err:
-	return ibtrs_rdma_do_reject(cm_id, err);
+	return rtrs_rdma_do_reject(cm_id, err);
 
 reject_w_econnreset:
-	return ibtrs_rdma_do_reject(cm_id, -ECONNRESET);
+	return rtrs_rdma_do_reject(cm_id, -ECONNRESET);
 
 close_and_return_err:
 	close_sess(sess);
@@ -1896,14 +1896,14 @@ close_and_return_err:
 	return err;
 }
 
-static int ibtrs_srv_rdma_cm_handler(struct rdma_cm_id *cm_id,
+static int rtrs_srv_rdma_cm_handler(struct rdma_cm_id *cm_id,
 				     struct rdma_cm_event *ev)
 {
-	struct ibtrs_srv_sess *sess = NULL;
-	struct ibtrs_sess *s = NULL;
+	struct rtrs_srv_sess *sess = NULL;
+	struct rtrs_sess *s = NULL;
 
 	if (ev->event != RDMA_CM_EVENT_CONNECT_REQUEST) {
-		struct ibtrs_con *c = cm_id->context;
+		struct rtrs_con *c = cm_id->context;
 
 		s = c->sess;
 		sess = to_srv_sess(s);
@@ -1915,7 +1915,7 @@ static int ibtrs_srv_rdma_cm_handler(struct rdma_cm_id *cm_id,
 		 * In case of error cma.c will destroy cm_id,
 		 * see cma_process_remove()
 		 */
-		return ibtrs_rdma_connect(cm_id, ev->param.conn.private_data,
+		return rtrs_rdma_connect(cm_id, ev->param.conn.private_data,
 					  ev->param.conn.private_data_len);
 	case RDMA_CM_EVENT_ESTABLISHED:
 		/* Nothing here */
@@ -1923,7 +1923,7 @@ static int ibtrs_srv_rdma_cm_handler(struct rdma_cm_id *cm_id,
 	case RDMA_CM_EVENT_REJECTED:
 	case RDMA_CM_EVENT_CONNECT_ERROR:
 	case RDMA_CM_EVENT_UNREACHABLE:
-		ibtrs_err(s, "CM error (CM event: %s, err: %d)\n",
+		rtrs_err(s, "CM error (CM event: %s, err: %d)\n",
 			  rdma_event_msg(ev->event), ev->status);
 		close_sess(sess);
 		break;
@@ -1944,14 +1944,14 @@ static int ibtrs_srv_rdma_cm_handler(struct rdma_cm_id *cm_id,
 	return 0;
 }
 
-static struct rdma_cm_id *ibtrs_srv_cm_init(struct ibtrs_srv_ctx *ctx,
+static struct rdma_cm_id *rtrs_srv_cm_init(struct rtrs_srv_ctx *ctx,
 					    struct sockaddr *addr,
 					    enum rdma_ucm_port_space ps)
 {
 	struct rdma_cm_id *cm_id;
 	int ret;
 
-	cm_id = rdma_create_id(&init_net, ibtrs_srv_rdma_cm_handler,
+	cm_id = rdma_create_id(&init_net, rtrs_srv_rdma_cm_handler,
 			       ctx, ps, IB_QPT_RC);
 	if (IS_ERR(cm_id)) {
 		ret = PTR_ERR(cm_id);
@@ -1980,7 +1980,7 @@ err_out:
 	return ERR_PTR(ret);
 }
 
-static int ibtrs_srv_rdma_init(struct ibtrs_srv_ctx *ctx, unsigned int port)
+static int rtrs_srv_rdma_init(struct rtrs_srv_ctx *ctx, unsigned int port)
 {
 	struct sockaddr_in6 sin = {
 		.sin6_family	= AF_INET6,
@@ -2004,11 +2004,11 @@ static int ibtrs_srv_rdma_init(struct ibtrs_srv_ctx *ctx, unsigned int port)
 	 * If the cm initialization of one of the id's fails, we abort
 	 * everything.
 	 */
-	cm_ip = ibtrs_srv_cm_init(ctx, (struct sockaddr *)&sin, RDMA_PS_TCP);
+	cm_ip = rtrs_srv_cm_init(ctx, (struct sockaddr *)&sin, RDMA_PS_TCP);
 	if (unlikely(IS_ERR(cm_ip)))
 		return PTR_ERR(cm_ip);
 
-	cm_ib = ibtrs_srv_cm_init(ctx, (struct sockaddr *)&sib, RDMA_PS_IB);
+	cm_ib = rtrs_srv_cm_init(ctx, (struct sockaddr *)&sib, RDMA_PS_IB);
 	if (unlikely(IS_ERR(cm_ib))) {
 		ret = PTR_ERR(cm_ib);
 		goto free_cm_ip;
@@ -2025,10 +2025,10 @@ free_cm_ip:
 	return ret;
 }
 
-static struct ibtrs_srv_ctx *alloc_srv_ctx(rdma_ev_fn *rdma_ev,
+static struct rtrs_srv_ctx *alloc_srv_ctx(rdma_ev_fn *rdma_ev,
 					   link_ev_fn *link_ev)
 {
-	struct ibtrs_srv_ctx *ctx;
+	struct rtrs_srv_ctx *ctx;
 
 	ctx = kzalloc(sizeof(*ctx), GFP_KERNEL);
 	if (!ctx)
@@ -2042,23 +2042,23 @@ static struct ibtrs_srv_ctx *alloc_srv_ctx(rdma_ev_fn *rdma_ev,
 	return ctx;
 }
 
-static void free_srv_ctx(struct ibtrs_srv_ctx *ctx)
+static void free_srv_ctx(struct rtrs_srv_ctx *ctx)
 {
 	WARN_ON(!list_empty(&ctx->srv_list));
 	kfree(ctx);
 }
 
-struct ibtrs_srv_ctx *ibtrs_srv_open(rdma_ev_fn *rdma_ev, link_ev_fn *link_ev,
+struct rtrs_srv_ctx *rtrs_srv_open(rdma_ev_fn *rdma_ev, link_ev_fn *link_ev,
 				     unsigned int port)
 {
-	struct ibtrs_srv_ctx *ctx;
+	struct rtrs_srv_ctx *ctx;
 	int err;
 
 	ctx = alloc_srv_ctx(rdma_ev, link_ev);
 	if (unlikely(!ctx))
 		return ERR_PTR(-ENOMEM);
 
-	err = ibtrs_srv_rdma_init(ctx, port);
+	err = rtrs_srv_rdma_init(ctx, port);
 	if (unlikely(err)) {
 		free_srv_ctx(ctx);
 		return ERR_PTR(err);
@@ -2068,11 +2068,11 @@ struct ibtrs_srv_ctx *ibtrs_srv_open(rdma_ev_fn *rdma_ev, link_ev_fn *link_ev,
 
 	return ctx;
 }
-EXPORT_SYMBOL(ibtrs_srv_open);
+EXPORT_SYMBOL(rtrs_srv_open);
 
-static void close_sessions(struct ibtrs_srv *srv)
+static void close_sessions(struct rtrs_srv *srv)
 {
-	struct ibtrs_srv_sess *sess;
+	struct rtrs_srv_sess *sess;
 
 	mutex_lock(&srv->paths_mutex);
 	list_for_each_entry(sess, &srv->paths_list, s.entry)
@@ -2080,18 +2080,18 @@ static void close_sessions(struct ibtrs_srv *srv)
 	mutex_unlock(&srv->paths_mutex);
 }
 
-static void close_ctx(struct ibtrs_srv_ctx *ctx)
+static void close_ctx(struct rtrs_srv_ctx *ctx)
 {
-	struct ibtrs_srv *srv;
+	struct rtrs_srv *srv;
 
 	mutex_lock(&ctx->srv_mutex);
 	list_for_each_entry(srv, &ctx->srv_list, ctx_list)
 		close_sessions(srv);
 	mutex_unlock(&ctx->srv_mutex);
-	flush_workqueue(ibtrs_wq);
+	flush_workqueue(rtrs_wq);
 }
 
-void ibtrs_srv_close(struct ibtrs_srv_ctx *ctx)
+void rtrs_srv_close(struct rtrs_srv_ctx *ctx)
 {
 	rdma_destroy_id(ctx->cm_id_ip);
 	rdma_destroy_id(ctx->cm_id_ib);
@@ -2099,7 +2099,7 @@ void ibtrs_srv_close(struct ibtrs_srv_ctx *ctx)
 	free_srv_ctx(ctx);
 	module_put(THIS_MODULE);
 }
-EXPORT_SYMBOL(ibtrs_srv_close);
+EXPORT_SYMBOL(rtrs_srv_close);
 
 static int check_module_params(void)
 {
@@ -2128,19 +2128,19 @@ static int check_module_params(void)
 	return 0;
 }
 
-static int __init ibtrs_server_init(void)
+static int __init rtrs_server_init(void)
 {
 	int err;
 
 	init_cq_affinity();
 
 	pr_info("Loading module %s, proto %s: (cq_affinity_list: %s, max_chunk_size: %d (pure IO %ld, headers %ld) , sess_queue_depth: %d, always_invalidate: %d)\n",
-		KBUILD_MODNAME, IBTRS_PROTO_VER_STRING,
+		KBUILD_MODNAME, RTRS_PROTO_VER_STRING,
 		cq_affinity_list, max_chunk_size,
 		max_chunk_size - MAX_HDR_SIZE, MAX_HDR_SIZE,
 		sess_queue_depth, always_invalidate);
 
-	ibtrs_ib_dev_pool_init(0, &dev_pool);
+	rtrs_ib_dev_pool_init(0, &dev_pool);
 
 	err = check_module_params();
 	if (err) {
@@ -2154,35 +2154,35 @@ static int __init ibtrs_server_init(void)
 		pr_err("Failed preallocate pool of chunks\n");
 		return -ENOMEM;
 	}
-	ibtrs_dev_class = class_create(THIS_MODULE, "ibtrs-server");
-	if (unlikely(IS_ERR(ibtrs_dev_class))) {
-		pr_err("Failed to create ibtrs-server dev class\n");
-		err = PTR_ERR(ibtrs_dev_class);
+	rtrs_dev_class = class_create(THIS_MODULE, "rtrs-server");
+	if (unlikely(IS_ERR(rtrs_dev_class))) {
+		pr_err("Failed to create rtrs-server dev class\n");
+		err = PTR_ERR(rtrs_dev_class);
 		goto out_chunk_pool;
 	}
-	ibtrs_wq = alloc_workqueue("ibtrs_server_wq", WQ_MEM_RECLAIM, 0);
-	if (unlikely(!ibtrs_wq)) {
-		pr_err("Failed to load module, alloc ibtrs_server_wq failed\n");
+	rtrs_wq = alloc_workqueue("rtrs_server_wq", WQ_MEM_RECLAIM, 0);
+	if (unlikely(!rtrs_wq)) {
+		pr_err("Failed to load module, alloc rtrs_server_wq failed\n");
 		goto out_dev_class;
 	}
 
 	return 0;
 
 out_dev_class:
-	class_destroy(ibtrs_dev_class);
+	class_destroy(rtrs_dev_class);
 out_chunk_pool:
 	mempool_destroy(chunk_pool);
 
 	return err;
 }
 
-static void __exit ibtrs_server_exit(void)
+static void __exit rtrs_server_exit(void)
 {
-	destroy_workqueue(ibtrs_wq);
-	class_destroy(ibtrs_dev_class);
+	destroy_workqueue(rtrs_wq);
+	class_destroy(rtrs_dev_class);
 	mempool_destroy(chunk_pool);
-	ibtrs_ib_dev_pool_deinit(&dev_pool);
+	rtrs_ib_dev_pool_deinit(&dev_pool);
 }
 
-module_init(ibtrs_server_init);
-module_exit(ibtrs_server_exit);
+module_init(rtrs_server_init);
+module_exit(rtrs_server_exit);

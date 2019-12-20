@@ -29,15 +29,15 @@
 #undef pr_fmt
 #define pr_fmt(fmt) KBUILD_MODNAME " L" __stringify(__LINE__) ": " fmt
 
-#include "ibtrs-pri.h"
-#include "ibtrs-srv.h"
-#include "ibtrs-log.h"
+#include "rtrs-pri.h"
+#include "rtrs-srv.h"
+#include "rtrs-log.h"
 
 static struct kobj_type ktype = {
 	.sysfs_ops	= &kobj_sysfs_ops,
 };
 
-static ssize_t ibtrs_srv_disconnect_show(struct kobject *kobj,
+static ssize_t rtrs_srv_disconnect_show(struct kobject *kobj,
 					 struct kobj_attribute *attr,
 					 char *page)
 {
@@ -45,40 +45,40 @@ static ssize_t ibtrs_srv_disconnect_show(struct kobject *kobj,
 			 attr->attr.name);
 }
 
-static ssize_t ibtrs_srv_disconnect_store(struct kobject *kobj,
+static ssize_t rtrs_srv_disconnect_store(struct kobject *kobj,
 					  struct kobj_attribute *attr,
 					  const char *buf, size_t count)
 {
-	struct ibtrs_srv_sess *sess;
-	struct ibtrs_sess *s;
+	struct rtrs_srv_sess *sess;
+	struct rtrs_sess *s;
 	char str[MAXHOSTNAMELEN];
 
-	sess = container_of(kobj, struct ibtrs_srv_sess, kobj);
+	sess = container_of(kobj, struct rtrs_srv_sess, kobj);
 	s = &sess->s;
 	if (!sysfs_streq(buf, "1")) {
-		ibtrs_err(s, "%s: invalid value: '%s'\n",
+		rtrs_err(s, "%s: invalid value: '%s'\n",
 			  attr->attr.name, buf);
 		return -EINVAL;
 	}
 
 	sockaddr_to_str((struct sockaddr *)&sess->s.dst_addr, str, sizeof(str));
 
-	ibtrs_info(s, "disconnect for path %s requested\n", str);
+	rtrs_info(s, "disconnect for path %s requested\n", str);
 	close_sess(sess);
 
 	return count;
 }
 
-static struct kobj_attribute ibtrs_srv_disconnect_attr =
+static struct kobj_attribute rtrs_srv_disconnect_attr =
 	__ATTR(disconnect, 0644,
-	       ibtrs_srv_disconnect_show, ibtrs_srv_disconnect_store);
+	       rtrs_srv_disconnect_show, rtrs_srv_disconnect_store);
 
-static ssize_t ibtrs_srv_hca_port_show(struct kobject *kobj,
+static ssize_t rtrs_srv_hca_port_show(struct kobject *kobj,
 				       struct kobj_attribute *attr,
 				       char *page)
 {
-	struct ibtrs_srv_sess *sess;
-	struct ibtrs_con *usr_con;
+	struct rtrs_srv_sess *sess;
+	struct rtrs_con *usr_con;
 
 	sess = container_of(kobj, typeof(*sess), kobj);
 	usr_con = sess->s.con[0];
@@ -87,102 +87,102 @@ static ssize_t ibtrs_srv_hca_port_show(struct kobject *kobj,
 			 usr_con->cm_id->port_num);
 }
 
-static struct kobj_attribute ibtrs_srv_hca_port_attr =
-	__ATTR(hca_port, 0444, ibtrs_srv_hca_port_show, NULL);
+static struct kobj_attribute rtrs_srv_hca_port_attr =
+	__ATTR(hca_port, 0444, rtrs_srv_hca_port_show, NULL);
 
-static ssize_t ibtrs_srv_hca_name_show(struct kobject *kobj,
+static ssize_t rtrs_srv_hca_name_show(struct kobject *kobj,
 				       struct kobj_attribute *attr,
 				       char *page)
 {
-	struct ibtrs_srv_sess *sess;
+	struct rtrs_srv_sess *sess;
 
-	sess = container_of(kobj, struct ibtrs_srv_sess, kobj);
+	sess = container_of(kobj, struct rtrs_srv_sess, kobj);
 
 	return scnprintf(page, PAGE_SIZE, "%s\n",
 			 sess->s.dev->ib_dev->name);
 }
 
-static struct kobj_attribute ibtrs_srv_hca_name_attr =
-	__ATTR(hca_name, 0444, ibtrs_srv_hca_name_show, NULL);
+static struct kobj_attribute rtrs_srv_hca_name_attr =
+	__ATTR(hca_name, 0444, rtrs_srv_hca_name_show, NULL);
 
-static ssize_t ibtrs_srv_src_addr_show(struct kobject *kobj,
+static ssize_t rtrs_srv_src_addr_show(struct kobject *kobj,
 				       struct kobj_attribute *attr,
 				       char *page)
 {
-	struct ibtrs_srv_sess *sess;
+	struct rtrs_srv_sess *sess;
 	int cnt;
 
-	sess = container_of(kobj, struct ibtrs_srv_sess, kobj);
+	sess = container_of(kobj, struct rtrs_srv_sess, kobj);
 	cnt = sockaddr_to_str((struct sockaddr *)&sess->s.dst_addr,
 			      page, PAGE_SIZE);
 	return cnt + scnprintf(page + cnt, PAGE_SIZE - cnt, "\n");
 }
 
-static struct kobj_attribute ibtrs_srv_src_addr_attr =
-	__ATTR(src_addr, 0444, ibtrs_srv_src_addr_show, NULL);
+static struct kobj_attribute rtrs_srv_src_addr_attr =
+	__ATTR(src_addr, 0444, rtrs_srv_src_addr_show, NULL);
 
-static ssize_t ibtrs_srv_dst_addr_show(struct kobject *kobj,
+static ssize_t rtrs_srv_dst_addr_show(struct kobject *kobj,
 				       struct kobj_attribute *attr,
 				       char *page)
 {
-	struct ibtrs_srv_sess *sess;
+	struct rtrs_srv_sess *sess;
 	int cnt;
 
-	sess = container_of(kobj, struct ibtrs_srv_sess, kobj);
+	sess = container_of(kobj, struct rtrs_srv_sess, kobj);
 	cnt = sockaddr_to_str((struct sockaddr *)&sess->s.src_addr,
 			      page, PAGE_SIZE);
 	return cnt + scnprintf(page + cnt, PAGE_SIZE - cnt, "\n");
 }
 
-static struct kobj_attribute ibtrs_srv_dst_addr_attr =
-	__ATTR(dst_addr, 0444, ibtrs_srv_dst_addr_show, NULL);
+static struct kobj_attribute rtrs_srv_dst_addr_attr =
+	__ATTR(dst_addr, 0444, rtrs_srv_dst_addr_show, NULL);
 
-static struct attribute *ibtrs_srv_sess_attrs[] = {
-	&ibtrs_srv_hca_name_attr.attr,
-	&ibtrs_srv_hca_port_attr.attr,
-	&ibtrs_srv_src_addr_attr.attr,
-	&ibtrs_srv_dst_addr_attr.attr,
-	&ibtrs_srv_disconnect_attr.attr,
+static struct attribute *rtrs_srv_sess_attrs[] = {
+	&rtrs_srv_hca_name_attr.attr,
+	&rtrs_srv_hca_port_attr.attr,
+	&rtrs_srv_src_addr_attr.attr,
+	&rtrs_srv_dst_addr_attr.attr,
+	&rtrs_srv_disconnect_attr.attr,
 	NULL,
 };
 
-static struct attribute_group ibtrs_srv_sess_attr_group = {
-	.attrs = ibtrs_srv_sess_attrs,
+static struct attribute_group rtrs_srv_sess_attr_group = {
+	.attrs = rtrs_srv_sess_attrs,
 };
 
-STAT_ATTR(struct ibtrs_srv_sess, rdma,
-	  ibtrs_srv_stats_rdma_to_str,
-	  ibtrs_srv_reset_rdma_stats);
+STAT_ATTR(struct rtrs_srv_sess, rdma,
+	  rtrs_srv_stats_rdma_to_str,
+	  rtrs_srv_reset_rdma_stats);
 
-STAT_ATTR(struct ibtrs_srv_sess, wc_completion,
-	  ibtrs_srv_stats_wc_completion_to_str,
-	  ibtrs_srv_reset_wc_completion_stats);
+STAT_ATTR(struct rtrs_srv_sess, wc_completion,
+	  rtrs_srv_stats_wc_completion_to_str,
+	  rtrs_srv_reset_wc_completion_stats);
 
-STAT_ATTR(struct ibtrs_srv_sess, reset_all,
-	  ibtrs_srv_reset_all_help,
-	  ibtrs_srv_reset_all_stats);
+STAT_ATTR(struct rtrs_srv_sess, reset_all,
+	  rtrs_srv_reset_all_help,
+	  rtrs_srv_reset_all_stats);
 
-static struct attribute *ibtrs_srv_stats_attrs[] = {
+static struct attribute *rtrs_srv_stats_attrs[] = {
 	&rdma_attr.attr,
 	&wc_completion_attr.attr,
 	&reset_all_attr.attr,
 	NULL,
 };
 
-static struct attribute_group ibtrs_srv_stats_attr_group = {
-	.attrs = ibtrs_srv_stats_attrs,
+static struct attribute_group rtrs_srv_stats_attr_group = {
+	.attrs = rtrs_srv_stats_attrs,
 };
 
-static void ibtrs_srv_dev_release(struct device *dev)
+static void rtrs_srv_dev_release(struct device *dev)
 {
-	struct ibtrs_srv *srv = container_of(dev, struct ibtrs_srv, dev);
+	struct rtrs_srv *srv = container_of(dev, struct rtrs_srv, dev);
 
 	kfree(srv);
 }
 
-static int ibtrs_srv_create_once_sysfs_root_folders(struct ibtrs_srv_sess *sess)
+static int rtrs_srv_create_once_sysfs_root_folders(struct rtrs_srv_sess *sess)
 {
-	struct ibtrs_srv *srv = sess->srv;
+	struct rtrs_srv *srv = sess->srv;
 	int err = 0;
 
 	mutex_lock(&srv->paths_mutex);
@@ -194,8 +194,8 @@ static int ibtrs_srv_create_once_sysfs_root_folders(struct ibtrs_srv_sess *sess)
 		 */
 		goto unlock;
 	}
-	srv->dev.class = ibtrs_dev_class;
-	srv->dev.release = ibtrs_srv_dev_release;
+	srv->dev.class = rtrs_dev_class;
+	srv->dev.release = rtrs_srv_dev_release;
 	dev_set_name(&srv->dev, "%s", sess->s.sessname);
 
 	err = device_register(&srv->dev);
@@ -217,9 +217,9 @@ unlock:
 }
 
 static void
-ibtrs_srv_destroy_once_sysfs_root_folders(struct ibtrs_srv_sess *sess)
+rtrs_srv_destroy_once_sysfs_root_folders(struct rtrs_srv_sess *sess)
 {
-	struct ibtrs_srv *srv = sess->srv;
+	struct rtrs_srv *srv = sess->srv;
 
 	mutex_lock(&srv->paths_mutex);
 	if (!--srv->dev_ref) {
@@ -230,21 +230,21 @@ ibtrs_srv_destroy_once_sysfs_root_folders(struct ibtrs_srv_sess *sess)
 	mutex_unlock(&srv->paths_mutex);
 }
 
-static int ibtrs_srv_create_stats_files(struct ibtrs_srv_sess *sess)
+static int rtrs_srv_create_stats_files(struct rtrs_srv_sess *sess)
 {
 	int err;
-	struct ibtrs_sess *s = &sess->s;
+	struct rtrs_sess *s = &sess->s;
 
 	err = kobject_init_and_add(&sess->kobj_stats, &ktype,
 				   &sess->kobj, "stats");
 	if (unlikely(err)) {
-		ibtrs_err(s, "kobject_init_and_add(): %d\n", err);
+		rtrs_err(s, "kobject_init_and_add(): %d\n", err);
 		return err;
 	}
 	err = sysfs_create_group(&sess->kobj_stats,
-				 &ibtrs_srv_stats_attr_group);
+				 &rtrs_srv_stats_attr_group);
 	if (unlikely(err)) {
-		ibtrs_err(s, "sysfs_create_group(): %d\n", err);
+		rtrs_err(s, "sysfs_create_group(): %d\n", err);
 		goto err;
 	}
 
@@ -257,10 +257,10 @@ err:
 	return err;
 }
 
-int ibtrs_srv_create_sess_files(struct ibtrs_srv_sess *sess)
+int rtrs_srv_create_sess_files(struct rtrs_srv_sess *sess)
 {
-	struct ibtrs_srv *srv = sess->srv;
-	struct ibtrs_sess *s = &sess->s;
+	struct rtrs_srv *srv = sess->srv;
+	struct rtrs_sess *s = &sess->s;
 	char str[NAME_MAX];
 	int err, cnt;
 
@@ -270,39 +270,39 @@ int ibtrs_srv_create_sess_files(struct ibtrs_srv_sess *sess)
 	sockaddr_to_str((struct sockaddr *)&sess->s.src_addr,
 			str + cnt, sizeof(str) - cnt);
 
-	err = ibtrs_srv_create_once_sysfs_root_folders(sess);
+	err = rtrs_srv_create_once_sysfs_root_folders(sess);
 	if (unlikely(err))
 		return err;
 
 	err = kobject_init_and_add(&sess->kobj, &ktype, &srv->kobj_paths,
 				   "%s", str);
 	if (unlikely(err)) {
-		ibtrs_err(s, "kobject_init_and_add(): %d\n", err);
+		rtrs_err(s, "kobject_init_and_add(): %d\n", err);
 		goto destroy_root;
 	}
-	err = sysfs_create_group(&sess->kobj, &ibtrs_srv_sess_attr_group);
+	err = sysfs_create_group(&sess->kobj, &rtrs_srv_sess_attr_group);
 	if (unlikely(err)) {
-		ibtrs_err(s, "sysfs_create_group(): %d\n", err);
+		rtrs_err(s, "sysfs_create_group(): %d\n", err);
 		goto put_kobj;
 	}
-	err = ibtrs_srv_create_stats_files(sess);
+	err = rtrs_srv_create_stats_files(sess);
 	if (unlikely(err))
 		goto remove_group;
 
 	return 0;
 
 remove_group:
-	sysfs_remove_group(&sess->kobj, &ibtrs_srv_sess_attr_group);
+	sysfs_remove_group(&sess->kobj, &rtrs_srv_sess_attr_group);
 put_kobj:
 	kobject_del(&sess->kobj);
 	kobject_put(&sess->kobj);
 destroy_root:
-	ibtrs_srv_destroy_once_sysfs_root_folders(sess);
+	rtrs_srv_destroy_once_sysfs_root_folders(sess);
 
 	return err;
 }
 
-void ibtrs_srv_destroy_sess_files(struct ibtrs_srv_sess *sess)
+void rtrs_srv_destroy_sess_files(struct rtrs_srv_sess *sess)
 {
 	if (sess->kobj.state_in_sysfs) {
 		kobject_del(&sess->kobj_stats);
@@ -310,6 +310,6 @@ void ibtrs_srv_destroy_sess_files(struct ibtrs_srv_sess *sess)
 		kobject_del(&sess->kobj);
 		kobject_put(&sess->kobj);
 
-		ibtrs_srv_destroy_once_sysfs_root_folders(sess);
+		rtrs_srv_destroy_once_sysfs_root_folders(sess);
 	}
 }

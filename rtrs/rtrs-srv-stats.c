@@ -29,25 +29,25 @@
 #undef pr_fmt
 #define pr_fmt(fmt) KBUILD_MODNAME " L" __stringify(__LINE__) ": " fmt
 
-#include "ibtrs-srv.h"
+#include "rtrs-srv.h"
 
-void ibtrs_srv_update_rdma_stats(struct ibtrs_srv_stats *s,
+void rtrs_srv_update_rdma_stats(struct rtrs_srv_stats *s,
 				 size_t size, int d)
 {
 	atomic64_inc(&s->rdma_stats.dir[d].cnt);
 	atomic64_add(size, &s->rdma_stats.dir[d].size_total);
 }
 
-void ibtrs_srv_update_wc_stats(struct ibtrs_srv_stats *s)
+void rtrs_srv_update_wc_stats(struct rtrs_srv_stats *s)
 {
 	atomic64_inc(&s->wc_comp.calls);
 	atomic64_inc(&s->wc_comp.total_wc_cnt);
 }
 
-int ibtrs_srv_reset_rdma_stats(struct ibtrs_srv_stats *stats, bool enable)
+int rtrs_srv_reset_rdma_stats(struct rtrs_srv_stats *stats, bool enable)
 {
 	if (enable) {
-		struct ibtrs_srv_stats_rdma_stats *r = &stats->rdma_stats;
+		struct rtrs_srv_stats_rdma_stats *r = &stats->rdma_stats;
 
 		memset(r, 0, sizeof(*r));
 		return 0;
@@ -56,11 +56,11 @@ int ibtrs_srv_reset_rdma_stats(struct ibtrs_srv_stats *stats, bool enable)
 	return -EINVAL;
 }
 
-ssize_t ibtrs_srv_stats_rdma_to_str(struct ibtrs_srv_stats *stats,
+ssize_t rtrs_srv_stats_rdma_to_str(struct rtrs_srv_stats *stats,
 				    char *page, size_t len)
 {
-	struct ibtrs_srv_stats_rdma_stats *r = &stats->rdma_stats;
-	struct ibtrs_srv_sess *sess;
+	struct rtrs_srv_stats_rdma_stats *r = &stats->rdma_stats;
+	struct rtrs_srv_sess *sess;
 
 	sess = container_of(stats, typeof(*sess), stats);
 
@@ -72,7 +72,7 @@ ssize_t ibtrs_srv_stats_rdma_to_str(struct ibtrs_srv_stats *stats,
 			 atomic_read(&sess->ids_inflight));
 }
 
-int ibtrs_srv_reset_wc_completion_stats(struct ibtrs_srv_stats *stats,
+int rtrs_srv_reset_wc_completion_stats(struct rtrs_srv_stats *stats,
 					bool enable)
 {
 	if (enable) {
@@ -83,7 +83,7 @@ int ibtrs_srv_reset_wc_completion_stats(struct ibtrs_srv_stats *stats,
 	return -EINVAL;
 }
 
-int ibtrs_srv_stats_wc_completion_to_str(struct ibtrs_srv_stats *stats,
+int rtrs_srv_stats_wc_completion_to_str(struct rtrs_srv_stats *stats,
 					 char *buf, size_t len)
 {
 	return snprintf(buf, len, "%lld %lld\n",
@@ -91,17 +91,17 @@ int ibtrs_srv_stats_wc_completion_to_str(struct ibtrs_srv_stats *stats,
 			(s64)atomic64_read(&stats->wc_comp.calls));
 }
 
-ssize_t ibtrs_srv_reset_all_help(struct ibtrs_srv_stats *stats,
+ssize_t rtrs_srv_reset_all_help(struct rtrs_srv_stats *stats,
 				 char *page, size_t len)
 {
 	return scnprintf(page, PAGE_SIZE, "echo 1 to reset all statistics\n");
 }
 
-int ibtrs_srv_reset_all_stats(struct ibtrs_srv_stats *stats, bool enable)
+int rtrs_srv_reset_all_stats(struct rtrs_srv_stats *stats, bool enable)
 {
 	if (enable) {
-		ibtrs_srv_reset_wc_completion_stats(stats, enable);
-		ibtrs_srv_reset_rdma_stats(stats, enable);
+		rtrs_srv_reset_wc_completion_stats(stats, enable);
+		rtrs_srv_reset_rdma_stats(stats, enable);
 		return 0;
 	}
 
