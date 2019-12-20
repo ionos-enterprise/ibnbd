@@ -29,13 +29,13 @@
 #undef pr_fmt
 #define pr_fmt(fmt) KBUILD_MODNAME " L" __stringify(__LINE__) ": " fmt
 
-#include "ibnbd-srv-dev.h"
-#include "ibnbd-log.h"
+#include "rnbd-srv-dev.h"
+#include "rnbd-log.h"
 
-struct ibnbd_dev *ibnbd_dev_open(const char *path, fmode_t flags,
-				 struct bio_set *bs, ibnbd_dev_io_fn io_cb)
+struct rnbd_dev *rnbd_dev_open(const char *path, fmode_t flags,
+				 struct bio_set *bs, rnbd_dev_io_fn io_cb)
 {
-	struct ibnbd_dev *dev;
+	struct rnbd_dev *dev;
 	int ret;
 
 	dev = kzalloc(sizeof(*dev), GFP_KERNEL);
@@ -60,22 +60,22 @@ err:
 	return ERR_PTR(ret);
 }
 
-void ibnbd_dev_close(struct ibnbd_dev *dev)
+void rnbd_dev_close(struct rnbd_dev *dev)
 {
 	blkdev_put(dev->bdev, dev->blk_open_flags);
 	kfree(dev);
 }
 
-static void ibnbd_dev_bi_end_io(struct bio *bio)
+static void rnbd_dev_bi_end_io(struct bio *bio)
 {
-	struct ibnbd_dev_blk_io *io = bio->bi_private;
+	struct rnbd_dev_blk_io *io = bio->bi_private;
 
 	io->dev->io_cb(io->priv, blk_status_to_errno(bio->bi_status));
 	bio_put(bio);
 }
 
 /**
- *	ibnbd_bio_map_kern	-	map kernel address into bio
+ *	rnbd_bio_map_kern	-	map kernel address into bio
  *	@q: the struct request_queue for the bio
  *	@data: pointer to buffer to map
  *	@bs: bio_set to use.
@@ -85,7 +85,7 @@ static void ibnbd_dev_bi_end_io(struct bio *bio)
  *	Map the kernel address into a bio suitable for io to a block
  *	device. Returns an error pointer in case of error.
  */
-static struct bio *ibnbd_bio_map_kern(struct request_queue *q, void *data,
+static struct bio *rnbd_bio_map_kern(struct request_queue *q, void *data,
 				      struct bio_set *bs,
 				      unsigned int len, gfp_t gfp_mask)
 {
@@ -126,12 +126,12 @@ static struct bio *ibnbd_bio_map_kern(struct request_queue *q, void *data,
 	return bio;
 }
 
-int ibnbd_dev_submit_io(struct ibnbd_dev *dev, sector_t sector, void *data,
-			size_t len, u32 bi_size, enum ibnbd_io_flags flags,
+int rnbd_dev_submit_io(struct rnbd_dev *dev, sector_t sector, void *data,
+			size_t len, u32 bi_size, enum rnbd_io_flags flags,
 			short prio, void *priv)
 {
 	struct request_queue *q = bdev_get_queue(dev->bdev);
-	struct ibnbd_dev_blk_io *io;
+	struct rnbd_dev_blk_io *io;
 	struct bio *bio;
 
 	/* check if the buffer is suitable for bdev */
@@ -139,18 +139,18 @@ int ibnbd_dev_submit_io(struct ibnbd_dev *dev, sector_t sector, void *data,
 		return -EINVAL;
 
 	/* Generate bio with pages pointing to the rdma buffer */
-	bio = ibnbd_bio_map_kern(q, data, dev->ibd_bio_set, len, GFP_KERNEL);
+	bio = rnbd_bio_map_kern(q, data, dev->ibd_bio_set, len, GFP_KERNEL);
 	if (unlikely(IS_ERR(bio)))
 		return PTR_ERR(bio);
 
-	io = container_of(bio, struct ibnbd_dev_blk_io, bio);
+	io = container_of(bio, struct rnbd_dev_blk_io, bio);
 
 	io->dev		= dev;
 	io->priv	= priv;
 
-	bio->bi_end_io		= ibnbd_dev_bi_end_io;
+	bio->bi_end_io		= rnbd_dev_bi_end_io;
 	bio->bi_private		= io;
-	bio->bi_opf		= ibnbd_to_bio_flags(flags);
+	bio->bi_opf		= rnbd_to_bio_flags(flags);
 	bio->bi_iter.bi_sector	= sector;
 	bio->bi_iter.bi_size	= bi_size;
 	bio_set_prio(bio, prio);

@@ -26,8 +26,8 @@
  *          Guoqing Jiang <guoqing.jiang@cloud.ionos.com>
  *          Lutz Pogrell <lutz.pogrell@cloud.ionos.com>
  */
-#ifndef IBNBD_PROTO_H
-#define IBNBD_PROTO_H
+#ifndef RNBD_PROTO_H
+#define RNBD_PROTO_H
 
 #include <linux/types.h>
 #include <linux/blkdev.h>
@@ -37,37 +37,37 @@
 #include <linux/in6.h>
 #include <rdma/ib.h>
 
-#define IBNBD_PROTO_VER_MAJOR 2
-#define IBNBD_PROTO_VER_MINOR 0
+#define RNBD_PROTO_VER_MAJOR 2
+#define RNBD_PROTO_VER_MINOR 0
 
-#define IBNBD_PROTO_VER_STRING __stringify(IBNBD_PROTO_VER_MAJOR) "." \
-			       __stringify(IBNBD_PROTO_VER_MINOR)
+#define RNBD_PROTO_VER_STRING __stringify(RNBD_PROTO_VER_MAJOR) "." \
+			       __stringify(RNBD_PROTO_VER_MINOR)
 
-#define IBTRS_PORT 1234
+#define RTRS_PORT 1234
 
 /**
- * enum ibnbd_msg_types - IBNBD message types
- * @IBNBD_MSG_SESS_INFO:	initial session info from client to server
- * @IBNBD_MSG_SESS_INFO_RSP:	initial session info from server to client
- * @IBNBD_MSG_OPEN:		open (map) device request
- * @IBNBD_MSG_OPEN_RSP:		response to an @IBNBD_MSG_OPEN
- * @IBNBD_MSG_IO:		block IO request operation
- * @IBNBD_MSG_CLOSE:		close (unmap) device request
+ * enum rnbd_msg_types - RNBD message types
+ * @RNBD_MSG_SESS_INFO:	initial session info from client to server
+ * @RNBD_MSG_SESS_INFO_RSP:	initial session info from server to client
+ * @RNBD_MSG_OPEN:		open (map) device request
+ * @RNBD_MSG_OPEN_RSP:		response to an @RNBD_MSG_OPEN
+ * @RNBD_MSG_IO:		block IO request operation
+ * @RNBD_MSG_CLOSE:		close (unmap) device request
  */
-enum ibnbd_msg_type {
-	IBNBD_MSG_SESS_INFO,
-	IBNBD_MSG_SESS_INFO_RSP,
-	IBNBD_MSG_OPEN,
-	IBNBD_MSG_OPEN_RSP,
-	IBNBD_MSG_IO,
-	IBNBD_MSG_CLOSE,
+enum rnbd_msg_type {
+	RNBD_MSG_SESS_INFO,
+	RNBD_MSG_SESS_INFO_RSP,
+	RNBD_MSG_OPEN,
+	RNBD_MSG_OPEN_RSP,
+	RNBD_MSG_IO,
+	RNBD_MSG_CLOSE,
 };
 
 /**
- * struct ibnbd_msg_hdr - header of IBNBD messages
- * @type:	Message type, valid values see: enum ibnbd_msg_types
+ * struct rnbd_msg_hdr - header of RNBD messages
+ * @type:	Message type, valid values see: enum rnbd_msg_types
  */
-struct ibnbd_msg_hdr {
+struct rnbd_msg_hdr {
 	__le16		type;
 	__le16		__padding;
 };
@@ -77,43 +77,43 @@ struct ibnbd_msg_hdr {
  * time RW, if MIGRATION is provided (second RW export can be required for
  * example for VM migration)
  */
-enum ibnbd_access_mode {
-	IBNBD_ACCESS_RO,
-	IBNBD_ACCESS_RW,
-	IBNBD_ACCESS_MIGRATION,
+enum rnbd_access_mode {
+	RNBD_ACCESS_RO,
+	RNBD_ACCESS_RW,
+	RNBD_ACCESS_MIGRATION,
 };
 
 /**
- * struct ibnbd_msg_sess_info - initial session info from client to server
+ * struct rnbd_msg_sess_info - initial session info from client to server
  * @hdr:		message header
- * @ver:		IBNBD protocol version
+ * @ver:		RNBD protocol version
  */
-struct ibnbd_msg_sess_info {
-	struct ibnbd_msg_hdr hdr;
+struct rnbd_msg_sess_info {
+	struct rnbd_msg_hdr hdr;
 	u8		ver;
 	u8		reserved[31];
 };
 
 /**
- * struct ibnbd_msg_sess_info_rsp - initial session info from server to client
+ * struct rnbd_msg_sess_info_rsp - initial session info from server to client
  * @hdr:		message header
- * @ver:		IBNBD protocol version
+ * @ver:		RNBD protocol version
  */
-struct ibnbd_msg_sess_info_rsp {
-	struct ibnbd_msg_hdr hdr;
+struct rnbd_msg_sess_info_rsp {
+	struct rnbd_msg_hdr hdr;
 	u8		ver;
 	u8		reserved[31];
 };
 
 /**
- * struct ibnbd_msg_open - request to open a remote device.
+ * struct rnbd_msg_open - request to open a remote device.
  * @hdr:		message header
  * @access_mode:	the mode to open remote device, valid values see:
- *			enum ibnbd_access_mode
+ *			enum rnbd_access_mode
  * @device_name:	device path on remote side
  */
-struct ibnbd_msg_open {
-	struct ibnbd_msg_hdr hdr;
+struct rnbd_msg_open {
+	struct rnbd_msg_hdr hdr;
 	u8		access_mode;
 	u8		resv1;
 	s8		dev_name[NAME_MAX];
@@ -121,17 +121,17 @@ struct ibnbd_msg_open {
 };
 
 /**
- * struct ibnbd_msg_close - request to close a remote device.
+ * struct rnbd_msg_close - request to close a remote device.
  * @hdr:	message header
  * @device_id:	device_id on server side to identify the device
  */
-struct ibnbd_msg_close {
-	struct ibnbd_msg_hdr hdr;
+struct rnbd_msg_close {
+	struct rnbd_msg_hdr hdr;
 	__le32		device_id;
 };
 
 /**
- * struct ibnbd_msg_open_rsp - response message to IBNBD_MSG_OPEN
+ * struct rnbd_msg_open_rsp - response message to RNBD_MSG_OPEN
  * @hdr:		message header
  * @device_id:		device_id on server side to identify the device
  * @nsectors:		number of sectors in the usual 512b unit
@@ -147,8 +147,8 @@ struct ibnbd_msg_close {
  * @secure_discard:	supports secure discard
  * @rotation:		is a rotational disc?
  */
-struct ibnbd_msg_open_rsp {
-	struct ibnbd_msg_hdr	hdr;
+struct rnbd_msg_open_rsp {
+	struct rnbd_msg_hdr	hdr;
 	__le32			device_id;
 	__le64			nsectors;
 	__le32			max_hw_sectors;
@@ -165,16 +165,16 @@ struct ibnbd_msg_open_rsp {
 };
 
 /**
- * struct ibnbd_msg_io - message for I/O read/write
+ * struct rnbd_msg_io - message for I/O read/write
  * @hdr:	message header
  * @device_id:	device_id on server side to find the right device
  * @sector:	bi_sector attribute from struct bio
- * @rw:		valid values are defined in enum ibnbd_io_flags
+ * @rw:		valid values are defined in enum rnbd_io_flags
  * @bi_size:    number of bytes for I/O read/write
  * @prio:       priority
  */
-struct ibnbd_msg_io {
-	struct ibnbd_msg_hdr hdr;
+struct rnbd_msg_io {
+	struct rnbd_msg_hdr hdr;
 	__le32		device_id;
 	__le64		sector;
 	__le32		rw;
@@ -182,144 +182,144 @@ struct ibnbd_msg_io {
 	__le16		prio;
 };
 
-#define IBNBD_OP_BITS  8
-#define IBNBD_OP_MASK  ((1 << IBNBD_OP_BITS) - 1)
+#define RNBD_OP_BITS  8
+#define RNBD_OP_MASK  ((1 << RNBD_OP_BITS) - 1)
 
 /**
- * enum ibnbd_io_flags - IBNBD request types from rq_flag_bits
- * @IBNBD_OP_READ:	     read sectors from the device
- * @IBNBD_OP_WRITE:	     write sectors to the device
- * @IBNBD_OP_FLUSH:	     flush the volatile write cache
- * @IBNBD_OP_DISCARD:        discard sectors
- * @IBNBD_OP_SECURE_ERASE:   securely erase sectors
- * @IBNBD_OP_WRITE_SAME:     write the same sectors many times
+ * enum rnbd_io_flags - RNBD request types from rq_flag_bits
+ * @RNBD_OP_READ:	     read sectors from the device
+ * @RNBD_OP_WRITE:	     write sectors to the device
+ * @RNBD_OP_FLUSH:	     flush the volatile write cache
+ * @RNBD_OP_DISCARD:        discard sectors
+ * @RNBD_OP_SECURE_ERASE:   securely erase sectors
+ * @RNBD_OP_WRITE_SAME:     write the same sectors many times
 
- * @IBNBD_F_SYNC:	     request is sync (sync write or read)
- * @IBNBD_F_FUA:             forced unit access
+ * @RNBD_F_SYNC:	     request is sync (sync write or read)
+ * @RNBD_F_FUA:             forced unit access
  */
-enum ibnbd_io_flags {
+enum rnbd_io_flags {
 
 	/* Operations */
 
-	IBNBD_OP_READ		= 0,
-	IBNBD_OP_WRITE		= 1,
-	IBNBD_OP_FLUSH		= 2,
-	IBNBD_OP_DISCARD	= 3,
-	IBNBD_OP_SECURE_ERASE	= 4,
-	IBNBD_OP_WRITE_SAME	= 5,
+	RNBD_OP_READ		= 0,
+	RNBD_OP_WRITE		= 1,
+	RNBD_OP_FLUSH		= 2,
+	RNBD_OP_DISCARD	= 3,
+	RNBD_OP_SECURE_ERASE	= 4,
+	RNBD_OP_WRITE_SAME	= 5,
 
-	IBNBD_OP_LAST,
+	RNBD_OP_LAST,
 
 	/* Flags */
 
-	IBNBD_F_SYNC  = 1<<(IBNBD_OP_BITS + 0),
-	IBNBD_F_FUA   = 1<<(IBNBD_OP_BITS + 1),
+	RNBD_F_SYNC  = 1<<(RNBD_OP_BITS + 0),
+	RNBD_F_FUA   = 1<<(RNBD_OP_BITS + 1),
 
-	IBNBD_F_ALL   = (IBNBD_F_SYNC | IBNBD_F_FUA)
+	RNBD_F_ALL   = (RNBD_F_SYNC | RNBD_F_FUA)
 
 };
 
-static inline u32 ibnbd_op(u32 flags)
+static inline u32 rnbd_op(u32 flags)
 {
-	return (flags & IBNBD_OP_MASK);
+	return (flags & RNBD_OP_MASK);
 }
 
-static inline u32 ibnbd_flags(u32 flags)
+static inline u32 rnbd_flags(u32 flags)
 {
-	return (flags & ~IBNBD_OP_MASK);
+	return (flags & ~RNBD_OP_MASK);
 }
 
-static inline bool ibnbd_flags_supported(u32 flags)
+static inline bool rnbd_flags_supported(u32 flags)
 {
 	u32 op;
 
-	op = ibnbd_op(flags);
-	flags = ibnbd_flags(flags);
+	op = rnbd_op(flags);
+	flags = rnbd_flags(flags);
 
-	if (op >= IBNBD_OP_LAST)
+	if (op >= RNBD_OP_LAST)
 		return false;
-	if (flags & ~IBNBD_F_ALL)
+	if (flags & ~RNBD_F_ALL)
 		return false;
 
 	return true;
 }
 
-static inline u32 ibnbd_to_bio_flags(u32 ibnbd_opf)
+static inline u32 rnbd_to_bio_flags(u32 rnbd_opf)
 {
 	u32 bio_opf;
 
-	switch (ibnbd_op(ibnbd_opf)) {
-	case IBNBD_OP_READ:
+	switch (rnbd_op(rnbd_opf)) {
+	case RNBD_OP_READ:
 		bio_opf = REQ_OP_READ;
 		break;
-	case IBNBD_OP_WRITE:
+	case RNBD_OP_WRITE:
 		bio_opf = REQ_OP_WRITE;
 		break;
-	case IBNBD_OP_FLUSH:
+	case RNBD_OP_FLUSH:
 		bio_opf = REQ_OP_FLUSH | REQ_PREFLUSH;
 		break;
-	case IBNBD_OP_DISCARD:
+	case RNBD_OP_DISCARD:
 		bio_opf = REQ_OP_DISCARD;
 		break;
-	case IBNBD_OP_SECURE_ERASE:
+	case RNBD_OP_SECURE_ERASE:
 		bio_opf = REQ_OP_SECURE_ERASE;
 		break;
-	case IBNBD_OP_WRITE_SAME:
+	case RNBD_OP_WRITE_SAME:
 		bio_opf = REQ_OP_WRITE_SAME;
 		break;
 	default:
-		WARN(1, "Unknown IBNBD type: %d (flags %d)\n",
-		     ibnbd_op(ibnbd_opf), ibnbd_opf);
+		WARN(1, "Unknown RNBD type: %d (flags %d)\n",
+		     rnbd_op(rnbd_opf), rnbd_opf);
 		bio_opf = 0;
 	}
 
-	if (ibnbd_opf & IBNBD_F_SYNC)
+	if (rnbd_opf & RNBD_F_SYNC)
 		bio_opf |= REQ_SYNC;
 
-	if (ibnbd_opf & IBNBD_F_FUA)
+	if (rnbd_opf & RNBD_F_FUA)
 		bio_opf |= REQ_FUA;
 
 	return bio_opf;
 }
 
-static inline u32 rq_to_ibnbd_flags(struct request *rq)
+static inline u32 rq_to_rnbd_flags(struct request *rq)
 {
-	u32 ibnbd_opf;
+	u32 rnbd_opf;
 
 	switch (req_op(rq)) {
 	case REQ_OP_READ:
-		ibnbd_opf = IBNBD_OP_READ;
+		rnbd_opf = RNBD_OP_READ;
 		break;
 	case REQ_OP_WRITE:
-		ibnbd_opf = IBNBD_OP_WRITE;
+		rnbd_opf = RNBD_OP_WRITE;
 		break;
 	case REQ_OP_DISCARD:
-		ibnbd_opf = IBNBD_OP_DISCARD;
+		rnbd_opf = RNBD_OP_DISCARD;
 		break;
 	case REQ_OP_SECURE_ERASE:
-		ibnbd_opf = IBNBD_OP_SECURE_ERASE;
+		rnbd_opf = RNBD_OP_SECURE_ERASE;
 		break;
 	case REQ_OP_WRITE_SAME:
-		ibnbd_opf = IBNBD_OP_WRITE_SAME;
+		rnbd_opf = RNBD_OP_WRITE_SAME;
 		break;
 	case REQ_OP_FLUSH:
-		ibnbd_opf = IBNBD_OP_FLUSH;
+		rnbd_opf = RNBD_OP_FLUSH;
 		break;
 	default:
 		WARN(1, "Unknown request type %d (flags %llu)\n",
 		     req_op(rq), (unsigned long long)rq->cmd_flags);
-		ibnbd_opf = 0;
+		rnbd_opf = 0;
 	}
 
 	if (op_is_sync(rq->cmd_flags))
-		ibnbd_opf |= IBNBD_F_SYNC;
+		rnbd_opf |= RNBD_F_SYNC;
 
 	if (op_is_flush(rq->cmd_flags))
-		ibnbd_opf |= IBNBD_F_FUA;
+		rnbd_opf |= RNBD_F_FUA;
 
-	return ibnbd_opf;
+	return rnbd_opf;
 }
 
-const char *ibnbd_access_mode_str(enum ibnbd_access_mode mode);
+const char *rnbd_access_mode_str(enum rnbd_access_mode mode);
 
-#endif /* IBNBD_PROTO_H */
+#endif /* RNBD_PROTO_H */

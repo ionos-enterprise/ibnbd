@@ -1,44 +1,44 @@
 ***************************************
-Infiniband Network Block Device (IBNBD)
+Infiniband Network Block Device (RNBD)
 ***************************************
 
 Introduction
 ------------
 
-IBNBD (InfiniBand Network Block Device) is a pair of kernel modules
+RNBD (InfiniBand Network Block Device) is a pair of kernel modules
 (client and server) that allow for remote access of a block device on
-the server over IBTRS protocol using the RDMA (InfiniBand, RoCE, iWarp)
+the server over RTRS protocol using the RDMA (InfiniBand, RoCE, iWarp)
 transport. After being mapped, the remote block devices can be accessed
 on the client side as local block devices.
 
-I/O is transferred between client and server by the IBTRS transport
-modules. The administration of IBNBD and IBTRS modules is done via
+I/O is transferred between client and server by the RTRS transport
+modules. The administration of RNBD and RTRS modules is done via
 sysfs entries.
 
 Requirements
 ------------
 
-  IBTRS kernel modules
+  RTRS kernel modules
 
 Quick Start
 -----------
 
 Server side:
-  # modprobe ibnbd_server
+  # modprobe rnbd_server
 
 Client side:
-  # modprobe ibnbd_client
+  # modprobe rnbd_client
   # echo "sessname=blya path=ip:10.50.100.66 device_path=/dev/ram0" > \
-            /sys/devices/virtual/ibnbd-client/ctl/map_device
+            /sys/devices/virtual/rnbd-client/ctl/map_device
 
   Where "sessname=" is a session name, a string to identify the session
   on client and on server sides; "path=" is a destination IP address or
   a pair of a source and a destination IPs, separated by comma.  Multiple
-  "path=" options can be specified in order to use multipath  (see IBTRS
+  "path=" options can be specified in order to use multipath  (see RTRS
   description for details); "device_path=" is the block device to be
   mapped from the server side. After the session to the server machine is
   established, the mapped device will appear on the client side under
-  /dev/ibnbd<N>.
+  /dev/rnbd<N>.
 
 
 ======================
@@ -48,15 +48,15 @@ Client Sysfs Interface
 All sysfs files that are not read-only provide the usage information on read:
 
 Example:
-  # cat /sys/devices/virtual/ibnbd-client/ctl/map_device
+  # cat /sys/devices/virtual/rnbd-client/ctl/map_device
 
-  > Usage: echo "sessname=<name of the ibtrs session> path=<[srcaddr,]dstaddr>
+  > Usage: echo "sessname=<name of the rtrs session> path=<[srcaddr,]dstaddr>
   > [path=<[srcaddr,]dstaddr>] device_path=<full path on remote side>
   > [access_mode=<ro|rw|migration>] > map_device
   >
   > addr ::= [ ip:<ipv4> | ip:<ipv6> | gid:<gid> ]
 
-Entries under /sys/devices/virtual/ibnbd-client/ctl/
+Entries under /sys/devices/virtual/rnbd-client/ctl/
 =======================================
 
 map_device (RW)
@@ -64,7 +64,7 @@ map_device (RW)
 
 Expected format is the following:
 
-    sessname=<name of the ibtrs session>
+    sessname=<name of the rtrs session>
     path=<[srcaddr,]dstaddr> [path=<[srcaddr,]dstaddr> ...]
     device_path=<full path on remote side>
     [access_mode=<ro|rw|migration>]
@@ -96,24 +96,24 @@ path:     describes a connection between the client and the server by
 
           If multiple "path=" options are specified multiple connection
           will be established and data will be sent according to
-          the selected multipath policy (see IBTRS mp_policy sysfs entry
+          the selected multipath policy (see RTRS mp_policy sysfs entry
           description).
 
 device_path: Path to the block device on the server side. Path is specified
          relative to the directory on server side configured in the
-         'dev_search_path' module parameter of the ibnbd_server.
-         The ibnbd_server prepends the <device_path> received from client
+         'dev_search_path' module parameter of the rnbd_server.
+         The rnbd_server prepends the <device_path> received from client
          with <dev_search_path> and tries to open the
          <dev_search_path>/<device_path> block device.  On success,
-         a /dev/ibnbd<N> device file, a /sys/block/ibnbd_client/ibnbd<N>/
-         directory and an entry in /sys/devices/virtual/ibnbd-client/ctl/devices
+         a /dev/rnbd<N> device file, a /sys/block/rnbd_client/rnbd<N>/
+         directory and an entry in /sys/devices/virtual/rnbd-client/ctl/devices
          will be created.
 
          If 'dev_search_path' contains '%SESSNAME%', then each session can
          have different devices namespace, e.g. server was configured with
-         the following parameter "dev_search_path=/run/ibnbd-devs/%SESSNAME%",
+         the following parameter "dev_search_path=/run/rnbd-devs/%SESSNAME%",
          client has this string "sessname=blya device_path=sda", then server
-         will try to open: /run/ibnbd-devs/blya/sda.
+         will try to open: /run/rnbd-devs/blya/sda.
 
 access_mode: the access_mode parameter specifies if the device is to be
              mapped as "ro" read-only or "rw" read-write. The server allows
@@ -133,22 +133,22 @@ Finding device file after mapping
 ---------------------------------
 
 After mapping, the device file can be found by:
- o  The symlink /sys/devices/virtual/ibnbd-client/ctl/devices/<device_id>
+ o  The symlink /sys/devices/virtual/rnbd-client/ctl/devices/<device_id>
     points to /sys/block/<dev-name>. The last part of the symlink destination
     is the same as the device name.  By extracting the last part of the
     path the path to the device /dev/<dev-name> can be build.
 
- o /dev/block/$(cat /sys/devices/virtual/ibnbd-client/ctl/devices/<device_id>/dev)
+ o /dev/block/$(cat /sys/devices/virtual/rnbd-client/ctl/devices/<device_id>/dev)
 
 How to find the <device_id> of the device is described on the next
 section.
 
-Entries under /sys/devices/virtual/ibnbd-client/ctl/devices/
+Entries under /sys/devices/virtual/rnbd-client/ctl/devices/
 ============================================================
 
 For each device mapped on the client a new symbolic link is created as
-/sys/devices/virtual/ibnbd-client/ctl/devices/<device_id>, which points
-to the block device created by ibnbd (/sys/block/ibnbd<N>/).
+/sys/devices/virtual/rnbd-client/ctl/devices/<device_id>, which points
+to the block device created by rnbd (/sys/block/rnbd<N>/).
 The <device_id> of each device is created as follows:
 
 - If the 'device_path' provided during mapping contains slashes ("/"),
@@ -156,14 +156,14 @@ The <device_id> of each device is created as follows:
   <device_id>. Otherwise, the <device_id> will be the same as the
   "device_path" provided.
 
-Entries under /sys/block/ibnbd<N>/ibnbd/
+Entries under /sys/block/rnbd<N>/rnbd/
 ===============================================
 
 unmap_device (RW)
 -----------------
 
 To unmap a volume, "normal" or "force" has to be written to:
-  /sys/block/ibnbd<N>/ibnbd/unmap_device
+  /sys/block/rnbd<N>/rnbd/unmap_device
 
 When "normal" is used, the operation will fail with EBUSY if any process
 is using the device.  When "force" is used, the device is also unmapped
@@ -171,7 +171,7 @@ when device is in use.  All I/Os that are in progress will fail.
 
 Example:
 
-   # echo "normal" > /sys/block/ibnbd0/ibnbd/unmap_device
+   # echo "normal" > /sys/block/rnbd0/rnbd/unmap_device
 
 state (RO)
 ----------
@@ -185,9 +185,9 @@ returns "closed" and all I/O requests submitted to it will fail with -EIO.
 session (RO)
 ------------
 
-IBNBD uses IBTRS session to transport the data between client and
+RNBD uses RTRS session to transport the data between client and
 server.  The entry "session" contains the name of the session, that
-was used to establish the IBTRS session.  It's the same name that
+was used to establish the RTRS session.  It's the same name that
 was passed as server parameter to the map_device entry.
 
 mapping_path (RO)
@@ -205,13 +205,13 @@ Contains the device access mode: ro, rw or migration.
 Server Sysfs Interface
 ======================
 
-Entries under /sys/devices/virtual/ibnbd-server/ctl/
+Entries under /sys/devices/virtual/rnbd-server/ctl/
 ====================================================
 
 When a client maps a device, a directory entry with the name of the
-block device is created under /sys/devices/virtual/ibnbd-server/ctl/devices/.
+block device is created under /sys/devices/virtual/rnbd-server/ctl/devices/.
 
-Entries under /sys/devices/virtual/ibnbd-server/ctl/devices/<device_name>/
+Entries under /sys/devices/virtual/rnbd-server/ctl/devices/<device_name>/
 ==========================================================================
 
 block_dev (link)
@@ -223,17 +223,17 @@ Example:
 
   block_dev -> ../../../../devices/virtual/block/ram0
 
-Entries under /sys/devices/virtual/ibnbd-server/ctl/devices/<device_name>/sessions/
+Entries under /sys/devices/virtual/rnbd-server/ctl/devices/<device_name>/sessions/
 ===================================================================================
 
 For each client a particular device is exported to, following directory will be
 created:
 
-/sys/devices/virtual/ibnbd-server/ctl/devices/<device_name>/sessions/<session-name>/
+/sys/devices/virtual/rnbd-server/ctl/devices/<device_name>/sessions/<session-name>/
 
 When the device is unmapped by that client, the directory will be removed.
 
-Entries under /sys/devices/virtual/ibnbd-server/ctl/devices/<device_name>/sessions/<session-name>
+Entries under /sys/devices/virtual/rnbd-server/ctl/devices/<device_name>/sessions/<session-name>
 =================================================================================================
 
 read_only (RO)
@@ -253,7 +253,7 @@ Contains the device access mode: ro, rw or migration.
 
 
 ==============================
-IBNBD-Server Module Parameters
+RNBD-Server Module Parameters
 ==============================
 
 dev_search_path
@@ -270,24 +270,24 @@ different deviec namespaces for different sessions.  See "device_path"
 option for details.
 
 ==============================
-Protocol (ibnbd/ibnbd-proto.h)
+Protocol (rnbd/rnbd-proto.h)
 ==============================
 
 1. Before mapping first device from a given server, client sends an
-IBNBD_MSG_SESS_INFO to the server. Server responds with
-IBNBD_MSG_SESS_INFO_RSP. Currently the messages only contain the protocol
+RNBD_MSG_SESS_INFO to the server. Server responds with
+RNBD_MSG_SESS_INFO_RSP. Currently the messages only contain the protocol
 version for backward compatibility.
 
-2. Client requests to open a device by sending IBNBD_MSG_OPEN message. This
+2. Client requests to open a device by sending RNBD_MSG_OPEN message. This
 contains the path to the device and access mode (read-only or writable).
-Server responds to the message with IBNBD_MSG_OPEN_RSP. This contains
+Server responds to the message with RNBD_MSG_OPEN_RSP. This contains
 a 32 bit device id to be used for  IOs and device "geometry" related
 information: side, max_hw_sectors, etc.
 
-3. Client attaches IBNBD_MSG_IO to each IO message send to a device. This
-message contains device id, provided by server in his ibnbd_msg_open_rsp,
+3. Client attaches RNBD_MSG_IO to each IO message send to a device. This
+message contains device id, provided by server in his rnbd_msg_open_rsp,
 sector to be accessed, read-write flags and bi_size.
 
-4. Client closes a device by sending IBNBD_MSG_CLOSE which contains only the
+4. Client closes a device by sending RNBD_MSG_CLOSE which contains only the
 device id provided by the server.
 

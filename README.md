@@ -1,20 +1,20 @@
-InfiniBand Transport (IBTRS) & Infiniband Network Block Device (IBNBD)
+InfiniBand Transport (RTRS) & Infiniband Network Block Device (RNBD)
 ======================================================================
 
 Short introduction
 ------------------
 
-IBNBD/IBTRS were created with one aim: provide simple way to map a remote
-device on a client machine from a server machine.  IBNBD is nothing more
-but a block device which uses IBTRS as a transport library to send I/O
-requests.  IBTRS in its turn manages RDMA (InfiniBand, RoCE, iWarp)
+RNBD/RTRS were created with one aim: provide simple way to map a remote
+device on a client machine from a server machine.  RNBD is nothing more
+but a block device which uses RTRS as a transport library to send I/O
+requests.  RTRS in its turn manages RDMA (InfiniBand, RoCE, iWarp)
 connections between client and server.
 
-IBNBD documentation is [here](./ibnbd/README).
+RNBD documentation is [here](./rnbd/README).
 
-IBTRS documentation is [here](./ibtrs/README).
+RTRS documentation is [here](./rtrs/README).
 
 Contact
 -------
 
-Mailing list: "IBNBD/IBTRS Storage Team" <ibnbd@cloud.ionos.com>
+Mailing list: "RNBD/RTRS Storage Team" <rnbd@cloud.ionos.com>

@@ -41,32 +41,32 @@
 #include <rdma/ib.h>
 #include <rdma/rdma_cm.h>
 
-#include "ibnbd-clt.h"
+#include "rnbd-clt.h"
 
-static struct device *ibnbd_dev;
-static struct class *ibnbd_dev_class;
-static struct kobject *ibnbd_devs_kobj;
+static struct device *rnbd_dev;
+static struct class *rnbd_dev_class;
+static struct kobject *rnbd_devs_kobj;
 
 enum {
-	IBNBD_OPT_ERR		= 0,
-	IBNBD_OPT_PATH		= 1 << 0,
-	IBNBD_OPT_DEV_PATH	= 1 << 1,
-	IBNBD_OPT_ACCESS_MODE	= 1 << 3,
-	IBNBD_OPT_SESSNAME	= 1 << 6,
+	RNBD_OPT_ERR		= 0,
+	RNBD_OPT_PATH		= 1 << 0,
+	RNBD_OPT_DEV_PATH	= 1 << 1,
+	RNBD_OPT_ACCESS_MODE	= 1 << 3,
+	RNBD_OPT_SESSNAME	= 1 << 6,
 };
 
-static const unsigned int ibnbd_opt_mandatory[] = {
-	IBNBD_OPT_PATH,
-	IBNBD_OPT_DEV_PATH,
-	IBNBD_OPT_SESSNAME,
+static const unsigned int rnbd_opt_mandatory[] = {
+	RNBD_OPT_PATH,
+	RNBD_OPT_DEV_PATH,
+	RNBD_OPT_SESSNAME,
 };
 
-static const match_table_t ibnbd_opt_tokens = {
-	{	IBNBD_OPT_PATH,		"path=%s"		},
-	{	IBNBD_OPT_DEV_PATH,	"device_path=%s"	},
-	{	IBNBD_OPT_ACCESS_MODE,	"access_mode=%s"	},
-	{	IBNBD_OPT_SESSNAME,	"sessname=%s"		},
-	{	IBNBD_OPT_ERR,		NULL			},
+static const match_table_t rnbd_opt_tokens = {
+	{	RNBD_OPT_PATH,		"path=%s"		},
+	{	RNBD_OPT_DEV_PATH,	"device_path=%s"	},
+	{	RNBD_OPT_ACCESS_MODE,	"access_mode=%s"	},
+	{	RNBD_OPT_SESSNAME,	"sessname=%s"		},
+	{	RNBD_OPT_ERR,		NULL			},
 };
 
 /* remove new line from string */
@@ -83,16 +83,16 @@ static void strip(char *s)
 	*p = '\0';
 }
 
-struct ibnbd_map_options {
+struct rnbd_map_options {
 	char *sessname;
-	struct ibtrs_addr *paths;
+	struct rtrs_addr *paths;
 	size_t *path_cnt;
 	char *pathname;
-	enum ibnbd_access_mode *access_mode;
+	enum rnbd_access_mode *access_mode;
 };
 
-static int ibnbd_clt_parse_map_options(const char *buf, size_t max_path_cnt,
-				       struct ibnbd_map_options *opt)
+static int rnbd_clt_parse_map_options(const char *buf, size_t max_path_cnt,
+				       struct rnbd_map_options *opt)
 {
 	char *options, *sep_opt;
 	char *p;
@@ -113,11 +113,11 @@ static int ibnbd_clt_parse_map_options(const char *buf, size_t max_path_cnt,
 		if (!*p)
 			continue;
 
-		token = match_token(p, ibnbd_opt_tokens, args);
+		token = match_token(p, rnbd_opt_tokens, args);
 		opt_mask |= token;
 
 		switch (token) {
-		case IBNBD_OPT_SESSNAME:
+		case RNBD_OPT_SESSNAME:
 			p = match_strdup(args);
 			if (!p) {
 				ret = -ENOMEM;
@@ -133,7 +133,7 @@ static int ibnbd_clt_parse_map_options(const char *buf, size_t max_path_cnt,
 			kfree(p);
 			break;
 
-		case IBNBD_OPT_PATH:
+		case RNBD_OPT_PATH:
 			if (p_cnt >= max_path_cnt) {
 				pr_err("map_device: too many (> %zu) paths provided\n",
 				       max_path_cnt);
@@ -146,7 +146,7 @@ static int ibnbd_clt_parse_map_options(const char *buf, size_t max_path_cnt,
 				goto out;
 			}
 
-			ret = ibtrs_addr_to_sockaddr(p, strlen(p), IBTRS_PORT,
+			ret = rtrs_addr_to_sockaddr(p, strlen(p), RTRS_PORT,
 						     &opt->paths[p_cnt]);
 			if (ret) {
 				pr_err("Can't parse path %s: %d\n", p, ret);
@@ -159,7 +159,7 @@ static int ibnbd_clt_parse_map_options(const char *buf, size_t max_path_cnt,
 			kfree(p);
 			break;
 
-		case IBNBD_OPT_DEV_PATH:
+		case RNBD_OPT_DEV_PATH:
 			p = match_strdup(args);
 			if (!p) {
 				ret = -ENOMEM;
@@ -175,7 +175,7 @@ static int ibnbd_clt_parse_map_options(const char *buf, size_t max_path_cnt,
 			kfree(p);
 			break;
 
-		case IBNBD_OPT_ACCESS_MODE:
+		case RNBD_OPT_ACCESS_MODE:
 			p = match_strdup(args);
 			if (!p) {
 				ret = -ENOMEM;
@@ -183,11 +183,11 @@ static int ibnbd_clt_parse_map_options(const char *buf, size_t max_path_cnt,
 			}
 
 			if (!strcmp(p, "ro")) {
-				*opt->access_mode = IBNBD_ACCESS_RO;
+				*opt->access_mode = RNBD_ACCESS_RO;
 			} else if (!strcmp(p, "rw")) {
-				*opt->access_mode = IBNBD_ACCESS_RW;
+				*opt->access_mode = RNBD_ACCESS_RW;
 			} else if (!strcmp(p, "migration")) {
-				*opt->access_mode = IBNBD_ACCESS_MIGRATION;
+				*opt->access_mode = RNBD_ACCESS_MIGRATION;
 			} else {
 				pr_err("map_device: Invalid access_mode: '%s'\n",
 				       p);
@@ -207,8 +207,8 @@ static int ibnbd_clt_parse_map_options(const char *buf, size_t max_path_cnt,
 		}
 	}
 
-	for (i = 0; i < ARRAY_SIZE(ibnbd_opt_mandatory); i++) {
-		if ((opt_mask & ibnbd_opt_mandatory[i])) {
+	for (i = 0; i < ARRAY_SIZE(rnbd_opt_mandatory); i++) {
+		if ((opt_mask & rnbd_opt_mandatory[i])) {
 			ret = 0;
 		} else {
 			pr_err("map_device: Parameters missing\n");
@@ -226,9 +226,9 @@ out:
 static ssize_t state_show(struct kobject *kobj,
 			  struct kobj_attribute *attr, char *page)
 {
-	struct ibnbd_clt_dev *dev;
+	struct rnbd_clt_dev *dev;
 
-	dev = container_of(kobj, struct ibnbd_clt_dev, kobj);
+	dev = container_of(kobj, struct rnbd_clt_dev, kobj);
 
 	switch (dev->dev_state) {
 	case DEV_STATE_INIT:
@@ -246,47 +246,47 @@ static ssize_t state_show(struct kobject *kobj,
 	}
 }
 
-static struct kobj_attribute ibnbd_clt_state_attr = __ATTR_RO(state);
+static struct kobj_attribute rnbd_clt_state_attr = __ATTR_RO(state);
 
 static ssize_t mapping_path_show(struct kobject *kobj,
 				 struct kobj_attribute *attr, char *page)
 {
-	struct ibnbd_clt_dev *dev;
+	struct rnbd_clt_dev *dev;
 
-	dev = container_of(kobj, struct ibnbd_clt_dev, kobj);
+	dev = container_of(kobj, struct rnbd_clt_dev, kobj);
 
 	return scnprintf(page, PAGE_SIZE, "%s\n", dev->pathname);
 }
 
-static struct kobj_attribute ibnbd_clt_mapping_path_attr =
+static struct kobj_attribute rnbd_clt_mapping_path_attr =
 	__ATTR_RO(mapping_path);
 
 static ssize_t access_mode_show(struct kobject *kobj,
 				struct kobj_attribute *attr, char *page)
 {
-	struct ibnbd_clt_dev *dev;
+	struct rnbd_clt_dev *dev;
 
-	dev = container_of(kobj, struct ibnbd_clt_dev, kobj);
+	dev = container_of(kobj, struct rnbd_clt_dev, kobj);
 
 	return snprintf(page, PAGE_SIZE, "%s\n",
-			ibnbd_access_mode_str(dev->access_mode));
+			rnbd_access_mode_str(dev->access_mode));
 }
 
-static struct kobj_attribute ibnbd_clt_access_mode =
+static struct kobj_attribute rnbd_clt_access_mode =
 	__ATTR_RO(access_mode);
 
-static ssize_t ibnbd_clt_unmap_dev_show(struct kobject *kobj,
+static ssize_t rnbd_clt_unmap_dev_show(struct kobject *kobj,
 					struct kobj_attribute *attr, char *page)
 {
 	return scnprintf(page, PAGE_SIZE, "Usage: echo <normal|force> > %s\n",
 			 attr->attr.name);
 }
 
-static ssize_t ibnbd_clt_unmap_dev_store(struct kobject *kobj,
+static ssize_t rnbd_clt_unmap_dev_store(struct kobject *kobj,
 					 struct kobj_attribute *attr,
 					 const char *buf, size_t count)
 {
-	struct ibnbd_clt_dev *dev;
+	struct rnbd_clt_dev *dev;
 	char *opt, *options;
 	bool force;
 	int err;
@@ -298,35 +298,35 @@ static ssize_t ibnbd_clt_unmap_dev_store(struct kobject *kobj,
 	options = strstrip(opt);
 	strip(options);
 
-	dev = container_of(kobj, struct ibnbd_clt_dev, kobj);
+	dev = container_of(kobj, struct rnbd_clt_dev, kobj);
 
 	if (sysfs_streq(options, "normal")) {
 		force = false;
 	} else if (sysfs_streq(options, "force")) {
 		force = true;
 	} else {
-		ibnbd_clt_err(dev,
+		rnbd_clt_err(dev,
 			      "unmap_device: Invalid value: %s\n",
 			      options);
 		err = -EINVAL;
 		goto out;
 	}
 
-	ibnbd_clt_info(dev, "Unmapping device, option: %s.\n",
+	rnbd_clt_info(dev, "Unmapping device, option: %s.\n",
 		       force ? "force" : "normal");
 
 	/*
 	 * We take explicit module reference only for one reason: do not
-	 * race with lockless ibnbd_destroy_sessions().
+	 * race with lockless rnbd_destroy_sessions().
 	 */
 	if (!try_module_get(THIS_MODULE)) {
 		err = -ENODEV;
 		goto out;
 	}
-	err = ibnbd_clt_unmap_device(dev, force, &attr->attr);
+	err = rnbd_clt_unmap_device(dev, force, &attr->attr);
 	if (unlikely(err)) {
 		if (unlikely(err != -EALREADY))
-			ibnbd_clt_err(dev, "unmap_device: %d\n",  err);
+			rnbd_clt_err(dev, "unmap_device: %d\n",  err);
 		goto module_put;
 	}
 
@@ -344,11 +344,11 @@ out:
 	return err;
 }
 
-static struct kobj_attribute ibnbd_clt_unmap_device_attr =
-	__ATTR(unmap_device, 0644, ibnbd_clt_unmap_dev_show,
-	       ibnbd_clt_unmap_dev_store);
+static struct kobj_attribute rnbd_clt_unmap_device_attr =
+	__ATTR(unmap_device, 0644, rnbd_clt_unmap_dev_show,
+	       rnbd_clt_unmap_dev_store);
 
-static ssize_t ibnbd_clt_resize_dev_show(struct kobject *kobj,
+static ssize_t rnbd_clt_resize_dev_show(struct kobject *kobj,
 					 struct kobj_attribute *attr,
 					 char *page)
 {
@@ -357,43 +357,43 @@ static ssize_t ibnbd_clt_resize_dev_show(struct kobject *kobj,
 			 attr->attr.name);
 }
 
-static ssize_t ibnbd_clt_resize_dev_store(struct kobject *kobj,
+static ssize_t rnbd_clt_resize_dev_store(struct kobject *kobj,
 					  struct kobj_attribute *attr,
 					  const char *buf, size_t count)
 {
 	int ret;
 	unsigned long sectors;
-	struct ibnbd_clt_dev *dev;
+	struct rnbd_clt_dev *dev;
 
-	dev = container_of(kobj, struct ibnbd_clt_dev, kobj);
+	dev = container_of(kobj, struct rnbd_clt_dev, kobj);
 
 	ret = kstrtoul(buf, 0, &sectors);
 	if (ret)
 		return ret;
 
-	ret = ibnbd_clt_resize_disk(dev, (size_t)sectors);
+	ret = rnbd_clt_resize_disk(dev, (size_t)sectors);
 	if (ret)
 		return ret;
 
 	return count;
 }
 
-static struct kobj_attribute ibnbd_clt_resize_dev_attr =
-	__ATTR(resize, 0644, ibnbd_clt_resize_dev_show,
-	       ibnbd_clt_resize_dev_store);
+static struct kobj_attribute rnbd_clt_resize_dev_attr =
+	__ATTR(resize, 0644, rnbd_clt_resize_dev_show,
+	       rnbd_clt_resize_dev_store);
 
-static ssize_t ibnbd_clt_remap_dev_show(struct kobject *kobj,
+static ssize_t rnbd_clt_remap_dev_show(struct kobject *kobj,
 					struct kobj_attribute *attr, char *page)
 {
 	return scnprintf(page, PAGE_SIZE, "Usage: echo <1> > %s\n",
 			 attr->attr.name);
 }
 
-static ssize_t ibnbd_clt_remap_dev_store(struct kobject *kobj,
+static ssize_t rnbd_clt_remap_dev_store(struct kobject *kobj,
 					 struct kobj_attribute *attr,
 					 const char *buf, size_t count)
 {
-	struct ibnbd_clt_dev *dev;
+	struct rnbd_clt_dev *dev;
 	char *opt, *options;
 	int err;
 
@@ -404,15 +404,15 @@ static ssize_t ibnbd_clt_remap_dev_store(struct kobject *kobj,
 	options = strstrip(opt);
 	strip(options);
 
-	dev = container_of(kobj, struct ibnbd_clt_dev, kobj);
+	dev = container_of(kobj, struct rnbd_clt_dev, kobj);
 	if (!sysfs_streq(options, "1")) {
-		ibnbd_clt_err(dev,
+		rnbd_clt_err(dev,
 			      "remap_device: Invalid value: %s\n",
 			      options);
 		err = -EINVAL;
 		goto out;
 	}
-	err = ibnbd_clt_remap_device(dev);
+	err = rnbd_clt_remap_device(dev);
 	if (likely(!err))
 		err = count;
 
@@ -422,74 +422,74 @@ out:
 	return err;
 }
 
-static struct kobj_attribute ibnbd_clt_remap_device_attr =
-	__ATTR(remap_device, 0644, ibnbd_clt_remap_dev_show,
-	       ibnbd_clt_remap_dev_store);
+static struct kobj_attribute rnbd_clt_remap_device_attr =
+	__ATTR(remap_device, 0644, rnbd_clt_remap_dev_show,
+	       rnbd_clt_remap_dev_store);
 
 static ssize_t session_show(struct kobject *kobj, struct kobj_attribute *attr,
 			    char *page)
 {
-	struct ibnbd_clt_dev *dev;
+	struct rnbd_clt_dev *dev;
 
-	dev = container_of(kobj, struct ibnbd_clt_dev, kobj);
+	dev = container_of(kobj, struct rnbd_clt_dev, kobj);
 
 	return scnprintf(page, PAGE_SIZE, "%s\n", dev->sess->sessname);
 }
 
-static struct kobj_attribute ibnbd_clt_session_attr =
+static struct kobj_attribute rnbd_clt_session_attr =
 	__ATTR_RO(session);
 
-static struct attribute *ibnbd_dev_attrs[] = {
-	&ibnbd_clt_unmap_device_attr.attr,
-	&ibnbd_clt_resize_dev_attr.attr,
-	&ibnbd_clt_remap_device_attr.attr,
-	&ibnbd_clt_mapping_path_attr.attr,
-	&ibnbd_clt_state_attr.attr,
-	&ibnbd_clt_session_attr.attr,
-	&ibnbd_clt_access_mode.attr,
+static struct attribute *rnbd_dev_attrs[] = {
+	&rnbd_clt_unmap_device_attr.attr,
+	&rnbd_clt_resize_dev_attr.attr,
+	&rnbd_clt_remap_device_attr.attr,
+	&rnbd_clt_mapping_path_attr.attr,
+	&rnbd_clt_state_attr.attr,
+	&rnbd_clt_session_attr.attr,
+	&rnbd_clt_access_mode.attr,
 	NULL,
 };
 
-void ibnbd_clt_remove_dev_symlink(struct ibnbd_clt_dev *dev)
+void rnbd_clt_remove_dev_symlink(struct rnbd_clt_dev *dev)
 {
 	/*
 	 * The module_is_live() check is crucial and helps to avoid annoying
 	 * sysfs warning raised in sysfs_remove_link(), when the whole sysfs
-	 * path was just removed, see ibnbd_close_sessions().
+	 * path was just removed, see rnbd_close_sessions().
 	 */
 	if (strlen(dev->blk_symlink_name) && module_is_live(THIS_MODULE))
-		sysfs_remove_link(ibnbd_devs_kobj, dev->blk_symlink_name);
+		sysfs_remove_link(rnbd_devs_kobj, dev->blk_symlink_name);
 }
 
-static struct kobj_type ibnbd_dev_ktype = {
+static struct kobj_type rnbd_dev_ktype = {
 	.sysfs_ops      = &kobj_sysfs_ops,
-	.default_attrs  = ibnbd_dev_attrs,
+	.default_attrs  = rnbd_dev_attrs,
 };
 
-static int ibnbd_clt_add_dev_kobj(struct ibnbd_clt_dev *dev)
+static int rnbd_clt_add_dev_kobj(struct rnbd_clt_dev *dev)
 {
 	int ret;
 	struct kobject *gd_kobj = &disk_to_dev(dev->gd)->kobj;
 
-	ret = kobject_init_and_add(&dev->kobj, &ibnbd_dev_ktype, gd_kobj, "%s",
-				   "ibnbd");
+	ret = kobject_init_and_add(&dev->kobj, &rnbd_dev_ktype, gd_kobj, "%s",
+				   "rnbd");
 	if (ret)
-		ibnbd_clt_err(dev, "Failed to create device sysfs dir, err: %d\n",
+		rnbd_clt_err(dev, "Failed to create device sysfs dir, err: %d\n",
 			      ret);
 
 	return ret;
 }
 
-static ssize_t ibnbd_clt_map_device_show(struct kobject *kobj,
+static ssize_t rnbd_clt_map_device_show(struct kobject *kobj,
 					 struct kobj_attribute *attr,
 					 char *page)
 {
 	return scnprintf(page, PAGE_SIZE,
-			 "Usage: echo \"sessname=<name of the ibtrs session> path=<[srcaddr@]dstaddr> [path=<[srcaddr@]dstaddr>] device_path=<full path on remote side> [access_mode=<ro|rw|migration>]\" > %s\n\naddr ::= [ ip:<ipv4> | ip:<ipv6> | gid:<gid> ]\n",
+			 "Usage: echo \"sessname=<name of the rtrs session> path=<[srcaddr@]dstaddr> [path=<[srcaddr@]dstaddr>] device_path=<full path on remote side> [access_mode=<ro|rw|migration>]\" > %s\n\naddr ::= [ ip:<ipv4> | ip:<ipv6> | gid:<gid> ]\n",
 			 attr->attr.name);
 }
 
-static int ibnbd_clt_get_path_name(struct ibnbd_clt_dev *dev, char *buf,
+static int rnbd_clt_get_path_name(struct rnbd_clt_dev *dev, char *buf,
 				   size_t len)
 {
 	int ret;
@@ -506,23 +506,23 @@ static int ibnbd_clt_get_path_name(struct ibnbd_clt_dev *dev, char *buf,
 	return 0;
 }
 
-static int ibnbd_clt_add_dev_symlink(struct ibnbd_clt_dev *dev)
+static int rnbd_clt_add_dev_symlink(struct rnbd_clt_dev *dev)
 {
 	struct kobject *gd_kobj = &disk_to_dev(dev->gd)->kobj;
 	int ret;
 
-	ret = ibnbd_clt_get_path_name(dev, dev->blk_symlink_name,
+	ret = rnbd_clt_get_path_name(dev, dev->blk_symlink_name,
 				      sizeof(dev->blk_symlink_name));
 	if (ret) {
-		ibnbd_clt_err(dev, "Failed to get /sys/block symlink path, err: %d\n",
+		rnbd_clt_err(dev, "Failed to get /sys/block symlink path, err: %d\n",
 			      ret);
 		goto out_err;
 	}
 
-	ret = sysfs_create_link(ibnbd_devs_kobj, gd_kobj,
+	ret = sysfs_create_link(rnbd_devs_kobj, gd_kobj,
 				dev->blk_symlink_name);
 	if (ret) {
-		ibnbd_clt_err(dev, "Creating /sys/block symlink failed, err: %d\n",
+		rnbd_clt_err(dev, "Creating /sys/block symlink failed, err: %d\n",
 			      ret);
 		goto out_err;
 	}
@@ -534,19 +534,19 @@ out_err:
 	return ret;
 }
 
-static ssize_t ibnbd_clt_map_device_store(struct kobject *kobj,
+static ssize_t rnbd_clt_map_device_store(struct kobject *kobj,
 					  struct kobj_attribute *attr,
 					  const char *buf, size_t count)
 {
-	struct ibnbd_clt_dev *dev;
-	struct ibnbd_map_options opt;
+	struct rnbd_clt_dev *dev;
+	struct rnbd_map_options opt;
 	int ret;
 	char pathname[NAME_MAX];
 	char sessname[NAME_MAX];
-	enum ibnbd_access_mode access_mode = IBNBD_ACCESS_RW;
+	enum rnbd_access_mode access_mode = RNBD_ACCESS_RW;
 
 	struct sockaddr_storage *addrs;
-	struct ibtrs_addr paths[6];
+	struct rtrs_addr paths[6];
 	size_t path_cnt;
 
 	opt.sessname = sessname;
@@ -563,26 +563,26 @@ static ssize_t ibnbd_clt_map_device_store(struct kobject *kobj,
 		paths[path_cnt].dst = &addrs[path_cnt * 2 + 1];
 	}
 
-	ret = ibnbd_clt_parse_map_options(buf, ARRAY_SIZE(paths), &opt);
+	ret = rnbd_clt_parse_map_options(buf, ARRAY_SIZE(paths), &opt);
 	if (ret)
 		goto out;
 
 	pr_info("Mapping device %s on session %s, (access_mode: %s)\n",
 		pathname, sessname,
-		ibnbd_access_mode_str(access_mode));
+		rnbd_access_mode_str(access_mode));
 
-	dev = ibnbd_clt_map_device(sessname, paths, path_cnt, pathname,
+	dev = rnbd_clt_map_device(sessname, paths, path_cnt, pathname,
 				   access_mode);
 	if (unlikely(IS_ERR(dev))) {
 		ret = PTR_ERR(dev);
 		goto out;
 	}
 
-	ret = ibnbd_clt_add_dev_kobj(dev);
+	ret = rnbd_clt_add_dev_kobj(dev);
 	if (unlikely(ret))
 		goto unmap_dev;
 
-	ret = ibnbd_clt_add_dev_symlink(dev);
+	ret = rnbd_clt_add_dev_symlink(dev);
 	if (ret)
 		goto unmap_dev;
 
@@ -590,18 +590,18 @@ static ssize_t ibnbd_clt_map_device_store(struct kobject *kobj,
 	return count;
 
 unmap_dev:
-	ibnbd_clt_unmap_device(dev, true, NULL);
+	rnbd_clt_unmap_device(dev, true, NULL);
 out:
 	kfree(addrs);
 	return ret;
 }
 
-static struct kobj_attribute ibnbd_clt_map_device_attr =
+static struct kobj_attribute rnbd_clt_map_device_attr =
 	__ATTR(map_device, 0644,
-	       ibnbd_clt_map_device_show, ibnbd_clt_map_device_store);
+	       rnbd_clt_map_device_show, rnbd_clt_map_device_store);
 
 static struct attribute *default_attrs[] = {
-	&ibnbd_clt_map_device_attr.attr,
+	&rnbd_clt_map_device_attr.attr,
 	NULL,
 };
 
@@ -614,23 +614,23 @@ static const struct attribute_group *default_attr_groups[] = {
 	NULL,
 };
 
-int ibnbd_clt_create_sysfs_files(void)
+int rnbd_clt_create_sysfs_files(void)
 {
 	int err;
 
-	ibnbd_dev_class = class_create(THIS_MODULE, "ibnbd-client");
-	if (unlikely(IS_ERR(ibnbd_dev_class)))
-		return PTR_ERR(ibnbd_dev_class);
+	rnbd_dev_class = class_create(THIS_MODULE, "rnbd-client");
+	if (unlikely(IS_ERR(rnbd_dev_class)))
+		return PTR_ERR(rnbd_dev_class);
 
-	ibnbd_dev = device_create_with_groups(ibnbd_dev_class, NULL,
+	rnbd_dev = device_create_with_groups(rnbd_dev_class, NULL,
 					      MKDEV(0, 0), NULL,
 					      default_attr_groups, "ctl");
-	if (unlikely(IS_ERR(ibnbd_dev))) {
-		err = PTR_ERR(ibnbd_dev);
+	if (unlikely(IS_ERR(rnbd_dev))) {
+		err = PTR_ERR(rnbd_dev);
 		goto cls_destroy;
 	}
-	ibnbd_devs_kobj = kobject_create_and_add("devices", &ibnbd_dev->kobj);
-	if (unlikely(!ibnbd_devs_kobj)) {
+	rnbd_devs_kobj = kobject_create_and_add("devices", &rnbd_dev->kobj);
+	if (unlikely(!rnbd_devs_kobj)) {
 		err = -ENOMEM;
 		goto dev_destroy;
 	}
@@ -638,22 +638,22 @@ int ibnbd_clt_create_sysfs_files(void)
 	return 0;
 
 dev_destroy:
-	device_destroy(ibnbd_dev_class, MKDEV(0, 0));
+	device_destroy(rnbd_dev_class, MKDEV(0, 0));
 cls_destroy:
-	class_destroy(ibnbd_dev_class);
+	class_destroy(rnbd_dev_class);
 
 	return err;
 }
 
-void ibnbd_clt_destroy_default_group(void)
+void rnbd_clt_destroy_default_group(void)
 {
-	sysfs_remove_group(&ibnbd_dev->kobj, &default_attr_group);
+	sysfs_remove_group(&rnbd_dev->kobj, &default_attr_group);
 }
 
-void ibnbd_clt_destroy_sysfs_files(void)
+void rnbd_clt_destroy_sysfs_files(void)
 {
-	kobject_del(ibnbd_devs_kobj);
-	kobject_put(ibnbd_devs_kobj);
-	device_destroy(ibnbd_dev_class, MKDEV(0, 0));
-	class_destroy(ibnbd_dev_class);
+	kobject_del(rnbd_devs_kobj);
+	kobject_put(rnbd_devs_kobj);
+	device_destroy(rnbd_dev_class, MKDEV(0, 0));
+	class_destroy(rnbd_dev_class);
 }

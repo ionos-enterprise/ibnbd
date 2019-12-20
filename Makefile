@@ -4,23 +4,23 @@
 ifneq ($(KERNELRELEASE),)
 
 ifdef PKG_VERSION
-DEFINES += -D IBNBD_VER_STRING=\"$(PKG_VERSION)\"
-DEFINES += -D IBTRS_VER_STRING=\"$(PKG_VERSION)\"
+DEFINES += -D RNBD_VER_STRING=\"$(PKG_VERSION)\"
+DEFINES += -D RTRS_VER_STRING=\"$(PKG_VERSION)\"
 endif
 
-# ibnbd requires public header of ibtrs API
-KBUILD_CFLAGS += $(DEFINES) -I$(src)/ibtrs
+# rnbd requires public header of rtrs API
+KBUILD_CFLAGS += $(DEFINES) -I$(src)/rtrs
 
-export CONFIG_BLK_DEV_IBNBD        := y
-export CONFIG_BLK_DEV_IBNBD_CLIENT := m
-export CONFIG_BLK_DEV_IBNBD_SERVER := m
+export CONFIG_BLK_DEV_RNBD        := y
+export CONFIG_BLK_DEV_RNBD_CLIENT := m
+export CONFIG_BLK_DEV_RNBD_SERVER := m
 
-export CONFIG_INFINIBAND_IBTRS        := m
-export CONFIG_INFINIBAND_IBTRS_CLIENT := m
-export CONFIG_INFINIBAND_IBTRS_SERVER := m
+export CONFIG_INFINIBAND_RTRS        := m
+export CONFIG_INFINIBAND_RTRS_CLIENT := m
+export CONFIG_INFINIBAND_RTRS_SERVER := m
 
-obj-m += ibtrs/
-obj-m += ibnbd/
+obj-m += rtrs/
+obj-m += rnbd/
 
 # Normal Makefile, redirect to kbuild
 else

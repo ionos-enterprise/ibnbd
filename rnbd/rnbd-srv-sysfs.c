@@ -38,17 +38,17 @@
 #include <linux/moduleparam.h>
 #include <linux/device.h>
 
-#include "ibnbd-srv.h"
+#include "rnbd-srv.h"
 
-static struct device *ibnbd_dev;
-static struct class *ibnbd_dev_class;
-static struct kobject *ibnbd_devs_kobj;
+static struct device *rnbd_dev;
+static struct class *rnbd_dev_class;
+static struct kobject *rnbd_devs_kobj;
 
 static struct kobj_type ktype = {
 	.sysfs_ops	= &kobj_sysfs_ops,
 };
 
-int ibnbd_srv_create_dev_sysfs(struct ibnbd_srv_dev *dev,
+int rnbd_srv_create_dev_sysfs(struct rnbd_srv_dev *dev,
 			       struct block_device *bdev,
 			       const char *dir_name)
 {
@@ -56,7 +56,7 @@ int ibnbd_srv_create_dev_sysfs(struct ibnbd_srv_dev *dev,
 	int ret;
 
 	ret = kobject_init_and_add(&dev->dev_kobj, &ktype,
-				   ibnbd_devs_kobj, dir_name);
+				   rnbd_devs_kobj, dir_name);
 	if (ret)
 		return ret;
 
@@ -82,7 +82,7 @@ err:
 	return ret;
 }
 
-void ibnbd_srv_destroy_dev_sysfs(struct ibnbd_srv_dev *dev)
+void rnbd_srv_destroy_dev_sysfs(struct rnbd_srv_dev *dev)
 {
 	sysfs_remove_link(&dev->dev_kobj, "block_dev");
 	kobject_del(&dev->dev_sessions_kobj);
@@ -94,62 +94,62 @@ void ibnbd_srv_destroy_dev_sysfs(struct ibnbd_srv_dev *dev)
 static ssize_t read_only_show(struct kobject *kobj, struct kobj_attribute *attr,
 			      char *page)
 {
-	struct ibnbd_srv_sess_dev *sess_dev;
+	struct rnbd_srv_sess_dev *sess_dev;
 
-	sess_dev = container_of(kobj, struct ibnbd_srv_sess_dev, kobj);
+	sess_dev = container_of(kobj, struct rnbd_srv_sess_dev, kobj);
 
 	return scnprintf(page, PAGE_SIZE, "%s\n",
 			 (sess_dev->open_flags & FMODE_WRITE) ? "0" : "1");
 }
 
-static struct kobj_attribute ibnbd_srv_dev_session_ro_attr =
+static struct kobj_attribute rnbd_srv_dev_session_ro_attr =
 	__ATTR_RO(read_only);
 
 static ssize_t access_mode_show(struct kobject *kobj,
 				struct kobj_attribute *attr,
 				char *page)
 {
-	struct ibnbd_srv_sess_dev *sess_dev;
+	struct rnbd_srv_sess_dev *sess_dev;
 
-	sess_dev = container_of(kobj, struct ibnbd_srv_sess_dev, kobj);
+	sess_dev = container_of(kobj, struct rnbd_srv_sess_dev, kobj);
 
 	return scnprintf(page, PAGE_SIZE, "%s\n",
-			 ibnbd_access_mode_str(sess_dev->access_mode));
+			 rnbd_access_mode_str(sess_dev->access_mode));
 }
 
-static struct kobj_attribute ibnbd_srv_dev_session_access_mode_attr =
+static struct kobj_attribute rnbd_srv_dev_session_access_mode_attr =
 	__ATTR_RO(access_mode);
 
 static ssize_t mapping_path_show(struct kobject *kobj,
 				 struct kobj_attribute *attr, char *page)
 {
-	struct ibnbd_srv_sess_dev *sess_dev;
+	struct rnbd_srv_sess_dev *sess_dev;
 
-	sess_dev = container_of(kobj, struct ibnbd_srv_sess_dev, kobj);
+	sess_dev = container_of(kobj, struct rnbd_srv_sess_dev, kobj);
 
 	return scnprintf(page, PAGE_SIZE, "%s\n", sess_dev->pathname);
 }
 
-static struct kobj_attribute ibnbd_srv_dev_session_mapping_path_attr =
+static struct kobj_attribute rnbd_srv_dev_session_mapping_path_attr =
 	__ATTR_RO(mapping_path);
 
-static struct attribute *ibnbd_srv_default_dev_sessions_attrs[] = {
-	&ibnbd_srv_dev_session_access_mode_attr.attr,
-	&ibnbd_srv_dev_session_ro_attr.attr,
-	&ibnbd_srv_dev_session_mapping_path_attr.attr,
+static struct attribute *rnbd_srv_default_dev_sessions_attrs[] = {
+	&rnbd_srv_dev_session_access_mode_attr.attr,
+	&rnbd_srv_dev_session_ro_attr.attr,
+	&rnbd_srv_dev_session_mapping_path_attr.attr,
 	NULL,
 };
 
-static struct attribute_group ibnbd_srv_default_dev_session_attr_group = {
-	.attrs = ibnbd_srv_default_dev_sessions_attrs,
+static struct attribute_group rnbd_srv_default_dev_session_attr_group = {
+	.attrs = rnbd_srv_default_dev_sessions_attrs,
 };
 
-void ibnbd_srv_destroy_dev_session_sysfs(struct ibnbd_srv_sess_dev *sess_dev)
+void rnbd_srv_destroy_dev_session_sysfs(struct rnbd_srv_sess_dev *sess_dev)
 {
 	DECLARE_COMPLETION_ONSTACK(sysfs_compl);
 
 	sysfs_remove_group(&sess_dev->kobj,
-			   &ibnbd_srv_default_dev_session_attr_group);
+			   &rnbd_srv_default_dev_session_attr_group);
 
 	sess_dev->sysfs_release_compl = &sysfs_compl;
 	kobject_del(&sess_dev->kobj);
@@ -157,32 +157,32 @@ void ibnbd_srv_destroy_dev_session_sysfs(struct ibnbd_srv_sess_dev *sess_dev)
 	wait_for_completion(&sysfs_compl);
 }
 
-static void ibnbd_srv_sess_dev_release(struct kobject *kobj)
+static void rnbd_srv_sess_dev_release(struct kobject *kobj)
 {
-	struct ibnbd_srv_sess_dev *sess_dev;
+	struct rnbd_srv_sess_dev *sess_dev;
 
-	sess_dev = container_of(kobj, struct ibnbd_srv_sess_dev, kobj);
+	sess_dev = container_of(kobj, struct rnbd_srv_sess_dev, kobj);
 	if (sess_dev->sysfs_release_compl)
 		complete_all(sess_dev->sysfs_release_compl);
 }
 
-static struct kobj_type ibnbd_srv_sess_dev_ktype = {
+static struct kobj_type rnbd_srv_sess_dev_ktype = {
 	.sysfs_ops	= &kobj_sysfs_ops,
-	.release	= ibnbd_srv_sess_dev_release,
+	.release	= rnbd_srv_sess_dev_release,
 };
 
-int ibnbd_srv_create_dev_session_sysfs(struct ibnbd_srv_sess_dev *sess_dev)
+int rnbd_srv_create_dev_session_sysfs(struct rnbd_srv_sess_dev *sess_dev)
 {
 	int ret;
 
-	ret = kobject_init_and_add(&sess_dev->kobj, &ibnbd_srv_sess_dev_ktype,
+	ret = kobject_init_and_add(&sess_dev->kobj, &rnbd_srv_sess_dev_ktype,
 				   &sess_dev->dev->dev_sessions_kobj, "%s",
 				   sess_dev->sess->sessname);
 	if (ret)
 		return ret;
 
 	ret = sysfs_create_group(&sess_dev->kobj,
-				 &ibnbd_srv_default_dev_session_attr_group);
+				 &rnbd_srv_default_dev_session_attr_group);
 	if (ret)
 		goto err;
 
@@ -195,22 +195,22 @@ err:
 	return ret;
 }
 
-int ibnbd_srv_create_sysfs_files(void)
+int rnbd_srv_create_sysfs_files(void)
 {
 	int err;
 
-	ibnbd_dev_class = class_create(THIS_MODULE, "ibnbd-server");
-	if (unlikely(IS_ERR(ibnbd_dev_class)))
-		return PTR_ERR(ibnbd_dev_class);
+	rnbd_dev_class = class_create(THIS_MODULE, "rnbd-server");
+	if (unlikely(IS_ERR(rnbd_dev_class)))
+		return PTR_ERR(rnbd_dev_class);
 
-	ibnbd_dev = device_create(ibnbd_dev_class, NULL,
+	rnbd_dev = device_create(rnbd_dev_class, NULL,
 				  MKDEV(0, 0), NULL, "ctl");
-	if (unlikely(IS_ERR(ibnbd_dev))) {
-		err = PTR_ERR(ibnbd_dev);
+	if (unlikely(IS_ERR(rnbd_dev))) {
+		err = PTR_ERR(rnbd_dev);
 		goto cls_destroy;
 	}
-	ibnbd_devs_kobj = kobject_create_and_add("devices", &ibnbd_dev->kobj);
-	if (unlikely(!ibnbd_devs_kobj)) {
+	rnbd_devs_kobj = kobject_create_and_add("devices", &rnbd_dev->kobj);
+	if (unlikely(!rnbd_devs_kobj)) {
 		err = -ENOMEM;
 		goto dev_destroy;
 	}
@@ -218,17 +218,17 @@ int ibnbd_srv_create_sysfs_files(void)
 	return 0;
 
 dev_destroy:
-	device_destroy(ibnbd_dev_class, MKDEV(0, 0));
+	device_destroy(rnbd_dev_class, MKDEV(0, 0));
 cls_destroy:
-	class_destroy(ibnbd_dev_class);
+	class_destroy(rnbd_dev_class);
 
 	return err;
 }
 
-void ibnbd_srv_destroy_sysfs_files(void)
+void rnbd_srv_destroy_sysfs_files(void)
 {
-	kobject_del(ibnbd_devs_kobj);
-	kobject_put(ibnbd_devs_kobj);
-	device_destroy(ibnbd_dev_class, MKDEV(0, 0));
-	class_destroy(ibnbd_dev_class);
+	kobject_del(rnbd_devs_kobj);
+	kobject_put(rnbd_devs_kobj);
+	device_destroy(rnbd_dev_class, MKDEV(0, 0));
+	class_destroy(rnbd_dev_class);
 }

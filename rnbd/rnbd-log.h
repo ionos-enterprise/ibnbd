@@ -26,36 +26,36 @@
  *          Guoqing Jiang <guoqing.jiang@cloud.ionos.com>
  *          Lutz Pogrell <lutz.pogrell@cloud.ionos.com>
  */
-#ifndef IBNBD_LOG_H
-#define IBNBD_LOG_H
+#ifndef RNBD_LOG_H
+#define RNBD_LOG_H
 
-#include "ibnbd-clt.h"
-#include "ibnbd-srv.h"
+#include "rnbd-clt.h"
+#include "rnbd-srv.h"
 
-#define ibnbd_clt_log(fn, dev, fmt, ...) (				\
+#define rnbd_clt_log(fn, dev, fmt, ...) (				\
 		fn("<%s@%s> " fmt, (dev)->pathname,			\
 		(dev)->sess->sessname,					\
 		   ##__VA_ARGS__))
-#define ibnbd_srv_log(fn, dev, fmt, ...) (				\
+#define rnbd_srv_log(fn, dev, fmt, ...) (				\
 			fn("<%s@%s>: " fmt, (dev)->pathname,		\
 			   (dev)->sess->sessname, ##__VA_ARGS__))
 
-#define ibnbd_clt_err(dev, fmt, ...)	\
-	ibnbd_clt_log(pr_err, dev, fmt, ##__VA_ARGS__)
-#define ibnbd_clt_err_rl(dev, fmt, ...)	\
-	ibnbd_clt_log(pr_err_ratelimited, dev, fmt, ##__VA_ARGS__)
-#define ibnbd_clt_info(dev, fmt, ...) \
-	ibnbd_clt_log(pr_info, dev, fmt, ##__VA_ARGS__)
-#define ibnbd_clt_info_rl(dev, fmt, ...) \
-	ibnbd_clt_log(pr_info_ratelimited, dev, fmt, ##__VA_ARGS__)
+#define rnbd_clt_err(dev, fmt, ...)	\
+	rnbd_clt_log(pr_err, dev, fmt, ##__VA_ARGS__)
+#define rnbd_clt_err_rl(dev, fmt, ...)	\
+	rnbd_clt_log(pr_err_ratelimited, dev, fmt, ##__VA_ARGS__)
+#define rnbd_clt_info(dev, fmt, ...) \
+	rnbd_clt_log(pr_info, dev, fmt, ##__VA_ARGS__)
+#define rnbd_clt_info_rl(dev, fmt, ...) \
+	rnbd_clt_log(pr_info_ratelimited, dev, fmt, ##__VA_ARGS__)
 
-#define ibnbd_srv_err(dev, fmt, ...)	\
-	ibnbd_srv_log(pr_err, dev, fmt, ##__VA_ARGS__)
-#define ibnbd_srv_err_rl(dev, fmt, ...)	\
-	ibnbd_srv_log(pr_err_ratelimited, dev, fmt, ##__VA_ARGS__)
-#define ibnbd_srv_info(dev, fmt, ...) \
-	ibnbd_srv_log(pr_info, dev, fmt, ##__VA_ARGS__)
-#define ibnbd_srv_info_rl(dev, fmt, ...) \
-	ibnbd_srv_log(pr_info_ratelimited, dev, fmt, ##__VA_ARGS__)
+#define rnbd_srv_err(dev, fmt, ...)	\
+	rnbd_srv_log(pr_err, dev, fmt, ##__VA_ARGS__)
+#define rnbd_srv_err_rl(dev, fmt, ...)	\
+	rnbd_srv_log(pr_err_ratelimited, dev, fmt, ##__VA_ARGS__)
+#define rnbd_srv_info(dev, fmt, ...) \
+	rnbd_srv_log(pr_info, dev, fmt, ##__VA_ARGS__)
+#define rnbd_srv_info_rl(dev, fmt, ...) \
+	rnbd_srv_log(pr_info_ratelimited, dev, fmt, ##__VA_ARGS__)
 
-#endif /* IBNBD_LOG_H */
+#endif /* RNBD_LOG_H */

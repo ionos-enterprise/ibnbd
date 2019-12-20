@@ -26,16 +26,16 @@
  *          Guoqing Jiang <guoqing.jiang@cloud.ionos.com>
  *          Lutz Pogrell <lutz.pogrell@cloud.ionos.com>
  */
-#include "ibnbd-proto.h"
+#include "rnbd-proto.h"
 
-const char *ibnbd_access_mode_str(enum ibnbd_access_mode mode)
+const char *rnbd_access_mode_str(enum rnbd_access_mode mode)
 {
 	switch (mode) {
-	case IBNBD_ACCESS_RO:
+	case RNBD_ACCESS_RO:
 		return "ro";
-	case IBNBD_ACCESS_RW:
+	case RNBD_ACCESS_RW:
 		return "rw";
-	case IBNBD_ACCESS_MIGRATION:
+	case RNBD_ACCESS_MIGRATION:
 		return "migration";
 	default:
 		return "unknown";

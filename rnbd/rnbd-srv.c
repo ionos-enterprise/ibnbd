@@ -32,19 +32,19 @@
 #include <linux/module.h>
 #include <linux/blkdev.h>
 
-#include "ibnbd-srv.h"
-#include "ibnbd-srv-dev.h"
+#include "rnbd-srv.h"
+#include "rnbd-srv-dev.h"
 
-MODULE_AUTHOR("ibnbd@profitbricks.com");
+MODULE_AUTHOR("rnbd@profitbricks.com");
 MODULE_DESCRIPTION("InfiniBand Network Block Device Server");
 MODULE_LICENSE("GPL");
 
-static int __read_mostly port_nr = IBTRS_PORT;
+static int __read_mostly port_nr = RTRS_PORT;
 
 module_param_named(port_nr, port_nr, int, 0444);
 MODULE_PARM_DESC(port_nr,
 		 "The port number server is listening on (default: "
-		 __stringify(IBTRS_PORT)")");
+		 __stringify(RTRS_PORT)")");
 
 #define DEFAULT_DEV_SEARCH_PATH "/"
 
@@ -92,40 +92,40 @@ static DEFINE_SPINLOCK(dev_lock);
 static LIST_HEAD(sess_list);
 static LIST_HEAD(dev_list);
 
-struct ibnbd_io_private {
-	struct ibtrs_srv_op		*id;
-	struct ibnbd_srv_sess_dev	*sess_dev;
+struct rnbd_io_private {
+	struct rtrs_srv_op		*id;
+	struct rnbd_srv_sess_dev	*sess_dev;
 };
 
-static void ibnbd_sess_dev_release(struct kref *kref)
+static void rnbd_sess_dev_release(struct kref *kref)
 {
-	struct ibnbd_srv_sess_dev *sess_dev;
+	struct rnbd_srv_sess_dev *sess_dev;
 
-	sess_dev = container_of(kref, struct ibnbd_srv_sess_dev, kref);
+	sess_dev = container_of(kref, struct rnbd_srv_sess_dev, kref);
 	complete(sess_dev->destroy_comp);
 }
 
-static inline void ibnbd_put_sess_dev(struct ibnbd_srv_sess_dev *sess_dev)
+static inline void rnbd_put_sess_dev(struct rnbd_srv_sess_dev *sess_dev)
 {
-	kref_put(&sess_dev->kref, ibnbd_sess_dev_release);
+	kref_put(&sess_dev->kref, rnbd_sess_dev_release);
 }
 
-static void ibnbd_endio(void *priv, int error)
+static void rnbd_endio(void *priv, int error)
 {
-	struct ibnbd_io_private *ibnbd_priv = priv;
-	struct ibnbd_srv_sess_dev *sess_dev = ibnbd_priv->sess_dev;
+	struct rnbd_io_private *rnbd_priv = priv;
+	struct rnbd_srv_sess_dev *sess_dev = rnbd_priv->sess_dev;
 
-	ibnbd_put_sess_dev(sess_dev);
+	rnbd_put_sess_dev(sess_dev);
 
-	ibtrs_srv_resp_rdma(ibnbd_priv->id, error);
+	rtrs_srv_resp_rdma(rnbd_priv->id, error);
 
 	kfree(priv);
 }
 
-static struct ibnbd_srv_sess_dev *
-ibnbd_get_sess_dev(int dev_id, struct ibnbd_srv_session *srv_sess)
+static struct rnbd_srv_sess_dev *
+rnbd_get_sess_dev(int dev_id, struct rnbd_srv_session *srv_sess)
 {
-	struct ibnbd_srv_sess_dev *sess_dev;
+	struct rnbd_srv_sess_dev *sess_dev;
 	int ret = 0;
 
 	read_lock(&srv_sess->index_lock);
@@ -140,14 +140,14 @@ ibnbd_get_sess_dev(int dev_id, struct ibnbd_srv_session *srv_sess)
 	return sess_dev;
 }
 
-static int process_rdma(struct ibtrs_srv *sess,
-			struct ibnbd_srv_session *srv_sess,
-			struct ibtrs_srv_op *id, void *data, u32 datalen,
+static int process_rdma(struct rtrs_srv *sess,
+			struct rnbd_srv_session *srv_sess,
+			struct rtrs_srv_op *id, void *data, u32 datalen,
 			const void *usr, size_t usrlen)
 {
-	const struct ibnbd_msg_io *msg = usr;
-	struct ibnbd_io_private *priv;
-	struct ibnbd_srv_sess_dev *sess_dev;
+	const struct rnbd_msg_io *msg = usr;
+	struct rnbd_io_private *priv;
+	struct rnbd_srv_sess_dev *sess_dev;
 	u32 dev_id;
 	int err;
 
@@ -157,7 +157,7 @@ static int process_rdma(struct ibtrs_srv *sess,
 
 	dev_id = le32_to_cpu(msg->device_id);
 
-	sess_dev = ibnbd_get_sess_dev(dev_id, srv_sess);
+	sess_dev = rnbd_get_sess_dev(dev_id, srv_sess);
 	if (unlikely(IS_ERR(sess_dev))) {
 		pr_err_ratelimited("Got I/O request on session %s for unknown device id %d\n",
 				   srv_sess->sessname, dev_id);
@@ -168,14 +168,14 @@ static int process_rdma(struct ibtrs_srv *sess,
 	priv->sess_dev = sess_dev;
 	priv->id = id;
 
-	err = ibnbd_dev_submit_io(sess_dev->ibnbd_dev, le64_to_cpu(msg->sector),
+	err = rnbd_dev_submit_io(sess_dev->rnbd_dev, le64_to_cpu(msg->sector),
 				  data, datalen, le32_to_cpu(msg->bi_size),
 				  le32_to_cpu(msg->rw),
-				  srv_sess->ver < IBNBD_PROTO_VER_MAJOR ||
+				  srv_sess->ver < RNBD_PROTO_VER_MAJOR ||
 				  usrlen < sizeof(*msg) ?
 				  0 : le16_to_cpu(msg->prio), priv);
 	if (unlikely(err)) {
-		ibnbd_srv_err(sess_dev, "Submitting I/O to device failed, err: %d\n",
+		rnbd_srv_err(sess_dev, "Submitting I/O to device failed, err: %d\n",
 			      err);
 		goto sess_dev_put;
 	}
@@ -183,13 +183,13 @@ static int process_rdma(struct ibtrs_srv *sess,
 	return 0;
 
 sess_dev_put:
-	ibnbd_put_sess_dev(sess_dev);
+	rnbd_put_sess_dev(sess_dev);
 err:
 	kfree(priv);
 	return err;
 }
 
-static void destroy_device(struct ibnbd_srv_dev *dev)
+static void destroy_device(struct rnbd_srv_dev *dev)
 {
 	WARN(!list_empty(&dev->sess_dev_list),
 	     "Device %s is being destroyed but still in use!\n",
@@ -205,26 +205,26 @@ static void destroy_device(struct ibnbd_srv_dev *dev)
 		 * The following call should be sync, because
 		 *  we free the memory afterwards.
 		 */
-		ibnbd_srv_destroy_dev_sysfs(dev);
+		rnbd_srv_destroy_dev_sysfs(dev);
 
 	kfree(dev);
 }
 
 static void destroy_device_cb(struct kref *kref)
 {
-	struct ibnbd_srv_dev *dev;
+	struct rnbd_srv_dev *dev;
 
-	dev = container_of(kref, struct ibnbd_srv_dev, kref);
+	dev = container_of(kref, struct rnbd_srv_dev, kref);
 
 	destroy_device(dev);
 }
 
-static void ibnbd_put_srv_dev(struct ibnbd_srv_dev *dev)
+static void rnbd_put_srv_dev(struct rnbd_srv_dev *dev)
 {
 	kref_put(&dev->kref, destroy_device_cb);
 }
 
-static void ibnbd_destroy_sess_dev(struct ibnbd_srv_sess_dev *sess_dev)
+static void rnbd_destroy_sess_dev(struct rnbd_srv_sess_dev *sess_dev)
 {
 	DECLARE_COMPLETION_ONSTACK(dc);
 
@@ -233,10 +233,10 @@ static void ibnbd_destroy_sess_dev(struct ibnbd_srv_sess_dev *sess_dev)
 	write_unlock(&sess_dev->sess->index_lock);
 
 	sess_dev->destroy_comp = &dc;
-	ibnbd_put_sess_dev(sess_dev);
+	rnbd_put_sess_dev(sess_dev);
 	wait_for_completion(&dc);
 
-	ibnbd_dev_close(sess_dev->ibnbd_dev);
+	rnbd_dev_close(sess_dev->rnbd_dev);
 	list_del(&sess_dev->sess_list);
 	mutex_lock(&sess_dev->dev->lock);
 	list_del(&sess_dev->dev_list);
@@ -244,15 +244,15 @@ static void ibnbd_destroy_sess_dev(struct ibnbd_srv_sess_dev *sess_dev)
 		sess_dev->dev->open_write_cnt--;
 	mutex_unlock(&sess_dev->dev->lock);
 
-	ibnbd_put_srv_dev(sess_dev->dev);
+	rnbd_put_srv_dev(sess_dev->dev);
 
-	ibnbd_srv_info(sess_dev, "Device closed\n");
+	rnbd_srv_info(sess_dev, "Device closed\n");
 	kfree(sess_dev);
 }
 
-static void destroy_sess(struct ibnbd_srv_session *srv_sess)
+static void destroy_sess(struct rnbd_srv_session *srv_sess)
 {
-	struct ibnbd_srv_sess_dev *sess_dev, *tmp;
+	struct rnbd_srv_sess_dev *sess_dev, *tmp;
 
 	if (list_empty(&srv_sess->sess_dev_list))
 		goto out;
@@ -260,8 +260,8 @@ static void destroy_sess(struct ibnbd_srv_session *srv_sess)
 	mutex_lock(&srv_sess->lock);
 	list_for_each_entry_safe(sess_dev, tmp, &srv_sess->sess_dev_list,
 				 sess_list) {
-		ibnbd_srv_destroy_dev_session_sysfs(sess_dev);
-		ibnbd_destroy_sess_dev(sess_dev);
+		rnbd_srv_destroy_dev_session_sysfs(sess_dev);
+		rnbd_destroy_sess_dev(sess_dev);
 	}
 	mutex_unlock(&srv_sess->lock);
 
@@ -269,7 +269,7 @@ out:
 	idr_destroy(&srv_sess->index_idr);
 	bioset_exit(&srv_sess->sess_bio_set);
 
-	pr_info("IBTRS Session %s disconnected\n", srv_sess->sessname);
+	pr_info("RTRS Session %s disconnected\n", srv_sess->sessname);
 
 	mutex_lock(&sess_lock);
 	list_del(&srv_sess->list);
@@ -278,25 +278,25 @@ out:
 	kfree(srv_sess);
 }
 
-static int create_sess(struct ibtrs_srv *ibtrs)
+static int create_sess(struct rtrs_srv *rtrs)
 {
-	struct ibnbd_srv_session *srv_sess;
+	struct rnbd_srv_session *srv_sess;
 	char sessname[NAME_MAX];
 	int err;
 
-	err = ibtrs_srv_get_sess_name(ibtrs, sessname, sizeof(sessname));
+	err = rtrs_srv_get_sess_name(rtrs, sessname, sizeof(sessname));
 	if (unlikely(err)) {
-		pr_err("ibtrs_srv_get_sess_name(%s): %d\n", sessname, err);
+		pr_err("rtrs_srv_get_sess_name(%s): %d\n", sessname, err);
 
 		return err;
 	}
 	srv_sess = kzalloc(sizeof(*srv_sess), GFP_KERNEL);
 	if (!srv_sess)
 		return -ENOMEM;
-	srv_sess->queue_depth = ibtrs_srv_get_queue_depth(ibtrs);
+	srv_sess->queue_depth = rtrs_srv_get_queue_depth(rtrs);
 
 	err = bioset_init(&srv_sess->sess_bio_set, srv_sess->queue_depth,
-			  offsetof(struct ibnbd_dev_blk_io, bio),
+			  offsetof(struct rnbd_dev_blk_io, bio),
 			  BIOSET_NEED_BVECS);
 	if (err) {
 		pr_err("Allocating srv_session for session %s failed\n",
@@ -313,24 +313,24 @@ static int create_sess(struct ibtrs_srv *ibtrs)
 	list_add(&srv_sess->list, &sess_list);
 	mutex_unlock(&sess_lock);
 
-	srv_sess->ibtrs = ibtrs;
+	srv_sess->rtrs = rtrs;
 	strlcpy(srv_sess->sessname, sessname, sizeof(srv_sess->sessname));
 
-	ibtrs_srv_set_sess_priv(ibtrs, srv_sess);
+	rtrs_srv_set_sess_priv(rtrs, srv_sess);
 
 	return 0;
 }
 
-static int ibnbd_srv_link_ev(struct ibtrs_srv *ibtrs,
-			     enum ibtrs_srv_link_ev ev, void *priv)
+static int rnbd_srv_link_ev(struct rtrs_srv *rtrs,
+			     enum rtrs_srv_link_ev ev, void *priv)
 {
-	struct ibnbd_srv_session *srv_sess = priv;
+	struct rnbd_srv_session *srv_sess = priv;
 
 	switch (ev) {
-	case IBTRS_SRV_LINK_EV_CONNECTED:
-		return create_sess(ibtrs);
+	case RTRS_SRV_LINK_EV_CONNECTED:
+		return create_sess(rtrs);
 
-	case IBTRS_SRV_LINK_EV_DISCONNECTED:
+	case RTRS_SRV_LINK_EV_DISCONNECTED:
 		if (WARN_ON(!srv_sess))
 			return -EINVAL;
 
@@ -338,50 +338,50 @@ static int ibnbd_srv_link_ev(struct ibtrs_srv *ibtrs,
 		return 0;
 
 	default:
-		pr_warn("Received unknown IBTRS session event %d from session %s\n",
+		pr_warn("Received unknown RTRS session event %d from session %s\n",
 			ev, srv_sess->sessname);
 		return -EINVAL;
 	}
 }
 
-static int process_msg_close(struct ibtrs_srv *ibtrs,
-			     struct ibnbd_srv_session *srv_sess,
+static int process_msg_close(struct rtrs_srv *rtrs,
+			     struct rnbd_srv_session *srv_sess,
 			     void *data, size_t datalen, const void *usr,
 			     size_t usrlen)
 {
-	const struct ibnbd_msg_close *close_msg = usr;
-	struct ibnbd_srv_sess_dev *sess_dev;
+	const struct rnbd_msg_close *close_msg = usr;
+	struct rnbd_srv_sess_dev *sess_dev;
 
-	sess_dev = ibnbd_get_sess_dev(le32_to_cpu(close_msg->device_id),
+	sess_dev = rnbd_get_sess_dev(le32_to_cpu(close_msg->device_id),
 				      srv_sess);
 	if (unlikely(IS_ERR(sess_dev)))
 		return 0;
 
-	ibnbd_srv_destroy_dev_session_sysfs(sess_dev);
-	ibnbd_put_sess_dev(sess_dev);
+	rnbd_srv_destroy_dev_session_sysfs(sess_dev);
+	rnbd_put_sess_dev(sess_dev);
 	mutex_lock(&srv_sess->lock);
-	ibnbd_destroy_sess_dev(sess_dev);
+	rnbd_destroy_sess_dev(sess_dev);
 	mutex_unlock(&srv_sess->lock);
 	return 0;
 }
 
-static int process_msg_open(struct ibtrs_srv *ibtrs,
-			    struct ibnbd_srv_session *srv_sess,
+static int process_msg_open(struct rtrs_srv *rtrs,
+			    struct rnbd_srv_session *srv_sess,
 			    const void *msg, size_t len,
 			    void *data, size_t datalen);
 
-static int process_msg_sess_info(struct ibtrs_srv *ibtrs,
-				 struct ibnbd_srv_session *srv_sess,
+static int process_msg_sess_info(struct rtrs_srv *rtrs,
+				 struct rnbd_srv_session *srv_sess,
 				 const void *msg, size_t len,
 				 void *data, size_t datalen);
 
-static int ibnbd_srv_rdma_ev(struct ibtrs_srv *ibtrs, void *priv,
-			     struct ibtrs_srv_op *id, int dir,
+static int rnbd_srv_rdma_ev(struct rtrs_srv *rtrs, void *priv,
+			     struct rtrs_srv_op *id, int dir,
 			     void *data, size_t datalen, const void *usr,
 			     size_t usrlen)
 {
-	struct ibnbd_srv_session *srv_sess = priv;
-	const struct ibnbd_msg_hdr *hdr = usr;
+	struct rnbd_srv_session *srv_sess = priv;
+	const struct rnbd_msg_hdr *hdr = usr;
 	int ret = 0;
 	u16 type;
 
@@ -391,19 +391,19 @@ static int ibnbd_srv_rdma_ev(struct ibtrs_srv *ibtrs, void *priv,
 	type = le16_to_cpu(hdr->type);
 
 	switch (type) {
-	case IBNBD_MSG_IO:
-		return process_rdma(ibtrs, srv_sess, id, data, datalen, usr,
+	case RNBD_MSG_IO:
+		return process_rdma(rtrs, srv_sess, id, data, datalen, usr,
 				    usrlen);
-	case IBNBD_MSG_CLOSE:
-		ret = process_msg_close(ibtrs, srv_sess, data, datalen,
+	case RNBD_MSG_CLOSE:
+		ret = process_msg_close(rtrs, srv_sess, data, datalen,
 					usr, usrlen);
 		break;
-	case IBNBD_MSG_OPEN:
-		ret = process_msg_open(ibtrs, srv_sess, usr, usrlen,
+	case RNBD_MSG_OPEN:
+		ret = process_msg_open(rtrs, srv_sess, usr, usrlen,
 				       data, datalen);
 		break;
-	case IBNBD_MSG_SESS_INFO:
-		ret = process_msg_sess_info(ibtrs, srv_sess, usr, usrlen,
+	case RNBD_MSG_SESS_INFO:
+		ret = process_msg_sess_info(rtrs, srv_sess, usr, usrlen,
 					    data, datalen);
 		break;
 	default:
@@ -412,14 +412,14 @@ static int ibnbd_srv_rdma_ev(struct ibtrs_srv *ibtrs, void *priv,
 		return -EINVAL;
 	}
 
-	ibtrs_srv_resp_rdma(id, ret);
+	rtrs_srv_resp_rdma(id, ret);
 	return 0;
 }
 
-static struct ibnbd_srv_sess_dev
-*ibnbd_sess_dev_alloc(struct ibnbd_srv_session *srv_sess)
+static struct rnbd_srv_sess_dev
+*rnbd_sess_dev_alloc(struct rnbd_srv_session *srv_sess)
 {
-	struct ibnbd_srv_sess_dev *sess_dev;
+	struct rnbd_srv_sess_dev *sess_dev;
 	int error;
 
 	sess_dev = kzalloc(sizeof(*sess_dev), GFP_KERNEL);
@@ -449,9 +449,9 @@ out_unlock:
 	return sess_dev;
 }
 
-static struct ibnbd_srv_dev *ibnbd_srv_init_srv_dev(const char *id)
+static struct rnbd_srv_dev *rnbd_srv_init_srv_dev(const char *id)
 {
-	struct ibnbd_srv_dev *dev;
+	struct rnbd_srv_dev *dev;
 
 	dev = kzalloc(sizeof(*dev), GFP_KERNEL);
 	if (!dev)
@@ -465,10 +465,10 @@ static struct ibnbd_srv_dev *ibnbd_srv_init_srv_dev(const char *id)
 	return dev;
 }
 
-static struct ibnbd_srv_dev *
-ibnbd_srv_find_or_add_srv_dev(struct ibnbd_srv_dev *new_dev)
+static struct rnbd_srv_dev *
+rnbd_srv_find_or_add_srv_dev(struct rnbd_srv_dev *new_dev)
 {
-	struct ibnbd_srv_dev *dev;
+	struct rnbd_srv_dev *dev;
 
 	spin_lock(&dev_lock);
 	list_for_each_entry(dev, &dev_list, list) {
@@ -489,19 +489,19 @@ ibnbd_srv_find_or_add_srv_dev(struct ibnbd_srv_dev *new_dev)
 	return new_dev;
 }
 
-static int ibnbd_srv_check_update_open_perm(struct ibnbd_srv_dev *srv_dev,
-					    struct ibnbd_srv_session *srv_sess,
-					    enum ibnbd_access_mode access_mode)
+static int rnbd_srv_check_update_open_perm(struct rnbd_srv_dev *srv_dev,
+					    struct rnbd_srv_session *srv_sess,
+					    enum rnbd_access_mode access_mode)
 {
 	int ret = -EPERM;
 
 	mutex_lock(&srv_dev->lock);
 
 	switch (access_mode) {
-	case IBNBD_ACCESS_RO:
+	case RNBD_ACCESS_RO:
 		ret = 0;
 		break;
-	case IBNBD_ACCESS_RW:
+	case RNBD_ACCESS_RW:
 		if (srv_dev->open_write_cnt == 0)  {
 			srv_dev->open_write_cnt++;
 			ret = 0;
@@ -509,10 +509,10 @@ static int ibnbd_srv_check_update_open_perm(struct ibnbd_srv_dev *srv_dev,
 			pr_err("Mapping device '%s' for session %s with RW permissions failed. Device already opened as 'RW' by %d client(s), access mode %s.\n",
 			       srv_dev->id, srv_sess->sessname,
 			       srv_dev->open_write_cnt,
-			       ibnbd_access_mode_str(access_mode));
+			       rnbd_access_mode_str(access_mode));
 		}
 		break;
-	case IBNBD_ACCESS_MIGRATION:
+	case RNBD_ACCESS_MIGRATION:
 		if (srv_dev->open_write_cnt < 2) {
 			srv_dev->open_write_cnt++;
 			ret = 0;
@@ -520,7 +520,7 @@ static int ibnbd_srv_check_update_open_perm(struct ibnbd_srv_dev *srv_dev,
 			pr_err("Mapping device '%s' for session %s with migration permissions failed. Device already opened as 'RW' by %d client(s), access mode %s.\n",
 			       srv_dev->id, srv_sess->sessname,
 			       srv_dev->open_write_cnt,
-			       ibnbd_access_mode_str(access_mode));
+			       rnbd_access_mode_str(access_mode));
 		}
 		break;
 	default:
@@ -534,70 +534,70 @@ static int ibnbd_srv_check_update_open_perm(struct ibnbd_srv_dev *srv_dev,
 	return ret;
 }
 
-static struct ibnbd_srv_dev *
-ibnbd_srv_get_or_create_srv_dev(struct ibnbd_dev *ibnbd_dev,
-				struct ibnbd_srv_session *srv_sess,
-				enum ibnbd_access_mode access_mode)
+static struct rnbd_srv_dev *
+rnbd_srv_get_or_create_srv_dev(struct rnbd_dev *rnbd_dev,
+				struct rnbd_srv_session *srv_sess,
+				enum rnbd_access_mode access_mode)
 {
 	int ret;
-	struct ibnbd_srv_dev *new_dev, *dev;
+	struct rnbd_srv_dev *new_dev, *dev;
 
-	new_dev = ibnbd_srv_init_srv_dev(ibnbd_dev->name);
+	new_dev = rnbd_srv_init_srv_dev(rnbd_dev->name);
 	if (IS_ERR(new_dev))
 		return new_dev;
 
-	dev = ibnbd_srv_find_or_add_srv_dev(new_dev);
+	dev = rnbd_srv_find_or_add_srv_dev(new_dev);
 	if (dev != new_dev)
 		kfree(new_dev);
 
-	ret = ibnbd_srv_check_update_open_perm(dev, srv_sess, access_mode);
+	ret = rnbd_srv_check_update_open_perm(dev, srv_sess, access_mode);
 	if (ret) {
-		ibnbd_put_srv_dev(dev);
+		rnbd_put_srv_dev(dev);
 		return ERR_PTR(ret);
 	}
 
 	return dev;
 }
 
-static void ibnbd_srv_fill_msg_open_rsp(struct ibnbd_msg_open_rsp *rsp,
-					struct ibnbd_srv_sess_dev *sess_dev)
+static void rnbd_srv_fill_msg_open_rsp(struct rnbd_msg_open_rsp *rsp,
+					struct rnbd_srv_sess_dev *sess_dev)
 {
-	struct ibnbd_dev *ibnbd_dev = sess_dev->ibnbd_dev;
+	struct rnbd_dev *rnbd_dev = sess_dev->rnbd_dev;
 
-	rsp->hdr.type = cpu_to_le16(IBNBD_MSG_OPEN_RSP);
+	rsp->hdr.type = cpu_to_le16(RNBD_MSG_OPEN_RSP);
 	rsp->device_id =
 		cpu_to_le32(sess_dev->device_id);
 	rsp->nsectors =
-		cpu_to_le64(get_capacity(ibnbd_dev->bdev->bd_disk));
+		cpu_to_le64(get_capacity(rnbd_dev->bdev->bd_disk));
 	rsp->logical_block_size	=
-		cpu_to_le16(ibnbd_dev_get_logical_bsize(ibnbd_dev));
+		cpu_to_le16(rnbd_dev_get_logical_bsize(rnbd_dev));
 	rsp->physical_block_size =
-		cpu_to_le16(ibnbd_dev_get_phys_bsize(ibnbd_dev));
+		cpu_to_le16(rnbd_dev_get_phys_bsize(rnbd_dev));
 	rsp->max_segments =
-		cpu_to_le16(ibnbd_dev_get_max_segs(ibnbd_dev));
+		cpu_to_le16(rnbd_dev_get_max_segs(rnbd_dev));
 	rsp->max_hw_sectors =
-		cpu_to_le32(ibnbd_dev_get_max_hw_sects(ibnbd_dev));
+		cpu_to_le32(rnbd_dev_get_max_hw_sects(rnbd_dev));
 	rsp->max_write_same_sectors =
-		cpu_to_le32(ibnbd_dev_get_max_write_same_sects(ibnbd_dev));
+		cpu_to_le32(rnbd_dev_get_max_write_same_sects(rnbd_dev));
 	rsp->max_discard_sectors =
-		cpu_to_le32(ibnbd_dev_get_max_discard_sects(ibnbd_dev));
+		cpu_to_le32(rnbd_dev_get_max_discard_sects(rnbd_dev));
 	rsp->discard_granularity =
-		cpu_to_le32(ibnbd_dev_get_discard_granularity(ibnbd_dev));
+		cpu_to_le32(rnbd_dev_get_discard_granularity(rnbd_dev));
 	rsp->discard_alignment =
-		cpu_to_le32(ibnbd_dev_get_discard_alignment(ibnbd_dev));
+		cpu_to_le32(rnbd_dev_get_discard_alignment(rnbd_dev));
 	rsp->secure_discard =
-		cpu_to_le16(ibnbd_dev_get_secure_discard(ibnbd_dev));
+		cpu_to_le16(rnbd_dev_get_secure_discard(rnbd_dev));
 	rsp->rotational =
-		!blk_queue_nonrot(bdev_get_queue(ibnbd_dev->bdev));
+		!blk_queue_nonrot(bdev_get_queue(rnbd_dev->bdev));
 }
 
-static struct ibnbd_srv_sess_dev *
-ibnbd_srv_create_set_sess_dev(struct ibnbd_srv_session *srv_sess,
-			      const struct ibnbd_msg_open *open_msg,
-			      struct ibnbd_dev *ibnbd_dev, fmode_t open_flags,
-			      struct ibnbd_srv_dev *srv_dev)
+static struct rnbd_srv_sess_dev *
+rnbd_srv_create_set_sess_dev(struct rnbd_srv_session *srv_sess,
+			      const struct rnbd_msg_open *open_msg,
+			      struct rnbd_dev *rnbd_dev, fmode_t open_flags,
+			      struct rnbd_srv_dev *srv_dev)
 {
-	struct ibnbd_srv_sess_dev *sdev = ibnbd_sess_dev_alloc(srv_sess);
+	struct rnbd_srv_sess_dev *sdev = rnbd_sess_dev_alloc(srv_sess);
 
 	if (IS_ERR(sdev))
 		return sdev;
@@ -606,7 +606,7 @@ ibnbd_srv_create_set_sess_dev(struct ibnbd_srv_session *srv_sess,
 
 	strlcpy(sdev->pathname, open_msg->dev_name, sizeof(sdev->pathname));
 
-	sdev->ibnbd_dev		= ibnbd_dev;
+	sdev->rnbd_dev		= rnbd_dev;
 	sdev->sess		= srv_sess;
 	sdev->dev		= srv_dev;
 	sdev->open_flags	= open_flags;
@@ -615,7 +615,7 @@ ibnbd_srv_create_set_sess_dev(struct ibnbd_srv_session *srv_sess,
 	return sdev;
 }
 
-static char *ibnbd_srv_get_full_path(struct ibnbd_srv_session *srv_sess,
+static char *rnbd_srv_get_full_path(struct rnbd_srv_session *srv_sess,
 				     const char *dev_name)
 {
 	char *full_path;
@@ -664,20 +664,20 @@ static char *ibnbd_srv_get_full_path(struct ibnbd_srv_session *srv_sess,
 	return full_path;
 }
 
-static int process_msg_sess_info(struct ibtrs_srv *ibtrs,
-				 struct ibnbd_srv_session *srv_sess,
+static int process_msg_sess_info(struct rtrs_srv *rtrs,
+				 struct rnbd_srv_session *srv_sess,
 				 const void *msg, size_t len,
 				 void *data, size_t datalen)
 {
-	const struct ibnbd_msg_sess_info *sess_info_msg = msg;
-	struct ibnbd_msg_sess_info_rsp *rsp = data;
+	const struct rnbd_msg_sess_info *sess_info_msg = msg;
+	struct rnbd_msg_sess_info_rsp *rsp = data;
 
-	srv_sess->ver = min_t(u8, sess_info_msg->ver, IBNBD_PROTO_VER_MAJOR);
+	srv_sess->ver = min_t(u8, sess_info_msg->ver, RNBD_PROTO_VER_MAJOR);
 	pr_debug("Session %s using protocol version %d (client version: %d, server version: %d)\n",
 		 srv_sess->sessname, srv_sess->ver,
-		 sess_info_msg->ver, IBNBD_PROTO_VER_MAJOR);
+		 sess_info_msg->ver, RNBD_PROTO_VER_MAJOR);
 
-	rsp->hdr.type = cpu_to_le16(IBNBD_MSG_SESS_INFO_RSP);
+	rsp->hdr.type = cpu_to_le16(RNBD_MSG_SESS_INFO_RSP);
 	rsp->ver = srv_sess->ver;
 
 	return 0;
@@ -688,13 +688,13 @@ static int process_msg_sess_info(struct ibtrs_srv *ibtrs,
  * @srv_sess	the session to search.
  * @dev_name	string containing the name of the device.
  *
- * Return struct ibnbd_srv_sess_dev if srv_sess already opened the dev_name
+ * Return struct rnbd_srv_sess_dev if srv_sess already opened the dev_name
  * NULL if the session didn't open the device yet.
  */
-static struct ibnbd_srv_sess_dev *
-find_srv_sess_dev(struct ibnbd_srv_session *srv_sess, const char *dev_name)
+static struct rnbd_srv_sess_dev *
+find_srv_sess_dev(struct rnbd_srv_session *srv_sess, const char *dev_name)
 {
-	struct ibnbd_srv_sess_dev *sess_dev;
+	struct rnbd_srv_sess_dev *sess_dev;
 
 	if (list_empty(&srv_sess->sess_dev_list))
 		return NULL;
@@ -706,25 +706,25 @@ find_srv_sess_dev(struct ibnbd_srv_session *srv_sess, const char *dev_name)
 	return NULL;
 }
 
-static int process_msg_open(struct ibtrs_srv *ibtrs,
-			    struct ibnbd_srv_session *srv_sess,
+static int process_msg_open(struct rtrs_srv *rtrs,
+			    struct rnbd_srv_session *srv_sess,
 			    const void *msg, size_t len,
 			    void *data, size_t datalen)
 {
 	int ret;
-	struct ibnbd_srv_dev *srv_dev;
-	struct ibnbd_srv_sess_dev *srv_sess_dev;
-	const struct ibnbd_msg_open *open_msg = msg;
+	struct rnbd_srv_dev *srv_dev;
+	struct rnbd_srv_sess_dev *srv_sess_dev;
+	const struct rnbd_msg_open *open_msg = msg;
 	fmode_t open_flags;
 	char *full_path;
-	struct ibnbd_dev *ibnbd_dev;
-	struct ibnbd_msg_open_rsp *rsp = data;
+	struct rnbd_dev *rnbd_dev;
+	struct rnbd_msg_open_rsp *rsp = data;
 
 	pr_debug("Open message received: session='%s' path='%s' access_mode=%d\n",
 		 srv_sess->sessname, open_msg->dev_name,
 		 open_msg->access_mode);
 	open_flags = FMODE_READ;
-	if (open_msg->access_mode != IBNBD_ACCESS_RO)
+	if (open_msg->access_mode != RNBD_ACCESS_RO)
 		open_flags |= FMODE_WRITE;
 
 	mutex_lock(&srv_sess->lock);
@@ -747,7 +747,7 @@ static int process_msg_open(struct ibtrs_srv *ibtrs,
 		ret = -EINVAL;
 		goto reject;
 	}
-	full_path = ibnbd_srv_get_full_path(srv_sess, open_msg->dev_name);
+	full_path = rnbd_srv_get_full_path(srv_sess, open_msg->dev_name);
 	if (IS_ERR(full_path)) {
 		ret = PTR_ERR(full_path);
 		pr_err("Opening device '%s' for client %s failed, failed to get device full path, err: %d\n",
@@ -755,26 +755,26 @@ static int process_msg_open(struct ibtrs_srv *ibtrs,
 		goto reject;
 	}
 
-	ibnbd_dev = ibnbd_dev_open(full_path, open_flags,
-				   &srv_sess->sess_bio_set, ibnbd_endio);
-	if (IS_ERR(ibnbd_dev)) {
+	rnbd_dev = rnbd_dev_open(full_path, open_flags,
+				   &srv_sess->sess_bio_set, rnbd_endio);
+	if (IS_ERR(rnbd_dev)) {
 		pr_err("Opening device '%s' on session %s failed, failed to open the block device, err: %ld\n",
-		       full_path, srv_sess->sessname, PTR_ERR(ibnbd_dev));
-		ret = PTR_ERR(ibnbd_dev);
+		       full_path, srv_sess->sessname, PTR_ERR(rnbd_dev));
+		ret = PTR_ERR(rnbd_dev);
 		goto free_path;
 	}
 
-	srv_dev = ibnbd_srv_get_or_create_srv_dev(ibnbd_dev, srv_sess,
+	srv_dev = rnbd_srv_get_or_create_srv_dev(rnbd_dev, srv_sess,
 						  open_msg->access_mode);
 	if (IS_ERR(srv_dev)) {
 		pr_err("Opening device '%s' on session %s failed, creating srv_dev failed, err: %ld\n",
 		       full_path, srv_sess->sessname, PTR_ERR(srv_dev));
 		ret = PTR_ERR(srv_dev);
-		goto ibnbd_dev_close;
+		goto rnbd_dev_close;
 	}
 
-	srv_sess_dev = ibnbd_srv_create_set_sess_dev(srv_sess, open_msg,
-						     ibnbd_dev, open_flags,
+	srv_sess_dev = rnbd_srv_create_set_sess_dev(srv_sess, open_msg,
+						     rnbd_dev, open_flags,
 						     srv_dev);
 	if (IS_ERR(srv_sess_dev)) {
 		pr_err("Opening device '%s' on session %s failed, creating sess_dev failed, err: %ld\n",
@@ -789,21 +789,21 @@ static int process_msg_open(struct ibtrs_srv *ibtrs,
 	 */
 	mutex_lock(&srv_dev->lock);
 	if (!srv_dev->dev_kobj.state_in_sysfs) {
-		ret = ibnbd_srv_create_dev_sysfs(srv_dev, ibnbd_dev->bdev,
-						 ibnbd_dev->name);
+		ret = rnbd_srv_create_dev_sysfs(srv_dev, rnbd_dev->bdev,
+						 rnbd_dev->name);
 		if (ret) {
 			mutex_unlock(&srv_dev->lock);
-			ibnbd_srv_err(srv_sess_dev,
+			rnbd_srv_err(srv_sess_dev,
 				      "Opening device failed, failed to create device sysfs files, err: %d\n",
 				      ret);
 			goto free_srv_sess_dev;
 		}
 	}
 
-	ret = ibnbd_srv_create_dev_session_sysfs(srv_sess_dev);
+	ret = rnbd_srv_create_dev_session_sysfs(srv_sess_dev);
 	if (ret) {
 		mutex_unlock(&srv_dev->lock);
-		ibnbd_srv_err(srv_sess_dev,
+		rnbd_srv_err(srv_sess_dev,
 			      "Opening device failed, failed to create dev client sysfs files, err: %d\n",
 			      ret);
 		goto free_srv_sess_dev;
@@ -814,12 +814,12 @@ static int process_msg_open(struct ibtrs_srv *ibtrs,
 
 	list_add(&srv_sess_dev->sess_list, &srv_sess->sess_dev_list);
 
-	ibnbd_srv_info(srv_sess_dev, "Opened device '%s'\n", srv_dev->id);
+	rnbd_srv_info(srv_sess_dev, "Opened device '%s'\n", srv_dev->id);
 
 	kfree(full_path);
 
 fill_response:
-	ibnbd_srv_fill_msg_open_rsp(rsp, srv_sess_dev);
+	rnbd_srv_fill_msg_open_rsp(rsp, srv_sess_dev);
 	mutex_unlock(&srv_sess->lock);
 	return 0;
 
@@ -829,14 +829,14 @@ free_srv_sess_dev:
 	write_unlock(&srv_sess->index_lock);
 	kfree(srv_sess_dev);
 srv_dev_put:
-	if (open_msg->access_mode != IBNBD_ACCESS_RO) {
+	if (open_msg->access_mode != RNBD_ACCESS_RO) {
 		mutex_lock(&srv_dev->lock);
 		srv_dev->open_write_cnt--;
 		mutex_unlock(&srv_dev->lock);
 	}
-	ibnbd_put_srv_dev(srv_dev);
-ibnbd_dev_close:
-	ibnbd_dev_close(ibnbd_dev);
+	rnbd_put_srv_dev(srv_dev);
+rnbd_dev_close:
+	rnbd_dev_close(rnbd_dev);
 free_path:
 	kfree(full_path);
 reject:
@@ -844,40 +844,40 @@ reject:
 	return ret;
 }
 
-static struct ibtrs_srv_ctx *ibtrs_ctx;
+static struct rtrs_srv_ctx *rtrs_ctx;
 
-static int __init ibnbd_srv_init_module(void)
+static int __init rnbd_srv_init_module(void)
 {
 	int err;
 
 	pr_info("Loading module %s, proto %s\n",
-		KBUILD_MODNAME, IBNBD_PROTO_VER_STRING);
+		KBUILD_MODNAME, RNBD_PROTO_VER_STRING);
 
-	ibtrs_ctx = ibtrs_srv_open(ibnbd_srv_rdma_ev, ibnbd_srv_link_ev,
+	rtrs_ctx = rtrs_srv_open(rnbd_srv_rdma_ev, rnbd_srv_link_ev,
 				   port_nr);
-	if (unlikely(IS_ERR(ibtrs_ctx))) {
-		err = PTR_ERR(ibtrs_ctx);
-		pr_err("ibtrs_srv_open(), err: %d\n", err);
+	if (unlikely(IS_ERR(rtrs_ctx))) {
+		err = PTR_ERR(rtrs_ctx);
+		pr_err("rtrs_srv_open(), err: %d\n", err);
 		return err;
 	}
 
-	err = ibnbd_srv_create_sysfs_files();
+	err = rnbd_srv_create_sysfs_files();
 	if (err) {
-		pr_err("ibnbd_srv_create_sysfs_files(), err: %d\n", err);
-		ibtrs_srv_close(ibtrs_ctx);
+		pr_err("rnbd_srv_create_sysfs_files(), err: %d\n", err);
+		rtrs_srv_close(rtrs_ctx);
 		return err;
 	}
 
 	return 0;
 }
 
-static void __exit ibnbd_srv_cleanup_module(void)
+static void __exit rnbd_srv_cleanup_module(void)
 {
-	ibtrs_srv_close(ibtrs_ctx);
+	rtrs_srv_close(rtrs_ctx);
 	WARN_ON(!list_empty(&sess_list));
-	ibnbd_srv_destroy_sysfs_files();
+	rnbd_srv_destroy_sysfs_files();
 	pr_info("Module unloaded\n");
 }
 
-module_init(ibnbd_srv_init_module);
-module_exit(ibnbd_srv_cleanup_module);
+module_init(rnbd_srv_init_module);
+module_exit(rnbd_srv_cleanup_module);

@@ -27,8 +27,8 @@
  *          Lutz Pogrell <lutz.pogrell@cloud.ionos.com>
  */
 
-#ifndef IBNBD_CLT_H
-#define IBNBD_CLT_H
+#ifndef RNBD_CLT_H
+#define RNBD_CLT_H
 
 #include <linux/wait.h>
 #include <linux/in.h>
@@ -36,58 +36,58 @@
 #include <linux/blk-mq.h>
 #include <linux/refcount.h>
 
-#include "ibtrs.h"
-#include "ibnbd-proto.h"
-#include "ibnbd-log.h"
+#include "rtrs.h"
+#include "rnbd-proto.h"
+#include "rnbd-log.h"
 
 #define BMAX_SEGMENTS 29
 #define RECONNECT_DELAY 30
 #define MAX_RECONNECTS -1
 
-enum ibnbd_clt_dev_state {
+enum rnbd_clt_dev_state {
 	DEV_STATE_INIT,
 	DEV_STATE_MAPPED,
 	DEV_STATE_MAPPED_DISCONNECTED,
 	DEV_STATE_UNMAPPED,
 };
 
-struct ibnbd_iu_comp {
+struct rnbd_iu_comp {
 	wait_queue_head_t wait;
 	int errno;
 };
 
-struct ibnbd_iu {
+struct rnbd_iu {
 	union {
 		struct request *rq; /* for block io */
 		void *buf; /* for user messages */
 	};
-	struct ibtrs_permit	*permit;
+	struct rtrs_permit	*permit;
 	union {
 		/* use to send msg associated with a dev */
-		struct ibnbd_clt_dev *dev;
+		struct rnbd_clt_dev *dev;
 		/* use to send msg associated with a sess */
-		struct ibnbd_clt_session *sess;
+		struct rnbd_clt_session *sess;
 	};
 	blk_status_t		status;
 	struct scatterlist	sglist[BMAX_SEGMENTS];
 	struct work_struct	work;
 	int			errno;
-	struct ibnbd_iu_comp	comp;
+	struct rnbd_iu_comp	comp;
 	atomic_t		refcount;
 };
 
-struct ibnbd_cpu_qlist {
+struct rnbd_cpu_qlist {
 	struct list_head	requeue_list;
 	spinlock_t		requeue_lock;
 	unsigned int		cpu;
 };
 
-struct ibnbd_clt_session {
+struct rnbd_clt_session {
 	struct list_head        list;
-	struct ibtrs_clt        *ibtrs;
-	wait_queue_head_t       ibtrs_waitq;
-	bool                    ibtrs_ready;
-	struct ibnbd_cpu_qlist	__percpu
+	struct rtrs_clt        *rtrs;
+	wait_queue_head_t       rtrs_waitq;
+	bool                    rtrs_ready;
+	struct rnbd_cpu_qlist	__percpu
 				*cpu_queues;
 	DECLARE_BITMAP(cpu_queues_bm, NR_CPUS);
 	int	__percpu	*cpu_rr; /* per-cpu var for CPU round-robin */
@@ -96,7 +96,7 @@ struct ibnbd_clt_session {
 	u32			max_io_size;
 	struct blk_mq_tag_set	tag_set;
 	struct mutex		lock; /* protects state and devs_list */
-	struct list_head        devs_list; /* list of struct ibnbd_clt_dev */
+	struct list_head        devs_list; /* list of struct rnbd_clt_dev */
 	refcount_t		refcount;
 	char			sessname[NAME_MAX];
 	u8			ver; /* protocol version */
@@ -105,24 +105,24 @@ struct ibnbd_clt_session {
 /**
  * Submission queues.
  */
-struct ibnbd_queue {
+struct rnbd_queue {
 	struct list_head	requeue_list;
 	unsigned long		in_list;
-	struct ibnbd_clt_dev	*dev;
+	struct rnbd_clt_dev	*dev;
 	struct blk_mq_hw_ctx	*hctx;
 };
 
-struct ibnbd_clt_dev {
-	struct ibnbd_clt_session	*sess;
+struct rnbd_clt_dev {
+	struct rnbd_clt_session	*sess;
 	struct request_queue	*queue;
-	struct ibnbd_queue	*hw_queues;
+	struct rnbd_queue	*hw_queues;
 	u32			device_id;
 	/* local Idr index - used to track minor number allocations. */
 	u32			clt_device_id;
 	struct mutex		lock;
-	enum ibnbd_clt_dev_state	dev_state;
+	enum rnbd_clt_dev_state	dev_state;
 	char			pathname[NAME_MAX];
-	enum ibnbd_access_mode	access_mode;
+	enum rnbd_access_mode	access_mode;
 	bool			read_only;
 	bool			rotational;
 	u32			max_hw_sectors;
@@ -144,26 +144,26 @@ struct ibnbd_clt_dev {
 	struct work_struct	unmap_on_rmmod_work;
 };
 
-/* ibnbd-clt.c */
+/* rnbd-clt.c */
 
-struct ibnbd_clt_dev *ibnbd_clt_map_device(const char *sessname,
-					   struct ibtrs_addr *paths,
+struct rnbd_clt_dev *rnbd_clt_map_device(const char *sessname,
+					   struct rtrs_addr *paths,
 					   size_t path_cnt,
 					   const char *pathname,
-					   enum ibnbd_access_mode access_mode);
-int ibnbd_clt_unmap_device(struct ibnbd_clt_dev *dev, bool force,
+					   enum rnbd_access_mode access_mode);
+int rnbd_clt_unmap_device(struct rnbd_clt_dev *dev, bool force,
 			   const struct attribute *sysfs_self);
 
-int ibnbd_clt_remap_device(struct ibnbd_clt_dev *dev);
-int ibnbd_clt_resize_disk(struct ibnbd_clt_dev *dev, size_t newsize);
+int rnbd_clt_remap_device(struct rnbd_clt_dev *dev);
+int rnbd_clt_resize_disk(struct rnbd_clt_dev *dev, size_t newsize);
 
-/* ibnbd-clt-sysfs.c */
+/* rnbd-clt-sysfs.c */
 
-int ibnbd_clt_create_sysfs_files(void);
+int rnbd_clt_create_sysfs_files(void);
 
-void ibnbd_clt_destroy_sysfs_files(void);
-void ibnbd_clt_destroy_default_group(void);
+void rnbd_clt_destroy_sysfs_files(void);
+void rnbd_clt_destroy_default_group(void);
 
-void ibnbd_clt_remove_dev_symlink(struct ibnbd_clt_dev *dev);
+void rnbd_clt_remove_dev_symlink(struct rnbd_clt_dev *dev);
 
-#endif /* IBNBD_CLT_H */
+#endif /* RNBD_CLT_H */
