@@ -2,29 +2,11 @@
 /*
  * InfiniBand Transport Layer
  *
- * Copyright (c) 2014 - 2017 ProfitBricks GmbH. All rights reserved.
- * Authors: Fabian Holler <mail@fholler.de>
- *          Jack Wang <jinpu.wang@profitbricks.com>
- *          Kleber Souza <kleber.souza@profitbricks.com>
- *          Danil Kipnis <danil.kipnis@profitbricks.com>
- *          Roman Penyaev <roman.penyaev@profitbricks.com>
- *          Milind Dumbare <Milind.dumbare@gmail.com>
- *
- * Copyright (c) 2017 - 2018 ProfitBricks GmbH. All rights reserved.
- * Authors: Danil Kipnis <danil.kipnis@profitbricks.com>
- *          Roman Penyaev <roman.penyaev@profitbricks.com>
+ * Copyright (c) 2014 - 2018 ProfitBricks GmbH. All rights reserved.
  *
  * Copyright (c) 2018 - 2019 1&1 IONOS Cloud GmbH. All rights reserved.
- * Authors: Roman Penyaev <roman.penyaev@profitbricks.com>
- *          Jinpu Wang <jinpu.wang@cloud.ionos.com>
- *          Danil Kipnis <danil.kipnis@cloud.ionos.com>
- */
-
-/* Copyright (c) 2019 1&1 IONOS SE. All rights reserved.
- * Authors: Jack Wang <jinpu.wang@cloud.ionos.com>
- *          Danil Kipnis <danil.kipnis@cloud.ionos.com>
- *          Guoqing Jiang <guoqing.jiang@cloud.ionos.com>
- *          Lutz Pogrell <lutz.pogrell@cloud.ionos.com>
+ *
+ * Copyright (c) 2019 1&1 IONOS SE. All rights reserved.
  */
 #ifndef RTRS_H
 #define RTRS_H
@@ -65,8 +47,8 @@ typedef void (link_clt_ev_fn)(void *priv, enum rtrs_clt_link_ev ev);
  * rtrs_clt_open() - Open a session to an RTRS server
  * @priv: User supplied private data.
  * @link_ev: Event notification for connection state changes
- * 	@priv: User supplied data that was passed to rtrs_clt_open()
- * 	@ev: Occurred event
+ *	@priv: User supplied data that was passed to rtrs_clt_open()
+ *	@ev: Occurred event
  * @sessname: name of the session
  * @paths: Paths to be established defined by their src and dst addresses
  * @path_cnt: Number of elemnts in the @paths array
@@ -180,9 +162,9 @@ typedef void (rtrs_conf_fn)(void *priv, int errno);
  * On dir=WRITE rtrs client will rdma write data in sg to server side.
  */
 int rtrs_clt_request(int dir, rtrs_conf_fn *conf, struct rtrs_clt *sess,
-		      struct rtrs_permit *permit, void *priv, const struct kvec *vec,
-		      size_t nr, size_t len, struct scatterlist *sg,
-		      unsigned int sg_cnt);
+		      struct rtrs_permit *permit, void *priv,
+		      const struct kvec *vec, size_t nr, size_t len,
+		      struct scatterlist *sg, unsigned int sg_cnt);
 
 /**
  * rtrs_attrs - RTRS session attributes

@@ -2,29 +2,11 @@
 /*
  * InfiniBand Transport Layer
  *
- * Copyright (c) 2014 - 2017 ProfitBricks GmbH. All rights reserved.
- * Authors: Fabian Holler <mail@fholler.de>
- *          Jack Wang <jinpu.wang@profitbricks.com>
- *          Kleber Souza <kleber.souza@profitbricks.com>
- *          Danil Kipnis <danil.kipnis@profitbricks.com>
- *          Roman Penyaev <roman.penyaev@profitbricks.com>
- *          Milind Dumbare <Milind.dumbare@gmail.com>
- *
- * Copyright (c) 2017 - 2018 ProfitBricks GmbH. All rights reserved.
- * Authors: Danil Kipnis <danil.kipnis@profitbricks.com>
- *          Roman Penyaev <roman.penyaev@profitbricks.com>
- *          Swapnil Ingle <swapnil.ingle@profitbricks.com>
+ * Copyright (c) 2014 - 2018 ProfitBricks GmbH. All rights reserved.
  *
  * Copyright (c) 2018 - 2019 1&1 IONOS Cloud GmbH. All rights reserved.
- * Authors: Roman Penyaev <roman.penyaev@profitbricks.com>
- *          Jinpu Wang <jinpu.wang@cloud.ionos.com>
- *          Danil Kipnis <danil.kipnis@cloud.ionos.com>
- */
-/* Copyright (c) 2019 1&1 IONOS SE. All rights reserved.
- * Authors: Jack Wang <jinpu.wang@cloud.ionos.com>
- *          Danil Kipnis <danil.kipnis@cloud.ionos.com>
- *          Guoqing Jiang <guoqing.jiang@cloud.ionos.com>
- *          Lutz Pogrell <lutz.pogrell@cloud.ionos.com>
+ *
+ * Copyright (c) 2019 1&1 IONOS SE. All rights reserved.
  */
 
 #ifndef RTRS_PRI_H
@@ -88,9 +70,9 @@ struct rtrs_ib_dev;
 
 struct rtrs_ib_dev_pool_ops {
 	struct rtrs_ib_dev *(*alloc)(void);
-	void (*free)(struct rtrs_ib_dev *);
-	int (*init)(struct rtrs_ib_dev *);
-	void (*deinit)(struct rtrs_ib_dev *);
+	void (*free)(struct rtrs_ib_dev *dev);
+	int (*init)(struct rtrs_ib_dev *dev);
+	void (*deinit)(struct rtrs_ib_dev *dev);
 };
 
 struct rtrs_ib_dev_pool {
@@ -113,7 +95,7 @@ struct rtrs_con {
 	struct ib_qp		*qp;
 	struct ib_cq		*cq;
 	struct rdma_cm_id	*cm_id;
-	unsigned		cid;
+	unsigned int		cid;
 };
 
 typedef void (rtrs_hb_handler_t)(struct rtrs_con *con);
@@ -133,9 +115,9 @@ struct rtrs_sess {
 	rtrs_hb_handler_t	*hb_err_handler;
 	struct workqueue_struct *hb_wq;
 	struct delayed_work	hb_dwork;
-	unsigned		hb_interval_ms;
-	unsigned		hb_missed_cnt;
-	unsigned		hb_missed_max;
+	unsigned int		hb_interval_ms;
+	unsigned int		hb_missed_cnt;
+	unsigned int		hb_missed_max;
 };
 
 struct rtrs_iu {
@@ -199,10 +181,12 @@ struct rtrs_sg_desc {
  */
 struct rtrs_msg_conn_req {
 	u8		__cma_version; /* Is set to 0 by cma.c in case of
-					* AF_IB, do not touch that. */
+					* AF_IB, do not touch that.
+					*/
 	u8		__ip_version;  /* On sender side that should be
 					* set to 0, or cma_save_ip_info()
-					* extract garbage and will fail. */
+					* extract garbage and will fail.
+					*/
 	__le16		magic;
 	__le16		version;
 	__le16		cid;
@@ -307,50 +291,49 @@ struct rtrs_msg_rdma_hdr {
 /* rtrs.c */
 
 struct rtrs_iu *rtrs_iu_alloc(u32 queue_size, size_t size, gfp_t t,
-				struct ib_device *dev,
-				enum dma_data_direction,
-				void (*done)(struct ib_cq *cq, struct ib_wc *wc));
+			      struct ib_device *dev, enum dma_data_direction,
+			      void (*done)(struct ib_cq *cq, struct ib_wc *wc));
 void rtrs_iu_free(struct rtrs_iu *iu, enum dma_data_direction dir,
-		   struct ib_device *dev, u32 queue_size);
+		  struct ib_device *dev, u32 queue_size);
 int rtrs_iu_post_recv(struct rtrs_con *con, struct rtrs_iu *iu);
 int rtrs_iu_post_send(struct rtrs_con *con, struct rtrs_iu *iu, size_t size,
-		       struct ib_send_wr *head);
+		      struct ib_send_wr *head);
 int rtrs_iu_post_rdma_write_imm(struct rtrs_con *con, struct rtrs_iu *iu,
-				 struct ib_sge *sge, unsigned int num_sge,
-				 u32 rkey, u64 rdma_addr, u32 imm_data,
-				 enum ib_send_flags flags,
-				 struct ib_send_wr *head);
+				struct ib_sge *sge, unsigned int num_sge,
+				u32 rkey, u64 rdma_addr, u32 imm_data,
+				enum ib_send_flags flags,
+				struct ib_send_wr *head);
 
 int rtrs_post_recv_empty(struct rtrs_con *con, struct ib_cqe *cqe);
 int rtrs_post_recv_empty_x2(struct rtrs_con *con, struct ib_cqe *cqe);
 int rtrs_post_rdma_write_imm_empty(struct rtrs_con *con, struct ib_cqe *cqe,
-				    u32 imm_data, enum ib_send_flags flags,
-				    struct ib_send_wr *head);
+				   u32 imm_data, enum ib_send_flags flags,
+				   struct ib_send_wr *head);
 
 int rtrs_cq_qp_create(struct rtrs_sess *rtrs_sess, struct rtrs_con *con,
-		       u32 max_send_sge, int cq_vector, u16 cq_size,
-		       u16 wr_queue_size, enum ib_poll_context poll_ctx);
+		      u32 max_send_sge, int cq_vector, u16 cq_size,
+		      u16 wr_queue_size, enum ib_poll_context poll_ctx);
 void rtrs_cq_qp_destroy(struct rtrs_con *con);
 
 void rtrs_init_hb(struct rtrs_sess *sess, struct ib_cqe *cqe,
-		   unsigned interval_ms, unsigned missed_max,
-		   rtrs_hb_handler_t *err_handler,
-		   struct workqueue_struct *wq);
+		  unsigned int interval_ms, unsigned int missed_max,
+		  rtrs_hb_handler_t *err_handler,
+		  struct workqueue_struct *wq);
 void rtrs_start_hb(struct rtrs_sess *sess);
 void rtrs_stop_hb(struct rtrs_sess *sess);
 void rtrs_send_hb_ack(struct rtrs_sess *sess);
 
 void rtrs_ib_dev_pool_init(enum ib_pd_flags pd_flags,
-			    struct rtrs_ib_dev_pool *pool);
+			   struct rtrs_ib_dev_pool *pool);
 void rtrs_ib_dev_pool_deinit(struct rtrs_ib_dev_pool *pool);
 
 struct rtrs_ib_dev *rtrs_ib_dev_find_or_add(struct ib_device *ib_dev,
-					      struct rtrs_ib_dev_pool *pool);
+					    struct rtrs_ib_dev_pool *pool);
 int rtrs_ib_dev_put(struct rtrs_ib_dev *dev);
 
 static inline u32 rtrs_to_imm(u32 type, u32 payload)
 {
-	BUILD_BUG_ON(32 != MAX_IMM_PAYL_BITS + MAX_IMM_TYPE_BITS);
+	BUILD_BUG_ON(MAX_IMM_PAYL_BITS + MAX_IMM_TYPE_BITS != 32);
 	BUILD_BUG_ON(RTRS_LAST_IMM > (1<<MAX_IMM_TYPE_BITS));
 	return ((type & MAX_IMM_TYPE_MASK) << MAX_IMM_PAYL_BITS) |
 		(payload & MAX_IMM_PAYL_MASK);

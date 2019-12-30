@@ -2,29 +2,11 @@
 /*
  * InfiniBand Transport Layer
  *
- * Copyright (c) 2014 - 2017 ProfitBricks GmbH. All rights reserved.
- * Authors: Fabian Holler <mail@fholler.de>
- *          Jack Wang <jinpu.wang@profitbricks.com>
- *          Kleber Souza <kleber.souza@profitbricks.com>
- *          Danil Kipnis <danil.kipnis@profitbricks.com>
- *          Roman Penyaev <roman.penyaev@profitbricks.com>
- *          Milind Dumbare <Milind.dumbare@gmail.com>
- *
- * Copyright (c) 2017 - 2018 ProfitBricks GmbH. All rights reserved.
- * Authors: Danil Kipnis <danil.kipnis@profitbricks.com>
- *          Roman Penyaev <roman.penyaev@profitbricks.com>
- *          Swapnil Ingle <swapnil.ingle@profitbricks.com>
+ * Copyright (c) 2014 - 2018 ProfitBricks GmbH. All rights reserved.
  *
  * Copyright (c) 2018 - 2019 1&1 IONOS Cloud GmbH. All rights reserved.
- * Authors: Roman Penyaev <roman.penyaev@profitbricks.com>
- *          Jinpu Wang <jinpu.wang@cloud.ionos.com>
- *          Danil Kipnis <danil.kipnis@cloud.ionos.com>
- */
-/* Copyright (c) 2019 1&1 IONOS SE. All rights reserved.
- * Authors: Jack Wang <jinpu.wang@cloud.ionos.com>
- *          Danil Kipnis <danil.kipnis@cloud.ionos.com>
- *          Guoqing Jiang <guoqing.jiang@cloud.ionos.com>
- *          Lutz Pogrell <lutz.pogrell@cloud.ionos.com>
+ *
+ * Copyright (c) 2019 1&1 IONOS SE. All rights reserved.
  */
 
 #undef pr_fmt
@@ -39,7 +21,6 @@
 
 #define RTRS_CONNECT_TIMEOUT_MS 30000
 
-MODULE_AUTHOR("rnbd@profitbricks.com");
 MODULE_DESCRIPTION("RTRS Client");
 MODULE_LICENSE("GPL");
 
@@ -427,7 +408,8 @@ static void complete_rdma_req(struct rtrs_clt_io_req *req, int errno,
 	if (sess->stats.enable_rdma_lat)
 		rtrs_clt_update_rdma_lat(&sess->stats,
 					  req->dir == DMA_FROM_DEVICE,
-					  jiffies_to_msecs(jiffies - req->start_jiffies));
+					  jiffies_to_msecs(jiffies -
+							   req->start_jiffies));
 	rtrs_clt_decrease_inflight(&sess->stats);
 
 	req->in_use = false;
@@ -447,7 +429,8 @@ static int rtrs_post_send_rdma(struct rtrs_clt_con *con,
 	struct ib_sge sge;
 
 	if (unlikely(!req->sg_size)) {
-		rtrs_wrn(con->c.sess, "Doing RDMA Write failed, no data supplied\n");
+		rtrs_wrn(con->c.sess,
+			 "Doing RDMA Write failed, no data supplied\n");
 		return -EINVAL;
 	}
 
@@ -1243,7 +1226,7 @@ static int alloc_sess_reqs(struct rtrs_clt_sess *sess)
 
 		req->mr = ib_alloc_mr(sess->s.dev->ib_pd, IB_MR_TYPE_MEM_REG,
 				      sess->max_pages_per_mr);
-		if (unlikely(IS_ERR(req->mr))) {
+		if (IS_ERR(req->mr)) {
 			err = PTR_ERR(req->mr);
 			req->mr = NULL;
 			pr_err("Failed to alloc sess->max_pages_per_mr %d\n",
@@ -1875,7 +1858,7 @@ static int create_cm(struct rtrs_clt_con *con)
 	cm_id = rdma_create_id(&init_net, rtrs_clt_rdma_cm_handler, con,
 			       sess->s.dst_addr.ss_family == AF_IB ?
 			       RDMA_PS_IB : RDMA_PS_TCP, IB_QPT_RC);
-	if (unlikely(IS_ERR(cm_id))) {
+	if (IS_ERR(cm_id)) {
 		err = PTR_ERR(cm_id);
 		rtrs_err(s, "Failed to create CM ID, err: %d\n", err);
 
@@ -1901,10 +1884,10 @@ static int create_cm(struct rtrs_clt_con *con)
 	 * for waiting two possible cases: cm_err has something meaningful
 	 * or session state was really changed to error by device removal.
 	 */
-	err = wait_event_interruptible_timeout(sess->state_wq,con->cm_err
-					       || sess->state !=
-					       RTRS_CLT_CONNECTING,
-					       msecs_to_jiffies(RTRS_CONNECT_TIMEOUT_MS));
+	err = wait_event_interruptible_timeout(
+			sess->state_wq,
+			con->cm_err || sess->state != RTRS_CLT_CONNECTING,
+			msecs_to_jiffies(RTRS_CONNECT_TIMEOUT_MS));
 	if (unlikely(err == 0 || err == -ERESTARTSYS)) {
 		if (err == 0)
 			err = -ETIMEDOUT;
@@ -2419,7 +2402,8 @@ static int rtrs_send_sess_info(struct rtrs_clt_sess *sess)
 	/* Wait for state change */
 	wait_event_interruptible_timeout(sess->state_wq,
 					 sess->state != RTRS_CLT_CONNECTING,
-					 msecs_to_jiffies(RTRS_CONNECT_TIMEOUT_MS));
+					 msecs_to_jiffies(
+						 RTRS_CONNECT_TIMEOUT_MS));
 	if (unlikely(READ_ONCE(sess->state) != RTRS_CLT_CONNECTED)) {
 		if (READ_ONCE(sess->state) == RTRS_CLT_CONNECTING_ERR)
 			err = -ECONNRESET;
@@ -2617,7 +2601,7 @@ struct rtrs_clt *rtrs_clt_open(void *priv, link_clt_ev_fn *link_ev,
 	clt = alloc_clt(sessname, paths_num, port, pdu_sz, priv, link_ev,
 			max_segments, reconnect_delay_sec,
 			max_reconnect_attempts);
-	if (unlikely(IS_ERR(clt))) {
+	if (IS_ERR(clt)) {
 		err = PTR_ERR(clt);
 		goto out;
 	}
@@ -2626,7 +2610,7 @@ struct rtrs_clt *rtrs_clt_open(void *priv, link_clt_ev_fn *link_ev,
 
 		sess = alloc_sess(clt, &paths[i], nr_cons_per_session,
 				  max_segments);
-		if (unlikely(IS_ERR(sess))) {
+		if (IS_ERR(sess)) {
 			err = PTR_ERR(sess);
 			rtrs_err(clt, "alloc_sess(), err: %d\n", err);
 			goto close_all_sess;
@@ -2856,7 +2840,7 @@ int rtrs_clt_create_path_from_sysfs(struct rtrs_clt *clt,
 	int err;
 
 	sess = alloc_sess(clt, addr, nr_cons_per_session, clt->max_segments);
-	if (unlikely(IS_ERR(sess)))
+	if (IS_ERR(sess))
 		return PTR_ERR(sess);
 
 	/*
@@ -2925,7 +2909,7 @@ static int __init rtrs_client_init(void)
 		return err;
 	}
 	rtrs_dev_class = class_create(THIS_MODULE, "rtrs-client");
-	if (unlikely(IS_ERR(rtrs_dev_class))) {
+	if (IS_ERR(rtrs_dev_class)) {
 		pr_err("Failed to create rtrs-client dev class\n");
 		return PTR_ERR(rtrs_dev_class);
 	}

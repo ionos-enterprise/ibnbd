@@ -2,29 +2,11 @@
 /*
  * InfiniBand Network Block Driver
  *
- * Copyright (c) 2014 - 2017 ProfitBricks GmbH. All rights reserved.
- * Authors: Fabian Holler <mail@fholler.de>
- *          Jack Wang <jinpu.wang@profitbricks.com>
- *          Kleber Souza <kleber.souza@profitbricks.com>
- *          Danil Kipnis <danil.kipnis@profitbricks.com>
- *          Roman Penyaev <roman.penyaev@profitbricks.com>
- *          Milind Dumbare <Milind.dumbare@gmail.com>
- *
- * Copyright (c) 2017 - 2018 ProfitBricks GmbH. All rights reserved.
- * Authors: Danil Kipnis <danil.kipnis@profitbricks.com>
- *          Roman Penyaev <roman.penyaev@profitbricks.com>
+ * Copyright (c) 2014 - 2018 ProfitBricks GmbH. All rights reserved.
  *
  * Copyright (c) 2018 - 2019 1&1 IONOS Cloud GmbH. All rights reserved.
- * Authors: Roman Penyaev <roman.penyaev@profitbricks.com>
- *          Jack Wang <jinpu.wang@cloud.ionos.com>
- *          Danil Kipnis <danil.kipnis@cloud.ionos.com>
- */
-
-/* Copyright (c) 2019 1&1 IONOS SE. All rights reserved.
- * Authors: Jack Wang <jinpu.wang@cloud.ionos.com>
- *          Danil Kipnis <danil.kipnis@cloud.ionos.com>
- *          Guoqing Jiang <guoqing.jiang@cloud.ionos.com>
- *          Lutz Pogrell <lutz.pogrell@cloud.ionos.com>
+ *
+ * Copyright (c) 2019 1&1 IONOS SE. All rights reserved.
  */
 #undef pr_fmt
 #define pr_fmt(fmt) KBUILD_MODNAME " L" __stringify(__LINE__) ": " fmt
@@ -74,10 +56,8 @@ int rnbd_srv_create_dev_sysfs(struct rnbd_srv_dev *dev,
 	return 0;
 
 err2:
-	kobject_del(&dev->dev_sessions_kobj);
 	kobject_put(&dev->dev_sessions_kobj);
 err:
-	kobject_del(&dev->dev_kobj);
 	kobject_put(&dev->dev_kobj);
 	return ret;
 }
@@ -189,7 +169,6 @@ int rnbd_srv_create_dev_session_sysfs(struct rnbd_srv_sess_dev *sess_dev)
 	return 0;
 
 err:
-	kobject_del(&sess_dev->kobj);
 	kobject_put(&sess_dev->kobj);
 
 	return ret;
@@ -200,12 +179,12 @@ int rnbd_srv_create_sysfs_files(void)
 	int err;
 
 	rnbd_dev_class = class_create(THIS_MODULE, "rnbd-server");
-	if (unlikely(IS_ERR(rnbd_dev_class)))
+	if (IS_ERR(rnbd_dev_class))
 		return PTR_ERR(rnbd_dev_class);
 
 	rnbd_dev = device_create(rnbd_dev_class, NULL,
 				  MKDEV(0, 0), NULL, "ctl");
-	if (unlikely(IS_ERR(rnbd_dev))) {
+	if (IS_ERR(rnbd_dev)) {
 		err = PTR_ERR(rnbd_dev);
 		goto cls_destroy;
 	}

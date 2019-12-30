@@ -2,29 +2,11 @@
 /*
  * InfiniBand Network Block Driver
  *
- * Copyright (c) 2014 - 2017 ProfitBricks GmbH. All rights reserved.
- * Authors: Fabian Holler <mail@fholler.de>
- *          Jack Wang <jinpu.wang@profitbricks.com>
- *          Kleber Souza <kleber.souza@profitbricks.com>
- *          Danil Kipnis <danil.kipnis@profitbricks.com>
- *          Roman Penyaev <roman.penyaev@profitbricks.com>
- *          Milind Dumbare <Milind.dumbare@gmail.com>
- *
- * Copyright (c) 2017 - 2018 ProfitBricks GmbH. All rights reserved.
- * Authors: Danil Kipnis <danil.kipnis@profitbricks.com>
- *          Roman Penyaev <roman.penyaev@profitbricks.com>
- *          Swapnil Ingle <swapnil.ingle@profitbricks.com>
+ * Copyright (c) 2014 - 2018 ProfitBricks GmbH. All rights reserved.
  *
  * Copyright (c) 2018 - 2019 1&1 IONOS Cloud GmbH. All rights reserved.
- * Authors: Roman Penyaev <roman.penyaev@profitbricks.com>
- *          Jack Wang <jinpu.wang@cloud.ionos.com>
- *          Danil Kipnis <danil.kipnis@cloud.ionos.com>
- */
-/* Copyright (c) 2019 1&1 IONOS SE. All rights reserved.
- * Authors: Jack Wang <jinpu.wang@cloud.ionos.com>
- *          Danil Kipnis <danil.kipnis@cloud.ionos.com>
- *          Guoqing Jiang <guoqing.jiang@cloud.ionos.com>
- *          Lutz Pogrell <lutz.pogrell@cloud.ionos.com>
+ *
+ * Copyright (c) 2019 1&1 IONOS SE. All rights reserved.
  */
 
 #undef pr_fmt
@@ -38,7 +20,6 @@
 
 #include "rnbd-clt.h"
 
-MODULE_AUTHOR("rnbd@profitbricks.com");
 MODULE_DESCRIPTION("InfiniBand Network Block Device Client");
 MODULE_LICENSE("GPL");
 
@@ -867,7 +848,7 @@ err:
 static int wait_for_rtrs_connection(struct rnbd_clt_session *sess)
 {
 	wait_event(sess->rtrs_waitq, sess->rtrs_ready);
-	if (unlikely(IS_ERR_OR_NULL(sess->rtrs)))
+	if (IS_ERR_OR_NULL(sess->rtrs))
 		return -ECONNRESET;
 
 	return 0;
@@ -1215,7 +1196,7 @@ find_and_get_or_create_sess(const char *sessname,
 		return sess;
 
 	sess = alloc_sess(sessname);
-	if (unlikely(IS_ERR(sess)))
+	if (IS_ERR(sess))
 		return sess;
 
 	found = find_and_get_or_insert_sess(sess);
@@ -1232,7 +1213,7 @@ find_and_get_or_create_sess(const char *sessname,
 				     sizeof(struct rnbd_iu),
 				     RECONNECT_DELAY, BMAX_SEGMENTS,
 				     MAX_RECONNECTS);
-	if (unlikely(IS_ERR(sess->rtrs))) {
+	if (IS_ERR(sess->rtrs)) {
 		err = PTR_ERR(sess->rtrs);
 		goto wake_up_and_put;
 	}
@@ -1524,11 +1505,11 @@ struct rnbd_clt_dev *rnbd_clt_map_device(const char *sessname,
 		return ERR_PTR(-EEXIST);
 
 	sess = find_and_get_or_create_sess(sessname, paths, path_cnt);
-	if (unlikely(IS_ERR(sess)))
+	if (IS_ERR(sess))
 		return ERR_CAST(sess);
 
 	dev = init_dev(sess, access_mode, pathname);
-	if (unlikely(IS_ERR(dev))) {
+	if (IS_ERR(dev)) {
 		pr_err("map_device: failed to map device '%s' from session %s, can't initialize device, err: %ld\n",
 		       pathname, sess->sessname, PTR_ERR(dev));
 		ret = PTR_ERR(dev);

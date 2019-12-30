@@ -2,29 +2,11 @@
 /*
  * InfiniBand Transport Layer
  *
- * Copyright (c) 2014 - 2017 ProfitBricks GmbH. All rights reserved.
- * Authors: Fabian Holler <mail@fholler.de>
- *          Jack Wang <jinpu.wang@profitbricks.com>
- *          Kleber Souza <kleber.souza@profitbricks.com>
- *          Danil Kipnis <danil.kipnis@profitbricks.com>
- *          Roman Penyaev <roman.penyaev@profitbricks.com>
- *          Milind Dumbare <Milind.dumbare@gmail.com>
- *
- * Copyright (c) 2017 - 2018 ProfitBricks GmbH. All rights reserved.
- * Authors: Danil Kipnis <danil.kipnis@profitbricks.com>
- *          Roman Penyaev <roman.penyaev@profitbricks.com>
+ * Copyright (c) 2014 - 2018 ProfitBricks GmbH. All rights reserved.
  *
  * Copyright (c) 2018 - 2019 1&1 IONOS Cloud GmbH. All rights reserved.
- * Authors: Roman Penyaev <roman.penyaev@profitbricks.com>
- *          Jinpu Wang <jinpu.wang@cloud.ionos.com>
- *          Danil Kipnis <danil.kipnis@cloud.ionos.com>
- */
-
-/* Copyright (c) 2019 1&1 IONOS SE. All rights reserved.
- * Authors: Jack Wang <jinpu.wang@cloud.ionos.com>
- *          Danil Kipnis <danil.kipnis@cloud.ionos.com>
- *          Guoqing Jiang <guoqing.jiang@cloud.ionos.com>
- *          Lutz Pogrell <lutz.pogrell@cloud.ionos.com>
+ *
+ * Copyright (c) 2019 1&1 IONOS SE. All rights reserved.
  */
 #undef pr_fmt
 #define pr_fmt(fmt) KBUILD_MODNAME " L" __stringify(__LINE__) ": " fmt
@@ -35,7 +17,6 @@
 #include "rtrs-pri.h"
 #include "rtrs-log.h"
 
-MODULE_AUTHOR("rnbd@profitbricks.com");
 MODULE_DESCRIPTION("RTRS Core");
 MODULE_LICENSE("GPL");
 
@@ -285,7 +266,7 @@ static int create_cq(struct rtrs_con *con, int cq_vector, u16 cq_size,
 
 	cq = ib_alloc_cq(cm_id->device, con, cq_size,
 			 cq_vector, poll_ctx);
-	if (unlikely(IS_ERR(cq))) {
+	if (IS_ERR(cq)) {
 		rtrs_err(con->sess, "Creating completion queue failed, errno: %ld\n",
 			  PTR_ERR(cq));
 		return PTR_ERR(cq);
@@ -615,14 +596,14 @@ rtrs_ib_dev_find_or_add(struct ib_device *ib_dev,
 		dev = pool->ops->alloc();
 	else
 		dev = kzalloc(sizeof(*dev), GFP_KERNEL);
-	if (unlikely(IS_ERR_OR_NULL(dev)))
+	if (IS_ERR_OR_NULL(dev))
 		goto out_err;
 
 	kref_init(&dev->ref);
 	dev->pool = pool;
 	dev->ib_dev = ib_dev;
 	dev->ib_pd = ib_alloc_pd(ib_dev, pool->pd_flags);
-	if (unlikely(IS_ERR(dev->ib_pd)))
+	if (IS_ERR(dev->ib_pd))
 		goto out_free_dev;
 
 	if (pool->ops && pool->ops->init && pool->ops->init(dev))

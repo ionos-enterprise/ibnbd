@@ -2,29 +2,11 @@
 /*
  * InfiniBand Network Block Driver
  *
- * Copyright (c) 2014 - 2017 ProfitBricks GmbH. All rights reserved.
- * Authors: Fabian Holler <mail@fholler.de>
- *          Jack Wang <jinpu.wang@profitbricks.com>
- *          Kleber Souza <kleber.souza@profitbricks.com>
- *          Danil Kipnis <danil.kipnis@profitbricks.com>
- *          Roman Penyaev <roman.penyaev@profitbricks.com>
- *          Milind Dumbare <Milind.dumbare@gmail.com>
- *
- * Copyright (c) 2017 - 2018 ProfitBricks GmbH. All rights reserved.
- * Authors: Danil Kipnis <danil.kipnis@profitbricks.com>
- *          Roman Penyaev <roman.penyaev@profitbricks.com>
- *          Swapnil Ingle <swapnil.ingle@profitbricks.com>
+ * Copyright (c) 2014 - 2018 ProfitBricks GmbH. All rights reserved.
  *
  * Copyright (c) 2018 - 2019 1&1 IONOS Cloud GmbH. All rights reserved.
- * Authors: Roman Penyaev <roman.penyaev@profitbricks.com>
- *          Jack Wang <jinpu.wang@cloud.ionos.com>
- *          Danil Kipnis <danil.kipnis@cloud.ionos.com>
- */
-/* Copyright (c) 2019 1&1 IONOS SE. All rights reserved.
- * Authors: Jack Wang <jinpu.wang@cloud.ionos.com>
- *          Danil Kipnis <danil.kipnis@cloud.ionos.com>
- *          Guoqing Jiang <guoqing.jiang@cloud.ionos.com>
- *          Lutz Pogrell <lutz.pogrell@cloud.ionos.com>
+ *
+ * Copyright (c) 2019 1&1 IONOS SE. All rights reserved.
  */
 
 #undef pr_fmt
@@ -573,7 +555,7 @@ static ssize_t rnbd_clt_map_device_store(struct kobject *kobj,
 
 	dev = rnbd_clt_map_device(sessname, paths, path_cnt, pathname,
 				   access_mode);
-	if (unlikely(IS_ERR(dev))) {
+	if (IS_ERR(dev)) {
 		ret = PTR_ERR(dev);
 		goto out;
 	}
@@ -619,13 +601,13 @@ int rnbd_clt_create_sysfs_files(void)
 	int err;
 
 	rnbd_dev_class = class_create(THIS_MODULE, "rnbd-client");
-	if (unlikely(IS_ERR(rnbd_dev_class)))
+	if (IS_ERR(rnbd_dev_class))
 		return PTR_ERR(rnbd_dev_class);
 
 	rnbd_dev = device_create_with_groups(rnbd_dev_class, NULL,
 					      MKDEV(0, 0), NULL,
 					      default_attr_groups, "ctl");
-	if (unlikely(IS_ERR(rnbd_dev))) {
+	if (IS_ERR(rnbd_dev)) {
 		err = PTR_ERR(rnbd_dev);
 		goto cls_destroy;
 	}

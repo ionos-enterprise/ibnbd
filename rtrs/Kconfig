@@ -9,6 +9,8 @@ config INFINIBAND_RTRS_CLIENT
 	depends on INFINIBAND_ADDR_TRANS
 	select INFINIBAND_RTRS
 	help
+	  RDMA transport client module.
+
 	  RTRS client allows for simplified data transfer and connection
 	  establishment over RDMA (InfiniBand, RoCE, iWarp). Uses BIO-like
 	  READ/WRITE semantics and provides multipath capabilities.
@@ -18,5 +20,8 @@ config INFINIBAND_RTRS_SERVER
 	depends on INFINIBAND_ADDR_TRANS
 	select INFINIBAND_RTRS
 	help
+	  RDMA transport server module.
+
 	  RTRS server module processing connection and IO requests received
-	  from the RTRS client module.
+	  from the RTRS client module, it will pass the IO requests to its
+	  user eg. RNBD_server.

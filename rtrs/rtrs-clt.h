@@ -2,29 +2,11 @@
 /*
  * InfiniBand Transport Layer
  *
- * Copyright (c) 2014 - 2017 ProfitBricks GmbH. All rights reserved.
- * Authors: Fabian Holler <mail@fholler.de>
- *          Jack Wang <jinpu.wang@profitbricks.com>
- *          Kleber Souza <kleber.souza@profitbricks.com>
- *          Danil Kipnis <danil.kipnis@profitbricks.com>
- *          Roman Penyaev <roman.penyaev@profitbricks.com>
- *          Milind Dumbare <Milind.dumbare@gmail.com>
- *
- * Copyright (c) 2017 - 2018 ProfitBricks GmbH. All rights reserved.
- * Authors: Danil Kipnis <danil.kipnis@profitbricks.com>
- *          Roman Penyaev <roman.penyaev@profitbricks.com>
- *          Swapnil Ingle <swapnil.ingle@profitbricks.com>
+ * Copyright (c) 2014 - 2018 ProfitBricks GmbH. All rights reserved.
  *
  * Copyright (c) 2018 - 2019 1&1 IONOS Cloud GmbH. All rights reserved.
- * Authors: Roman Penyaev <roman.penyaev@profitbricks.com>
- *          Jinpu Wang <jinpu.wang@cloud.ionos.com>
- *          Danil Kipnis <danil.kipnis@cloud.ionos.com>
- */
-/* Copyright (c) 2019 1&1 IONOS SE. All rights reserved.
- * Authors: Jack Wang <jinpu.wang@cloud.ionos.com>
- *          Danil Kipnis <danil.kipnis@cloud.ionos.com>
- *          Guoqing Jiang <guoqing.jiang@cloud.ionos.com>
- *          Lutz Pogrell <lutz.pogrell@cloud.ionos.com>
+ *
+ * Copyright (c) 2019 1&1 IONOS SE. All rights reserved.
  */
 
 #ifndef RTRS_CLT_H
@@ -132,7 +114,7 @@ struct rtrs_clt_con {
 	struct rtrs_con	c;
 	struct rtrs_iu		*rsp_ius;
 	u32			queue_size;
-	unsigned		cpu;
+	unsigned int		cpu;
 	atomic_t		io_cnt;
 	int			cm_err;
 };
@@ -191,7 +173,7 @@ struct rtrs_clt_sess {
 	struct rtrs_clt_io_req	*reqs;
 	struct delayed_work	reconnect_dwork;
 	struct work_struct	close_work;
-	unsigned		reconnect_attempts;
+	unsigned int		reconnect_attempts;
 	bool			established;
 	struct rtrs_rbuf	*rbufs;
 	size_t			max_io_size;
@@ -224,9 +206,9 @@ struct rtrs_clt {
 	struct mutex		paths_ev_mutex;
 	char			sessname[NAME_MAX];
 	short			port;
-	unsigned		max_reconnect_attempts;
-	unsigned		reconnect_delay_sec;
-	unsigned		max_segments;
+	unsigned int		max_reconnect_attempts;
+	unsigned int		reconnect_delay_sec;
+	unsigned int		max_segments;
 	void			*permits;
 	unsigned long		*permits_map;
 	size_t			queue_depth;

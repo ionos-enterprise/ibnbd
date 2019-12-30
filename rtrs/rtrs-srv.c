@@ -2,29 +2,11 @@
 /*
  * InfiniBand Transport Layer
  *
- * Copyright (c) 2014 - 2017 ProfitBricks GmbH. All rights reserved.
- * Authors: Fabian Holler <mail@fholler.de>
- *          Jack Wang <jinpu.wang@profitbricks.com>
- *          Kleber Souza <kleber.souza@profitbricks.com>
- *          Danil Kipnis <danil.kipnis@profitbricks.com>
- *          Roman Penyaev <roman.penyaev@profitbricks.com>
- *          Milind Dumbare <Milind.dumbare@gmail.com>
- *
- * Copyright (c) 2017 - 2018 ProfitBricks GmbH. All rights reserved.
- * Authors: Danil Kipnis <danil.kipnis@profitbricks.com>
- *          Roman Penyaev <roman.penyaev@profitbricks.com>
- *          Swapnil Ingle <swapnil.ingle@profitbricks.com>
+ * Copyright (c) 2014 - 2018 ProfitBricks GmbH. All rights reserved.
  *
  * Copyright (c) 2018 - 2019 1&1 IONOS Cloud GmbH. All rights reserved.
- * Authors: Roman Penyaev <roman.penyaev@profitbricks.com>
- *          Jinpu Wang <jinpu.wang@cloud.ionos.com>
- *          Danil Kipnis <danil.kipnis@cloud.ionos.com>
- */
-/* Copyright (c) 2019 1&1 IONOS SE. All rights reserved.
- * Authors: Jack Wang <jinpu.wang@cloud.ionos.com>
- *          Danil Kipnis <danil.kipnis@cloud.ionos.com>
- *          Guoqing Jiang <guoqing.jiang@cloud.ionos.com>
- *          Lutz Pogrell <lutz.pogrell@cloud.ionos.com>
+ *
+ * Copyright (c) 2019 1&1 IONOS SE. All rights reserved.
  */
 
 #undef pr_fmt
@@ -36,7 +18,6 @@
 #include "rtrs-srv.h"
 #include "rtrs-log.h"
 
-MODULE_AUTHOR("rnbd@profitbricks.com");
 MODULE_DESCRIPTION("RTRS Server");
 MODULE_LICENSE("GPL");
 
@@ -710,7 +691,7 @@ static int map_cont_bufs(struct rtrs_srv_sess *sess)
 		}
 		mr = ib_alloc_mr(sess->s.dev->ib_pd, IB_MR_TYPE_MEM_REG,
 				 sgt->nents);
-		if (unlikely(IS_ERR(mr))) {
+		if (IS_ERR(mr)) {
 			err = PTR_ERR(mr);
 			goto unmap_sg;
 		}
@@ -1850,7 +1831,7 @@ static int rtrs_rdma_connect(struct rdma_cm_id *cm_id,
 	} else {
 		sess = __alloc_sess(srv, cm_id, con_num, recon_cnt,
 				    &msg->sess_uuid);
-		if (unlikely(IS_ERR(sess))) {
+		if (IS_ERR(sess)) {
 			mutex_unlock(&srv->paths_mutex);
 			put_srv(srv);
 			err = PTR_ERR(sess);
@@ -2005,11 +1986,11 @@ static int rtrs_srv_rdma_init(struct rtrs_srv_ctx *ctx, unsigned int port)
 	 * everything.
 	 */
 	cm_ip = rtrs_srv_cm_init(ctx, (struct sockaddr *)&sin, RDMA_PS_TCP);
-	if (unlikely(IS_ERR(cm_ip)))
+	if (IS_ERR(cm_ip))
 		return PTR_ERR(cm_ip);
 
 	cm_ib = rtrs_srv_cm_init(ctx, (struct sockaddr *)&sib, RDMA_PS_IB);
-	if (unlikely(IS_ERR(cm_ib))) {
+	if (IS_ERR(cm_ib)) {
 		ret = PTR_ERR(cm_ib);
 		goto free_cm_ip;
 	}
@@ -2155,7 +2136,7 @@ static int __init rtrs_server_init(void)
 		return -ENOMEM;
 	}
 	rtrs_dev_class = class_create(THIS_MODULE, "rtrs-server");
-	if (unlikely(IS_ERR(rtrs_dev_class))) {
+	if (IS_ERR(rtrs_dev_class)) {
 		pr_err("Failed to create rtrs-server dev class\n");
 		err = PTR_ERR(rtrs_dev_class);
 		goto out_chunk_pool;

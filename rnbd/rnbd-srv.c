@@ -2,29 +2,11 @@
 /*
  * InfiniBand Network Block Driver
  *
- * Copyright (c) 2014 - 2017 ProfitBricks GmbH. All rights reserved.
- * Authors: Fabian Holler <mail@fholler.de>
- *          Jack Wang <jinpu.wang@profitbricks.com>
- *          Kleber Souza <kleber.souza@profitbricks.com>
- *          Danil Kipnis <danil.kipnis@profitbricks.com>
- *          Roman Penyaev <roman.penyaev@profitbricks.com>
- *          Milind Dumbare <Milind.dumbare@gmail.com>
- *
- * Copyright (c) 2017 - 2018 ProfitBricks GmbH. All rights reserved.
- * Authors: Danil Kipnis <danil.kipnis@profitbricks.com>
- *          Roman Penyaev <roman.penyaev@profitbricks.com>
+ * Copyright (c) 2014 - 2018 ProfitBricks GmbH. All rights reserved.
  *
  * Copyright (c) 2018 - 2019 1&1 IONOS Cloud GmbH. All rights reserved.
- * Authors: Roman Penyaev <roman.penyaev@profitbricks.com>
- *          Jack Wang <jinpu.wang@cloud.ionos.com>
- *          Danil Kipnis <danil.kipnis@cloud.ionos.com>
- */
-
-/* Copyright (c) 2019 1&1 IONOS SE. All rights reserved.
- * Authors: Jack Wang <jinpu.wang@cloud.ionos.com>
- *          Danil Kipnis <danil.kipnis@cloud.ionos.com>
- *          Guoqing Jiang <guoqing.jiang@cloud.ionos.com>
- *          Lutz Pogrell <lutz.pogrell@cloud.ionos.com>
+ *
+ * Copyright (c) 2019 1&1 IONOS SE. All rights reserved.
  */
 #undef pr_fmt
 #define pr_fmt(fmt) KBUILD_MODNAME " L" __stringify(__LINE__) ": " fmt
@@ -35,7 +17,6 @@
 #include "rnbd-srv.h"
 #include "rnbd-srv-dev.h"
 
-MODULE_AUTHOR("rnbd@profitbricks.com");
 MODULE_DESCRIPTION("InfiniBand Network Block Device Server");
 MODULE_LICENSE("GPL");
 
@@ -158,7 +139,7 @@ static int process_rdma(struct rtrs_srv *sess,
 	dev_id = le32_to_cpu(msg->device_id);
 
 	sess_dev = rnbd_get_sess_dev(dev_id, srv_sess);
-	if (unlikely(IS_ERR(sess_dev))) {
+	if (IS_ERR(sess_dev)) {
 		pr_err_ratelimited("Got I/O request on session %s for unknown device id %d\n",
 				   srv_sess->sessname, dev_id);
 		err = -ENOTCONN;
@@ -354,7 +335,7 @@ static int process_msg_close(struct rtrs_srv *rtrs,
 
 	sess_dev = rnbd_get_sess_dev(le32_to_cpu(close_msg->device_id),
 				      srv_sess);
-	if (unlikely(IS_ERR(sess_dev)))
+	if (IS_ERR(sess_dev))
 		return 0;
 
 	rnbd_srv_destroy_dev_session_sysfs(sess_dev);
@@ -385,7 +366,7 @@ static int rnbd_srv_rdma_ev(struct rtrs_srv *rtrs, void *priv,
 	int ret = 0;
 	u16 type;
 
-	if (unlikely(WARN_ON(!srv_sess)))
+	if (WARN_ON(!srv_sess))
 		return -ENODEV;
 
 	type = le16_to_cpu(hdr->type);
@@ -855,7 +836,7 @@ static int __init rnbd_srv_init_module(void)
 
 	rtrs_ctx = rtrs_srv_open(rnbd_srv_rdma_ev, rnbd_srv_link_ev,
 				   port_nr);
-	if (unlikely(IS_ERR(rtrs_ctx))) {
+	if (IS_ERR(rtrs_ctx)) {
 		err = PTR_ERR(rtrs_ctx);
 		pr_err("rtrs_srv_open(), err: %d\n", err);
 		return err;
