@@ -87,7 +87,8 @@ struct rtrs_permit *rtrs_permit_from_pdu(void *pdu);
 
 /**
  * rtrs_permit_to_pdu() - converts rtrs_permit to opaque pdu pointer
- * @permit: RTRS permit pointer
+ * @permit: RTRS permit pointer, it associates the memory allocation for future
+ *          RDMA operation.
  */
 void *rtrs_permit_to_pdu(struct rtrs_permit *permit);
 
