@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 /*
- * InfiniBand Network Block Driver
+ * RDMA Network Block Driver
  *
  * Copyright (c) 2014 - 2018 ProfitBricks GmbH. All rights reserved.
  *
@@ -17,7 +17,7 @@
 #include "rnbd-srv.h"
 #include "rnbd-srv-dev.h"
 
-MODULE_DESCRIPTION("InfiniBand Network Block Device Server");
+MODULE_DESCRIPTION("RDMA Network Block Device Server");
 MODULE_LICENSE("GPL");
 
 static int __read_mostly port_nr = RTRS_PORT;

@@ -5,7 +5,7 @@ Infiniband Network Block Device (RNBD)
 Introduction
 ------------
 
-RNBD (InfiniBand Network Block Device) is a pair of kernel modules
+RNBD (RDMA Network Block Device) is a pair of kernel modules
 (client and server) that allow for remote access of a block device on
 the server over RTRS protocol using the RDMA (InfiniBand, RoCE, iWarp)
 transport. After being mapped, the remote block devices can be accessed

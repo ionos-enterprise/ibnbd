@@ -1,4 +1,4 @@
-RDMA Transport (RTRS) & Infiniband Network Block Device (RNBD)
+RDMA Transport (RTRS) & RDMA Network Block Device (RNBD)
 ======================================================================
 
 Short introduction
