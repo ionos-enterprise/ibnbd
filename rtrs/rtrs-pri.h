@@ -52,8 +52,8 @@ enum {
 	MAX_PATHS_NUM = 128,
 
 	/*
-	 * With the current size of the tag allocated on the client, 4K
-	 * is the maximum number of tags we can allocate.  This number is
+	 * With the size of struct rtrs_permit allocated on the client, 4K
+	 * is the maximum number of rtrs_permits we can allocate. This number is
 	 * also used on the client to allocate the IU for the user connection
 	 * to receive the RDMA addresses from the server.
 	 */
@@ -120,6 +120,7 @@ struct rtrs_sess {
 	unsigned int		hb_missed_max;
 };
 
+/* rtrs information unit */
 struct rtrs_iu {
 	struct list_head        list;
 	struct ib_cqe           cqe;
