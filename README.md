@@ -13,8 +13,3 @@ connections between client and server.
 RNBD documentation is [here](./rnbd/README).
 
 RTRS documentation is [here](./rtrs/README).
-
-Contact
--------
-
-Mailing list: "RNBD/RTRS Storage Team" <rnbd@cloud.ionos.com>
