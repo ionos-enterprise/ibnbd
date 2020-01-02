@@ -1,8 +1,8 @@
 ****************************
-InfiniBand Transport (RTRS)
+RDMA Transport (RTRS)
 ****************************
 
-RTRS (InfiniBand Transport) is a reliable high speed transport library
+RTRS (RDMA Transport) is a reliable high speed transport library
 which provides support to establish optimal number of connections
 between client and server machines using RDMA (InfiniBand, RoCE, iWarp)
 transport. It is optimized to transfer (read/write) IO blocks.
