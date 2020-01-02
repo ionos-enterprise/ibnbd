@@ -131,7 +131,7 @@ struct rtrs_iu {
 };
 
 /**
- * enum rtrs_msg_types - RTRS message types.
+ * enum rtrs_msg_types - RTRS message types, see also rtrs/README
  * @RTRS_MSG_INFO_REQ:		Client additional info request to the server
  * @RTRS_MSG_INFO_RSP:		Server additional info response to the client
  * @RTRS_MSG_WRITE:		Client writes data per RDMA to server
@@ -342,8 +342,8 @@ static inline u32 rtrs_to_imm(u32 type, u32 payload)
 
 static inline void rtrs_from_imm(u32 imm, u32 *type, u32 *payload)
 {
-	*payload = (imm & MAX_IMM_PAYL_MASK);
-	*type = (imm >> MAX_IMM_PAYL_BITS);
+	*payload = imm & MAX_IMM_PAYL_MASK;
+	*type = imm >> MAX_IMM_PAYL_BITS;
 }
 
 static inline u32 rtrs_to_io_req_imm(u32 addr)
@@ -358,7 +358,7 @@ static inline u32 rtrs_to_io_rsp_imm(u32 msg_id, int errno, bool w_inval)
 
 	/* 9 bits for errno, 19 bits for msg_id */
 	payload = (abs(errno) & 0x1ff) << 19 | (msg_id & 0x7ffff);
-	type = (w_inval ? RTRS_IO_RSP_W_INV_IMM : RTRS_IO_RSP_IMM);
+	type = w_inval ? RTRS_IO_RSP_W_INV_IMM : RTRS_IO_RSP_IMM;
 
 	return rtrs_to_imm(type, payload);
 }
@@ -366,7 +366,7 @@ static inline u32 rtrs_to_io_rsp_imm(u32 msg_id, int errno, bool w_inval)
 static inline void rtrs_from_io_rsp_imm(u32 payload, u32 *msg_id, int *errno)
 {
 	/* 9 bits for errno, 19 bits for msg_id */
-	*msg_id = (payload & 0x7ffff);
+	*msg_id = payload & 0x7ffff;
 	*errno = -(int)((payload >> 19) & 0x1ff);
 }
 
@@ -401,9 +401,6 @@ static ssize_t get_value##_show(struct kobject *kobj,			\
 #define STAT_ATTR(type, stat, print, reset)				\
 STAT_STORE_FUNC(type, stat, reset)					\
 STAT_SHOW_FUNC(type, stat, print)					\
-static struct kobj_attribute stat##_attr =				\
-		__ATTR(stat, 0644,					\
-		       stat##_show,					\
-		       stat##_store)
+static struct kobj_attribute stat##_attr = __ATTR_RW(stat)
 
 #endif /* RTRS_PRI_H */
