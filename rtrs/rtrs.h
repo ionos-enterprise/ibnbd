@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 /*
- * InfiniBand Transport Layer
+ * RDMA Transport Layer
  *
  * Copyright (c) 2014 - 2018 ProfitBricks GmbH. All rights reserved.
  *
@@ -21,7 +21,7 @@ struct rtrs_srv;
 struct rtrs_srv_op;
 
 /*
- * Here goes RTRS client API
+ * RDMA transport (RTRS) client API
  */
 
 /**
@@ -46,12 +46,12 @@ typedef void (link_clt_ev_fn)(void *priv, enum rtrs_clt_link_ev ev);
 /**
  * rtrs_clt_open() - Open a session to an RTRS server
  * @priv: User supplied private data.
- * @link_ev: Event notification for connection state changes
+ * @link_ev: Event notification callback function for connection state changes
  *	@priv: User supplied data that was passed to rtrs_clt_open()
  *	@ev: Occurred event
  * @sessname: name of the session
  * @paths: Paths to be established defined by their src and dst addresses
- * @path_cnt: Number of elemnts in the @paths array
+ * @path_cnt: Number of elements in the @paths array
  * @port: port to be used by the RTRS session
  * @pdu_sz: Size of extra payload which can be accessed after permit allocation.
  * @max_inflight_msg: Max. number of parallel inflight messages for the session
@@ -61,21 +61,21 @@ typedef void (link_clt_ev_fn)(void *priv, enum rtrs_clt_link_ev ev);
  *			    up, 0 for * disabled, -1 for forever
  *
  * Starts session establishment with the rtrs_server. The function can block
- * up to ~2000ms until it returns.
+ * up to ~2000ms before it returns.
  *
  * Return a valid pointer on success otherwise PTR_ERR.
  */
 struct rtrs_clt *rtrs_clt_open(void *priv, link_clt_ev_fn *link_ev,
 				 const char *sessname,
 				 const struct rtrs_addr *paths,
-				 size_t path_cnt, short port,
+				 size_t path_cnt, u16 port,
 				 size_t pdu_sz, u8 reconnect_delay_sec,
 				 u16 max_segments,
 				 s16 max_reconnect_attempts);
 
 /**
  * rtrs_clt_close() - Close a session
- * @sess: Session handle. Session is freed on return.
+ * @sess: Session handle. Session is freed upon return.
  */
 void rtrs_clt_close(struct rtrs_clt *sess);
 
@@ -97,7 +97,8 @@ enum {
 };
 
 /**
- * enum rtrs_clt_con_type() type of ib connection to use with a given permit
+ * enum rtrs_clt_con_type() type of ib connection to use with a given
+ * rtrs_permit
  * @USR_CON - use connection reserved vor "service" messages
  * @IO_CON - use a connection reserved for IO
  */
@@ -144,11 +145,11 @@ typedef void (rtrs_conf_fn)(void *priv, int errno);
  * @permit:	Preallocated permit
  * @priv:	User provided data, passed back with corresponding
  *		@(conf) confirmation.
- * @vec:	Message that is send to server together with the request.
+ * @vec:	Message that is sent to server together with the request.
  *		Sum of len of all @vec elements limited to <= IO_MSG_SIZE.
  *		Since the msg is copied internally it can be allocated on stack.
  * @nr:		Number of elements in @vec.
- * @len:	length of data send to/from server
+ * @len:	length of data sent to/from server
  * @sg:		Pages to be sent/received to/from server.
  * @sg_cnt:	Number of elements in the @sg
  *
@@ -224,7 +225,7 @@ typedef int (rdma_ev_fn)(struct rtrs_srv *sess, void *priv,
 			 size_t usrlen);
 
 /**
- * link_ev_fn():	Events about connective state changes
+ * link_ev_fn():	Events about connectivity state changes
  *			If the callback returns != 0 and the event
  *			%RTRS_SRV_LINK_EV_CONNECTED the corresponding session
  *			will be destroyed.
@@ -259,7 +260,7 @@ void rtrs_srv_close(struct rtrs_srv_ctx *ctx);
  * rtrs_srv_resp_rdma() - Finish an RDMA request
  *
  * @id:		Internal RTRS operation identifier
- * @errno:	Response Code send to the other side for this operation.
+ * @errno:	Response Code sent to the other side for this operation.
  *		0 = success, <=0 error
  *
  * Finish a RDMA operation. A message is sent to the client and the

@@ -2589,7 +2589,7 @@ struct rtrs_clt *rtrs_clt_open(void *priv, link_clt_ev_fn *link_ev,
 				 const char *sessname,
 				 const struct rtrs_addr *paths,
 				 size_t paths_num,
-				 short port,
+				 u16 port,
 				 size_t pdu_sz, u8 reconnect_delay_sec,
 				 u16 max_segments,
 				 s16 max_reconnect_attempts)
