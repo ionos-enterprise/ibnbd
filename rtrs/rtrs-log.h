@@ -11,10 +11,8 @@
 #ifndef RTRS_LOG_H
 #define RTRS_LOG_H
 
-#define rtrs_prefix(obj) (obj->sessname)
-
 #define rtrs_log(fn, obj, fmt, ...)				\
-	fn("<%s>: " fmt, rtrs_prefix(obj), ##__VA_ARGS__)
+	fn("<%s>: " fmt, obj->sessname, ##__VA_ARGS__)
 
 #define rtrs_err(obj, fmt, ...)	\
 	rtrs_log(pr_err, obj, fmt, ##__VA_ARGS__)
