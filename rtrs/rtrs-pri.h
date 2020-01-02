@@ -181,13 +181,14 @@ struct rtrs_sg_desc {
  * NOTE: max size 56 bytes, see man rdma_connect().
  */
 struct rtrs_msg_conn_req {
-	u8		__cma_version; /* Is set to 0 by cma.c in case of
-					* AF_IB, do not touch that.
-					*/
-	u8		__ip_version;  /* On sender side that should be
-					* set to 0, or cma_save_ip_info()
-					* extract garbage and will fail.
-					*/
+	/* Is set to 0 by cma.c in case of AF_IB, do not touch that.
+	 * see https://www.spinics.net/lists/linux-rdma/msg22397.html
+	 */
+	u8		__cma_version;
+	/* On sender side that should be set to 0, or cma_save_ip_info()
+	 * extract garbage and will fail.
+	 */
+	u8		__ip_version;
 	__le16		magic;
 	__le16		version;
 	__le16		cid;
