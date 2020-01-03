@@ -666,8 +666,8 @@ static int process_msg_sess_info(struct rtrs_srv *rtrs,
 
 /**
  * find_srv_sess_dev() - a dev is already opened by this name
- * @srv_sess	the session to search.
- * @dev_name	string containing the name of the device.
+ * @srv_sess:	the session to search.
+ * @dev_name:	string containing the name of the device.
  *
  * Return struct rnbd_srv_sess_dev if srv_sess already opened the dev_name
  * NULL if the session didn't open the device yet.

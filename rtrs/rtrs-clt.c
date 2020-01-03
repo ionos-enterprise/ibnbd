@@ -150,15 +150,16 @@ void *rtrs_permit_to_pdu(struct rtrs_permit *permit)
 EXPORT_SYMBOL(rtrs_permit_to_pdu);
 
 /**
- * rtrs_permit_to_clt_con() - returns RDMA connection id by the permit
- *
+ * rtrs_permit_to_clt_con() - returns RDMA connection pointer by the permit
+ * @sess: client session pointer
+ * @permit: permit for the allocation of the RDMA buffer
  * Note:
  *     IO connection starts from 1.
  *     0 connection is for user messages.
  */
 static
 struct rtrs_clt_con *rtrs_permit_to_clt_con(struct rtrs_clt_sess *sess,
-					      struct rtrs_permit *permit)
+					    struct rtrs_permit *permit)
 {
 	int id = 0;
 
@@ -721,7 +722,7 @@ struct path_it {
 
 /**
  * get_next_path_rr() - Returns path in round-robin fashion.
- * @it	the path pointer
+ * @it:	the path pointer
  *
  * Related to @MP_POLICY_RR
  *
@@ -759,7 +760,7 @@ static struct rtrs_clt_sess *get_next_path_rr(struct path_it *it)
 
 /**
  * get_next_path_min_inflight() - Returns path with minimal inflight count.
- * @it	the path pointer
+ * @it:	the path pointer
  *
  * Related to @MP_POLICY_MIN_INFLIGHT
  *
@@ -826,14 +827,25 @@ static inline void path_it_deinit(struct path_it *it)
  * The user buffer holding user control message (not data) is copied into
  * the corresponding buffer of rtrs_iu (req->iu->buf), which later on will
  * also hold the control message of rtrs.
+ * @req: an io request holding information about IO.
+ * @sess: client session
+ * @conf: conformation callback function to notify upper layer.
+ * @permit: permit for allocation of RDMA remote buffer
+ * @priv: private pointer
+ * @vec: kernel vector containing control message
+ * @usr_len: length of the user message
+ * @sg: scater list for IO data
+ * @sg_cnt: number of scater list entries
+ * @data_len: length of the IO data
+ * @dir: direction of the IO.
  */
 static inline void rtrs_clt_init_req(struct rtrs_clt_io_req *req,
-				      struct rtrs_clt_sess *sess,
-				      rtrs_conf_fn *conf,
-				      struct rtrs_permit *permit, void *priv,
-				      const struct kvec *vec, size_t usr_len,
-				      struct scatterlist *sg, size_t sg_cnt,
-				      size_t data_len, int dir)
+				     struct rtrs_clt_sess *sess,
+				     rtrs_conf_fn *conf,
+				     struct rtrs_permit *permit, void *priv,
+				     const struct kvec *vec, size_t usr_len,
+				     struct scatterlist *sg, size_t sg_cnt,
+				     size_t data_len, int dir)
 {
 	struct iov_iter iter;
 	size_t len;
@@ -1123,9 +1135,11 @@ static int rtrs_clt_read_req(struct rtrs_clt_io_req *req)
 
 /**
  * rtrs_clt_failover_req() Try to find an active path for a failed request
+ * @clt: clt context
+ * @fail_req: a failed io request.
  */
 static int rtrs_clt_failover_req(struct rtrs_clt *clt,
-				  struct rtrs_clt_io_req *fail_req)
+				 struct rtrs_clt_io_req *fail_req)
 {
 	struct rtrs_clt_sess *alive_sess;
 	struct rtrs_clt_io_req *req;
@@ -2426,7 +2440,7 @@ out:
 
 /**
  * init_sess() - establishes all session connections and does handshake
- *
+ * @sess: client session.
  * In case of error full close or reconnect procedure should be taken,
  * because reconnect or close async works can be started.
  */
@@ -2501,11 +2515,11 @@ static void rtrs_clt_dev_release(struct device *dev)
 }
 
 static struct rtrs_clt *alloc_clt(const char *sessname, size_t paths_num,
-				   short port, size_t pdu_sz,
-				   void *priv, link_clt_ev_fn *link_ev,
-				   unsigned int max_segments,
-				   unsigned int reconnect_delay_sec,
-				   unsigned int max_reconnect_attempts)
+				  short port, size_t pdu_sz,
+				  void *priv, link_clt_ev_fn *link_ev,
+				  unsigned int max_segments,
+				  unsigned int reconnect_delay_sec,
+				  unsigned int max_reconnect_attempts)
 {
 	struct rtrs_clt *clt;
 	int err;
