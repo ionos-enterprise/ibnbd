@@ -18,7 +18,7 @@
 #include "rtrs-srv.h"
 #include "rtrs-log.h"
 
-MODULE_DESCRIPTION("RTRS Server");
+MODULE_DESCRIPTION("RDMA Transport Server");
 MODULE_LICENSE("GPL");
 
 /* Must be power of 2, see mask from mr->page_size in ib_sg_to_pages() */

@@ -17,7 +17,7 @@
 #include "rtrs-pri.h"
 #include "rtrs-log.h"
 
-MODULE_DESCRIPTION("RTRS Core");
+MODULE_DESCRIPTION("RDMA Transport Core");
 MODULE_LICENSE("GPL");
 
 struct rtrs_iu *rtrs_iu_alloc(u32 queue_size, size_t size, gfp_t gfp_mask,

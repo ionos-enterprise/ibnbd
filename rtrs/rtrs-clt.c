@@ -21,7 +21,7 @@
 
 #define RTRS_CONNECT_TIMEOUT_MS 30000
 
-MODULE_DESCRIPTION("RTRS Client");
+MODULE_DESCRIPTION("RDMA Transport Client");
 MODULE_LICENSE("GPL");
 
 static ushort nr_cons_per_session;
