@@ -26,9 +26,7 @@ static ssize_t max_reconnect_attempts_show(struct device *dev,
 					   struct device_attribute *attr,
 					   char *page)
 {
-	struct rtrs_clt *clt;
-
-	clt = container_of(dev, struct rtrs_clt, dev);
+	struct rtrs_clt *clt = container_of(dev, struct rtrs_clt, dev);
 
 	return sprintf(page, "%d\n", rtrs_clt_get_max_reconnect_attempts(clt));
 }
@@ -38,11 +36,9 @@ static ssize_t max_reconnect_attempts_store(struct device *dev,
 					    const char *buf,
 					    size_t count)
 {
-	struct rtrs_clt *clt;
 	int value;
 	int ret;
-
-	clt = container_of(dev, struct rtrs_clt, dev);
+	struct rtrs_clt *clt  = container_of(dev, struct rtrs_clt, dev);
 
 	ret = kstrtoint(buf, 10, &value);
 	if (unlikely(ret)) {
