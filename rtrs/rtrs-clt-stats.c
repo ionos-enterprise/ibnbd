@@ -13,27 +13,27 @@
 
 #include "rtrs-clt.h"
 
-static inline int rtrs_clt_ms_to_id(unsigned long ms)
+static inline int rtrs_clt_ms_to_bin(unsigned long ms)
 {
-	int id = ms ? ilog2(ms) - MIN_LOG_LAT + 1 : 0;
+	int bin = ms ? ilog2(ms) - MIN_LOG_LAT + 1 : 0;
 
-	return clamp(id, 0, LOG_LAT_SZ - 1);
+	return clamp(bin, 0, LOG_LAT_SZ - 1);
 }
 
 void rtrs_clt_update_rdma_lat(struct rtrs_clt_stats *stats, bool read,
 			       unsigned long ms)
 {
 	struct rtrs_clt_stats_pcpu *s;
-	int id;
+	int bin;
 
-	id = rtrs_clt_ms_to_id(ms);
+	bin = rtrs_clt_ms_to_bin(ms);
 	s = this_cpu_ptr(stats->pcpu_stats);
 	if (read) {
-		s->rdma_lat_distr[id].read++;
+		s->rdma_lat_distr[bin].read++;
 		if (s->rdma_lat_max.read < ms)
 			s->rdma_lat_max.read = ms;
 	} else {
-		s->rdma_lat_distr[id].write++;
+		s->rdma_lat_distr[bin].write++;
 		if (s->rdma_lat_max.write < ms)
 			s->rdma_lat_max.write = ms;
 	}
