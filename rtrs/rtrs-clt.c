@@ -464,7 +464,7 @@ static void process_io_rsp(struct rtrs_clt_sess *sess, u32 msg_id,
 		return;
 
 	req = &sess->reqs[msg_id];
-	/* Drop need_inv if server responsed with invalidation */
+	/* Drop need_inv if server responded with send with invalidation */
 	req->need_inv &= !w_inval;
 	complete_rdma_req(req, errno, true, false);
 }
