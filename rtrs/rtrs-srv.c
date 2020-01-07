@@ -1454,6 +1454,7 @@ static void del_path_from_srv(struct rtrs_srv_sess *sess)
 	mutex_unlock(&srv->paths_mutex);
 }
 
+/* return true if addresses are the same, error other wise */
 static inline int sockaddr_cmp(const struct sockaddr *a,
 			       const struct sockaddr *b)
 {
@@ -1461,15 +1462,18 @@ static inline int sockaddr_cmp(const struct sockaddr *a,
 	case AF_IB:
 		return memcmp(&((struct sockaddr_ib *)a)->sib_addr,
 			      &((struct sockaddr_ib *)b)->sib_addr,
-			      sizeof(struct ib_addr));
+			      sizeof(struct ib_addr)) &&
+			(b->sa_family == AF_IB);
 	case AF_INET:
 		return memcmp(&((struct sockaddr_in *)a)->sin_addr,
 			      &((struct sockaddr_in *)b)->sin_addr,
-			      sizeof(struct in_addr));
+			      sizeof(struct in_addr)) &&
+			(b->sa_family == AF_INET);
 	case AF_INET6:
 		return memcmp(&((struct sockaddr_in6 *)a)->sin6_addr,
 			      &((struct sockaddr_in6 *)b)->sin6_addr,
-			      sizeof(struct in6_addr));
+			      sizeof(struct in6_addr)) &&
+			(b->sa_family == AF_INET6);
 	default:
 		return -ENOENT;
 	}
