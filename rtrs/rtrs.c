@@ -21,17 +21,15 @@ MODULE_DESCRIPTION("RDMA Transport Core");
 MODULE_LICENSE("GPL");
 
 struct rtrs_iu *rtrs_iu_alloc(u32 queue_size, size_t size, gfp_t gfp_mask,
-				struct ib_device *dma_dev,
-				enum dma_data_direction dir,
-				void (*done)(struct ib_cq *cq,
-					     struct ib_wc *wc))
+			      struct ib_device *dma_dev,
+			      enum dma_data_direction dir,
+			      void (*done)(struct ib_cq *cq, struct ib_wc *wc))
 {
 	struct rtrs_iu *ius, *iu;
 	int i;
 
 	WARN_ON(!queue_size);
 	ius = kcalloc(queue_size, sizeof(*ius), gfp_mask);
-
 	if (unlikely(!ius))
 		return NULL;
 	for (i = 0; i < queue_size; i++) {
@@ -48,12 +46,9 @@ struct rtrs_iu *rtrs_iu_alloc(u32 queue_size, size_t size, gfp_t gfp_mask,
 		iu->size      = size;
 		iu->direction = dir;
 	}
-
 	return ius;
-
 err:
 	rtrs_iu_free(ius, dir, dma_dev, i);
-
 	return NULL;
 }
 EXPORT_SYMBOL_GPL(rtrs_iu_alloc);
@@ -92,11 +87,11 @@ int rtrs_iu_post_recv(struct rtrs_con *con, struct rtrs_iu *iu)
 			  "Posting receive work request failed, sg list is empty\n");
 		return -EINVAL;
 	}
-
-	wr.next    = NULL;
-	wr.wr_cqe  = &iu->cqe;
-	wr.sg_list = &list;
-	wr.num_sge = 1;
+	wr = (struct ib_recv_wr) {
+	.wr_cqe  = &iu->cqe,
+	.sg_list = &list,
+	.num_sge = 1,
+	};
 
 	return ib_post_recv(con->qp, &wr, &bad_wr);
 }
@@ -107,10 +102,9 @@ int rtrs_post_recv_empty(struct rtrs_con *con, struct ib_cqe *cqe)
 	struct ib_recv_wr wr;
 	const struct ib_recv_wr *bad_wr;
 
-	wr.next    = NULL;
-	wr.wr_cqe  = cqe;
-	wr.sg_list = NULL;
-	wr.num_sge = 0;
+	wr = (struct ib_recv_wr) {
+	.wr_cqe  = cqe,
+	};
 
 	return ib_post_recv(con->qp, &wr, &bad_wr);
 }
@@ -143,20 +137,20 @@ int rtrs_iu_post_send(struct rtrs_con *con, struct rtrs_iu *iu, size_t size,
 	const struct ib_send_wr *bad_wr;
 	struct ib_sge list;
 
-	if ((WARN_ON(size == 0)))
+	if (WARN_ON(size == 0))
 		return -EINVAL;
 
 	list.addr   = iu->dma_addr;
 	list.length = size;
 	list.lkey   = sess->dev->ib_pd->local_dma_lkey;
 
-	memset(&wr, 0, sizeof(wr));
-	wr.next       = NULL;
-	wr.wr_cqe     = &iu->cqe;
-	wr.sg_list    = &list;
-	wr.num_sge    = 1;
-	wr.opcode     = IB_WR_SEND;
-	wr.send_flags = IB_SEND_SIGNALED;
+	wr = (struct ib_send_wr) {
+	.wr_cqe     = &iu->cqe,
+	.sg_list    = &list,
+	.num_sge    = 1,
+	.opcode     = IB_WR_SEND,
+	.send_flags = IB_SEND_SIGNALED,
+	};
 
 	if (head) {
 		struct ib_send_wr *tail = head;
@@ -182,15 +176,16 @@ int rtrs_iu_post_rdma_write_imm(struct rtrs_con *con, struct rtrs_iu *iu,
 	struct ib_rdma_wr wr;
 	int i;
 
-	wr.wr.next	  = NULL;
-	wr.wr.wr_cqe	  = &iu->cqe;
-	wr.wr.sg_list	  = sge;
-	wr.wr.num_sge	  = num_sge;
-	wr.rkey		  = rkey;
-	wr.remote_addr	  = rdma_addr;
-	wr.wr.opcode	  = IB_WR_RDMA_WRITE_WITH_IMM;
-	wr.wr.ex.imm_data = cpu_to_be32(imm_data);
-	wr.wr.send_flags  = flags;
+	wr = (struct ib_rdma_wr) {
+	.wr.wr_cqe	  = &iu->cqe,
+	.wr.sg_list	  = sge,
+	.wr.num_sge	  = num_sge,
+	.rkey		  = rkey,
+	.remote_addr	  = rdma_addr,
+	.wr.opcode	  = IB_WR_RDMA_WRITE_WITH_IMM,
+	.wr.ex.imm_data = cpu_to_be32(imm_data),
+	.wr.send_flags  = flags,
+	};
 
 	/*
 	 * If one of the sges has 0 size, the operation will fail with an
@@ -221,11 +216,12 @@ int rtrs_post_rdma_write_imm_empty(struct rtrs_con *con, struct ib_cqe *cqe,
 	struct ib_send_wr wr;
 	const struct ib_send_wr *bad_wr;
 
-	memset(&wr, 0, sizeof(wr));
-	wr.wr_cqe	= cqe;
-	wr.send_flags	= flags;
-	wr.opcode	= IB_WR_RDMA_WRITE_WITH_IMM;
-	wr.ex.imm_data	= cpu_to_be32(imm_data);
+	wr = (struct ib_send_wr) {
+	.wr_cqe	= cqe,
+	.send_flags	= flags,
+	.opcode	= IB_WR_RDMA_WRITE_WITH_IMM,
+	.ex.imm_data	= cpu_to_be32(imm_data),
+	};
 
 	if (head) {
 		struct ib_send_wr *tail = head;
@@ -288,7 +284,6 @@ static int create_qp(struct rtrs_con *con, struct ib_pd *pd,
 	init_attr.cap.max_recv_sge = 1;
 	init_attr.event_handler = qp_event_handler;
 	init_attr.qp_context = con;
-#undef max_send_sge
 	init_attr.cap.max_send_sge = max_sge;
 
 	init_attr.qp_type = IB_QPT_RC;
@@ -429,7 +424,7 @@ static int rtrs_str_gid_to_sockaddr(const char *addr, size_t len,
 	int ret;
 
 	/*
-	 * We can use some of the I6 functions since GID is a valid
+	 * We can use some of the IPv6 functions since GID is a valid
 	 * IPv6 address format
 	 */
 	ret = in6_pton(addr, len, dst_ib->sib_addr.sib_raw, '\0', NULL);
@@ -509,7 +504,6 @@ int rtrs_addr_to_sockaddr(const char *str, size_t len, short port,
 			   struct rtrs_addr *addr)
 {
 	const char *d;
-	int ret;
 
 	d = strchr(str, ',');
 	if (!d)
@@ -524,9 +518,7 @@ int rtrs_addr_to_sockaddr(const char *str, size_t len, short port,
 	} else {
 		addr->src = NULL;
 	}
-	ret = rtrs_str_to_sockaddr(str, len, port, addr->dst);
-
-	return ret;
+	return rtrs_str_to_sockaddr(str, len, port, addr->dst);
 }
 EXPORT_SYMBOL(rtrs_addr_to_sockaddr);
 
