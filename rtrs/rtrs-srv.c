@@ -362,7 +362,7 @@ static int rdma_write_sg(struct rtrs_srv_op *id)
 		wr->wr.next = &imm_wr;
 	}
 	/*
-	 * From time to time we have to post signalled sends,
+	 * From time to time we have to post signaled sends,
 	 * or send queue will fill up and only QP reset can help.
 	 */
 	flags = atomic_inc_return(&id->con->wr_cnt) % srv->queue_depth ?
@@ -428,10 +428,10 @@ static int rdma_write_sg(struct rtrs_srv_op *id)
 }
 
 /**
- * send_io_resp_imm() - response with empty IMM on failed READ/WRITE requests or
- *                      on successful WRITE request.
+ * send_io_resp_imm() - respond to client with empty IMM on failed READ/WRITE
+ *                      requests or on successful WRITE request.
  * @con:	the connection to send back result
- * @id:		the id associated to io
+ * @id:		the id associated with the IO
  * @errno:	the error number of the IO.
  *
  * Return 0 on success, errno otherwise.
@@ -1538,25 +1538,26 @@ static void rtrs_srv_close_work(struct work_struct *work)
 }
 
 static int rtrs_rdma_do_accept(struct rtrs_srv_sess *sess,
-				struct rdma_cm_id *cm_id)
+			       struct rdma_cm_id *cm_id)
 {
 	struct rtrs_srv *srv = sess->srv;
 	struct rtrs_msg_conn_rsp msg;
 	struct rdma_conn_param param;
 	int err;
 
-	memset(&param, 0, sizeof(param));
-	param.rnr_retry_count = 7;
-	param.private_data = &msg;
-	param.private_data_len = sizeof(msg);
+	param = (struct rdma_conn_param) {
+	.rnr_retry_count = 7,
+	.private_data = &msg,
+	.private_data_len = sizeof(msg),
+	};
 
-	memset(&msg, 0, sizeof(msg));
-	msg.magic = cpu_to_le16(RTRS_MAGIC);
-	msg.version = cpu_to_le16(RTRS_PROTO_VER);
-	msg.errno = 0;
-	msg.queue_depth = cpu_to_le16(srv->queue_depth);
-	msg.max_io_size = cpu_to_le32(max_chunk_size - MAX_HDR_SIZE);
-	msg.max_hdr_size = cpu_to_le32(MAX_HDR_SIZE);
+	msg = (struct rtrs_msg_conn_rsp) {
+	.magic = cpu_to_le16(RTRS_MAGIC),
+	.version = cpu_to_le16(RTRS_PROTO_VER),
+	.queue_depth = cpu_to_le16(srv->queue_depth),
+	.max_io_size = cpu_to_le32(max_chunk_size - MAX_HDR_SIZE),
+	.max_hdr_size = cpu_to_le32(MAX_HDR_SIZE),
+	};
 
 	if (always_invalidate)
 		msg.flags = cpu_to_le32(RTRS_MSG_NEW_RKEY_F);
@@ -1573,10 +1574,11 @@ static int rtrs_rdma_do_reject(struct rdma_cm_id *cm_id, int errno)
 	struct rtrs_msg_conn_rsp msg;
 	int err;
 
-	memset(&msg, 0, sizeof(msg));
-	msg.magic = cpu_to_le16(RTRS_MAGIC);
-	msg.version = cpu_to_le16(RTRS_PROTO_VER);
-	msg.errno = cpu_to_le16(errno);
+	msg = (struct rtrs_msg_conn_rsp) {
+	.magic = cpu_to_le16(RTRS_MAGIC),
+	.version = cpu_to_le16(RTRS_PROTO_VER),
+	.errno = cpu_to_le16(errno),
+	};
 
 	err = rdma_reject(cm_id, &msg, sizeof(msg));
 	if (err)
@@ -1970,8 +1972,6 @@ static int rtrs_srv_rdma_init(struct rtrs_srv_ctx *ctx, unsigned int port)
 	};
 	struct sockaddr_ib sib = {
 		.sib_family			= AF_IB,
-		.sib_addr.sib_subnet_prefix	= 0ULL,
-		.sib_addr.sib_interface_id	= 0ULL,
 		.sib_sid	= cpu_to_be64(RDMA_IB_IP_PS_IB | port),
 		.sib_sid_mask	= cpu_to_be64(0xffffffffffffffffULL),
 		.sib_pkey	= cpu_to_be16(0xffff),
