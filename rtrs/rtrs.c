@@ -534,6 +534,7 @@ EXPORT_SYMBOL(rtrs_ib_dev_pool_init);
 
 void rtrs_ib_dev_pool_deinit(struct rtrs_ib_dev_pool *pool)
 {
+	mutex_destroy(&pool->mutex);
 	WARN_ON(!list_empty(&pool->list));
 }
 EXPORT_SYMBOL(rtrs_ib_dev_pool_deinit);
