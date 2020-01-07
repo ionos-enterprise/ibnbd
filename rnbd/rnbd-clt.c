@@ -404,7 +404,7 @@ static void rnbd_softirq_done_fn(struct request *rq)
 
 	iu = blk_mq_rq_to_pdu(rq);
 	rnbd_put_permit(sess, iu->permit);
-	blk_mq_end_request(rq, iu->status);
+	blk_mq_end_request(rq, errno_to_blk_status(iu->errno));
 }
 
 static void msg_io_conf(void *priv, int errno)
@@ -413,7 +413,7 @@ static void msg_io_conf(void *priv, int errno)
 	struct rnbd_clt_dev *dev = iu->dev;
 	struct request *rq = iu->rq;
 
-	iu->status = errno ? BLK_STS_IOERR : BLK_STS_OK;
+	iu->errno = errno;
 
 	blk_mq_complete_request(rq);
 

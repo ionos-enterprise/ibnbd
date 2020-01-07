@@ -50,7 +50,6 @@ struct rnbd_iu {
 		/* use to send msg associated with a sess */
 		struct rnbd_clt_session *sess;
 	};
-	blk_status_t		status;
 	struct scatterlist	sglist[BMAX_SEGMENTS];
 	struct work_struct	work;
 	int			errno;
