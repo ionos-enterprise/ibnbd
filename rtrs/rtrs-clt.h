@@ -211,7 +211,7 @@ static inline struct rtrs_clt_sess *to_clt_sess(struct rtrs_sess *s)
 }
 
 #define PERMIT_SIZE(clt) (sizeof(struct rtrs_permit) + (clt)->pdu_sz)
-#define GET_PERMIT(clt, idx) ((clt)->permits + PERMIT_SIZE(clt) * idx)
+#define GET_PERMIT(clt, idx) ((clt)->permits + PERMIT_SIZE(clt) * (idx))
 
 int rtrs_clt_reconnect_from_sysfs(struct rtrs_clt_sess *sess);
 int rtrs_clt_disconnect_from_sysfs(struct rtrs_clt_sess *sess);
