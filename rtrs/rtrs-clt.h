@@ -28,28 +28,6 @@ enum rtrs_clt_state {
 	RTRS_CLT_DEAD,
 };
 
-static inline const char *rtrs_clt_state_str(enum rtrs_clt_state state)
-{
-	switch (state) {
-	case RTRS_CLT_CONNECTING:
-		return "RTRS_CLT_CONNECTING";
-	case RTRS_CLT_CONNECTING_ERR:
-		return "RTRS_CLT_CONNECTING_ERR";
-	case RTRS_CLT_RECONNECTING:
-		return "RTRS_CLT_RECONNECTING";
-	case RTRS_CLT_CONNECTED:
-		return "RTRS_CLT_CONNECTED";
-	case RTRS_CLT_CLOSING:
-		return "RTRS_CLT_CLOSING";
-	case RTRS_CLT_CLOSED:
-		return "RTRS_CLT_CLOSED";
-	case RTRS_CLT_DEAD:
-		return "RTRS_CLT_DEAD";
-	default:
-		return "UNKNOWN";
-	}
-}
-
 enum rtrs_mp_policy {
 	MP_POLICY_RR,
 	MP_POLICY_MIN_INFLIGHT,
