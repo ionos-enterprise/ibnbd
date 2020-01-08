@@ -1168,18 +1168,18 @@ static struct blk_mq_ops rnbd_mq_ops = {
 
 static int setup_mq_tags(struct rnbd_clt_session *sess)
 {
-	struct blk_mq_tag_set *tags = &sess->tag_set;
+	struct blk_mq_tag_set *tag_set = &sess->tag_set;
 
-	memset(tags, 0, sizeof(*tags));
-	tags->ops		= &rnbd_mq_ops;
-	tags->queue_depth	= sess->queue_depth;
-	tags->numa_node		= NUMA_NO_NODE;
-	tags->flags		= BLK_MQ_F_SHOULD_MERGE |
+	memset(tag_set, 0, sizeof(*tag_set));
+	tag_set->ops		= &rnbd_mq_ops;
+	tag_set->queue_depth	= sess->queue_depth;
+	tag_set->numa_node		= NUMA_NO_NODE;
+	tag_set->flags		= BLK_MQ_F_SHOULD_MERGE |
 				  BLK_MQ_F_TAG_SHARED;
-	tags->cmd_size		= sizeof(struct rnbd_iu);
-	tags->nr_hw_queues	= num_online_cpus();
+	tag_set->cmd_size		= sizeof(struct rnbd_iu);
+	tag_set->nr_hw_queues	= num_online_cpus();
 
-	return blk_mq_alloc_tag_set(tags);
+	return blk_mq_alloc_tag_set(tag_set);
 }
 
 static struct rnbd_clt_session *
