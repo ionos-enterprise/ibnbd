@@ -1267,16 +1267,6 @@ static void rnbd_init_mq_hw_queues(struct rnbd_clt_dev *dev)
 	}
 }
 
-static int index_to_minor(int index)
-{
-	return index << RNBD_PART_BITS;
-}
-
-static int minor_to_index(int minor)
-{
-	return minor >> RNBD_PART_BITS;
-}
-
 static int setup_mq_dev(struct rnbd_clt_dev *dev)
 {
 	dev->queue = blk_mq_init_queue(&dev->sess->tag_set);
@@ -1323,7 +1313,7 @@ static void setup_request_queue(struct rnbd_clt_dev *dev)
 static void rnbd_clt_setup_gen_disk(struct rnbd_clt_dev *dev, int idx)
 {
 	dev->gd->major		= rnbd_client_major;
-	dev->gd->first_minor	= index_to_minor(idx);
+	dev->gd->first_minor	= idx << RNBD_PART_BITS;
 	dev->gd->fops		= &rnbd_client_ops;
 	dev->gd->queue		= dev->queue;
 	dev->gd->private_data	= dev;
@@ -1399,7 +1389,7 @@ static struct rnbd_clt_dev *init_dev(struct rnbd_clt_session *sess,
 	}
 
 	mutex_lock(&ida_lock);
-	ret = ida_simple_get(&index_ida, 0, minor_to_index(1 << MINORBITS),
+	ret = ida_simple_get(&index_ida, 0, 1 << (MINORBITS - RNBD_PART_BITS),
 			     GFP_KERNEL);
 	mutex_unlock(&ida_lock);
 	if (ret < 0) {
