@@ -51,20 +51,6 @@ static const match_table_t rnbd_opt_tokens = {
 	{RNBD_OPT_ERR,		NULL		},
 };
 
-/* remove new line from string */
-static void strip(char *s)
-{
-	char *p = s;
-
-	while (*s != '\0') {
-		if (*s != '\n')
-			*p++ = *s++;
-		else
-			++s;
-	}
-	*p = '\0';
-}
-
 struct rnbd_map_options {
 	char *sessname;
 	struct rtrs_addr *paths;
@@ -90,7 +76,6 @@ static int rnbd_clt_parse_map_options(const char *buf, size_t max_path_cnt,
 		return -ENOMEM;
 
 	sep_opt = strstrip(options);
-	strip(sep_opt);
 	while ((p = strsep(&sep_opt, " ")) != NULL) {
 		if (!*p)
 			continue;
@@ -278,10 +263,7 @@ static ssize_t rnbd_clt_unmap_dev_store(struct kobject *kobj,
 		return -ENOMEM;
 
 	options = strstrip(opt);
-	strip(options);
-
 	dev = container_of(kobj, struct rnbd_clt_dev, kobj);
-
 	if (sysfs_streq(options, "normal")) {
 		force = false;
 	} else if (sysfs_streq(options, "force")) {
@@ -384,8 +366,6 @@ static ssize_t rnbd_clt_remap_dev_store(struct kobject *kobj,
 		return -ENOMEM;
 
 	options = strstrip(opt);
-	strip(options);
-
 	dev = container_of(kobj, struct rnbd_clt_dev, kobj);
 	if (!sysfs_streq(options, "1")) {
 		rnbd_clt_err(dev,
