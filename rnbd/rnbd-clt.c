@@ -75,7 +75,7 @@ static inline bool rnbd_clt_get_dev(struct rnbd_clt_dev *dev)
 }
 
 static int rnbd_clt_set_dev_attr(struct rnbd_clt_dev *dev,
-				  const struct rnbd_msg_open_rsp *rsp)
+				 const struct rnbd_msg_open_rsp *rsp)
 {
 	struct rnbd_clt_session *sess = dev->sess;
 
@@ -105,7 +105,7 @@ static int rnbd_clt_set_dev_attr(struct rnbd_clt_dev *dev,
 }
 
 static int rnbd_clt_change_capacity(struct rnbd_clt_dev *dev,
-				     size_t new_nsectors)
+				    size_t new_nsectors)
 {
 	int err = 0;
 
@@ -412,6 +412,7 @@ static void msg_io_conf(void *priv, int errno)
 	struct rnbd_iu *iu = priv;
 	struct rnbd_clt_dev *dev = iu->dev;
 	struct request *rq = iu->rq;
+	int rw = rq_data_dir(rq);
 
 	iu->errno = errno;
 
@@ -419,8 +420,7 @@ static void msg_io_conf(void *priv, int errno)
 
 	if (errno)
 		rnbd_clt_info_rl(dev, "%s I/O failed with err: %d\n",
-				  rq_data_dir(rq) == READ ? "read" : "write",
-				  errno);
+				 rw == READ ? "read" : "write", errno);
 }
 
 static void wake_up_iu_comp(struct rnbd_iu *iu, int errno)
