@@ -855,8 +855,8 @@ static int wait_for_rtrs_connection(struct rnbd_clt_session *sess)
 }
 
 static void wait_for_rtrs_disconnection(struct rnbd_clt_session *sess)
-__releases(&sess_lock)
-__acquires(&sess_lock)
+	__releases(&sess_lock)
+	__acquires(&sess_lock)
 {
 	DEFINE_WAIT_FUNC(wait, autoremove_wake_function);
 
@@ -872,8 +872,8 @@ __acquires(&sess_lock)
 }
 
 static struct rnbd_clt_session *__find_and_get_sess(const char *sessname)
-__releases(&sess_lock)
-__acquires(&sess_lock)
+	__releases(&sess_lock)
+	__acquires(&sess_lock)
 {
 	struct rnbd_clt_session *sess;
 	int err;
