@@ -93,7 +93,7 @@ static int rnbd_clt_set_dev_attr(struct rnbd_clt_dev *dev,
 	dev->secure_discard	    = le16_to_cpu(rsp->secure_discard);
 	dev->rotational		    = rsp->rotational;
 
-	dev->max_hw_sectors = sess->max_io_size / dev->logical_block_size;
+	dev->max_hw_sectors = sess->max_io_size / SECTOR_SIZE;
 	dev->max_segments = BMAX_SEGMENTS;
 
 	dev->max_hw_sectors = min_t(u32, dev->max_hw_sectors,
