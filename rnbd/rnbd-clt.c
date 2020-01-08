@@ -1335,11 +1335,6 @@ static void rnbd_clt_setup_gen_disk(struct rnbd_clt_dev *dev, int idx)
 		blk_queue_flag_set(QUEUE_FLAG_NONROT, dev->queue);
 }
 
-static void rnbd_clt_add_gen_disk(struct rnbd_clt_dev *dev)
-{
-	add_disk(dev->gd);
-}
-
 static int rnbd_client_setup_device(struct rnbd_clt_session *sess,
 				     struct rnbd_clt_dev *dev, int idx)
 {
@@ -1536,7 +1531,7 @@ struct rnbd_clt_dev *rnbd_clt_map_device(const char *sessname,
 
 	mutex_unlock(&dev->lock);
 
-	rnbd_clt_add_gen_disk(dev);
+	add_disk(dev->gd);
 	rnbd_clt_put_sess(sess);
 
 	return dev;
