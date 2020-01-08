@@ -112,9 +112,7 @@ static int rnbd_clt_change_capacity(struct rnbd_clt_dev *dev,
 	rnbd_clt_info(dev, "Device size changed from %zu to %zu sectors\n",
 		       dev->nsectors, new_nsectors);
 	dev->nsectors = new_nsectors;
-	set_capacity(dev->gd,
-		     dev->nsectors * (dev->logical_block_size /
-				      SECTOR_SIZE));
+	set_capacity(dev->gd, dev->nsectors);
 	err = revalidate_disk(dev->gd);
 	if (err)
 		rnbd_clt_err(dev,
@@ -1324,8 +1322,7 @@ static void rnbd_clt_setup_gen_disk(struct rnbd_clt_dev *dev, int idx)
 		 dev->nsectors * (dev->logical_block_size / SECTOR_SIZE)
 		 );
 
-	set_capacity(dev->gd, dev->nsectors * (dev->logical_block_size /
-					       SECTOR_SIZE));
+	set_capacity(dev->gd, dev->nsectors);
 
 	if (dev->access_mode == RNBD_ACCESS_RO) {
 		dev->read_only = true;
