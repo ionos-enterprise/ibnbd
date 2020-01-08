@@ -44,11 +44,11 @@ static const unsigned int rnbd_opt_mandatory[] = {
 };
 
 static const match_table_t rnbd_opt_tokens = {
-	{	RNBD_OPT_PATH,		"path=%s"		},
-	{	RNBD_OPT_DEV_PATH,	"device_path=%s"	},
-	{	RNBD_OPT_ACCESS_MODE,	"access_mode=%s"	},
-	{	RNBD_OPT_SESSNAME,	"sessname=%s"		},
-	{	RNBD_OPT_ERR,		NULL			},
+	{RNBD_OPT_PATH,		"path=%s"	},
+	{RNBD_OPT_DEV_PATH,	"device_path=%s"},
+	{RNBD_OPT_ACCESS_MODE,	"access_mode=%s"},
+	{RNBD_OPT_SESSNAME,	"sessname=%s"	},
+	{RNBD_OPT_ERR,		NULL		},
 };
 
 /* remove new line from string */
