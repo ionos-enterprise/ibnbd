@@ -47,7 +47,7 @@ static struct rtrs_ib_dev_pool dev_pool = {
 };
 
 static struct workqueue_struct *rtrs_wq;
-static struct class *rtrs_dev_class;
+static struct class *rtrs_clt_dev_class;
 
 static inline bool rtrs_clt_is_connected(const struct rtrs_clt *clt)
 {
@@ -2557,7 +2557,7 @@ static struct rtrs_clt *alloc_clt(const char *sessname, size_t paths_num,
 	mutex_init(&clt->paths_ev_mutex);
 	mutex_init(&clt->paths_mutex);
 
-	clt->dev.class = rtrs_dev_class;
+	clt->dev.class = rtrs_clt_dev_class;
 	clt->dev.release = rtrs_clt_dev_release;
 	dev_set_name(&clt->dev, "%s", sessname);
 
@@ -2922,15 +2922,15 @@ static int __init rtrs_client_init(void)
 		       err);
 		return err;
 	}
-	rtrs_dev_class = class_create(THIS_MODULE, "rtrs-client");
-	if (IS_ERR(rtrs_dev_class)) {
+	rtrs_clt_dev_class = class_create(THIS_MODULE, "rtrs-client");
+	if (IS_ERR(rtrs_clt_dev_class)) {
 		pr_err("Failed to create rtrs-client dev class\n");
-		return PTR_ERR(rtrs_dev_class);
+		return PTR_ERR(rtrs_clt_dev_class);
 	}
 	rtrs_wq = alloc_workqueue("rtrs_client_wq", WQ_MEM_RECLAIM, 0);
 	if (unlikely(!rtrs_wq)) {
 		pr_err("Failed to load module, alloc rtrs_client_wq failed\n");
-		class_destroy(rtrs_dev_class);
+		class_destroy(rtrs_clt_dev_class);
 		return -ENOMEM;
 	}
 
@@ -2940,7 +2940,7 @@ static int __init rtrs_client_init(void)
 static void __exit rtrs_client_exit(void)
 {
 	destroy_workqueue(rtrs_wq);
-	class_destroy(rtrs_dev_class);
+	class_destroy(rtrs_clt_dev_class);
 	rtrs_ib_dev_pool_deinit(&dev_pool);
 }
 
