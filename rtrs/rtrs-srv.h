@@ -44,10 +44,11 @@ struct rtrs_srv_stats {
 };
 
 struct rtrs_srv_con {
-	struct rtrs_con	c;
+	struct rtrs_con		c;
 	atomic_t		wr_cnt;
 };
 
+/* IO context in rtrs_srv, each io has one */
 struct rtrs_srv_op {
 	struct rtrs_srv_con		*con;
 	u32				msg_id;
@@ -57,6 +58,9 @@ struct rtrs_srv_op {
 	struct ib_sge			*tx_sg;
 };
 
+/* server side memory region context, when always_invalidate=Y, we need
+ * queue_depth of memory regrion to invalidate each memory region.
+ */
 struct rtrs_srv_mr {
 	struct ib_mr	*mr;
 	struct sg_table	sgt;
