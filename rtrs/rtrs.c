@@ -110,25 +110,6 @@ int rtrs_post_recv_empty(struct rtrs_con *con, struct ib_cqe *cqe)
 }
 EXPORT_SYMBOL_GPL(rtrs_post_recv_empty);
 
-int rtrs_post_recv_empty_x2(struct rtrs_con *con, struct ib_cqe *cqe)
-{
-	struct ib_recv_wr wr_arr[2], *wr;
-	const struct ib_recv_wr *bad_wr;
-	int i;
-
-	memset(wr_arr, 0, sizeof(wr_arr));
-	for (i = 0; i < ARRAY_SIZE(wr_arr); i++) {
-		wr = &wr_arr[i];
-		wr->wr_cqe  = cqe;
-		if (i)
-			/* Chain backwards */
-			wr->next = &wr_arr[i - 1];
-	}
-
-	return ib_post_recv(con->qp, wr, &bad_wr);
-}
-EXPORT_SYMBOL_GPL(rtrs_post_recv_empty_x2);
-
 int rtrs_iu_post_send(struct rtrs_con *con, struct rtrs_iu *iu, size_t size,
 		       struct ib_send_wr *head)
 {
