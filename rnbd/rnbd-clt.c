@@ -1037,7 +1037,7 @@ static int rnbd_client_xfer_request(struct rnbd_clt_dev *dev,
 	};
 	size = rnbd_clt_get_sg_size(iu->sglist, sg_cnt);
 	err = rtrs_clt_request(rq_data_dir(rq), msg_io_conf, rtrs, permit,
-				iu, &vec, 1, size, iu->sglist, sg_cnt);
+			       iu, &vec, 1, size, iu->sglist, sg_cnt);
 	if (unlikely(err)) {
 		rnbd_clt_err_rl(dev, "RTRS failed to transfer IO, err: %d\n",
 				 err);
@@ -1303,7 +1303,7 @@ static void setup_request_queue(struct rnbd_clt_dev *dev)
 	blk_queue_flag_set(QUEUE_FLAG_SAME_FORCE, dev->queue);
 	blk_queue_max_segments(dev->queue, dev->max_segments);
 	blk_queue_io_opt(dev->queue, dev->sess->max_io_size);
-	blk_queue_virt_boundary(dev->queue, 4095);
+	blk_queue_virt_boundary(dev->queue, SZ_4K - 1);
 	blk_queue_write_cache(dev->queue, true, true);
 	dev->queue->queuedata = dev;
 }
