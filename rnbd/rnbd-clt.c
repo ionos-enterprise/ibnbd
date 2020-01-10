@@ -987,6 +987,15 @@ static const struct block_device_operations rnbd_client_ops = {
 	.getgeo		= rnbd_client_getgeo
 };
 
+/* The amount of data that belongs to an I/O and the amount of data that
+ * should be read or written to the disk (bi_size) can differ.
+ *
+ * E.g. When WRITE_SAME is used, only a small amount of data is
+ * transfered that is then written repeatedly over a lot of sectors.
+ *
+ * Get the size of data to be transfered via RTRS by summing up the size
+ * of the scather-gather list entries.
+ */
 static size_t rnbd_clt_get_sg_size(struct scatterlist *sglist, u32 len)
 {
 	struct scatterlist *sg;
