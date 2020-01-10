@@ -69,6 +69,7 @@ __rtrs_get_permit(struct rtrs_clt *clt, enum rtrs_clt_con_type con_type)
 	struct rtrs_permit *permit;
 	int cpu, bit;
 
+	/* Combined with cq_vector, we pin the IO to the the cpu it comes */
 	cpu = get_cpu();
 	do {
 		bit = find_first_zero_bit(clt->permits_map, max_depth);
@@ -365,9 +366,9 @@ static void complete_rdma_req(struct rtrs_clt_io_req *req, int errno,
 	if (req->sg_cnt) {
 		if (unlikely(req->dir == DMA_FROM_DEVICE && req->need_inv)) {
 			/*
-			 * We are here to invalidate RDMA read requests
+			 * We are here to invalidate read requests
 			 * ourselves.  In normal scenario server should
-			 * send INV for all requested RDMA reads, but
+			 * send INV for all read requests, but
 			 * we are here, thus two things could happen:
 			 *
 			 *    1.  this is failover, when errno != 0
