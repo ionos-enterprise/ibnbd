@@ -31,7 +31,7 @@ MODULE_LICENSE("GPL");
 /* We guarantee to serve 10 paths at least */
 #define CHUNK_POOL_SZ 10
 
-static struct rtrs_ib_dev_pool dev_pool;
+static struct rtrs_rdma_dev_pd dev_pd;
 static mempool_t *chunk_pool;
 struct class *rtrs_dev_class;
 
@@ -1728,7 +1728,7 @@ static struct rtrs_srv_sess *__alloc_sess(struct rtrs_srv *srv,
 	INIT_WORK(&sess->close_work, rtrs_srv_close_work);
 	rtrs_srv_init_hb(sess);
 
-	sess->s.dev = rtrs_ib_dev_find_or_add(cm_id->device, &dev_pool);
+	sess->s.dev = rtrs_ib_dev_find_or_add(cm_id->device, &dev_pd);
 	if (unlikely(!sess->s.dev)) {
 		err = -ENOMEM;
 		goto err_free_con;
@@ -2125,7 +2125,7 @@ static int __init rtrs_server_init(void)
 		max_chunk_size - MAX_HDR_SIZE, MAX_HDR_SIZE,
 		sess_queue_depth, always_invalidate);
 
-	rtrs_ib_dev_pool_init(0, &dev_pool);
+	rtrs_rdma_dev_pd_init(0, &dev_pd);
 
 	err = check_module_params();
 	if (err) {
@@ -2166,7 +2166,7 @@ static void __exit rtrs_server_exit(void)
 	destroy_workqueue(rtrs_wq);
 	class_destroy(rtrs_dev_class);
 	mempool_destroy(chunk_pool);
-	rtrs_ib_dev_pool_deinit(&dev_pool);
+	rtrs_rdma_dev_pd_deinit(&dev_pd);
 }
 
 module_init(rtrs_server_init);

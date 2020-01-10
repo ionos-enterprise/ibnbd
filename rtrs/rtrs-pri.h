@@ -68,18 +68,18 @@ enum {
 
 struct rtrs_ib_dev;
 
-struct rtrs_ib_dev_pool_ops {
+struct rtrs_rdma_dev_pd_ops {
 	struct rtrs_ib_dev *(*alloc)(void);
 	void (*free)(struct rtrs_ib_dev *dev);
 	int (*init)(struct rtrs_ib_dev *dev);
 	void (*deinit)(struct rtrs_ib_dev *dev);
 };
 
-struct rtrs_ib_dev_pool {
+struct rtrs_rdma_dev_pd {
 	struct mutex		mutex;
 	struct list_head	list;
 	enum ib_pd_flags	pd_flags;
-	const struct rtrs_ib_dev_pool_ops *ops;
+	const struct rtrs_rdma_dev_pd_ops *ops;
 };
 
 struct rtrs_ib_dev {
@@ -87,7 +87,7 @@ struct rtrs_ib_dev {
 	struct ib_pd		 *ib_pd;
 	struct kref		 ref;
 	struct list_head	 entry;
-	struct rtrs_ib_dev_pool *pool;
+	struct rtrs_rdma_dev_pd *pool;
 };
 
 struct rtrs_con {
@@ -324,12 +324,12 @@ void rtrs_start_hb(struct rtrs_sess *sess);
 void rtrs_stop_hb(struct rtrs_sess *sess);
 void rtrs_send_hb_ack(struct rtrs_sess *sess);
 
-void rtrs_ib_dev_pool_init(enum ib_pd_flags pd_flags,
-			   struct rtrs_ib_dev_pool *pool);
-void rtrs_ib_dev_pool_deinit(struct rtrs_ib_dev_pool *pool);
+void rtrs_rdma_dev_pd_init(enum ib_pd_flags pd_flags,
+			   struct rtrs_rdma_dev_pd *pool);
+void rtrs_rdma_dev_pd_deinit(struct rtrs_rdma_dev_pd *pool);
 
 struct rtrs_ib_dev *rtrs_ib_dev_find_or_add(struct ib_device *ib_dev,
-					    struct rtrs_ib_dev_pool *pool);
+					    struct rtrs_rdma_dev_pd *pool);
 int rtrs_ib_dev_put(struct rtrs_ib_dev *dev);
 
 static inline u32 rtrs_to_imm(u32 type, u32 payload)

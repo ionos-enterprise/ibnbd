@@ -503,26 +503,26 @@ int rtrs_addr_to_sockaddr(const char *str, size_t len, short port,
 }
 EXPORT_SYMBOL(rtrs_addr_to_sockaddr);
 
-void rtrs_ib_dev_pool_init(enum ib_pd_flags pd_flags,
-			    struct rtrs_ib_dev_pool *pool)
+void rtrs_rdma_dev_pd_init(enum ib_pd_flags pd_flags,
+			    struct rtrs_rdma_dev_pd *pool)
 {
 	WARN_ON(pool->ops && (!pool->ops->alloc ^ !pool->ops->free));
 	INIT_LIST_HEAD(&pool->list);
 	mutex_init(&pool->mutex);
 	pool->pd_flags = pd_flags;
 }
-EXPORT_SYMBOL(rtrs_ib_dev_pool_init);
+EXPORT_SYMBOL(rtrs_rdma_dev_pd_init);
 
-void rtrs_ib_dev_pool_deinit(struct rtrs_ib_dev_pool *pool)
+void rtrs_rdma_dev_pd_deinit(struct rtrs_rdma_dev_pd *pool)
 {
 	mutex_destroy(&pool->mutex);
 	WARN_ON(!list_empty(&pool->list));
 }
-EXPORT_SYMBOL(rtrs_ib_dev_pool_deinit);
+EXPORT_SYMBOL(rtrs_rdma_dev_pd_deinit);
 
 static void dev_free(struct kref *ref)
 {
-	struct rtrs_ib_dev_pool *pool;
+	struct rtrs_rdma_dev_pd *pool;
 	struct rtrs_ib_dev *dev;
 
 	dev = container_of(ref, typeof(*dev), ref);
@@ -556,7 +556,7 @@ static int rtrs_ib_dev_get(struct rtrs_ib_dev *dev)
 
 struct rtrs_ib_dev *
 rtrs_ib_dev_find_or_add(struct ib_device *ib_dev,
-			 struct rtrs_ib_dev_pool *pool)
+			 struct rtrs_rdma_dev_pd *pool)
 {
 	struct rtrs_ib_dev *dev;
 

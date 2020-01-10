@@ -41,9 +41,9 @@ module_param_named(noreg_cnt, noreg_cnt, int, 0444);
 MODULE_PARM_DESC(noreg_cnt,
 		 "Max number of SG entries when MR registration does not happen (default: 0)");
 
-static const struct rtrs_ib_dev_pool_ops dev_pool_ops;
-static struct rtrs_ib_dev_pool dev_pool = {
-	.ops = &dev_pool_ops
+static const struct rtrs_rdma_dev_pd_ops dev_pd_ops;
+static struct rtrs_rdma_dev_pd dev_pd = {
+	.ops = &dev_pd_ops
 };
 
 static struct workqueue_struct *rtrs_wq;
@@ -1531,7 +1531,7 @@ static int create_con_cq_qp(struct rtrs_clt_con *con)
 		 * is gracefully put.
 		 */
 		sess->s.dev = rtrs_ib_dev_find_or_add(con->c.cm_id->device,
-						       &dev_pool);
+						       &dev_pd);
 		if (unlikely(!sess->s.dev)) {
 			rtrs_wrn(sess->clt,
 				  "rtrs_ib_dev_find_get_or_add(): no memory\n");
@@ -2922,7 +2922,7 @@ static int rtrs_clt_ib_dev_init(struct rtrs_ib_dev *dev)
 	return 0;
 }
 
-static const struct rtrs_ib_dev_pool_ops dev_pool_ops = {
+static const struct rtrs_rdma_dev_pd_ops dev_pd_ops = {
 	.init = rtrs_clt_ib_dev_init
 };
 
@@ -2934,8 +2934,8 @@ static int __init rtrs_client_init(void)
 		KBUILD_MODNAME, RTRS_PROTO_VER_STRING,
 		retry_cnt, noreg_cnt);
 
-	rtrs_ib_dev_pool_init(noreg_cnt ? IB_PD_UNSAFE_GLOBAL_RKEY : 0,
-			       &dev_pool);
+	rtrs_rdma_dev_pd_init(noreg_cnt ? IB_PD_UNSAFE_GLOBAL_RKEY : 0,
+			       &dev_pd);
 
 	err = check_module_params();
 	if (unlikely(err)) {
@@ -2962,7 +2962,7 @@ static void __exit rtrs_client_exit(void)
 {
 	destroy_workqueue(rtrs_wq);
 	class_destroy(rtrs_clt_dev_class);
-	rtrs_ib_dev_pool_deinit(&dev_pool);
+	rtrs_rdma_dev_pd_deinit(&dev_pd);
 }
 
 module_init(rtrs_client_init);
