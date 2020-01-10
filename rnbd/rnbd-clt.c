@@ -864,7 +864,12 @@ static void wait_for_rtrs_disconnection(struct rnbd_clt_session *sess)
 		return;
 	}
 	mutex_unlock(&sess_lock);
-	/* After unlock session can be freed, so careful */
+	/* loop in caller, see __find_and_get_sess().
+	 * You can't leave mutex locked and call schedule(), you will catch a
+	 * deadlock with a caller of free_sess(), which has just put the last
+	 * reference and is about to take the sess_lock in order to delete
+	 * the session from the list.
+	 */
 	schedule();
 	mutex_lock(&sess_lock);
 }
