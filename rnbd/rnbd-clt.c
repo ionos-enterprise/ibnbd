@@ -878,11 +878,11 @@ static struct rnbd_clt_session *__find_and_get_sess(const char *sessname)
 	__releases(&sess_lock)
 	__acquires(&sess_lock)
 {
-	struct rnbd_clt_session *sess;
+	struct rnbd_clt_session *sess, *sn;
 	int err;
 
 again:
-	list_for_each_entry(sess, &sess_list, list) {
+	list_for_each_entry_safe(sess, sn, &sess_list, list) {
 		if (strcmp(sessname, sess->sessname))
 			continue;
 
