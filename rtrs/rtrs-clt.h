@@ -33,21 +33,27 @@ enum rtrs_mp_policy {
 	MP_POLICY_MIN_INFLIGHT,
 };
 
+/* see Documentation/ABI/testing/sysfs-class-rtrs-client for details */
 struct rtrs_clt_stats_reconnects {
 	int successful_cnt;
 	int fail_cnt;
 };
 
+/* see Documentation/ABI/testing/sysfs-class-rtrs-client for details */
 struct rtrs_clt_stats_wc_comp {
 	u32 cnt;
 	u64 total_cnt;
 };
 
+/* see Documentation/ABI/testing/sysfs-class-rtrs-client for details */
 struct rtrs_clt_stats_cpu_migr {
 	atomic_t from;
 	int to;
 };
 
+/* stats for Read and write operation.
+ * see Documentation/ABI/testing/sysfs-class-rtrs-client for details
+ */
 struct rtrs_clt_stats_rdma {
 	struct {
 		u64 cnt;
@@ -62,6 +68,9 @@ struct rtrs_clt_stats_rdma_lat {
 	u64 write;
 };
 
+/* Constants to generate sg_entries distribution.
+ * see Documentation/ABI/testing/sysfs-class-rtrs-client for details
+ */
 #define MIN_LOG_SG 2
 #define MAX_LOG_SG 5
 #define MAX_LIN_SG BIT(MIN_LOG_SG)
@@ -98,7 +107,8 @@ struct rtrs_clt_con {
 };
 
 /**
- * rtrs_permit - permits the memory allocation for future RDMA operation
+ * rtrs_permit - permits the memory allocation for future RDMA operation.
+ *		 Combine with irq pinning to keep IO on same CPU.
  */
 struct rtrs_permit {
 	enum rtrs_clt_con_type con_type;
