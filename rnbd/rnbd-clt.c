@@ -923,20 +923,29 @@ again:
 	return NULL;
 }
 
-static struct rnbd_clt_session *find_or_create_sess(const char *sessname)
+static struct rnbd_clt_session *find_and_get_sess(const char *sessname)
 {
-	struct rnbd_clt_session *sess = NULL;
+	struct rnbd_clt_session *sess;
 
 	mutex_lock(&sess_lock);
 	sess = __find_and_get_sess(sessname);
-	if (!sess) {
-		sess = alloc_sess(sessname);
-		if (sess)
-			list_add(&sess->list, &sess_list);
-	}
 	mutex_unlock(&sess_lock);
 
 	return sess;
+}
+
+static struct rnbd_clt_session *
+find_and_get_or_insert_sess(struct rnbd_clt_session *sess)
+{
+	struct rnbd_clt_session *found;
+
+	mutex_lock(&sess_lock);
+	found = __find_and_get_sess(sess->sessname);
+	if (!found)
+		list_add(&sess->list, &sess_list);
+	mutex_unlock(&sess_lock);
+
+	return found;
 }
 
 static int rnbd_client_open(struct block_device *block_device, fmode_t mode)
@@ -1190,13 +1199,24 @@ find_and_get_or_create_sess(const char *sessname,
 			    const struct rtrs_addr *paths,
 			    size_t path_cnt)
 {
-	struct rnbd_clt_session *sess;
+	struct rnbd_clt_session *sess, *found;
 	struct rtrs_attrs attrs;
 	int err;
 
-	sess = find_or_create_sess(sessname);
-	if (unlikely(!sess))
-		return ERR_PTR(-ENOMEM);
+	sess = find_and_get_sess(sessname);
+	if (sess)
+		return sess;
+
+	sess = alloc_sess(sessname);
+	if (IS_ERR(sess))
+		return sess;
+
+	found = find_and_get_or_insert_sess(sess);
+	if (unlikely(found)) {
+		free_sess(sess);
+
+		return found;
+	}
 	/*
 	 * Nothing was found, establish rtrs connection and proceed further.
 	 */
