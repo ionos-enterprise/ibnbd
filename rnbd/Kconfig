@@ -16,7 +16,7 @@ config BLK_DEV_RNBD_CLIENT
 	  If unsure, say N.
 
 config BLK_DEV_RNBD_SERVER
-	tristate "Network block device over RDMA Infiniband server support"
+	tristate "Network block device over RDMA server support"
 	depends on INFINIBAND_RTRS_SERVER
 	select BLK_DEV_RNBD
 	help
