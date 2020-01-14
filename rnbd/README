@@ -1,6 +1,6 @@
-***************************************
-Infiniband Network Block Device (RNBD)
-***************************************
+********************************
+RDMA Network Block Device (RNBD)
+********************************
 
 Introduction
 ------------
@@ -57,7 +57,7 @@ Example:
   > addr ::= [ ip:<ipv4> | ip:<ipv6> | gid:<gid> ]
 
 Entries under /sys/devices/virtual/rnbd-client/ctl/
-=======================================
+===================================================
 
 map_device (RW)
 ---------------
@@ -144,7 +144,7 @@ How to find the <device_id> of the device is described on the next
 section.
 
 Entries under /sys/devices/virtual/rnbd-client/ctl/devices/
-============================================================
+===========================================================
 
 For each device mapped on the client a new symbolic link is created as
 /sys/devices/virtual/rnbd-client/ctl/devices/<device_id>, which points
@@ -157,7 +157,7 @@ The <device_id> of each device is created as follows:
   "device_path" provided.
 
 Entries under /sys/block/rnbd<N>/rnbd/
-===============================================
+======================================
 
 unmap_device (RW)
 -----------------
@@ -206,13 +206,13 @@ Server Sysfs Interface
 ======================
 
 Entries under /sys/devices/virtual/rnbd-server/ctl/
-====================================================
+===================================================
 
 When a client maps a device, a directory entry with the name of the
 block device is created under /sys/devices/virtual/rnbd-server/ctl/devices/.
 
 Entries under /sys/devices/virtual/rnbd-server/ctl/devices/<device_name>/
-==========================================================================
+=========================================================================
 
 block_dev (link)
 ---------------
@@ -224,7 +224,7 @@ Example:
   block_dev -> ../../../../devices/virtual/block/ram0
 
 Entries under /sys/devices/virtual/rnbd-server/ctl/devices/<device_name>/sessions/
-===================================================================================
+==================================================================================
 
 For each client a particular device is exported to, following directory will be
 created:
@@ -234,7 +234,7 @@ created:
 When the device is unmapped by that client, the directory will be removed.
 
 Entries under /sys/devices/virtual/rnbd-server/ctl/devices/<device_name>/sessions/<session-name>
-=================================================================================================
+================================================================================================
 
 read_only (RO)
 --------------
@@ -252,9 +252,9 @@ access_mode (RO)
 Contains the device access mode: ro, rw or migration.
 
 
-==============================
+=============================
 RNBD-Server Module Parameters
-==============================
+=============================
 
 dev_search_path
 ---------------
@@ -269,9 +269,9 @@ dev_search_path option can also contain %SESSNAME% in order to provide
 different deviec namespaces for different sessions.  See "device_path"
 option for details.
 
-==============================
+============================
 Protocol (rnbd/rnbd-proto.h)
-==============================
+============================
 
 1. Before mapping first device from a given server, client sends an
 RNBD_MSG_SESS_INFO to the server. Server responds with
@@ -291,3 +291,14 @@ sector to be accessed, read-write flags and bi_size.
 4. Client closes a device by sending RNBD_MSG_CLOSE which contains only the
 device id provided by the server.
 
+=========================================
+Contributors List(in alphabetical order)
+=========================================
+Danil Kipnis <danil.kipnis@profitbricks.com>
+Fabian Holler <mail@fholler.de>
+Guoqing Jiang <guoqing.jiang@cloud.ionos.com>
+Jack Wang <jinpu.wang@profitbricks.com>
+Kleber Souza <kleber.souza@profitbricks.com>
+Lutz Pogrell <lutz.pogrell@cloud.ionos.com>
+Milind Dumbare <Milind.dumbare@gmail.com>
+Roman Penyaev <roman.penyaev@profitbricks.com>
