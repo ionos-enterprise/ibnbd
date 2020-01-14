@@ -16,7 +16,7 @@
 #include <linux/refcount.h>
 #include "rtrs-pri.h"
 
-/**
+/*
  * enum rtrs_srv_state - Server states.
  */
 enum rtrs_srv_state {
@@ -58,16 +58,17 @@ struct rtrs_srv_op {
 	struct ib_sge			*tx_sg;
 };
 
-/* server side memory region context, when always_invalidate=Y, we need
+/*
+ * server side memory region context, when always_invalidate=Y, we need
  * queue_depth of memory regrion to invalidate each memory region.
  */
 struct rtrs_srv_mr {
 	struct ib_mr	*mr;
 	struct sg_table	sgt;
-	struct ib_cqe	inv_cqe; /* only for always_invalidate=true */
-	u32		msg_id; /* only for always_invalidate=true */
-	u32		msg_off; /* only for always_invalidate=true */
-	struct rtrs_iu	*iu; /* send buffer for new rkey msg */
+	struct ib_cqe	inv_cqe;	/* only for always_invalidate=true */
+	u32		msg_id;		/* only for always_invalidate=true */
+	u32		msg_off;	/* only for always_invalidate=true */
+	struct rtrs_iu	*iu;		/* send buffer for new rkey msg */
 };
 
 struct rtrs_srv_sess {
@@ -121,8 +122,7 @@ extern struct class *rtrs_dev_class;
 
 void close_sess(struct rtrs_srv_sess *sess);
 
-/* rtrs-srv-stats.c */
-
+/* functions which are implemented in rtrs-srv-stats.c */
 void rtrs_srv_update_rdma_stats(struct rtrs_srv_stats *s, size_t size, int d);
 void rtrs_srv_update_wc_stats(struct rtrs_srv_stats *s);
 
@@ -137,8 +137,7 @@ int rtrs_srv_reset_all_stats(struct rtrs_srv_stats *stats, bool enable);
 ssize_t rtrs_srv_reset_all_help(struct rtrs_srv_stats *stats,
 				 char *page, size_t len);
 
-/* rtrs-srv-sysfs.c */
-
+/* functions which are implemented in rtrs-srv-sysfs.c */
 int rtrs_srv_create_sess_files(struct rtrs_srv_sess *sess);
 void rtrs_srv_destroy_sess_files(struct rtrs_srv_sess *sess);
 
