@@ -295,7 +295,7 @@ Module parameter always_invalidate is introduced for the security problem
 discussed in LPC RDMA MC 2019. When always_invalidate=Y, on the server side we
 invalidate each rdma buffer before we hand it over to RNBD server and
 then pass it to the block layer. A new rkey is generated and registered for the
-buffer after it returns back from the block layer and RNBD server. 
+buffer after it returns back from the block layer and RNBD server.
 The new rkey is sent back to the client along with the IO result.
 The procedure is the default behaviour of the driver. This invalidation and
 registration on each IO causes performance drop of up to 20%. A user of the
