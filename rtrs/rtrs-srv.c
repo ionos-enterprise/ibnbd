@@ -296,7 +296,6 @@ static int rdma_write_sg(struct rtrs_srv_op *id)
 	struct rtrs_srv *srv = sess->srv;
 	struct ib_send_wr inv_wr, imm_wr;
 	struct ib_rdma_wr *wr = NULL;
-	const struct ib_send_wr *bad_wr;
 	enum ib_send_flags flags;
 	size_t sg_cnt;
 	int err, i, offset;
@@ -418,7 +417,7 @@ static int rdma_write_sg(struct rtrs_srv_op *id)
 	ib_dma_sync_single_for_device(sess->s.dev->ib_dev, dma_addr,
 				      offset, DMA_BIDIRECTIONAL);
 
-	err = ib_post_send(id->con->c.qp, &id->tx_wr[0].wr, &bad_wr);
+	err = ib_post_send(id->con->c.qp, &id->tx_wr[0].wr, NULL);
 	if (unlikely(err))
 		rtrs_err(s,
 			  "Posting RDMA-Write-Request to QP failed, err: %d\n",
@@ -447,7 +446,6 @@ static int send_io_resp_imm(struct rtrs_srv_con *con, struct rtrs_srv_op *id,
 	struct rtrs_srv_mr *srv_mr;
 	bool need_inval = false;
 	enum ib_send_flags flags;
-	const struct ib_send_wr *bad_wr;
 	u32 imm;
 	int err;
 
@@ -534,7 +532,7 @@ static int send_io_resp_imm(struct rtrs_srv_con *con, struct rtrs_srv_op *id,
 	imm_wr.send_flags = flags;
 	imm_wr.ex.imm_data = cpu_to_be32(imm);
 
-	err = ib_post_send(id->con->c.qp, wr, &bad_wr);
+	err = ib_post_send(id->con->c.qp, wr, NULL);
 	if (unlikely(err))
 		rtrs_err_rl(s, "Posting RDMA-Reply to QP failed, err: %d\n",
 			     err);
@@ -1185,7 +1183,6 @@ static void rtrs_srv_inv_rkey_done(struct ib_cq *cq, struct ib_wc *wc)
 static int rtrs_srv_inv_rkey(struct rtrs_srv_con *con,
 			      struct rtrs_srv_mr *mr)
 {
-	const struct ib_send_wr *bad_wr;
 	struct ib_send_wr wr = {
 		.opcode		    = IB_WR_LOCAL_INV,
 		.wr_cqe		    = &mr->inv_cqe,
@@ -1196,7 +1193,7 @@ static int rtrs_srv_inv_rkey(struct rtrs_srv_con *con,
 	};
 	mr->inv_cqe.done = rtrs_srv_inv_rkey_done;
 
-	return ib_post_send(con->c.qp, &wr, &bad_wr);
+	return ib_post_send(con->c.qp, &wr, NULL);
 }
 
 static void rtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)

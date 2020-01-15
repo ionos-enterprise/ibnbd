@@ -336,7 +336,6 @@ static void rtrs_clt_inv_rkey_done(struct ib_cq *cq, struct ib_wc *wc)
 static int rtrs_inv_rkey(struct rtrs_clt_io_req *req)
 {
 	struct rtrs_clt_con *con = req->con;
-	const struct ib_send_wr *bad_wr;
 	struct ib_send_wr wr = {
 		.opcode		    = IB_WR_LOCAL_INV,
 		.wr_cqe		    = &req->inv_cqe,
@@ -345,7 +344,7 @@ static int rtrs_inv_rkey(struct rtrs_clt_io_req *req)
 	};
 	req->inv_cqe.done = rtrs_clt_inv_rkey_done;
 
-	return ib_post_send(con->c.qp, &wr, &bad_wr);
+	return ib_post_send(con->c.qp, &wr, NULL);
 }
 
 static void complete_rdma_req(struct rtrs_clt_io_req *req, int errno,
@@ -548,7 +547,6 @@ static struct ib_cqe io_comp_cqe = {
 static int rtrs_post_recv_empty_x2(struct rtrs_con *con, struct ib_cqe *cqe)
 {
 	struct ib_recv_wr wr_arr[2], *wr;
-	const struct ib_recv_wr *bad_wr;
 	int i;
 
 	memset(wr_arr, 0, sizeof(wr_arr));
@@ -560,7 +558,7 @@ static int rtrs_post_recv_empty_x2(struct rtrs_con *con, struct ib_cqe *cqe)
 			wr->next = &wr_arr[i - 1];
 	}
 
-	return ib_post_recv(con->qp, wr, &bad_wr);
+	return ib_post_recv(con->qp, wr, NULL);
 }
 
 static void rtrs_clt_rdma_done(struct ib_cq *cq, struct ib_wc *wc)

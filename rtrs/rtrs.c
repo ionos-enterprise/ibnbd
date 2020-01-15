@@ -75,7 +75,6 @@ int rtrs_iu_post_recv(struct rtrs_con *con, struct rtrs_iu *iu)
 {
 	struct rtrs_sess *sess = con->sess;
 	struct ib_recv_wr wr;
-	const struct ib_recv_wr *bad_wr;
 	struct ib_sge list;
 
 	list.addr   = iu->dma_addr;
@@ -93,20 +92,19 @@ int rtrs_iu_post_recv(struct rtrs_con *con, struct rtrs_iu *iu)
 	.num_sge = 1,
 	};
 
-	return ib_post_recv(con->qp, &wr, &bad_wr);
+	return ib_post_recv(con->qp, &wr, NULL);
 }
 EXPORT_SYMBOL_GPL(rtrs_iu_post_recv);
 
 int rtrs_post_recv_empty(struct rtrs_con *con, struct ib_cqe *cqe)
 {
 	struct ib_recv_wr wr;
-	const struct ib_recv_wr *bad_wr;
 
 	wr = (struct ib_recv_wr) {
 	.wr_cqe  = cqe,
 	};
 
-	return ib_post_recv(con->qp, &wr, &bad_wr);
+	return ib_post_recv(con->qp, &wr, NULL);
 }
 EXPORT_SYMBOL_GPL(rtrs_post_recv_empty);
 
@@ -115,7 +113,6 @@ int rtrs_iu_post_send(struct rtrs_con *con, struct rtrs_iu *iu, size_t size,
 {
 	struct rtrs_sess *sess = con->sess;
 	struct ib_send_wr wr;
-	const struct ib_send_wr *bad_wr;
 	struct ib_sge list;
 
 	if (WARN_ON(size == 0))
@@ -143,7 +140,7 @@ int rtrs_iu_post_send(struct rtrs_con *con, struct rtrs_iu *iu, size_t size,
 		head = &wr;
 	}
 
-	return ib_post_send(con->qp, head, &bad_wr);
+	return ib_post_send(con->qp, head, NULL);
 }
 EXPORT_SYMBOL_GPL(rtrs_iu_post_send);
 
@@ -153,7 +150,6 @@ int rtrs_iu_post_rdma_write_imm(struct rtrs_con *con, struct rtrs_iu *iu,
 				 enum ib_send_flags flags,
 				 struct ib_send_wr *head)
 {
-	const struct ib_send_wr *bad_wr;
 	struct ib_rdma_wr wr;
 	int i;
 
@@ -186,7 +182,7 @@ int rtrs_iu_post_rdma_write_imm(struct rtrs_con *con, struct rtrs_iu *iu,
 		head = &wr.wr;
 	}
 
-	return ib_post_send(con->qp, head, &bad_wr);
+	return ib_post_send(con->qp, head, NULL);
 }
 EXPORT_SYMBOL_GPL(rtrs_iu_post_rdma_write_imm);
 
@@ -195,7 +191,6 @@ int rtrs_post_rdma_write_imm_empty(struct rtrs_con *con, struct ib_cqe *cqe,
 				    struct ib_send_wr *head)
 {
 	struct ib_send_wr wr;
-	const struct ib_send_wr *bad_wr;
 
 	wr = (struct ib_send_wr) {
 	.wr_cqe	= cqe,
@@ -214,7 +209,7 @@ int rtrs_post_rdma_write_imm_empty(struct rtrs_con *con, struct ib_cqe *cqe,
 		head = &wr;
 	}
 
-	return ib_post_send(con->qp, head, &bad_wr);
+	return ib_post_send(con->qp, head, NULL);
 }
 EXPORT_SYMBOL_GPL(rtrs_post_rdma_write_imm_empty);
 
