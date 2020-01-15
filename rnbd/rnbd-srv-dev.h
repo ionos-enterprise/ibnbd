@@ -6,7 +6,7 @@
  *
  * Copyright (c) 2018 - 2019 1&1 IONOS Cloud GmbH. All rights reserved.
  *
- * Copyright (c) 2019 1&1 IONOS SE. All rights reserved.
+ * Copyright (c) 2019 - 2020 1&1 IONOS SE. All rights reserved.
  */
 #ifndef RNBD_SRV_DEV_H
 #define RNBD_SRV_DEV_H
