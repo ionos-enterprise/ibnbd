@@ -44,9 +44,6 @@ enum rtrs_imm_type {
 enum {
 	SERVICE_CON_QUEUE_DEPTH = 512,
 
-	MIN_RTR_CNT = 1,
-	MAX_RTR_CNT = 7,
-
 	MAX_PATHS_NUM = 128,
 
 	/*

@@ -22,23 +22,6 @@
 MODULE_DESCRIPTION("RDMA Transport Client");
 MODULE_LICENSE("GPL");
 
-static ushort nr_cons_per_session;
-module_param(nr_cons_per_session, ushort, 0444);
-MODULE_PARM_DESC(nr_cons_per_session,
-		 "Number of connections per session. (default: nr_cpu_ids)");
-
-static int retry_cnt = 7;
-module_param_named(retry_cnt, retry_cnt, int, 0644);
-MODULE_PARM_DESC(retry_cnt,
-		 "Number of times to send the message if the remote side didn't respond with Ack or Nack (default: 7, min: "
-		 __stringify(MIN_RTR_CNT) ", max: "
-		 __stringify(MAX_RTR_CNT) ")");
-
-static int __read_mostly noreg_cnt;
-module_param_named(noreg_cnt, noreg_cnt, int, 0444);
-MODULE_PARM_DESC(noreg_cnt,
-		 "Max number of SG entries when MR registration does not happen (default: 0)");
-
 static const struct rtrs_rdma_dev_pd_ops dev_pd_ops;
 static struct rtrs_rdma_dev_pd dev_pd = {
 	.ops = &dev_pd_ops
@@ -1070,7 +1053,7 @@ static int rtrs_clt_read_req(struct rtrs_clt_io_req *req)
 	msg->type = cpu_to_le16(RTRS_MSG_READ);
 	msg->usr_len = cpu_to_le16(req->usr_len);
 
-	if (count > noreg_cnt) {
+	if (count) {
 		ret = rtrs_map_sg_fr(req, count);
 		if (ret < 0) {
 			rtrs_err_rl(s,
@@ -1635,7 +1618,7 @@ static int rtrs_rdma_route_resolved(struct rtrs_clt_con *con)
 	int err;
 
 	memset(&param, 0, sizeof(param));
-	param.retry_count = clamp(retry_cnt, MIN_RTR_CNT, MAX_RTR_CNT);
+	param.retry_count = 7;
 	param.rnr_retry_count = 7;
 	param.private_data = &msg;
 	param.private_data_len = sizeof(msg);
@@ -2633,7 +2616,7 @@ struct rtrs_clt *rtrs_clt_open(void *priv, link_clt_ev_fn *link_ev,
 	for (i = 0; i < paths_num; i++) {
 		struct rtrs_clt_sess *sess;
 
-		sess = alloc_sess(clt, &paths[i], nr_cons_per_session,
+		sess = alloc_sess(clt, &paths[i], nr_cpu_ids,
 				  max_segments);
 		if (IS_ERR(sess)) {
 			err = PTR_ERR(sess);
@@ -2864,7 +2847,7 @@ int rtrs_clt_create_path_from_sysfs(struct rtrs_clt *clt,
 	struct rtrs_clt_sess *sess;
 	int err;
 
-	sess = alloc_sess(clt, addr, nr_cons_per_session, clt->max_segments);
+	sess = alloc_sess(clt, addr, nr_cpu_ids, clt->max_segments);
 	if (IS_ERR(sess))
 		return PTR_ERR(sess);
 
@@ -2893,14 +2876,6 @@ close_sess:
 	return err;
 }
 
-static int check_module_params(void)
-{
-	if (nr_cons_per_session == 0)
-		nr_cons_per_session = min_t(unsigned int, nr_cpu_ids, U16_MAX);
-
-	return 0;
-}
-
 static int rtrs_clt_ib_dev_init(struct rtrs_ib_dev *dev)
 {
 	if (!(dev->ib_dev->attrs.device_cap_flags &
@@ -2918,21 +2893,11 @@ static const struct rtrs_rdma_dev_pd_ops dev_pd_ops = {
 
 static int __init rtrs_client_init(void)
 {
-	int err;
+	pr_info("Loading module %s, proto %s\n",
+		KBUILD_MODNAME, RTRS_PROTO_VER_STRING);
 
-	pr_info("Loading module %s, proto %s: (retry_cnt: %d, noreg_cnt: %d)\n",
-		KBUILD_MODNAME, RTRS_PROTO_VER_STRING,
-		retry_cnt, noreg_cnt);
+	rtrs_rdma_dev_pd_init(0, &dev_pd);
 
-	rtrs_rdma_dev_pd_init(noreg_cnt ? IB_PD_UNSAFE_GLOBAL_RKEY : 0,
-			       &dev_pd);
-
-	err = check_module_params();
-	if (unlikely(err)) {
-		pr_err("Failed to load module, invalid module parameters, err: %d\n",
-		       err);
-		return err;
-	}
 	rtrs_clt_dev_class = class_create(THIS_MODULE, "rtrs-client");
 	if (IS_ERR(rtrs_clt_dev_class)) {
 		pr_err("Failed to create rtrs-client dev class\n");
