@@ -136,12 +136,6 @@ void rtrs_clt_put_permit(struct rtrs_clt *clt, struct rtrs_permit *permit)
 }
 EXPORT_SYMBOL(rtrs_clt_put_permit);
 
-struct rtrs_permit *rtrs_permit_from_pdu(void *pdu)
-{
-	return pdu - sizeof(struct rtrs_permit);
-}
-EXPORT_SYMBOL(rtrs_permit_from_pdu);
-
 void *rtrs_permit_to_pdu(struct rtrs_permit *permit)
 {
 	return permit + 1;

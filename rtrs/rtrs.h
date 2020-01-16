@@ -78,12 +78,6 @@ struct rtrs_clt *rtrs_clt_open(void *priv, link_clt_ev_fn *link_ev,
 void rtrs_clt_close(struct rtrs_clt *sess);
 
 /**
- * rtrs_permit_from_pdu() - converts opaque pdu pointer to rtrs_permit
- * @pdu: opaque pointer
- */
-struct rtrs_permit *rtrs_permit_from_pdu(void *pdu);
-
-/**
  * rtrs_permit_to_pdu() - converts rtrs_permit to opaque pdu pointer
  * @permit: RTRS permit pointer, it associates the memory allocation for future
  *          RDMA operation.

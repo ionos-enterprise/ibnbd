@@ -368,9 +368,6 @@ static struct rnbd_iu *rnbd_get_iu(struct rnbd_clt_session *sess,
 		return NULL;
 	iu = rtrs_permit_to_pdu(permit);
 	iu->permit = permit;
-	/* yes, rtrs_permit_from_pdu() can be nice here,
-	 * but also we have to think about MQ mode
-	 */
 	/*
 	 * 1st reference is dropped after finishing sending a "user" message,
 	 * 2nd reference is dropped after confirmation with the response is
