@@ -68,14 +68,6 @@ struct rtrs_clt_stats_rdma_lat {
 	u64 write;
 };
 
-/* Constants to generate sg_entries distribution.
- * see Documentation/ABI/testing/sysfs-class-rtrs-client for details
- */
-#define MIN_LOG_SG 2
-#define MAX_LOG_SG 5
-#define MAX_LIN_SG BIT(MIN_LOG_SG)
-#define SG_DISTR_SZ (MAX_LOG_SG - MIN_LOG_SG + MAX_LIN_SG + 2)
-
 #define MAX_LOG_LAT 16
 #define MIN_LOG_LAT 0
 #define LOG_LAT_SZ (MAX_LOG_LAT - MIN_LOG_LAT + 2)
@@ -83,8 +75,6 @@ struct rtrs_clt_stats_rdma_lat {
 struct rtrs_clt_stats_pcpu {
 	struct rtrs_clt_stats_cpu_migr		cpu_migr;
 	struct rtrs_clt_stats_rdma		rdma;
-	u64					sg_list_total;
-	u64					sg_list_distr[SG_DISTR_SZ];
 	struct rtrs_clt_stats_rdma_lat		rdma_lat_distr[LOG_LAT_SZ];
 	struct rtrs_clt_stats_rdma_lat		rdma_lat_max;
 	struct rtrs_clt_stats_wc_comp		wc_comp;
@@ -246,10 +236,6 @@ void rtrs_clt_update_rdma_lat(struct rtrs_clt_stats *s, bool read,
 void rtrs_clt_update_wc_stats(struct rtrs_clt_con *con);
 void rtrs_clt_update_all_stats(struct rtrs_clt_io_req *req, int dir);
 
-int rtrs_clt_reset_sg_list_distr_stats(struct rtrs_clt_stats *stats,
-					bool enable);
-int rtrs_clt_stats_sg_list_distr_to_str(struct rtrs_clt_stats *stats,
-					 char *buf, size_t len);
 int rtrs_clt_reset_rdma_lat_distr_stats(struct rtrs_clt_stats *stats,
 					 bool enable);
 ssize_t rtrs_clt_stats_rdma_lat_distr_to_str(struct rtrs_clt_stats *stats,

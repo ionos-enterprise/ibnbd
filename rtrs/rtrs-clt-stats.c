@@ -204,59 +204,6 @@ ssize_t rtrs_clt_stats_rdma_to_str(struct rtrs_clt_stats *stats,
 			 atomic_read(&stats->inflight), sum.failover_cnt);
 }
 
-int rtrs_clt_stats_sg_list_distr_to_str(struct rtrs_clt_stats *stats,
-					 char *buf, size_t len)
-{
-	struct rtrs_clt_stats_pcpu *s;
-
-	int i, cpu, cnt;
-
-	cnt = scnprintf(buf, len, "n\\cpu:");
-	for_each_possible_cpu(cpu)
-		cnt += scnprintf(buf + cnt, len - cnt, "%5d", cpu);
-
-	for (i = 0; i < SG_DISTR_SZ; i++) {
-		if (i <= MAX_LIN_SG)
-			cnt += scnprintf(buf + cnt, len - cnt, "\n= %3d:", i);
-		else if (i < SG_DISTR_SZ - 1)
-			cnt += scnprintf(buf + cnt, len - cnt, "\n< %3d:",
-					 1 << (i + MIN_LOG_SG - MAX_LIN_SG));
-		else
-			cnt += scnprintf(buf + cnt, len - cnt, "\n>=%3d:",
-					 1 << (i + MIN_LOG_SG -
-					       MAX_LIN_SG - 1));
-
-		for_each_possible_cpu(cpu) {
-			unsigned int p, p_i, p_f;
-			u64 total, distr;
-
-			s = per_cpu_ptr(stats->pcpu_stats, cpu);
-			total = s->sg_list_total;
-			distr = s->sg_list_distr[i];
-
-			p = total ? distr * 1000 / total : 0;
-			p_i = p / 10;
-			p_f = p % 10;
-
-			if (distr)
-				cnt += scnprintf(buf + cnt, len - cnt,
-						 " %2u.%01u", p_i, p_f);
-			else
-				cnt += scnprintf(buf + cnt, len - cnt, "    0");
-		}
-	}
-
-	cnt += scnprintf(buf + cnt, len - cnt, "\ntotal:");
-	for_each_possible_cpu(cpu) {
-		s = per_cpu_ptr(stats->pcpu_stats, cpu);
-		cnt += scnprintf(buf + cnt, len - cnt, " %llu",
-				 s->sg_list_total);
-	}
-	cnt += scnprintf(buf + cnt, len - cnt, "\n");
-
-	return cnt;
-}
-
 ssize_t rtrs_clt_reset_all_help(struct rtrs_clt_stats *s,
 				 char *page, size_t len)
 {
@@ -294,24 +241,6 @@ int rtrs_clt_reset_rdma_lat_distr_stats(struct rtrs_clt_stats *stats,
 		}
 	}
 	stats->enable_rdma_lat = enable;
-
-	return 0;
-}
-
-int rtrs_clt_reset_sg_list_distr_stats(struct rtrs_clt_stats *stats,
-					bool enable)
-{
-	struct rtrs_clt_stats_pcpu *s;
-	int cpu;
-
-	if (unlikely(!enable))
-		return -EINVAL;
-
-	for_each_possible_cpu(cpu) {
-		s = per_cpu_ptr(stats->pcpu_stats, cpu);
-		memset(&s->sg_list_total, 0, sizeof(s->sg_list_total));
-		memset(&s->sg_list_distr, 0, sizeof(s->sg_list_distr));
-	}
 
 	return 0;
 }
@@ -363,7 +292,6 @@ int rtrs_clt_reset_all_stats(struct rtrs_clt_stats *s, bool enable)
 	if (enable) {
 		rtrs_clt_reset_rdma_stats(s, enable);
 		rtrs_clt_reset_rdma_lat_distr_stats(s, enable);
-		rtrs_clt_reset_sg_list_distr_stats(s, enable);
 		rtrs_clt_reset_cpu_migr_stats(s, enable);
 		rtrs_clt_reset_reconnects_stat(s, enable);
 		rtrs_clt_reset_wc_comp_stats(s, enable);
@@ -372,18 +300,6 @@ int rtrs_clt_reset_all_stats(struct rtrs_clt_stats *s, bool enable)
 	}
 
 	return -EINVAL;
-}
-
-static inline void rtrs_clt_record_sg_distr(u64 stat[SG_DISTR_SZ], u64 *total,
-					     unsigned int cnt)
-{
-	int i;
-
-	i = cnt > MAX_LIN_SG ? ilog2(cnt) + MAX_LIN_SG - MIN_LOG_SG + 1 : cnt;
-	i = i < SG_DISTR_SZ ? i : SG_DISTR_SZ - 1;
-
-	stat[i]++;
-	(*total)++;
 }
 
 static inline void rtrs_clt_update_rdma_stats(struct rtrs_clt_stats *stats,
@@ -403,11 +319,6 @@ void rtrs_clt_update_all_stats(struct rtrs_clt_io_req *req, int dir)
 	struct rtrs_clt_stats *stats = &sess->stats;
 	unsigned int len;
 
-	struct rtrs_clt_stats_pcpu *s;
-
-	s = this_cpu_ptr(stats->pcpu_stats);
-	rtrs_clt_record_sg_distr(s->sg_list_distr, &s->sg_list_total,
-				  req->sg_cnt);
 	len = req->usr_len + req->data_len;
 	rtrs_clt_update_rdma_stats(stats, len, dir);
 	atomic_inc(&stats->inflight);

@@ -127,17 +127,6 @@ reset_all (RW)
 
 Read will return usage help, write 0 will clear all the statistics.
 
-sg_entries (RW)
----------------
-
-Data to be transferred via RDMA is passed to RTRS as scatter-gather
-list. A scatter-gather list can contain multiple entries.
-Scatter-gather list with less entries require less processing power
-and can therefore transferred faster. The file sg_entries outputs a
-per-CPU distribution table for the number of entries in the
-scatter-gather lists, that were passed to the RTRS API function
-rtrs_clt_request (READ or WRITE).
-
 cpu_migration (RW)
 ------------------
 
