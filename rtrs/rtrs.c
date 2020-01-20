@@ -26,7 +26,6 @@ struct rtrs_iu *rtrs_iu_alloc(u32 queue_size, size_t size, gfp_t gfp_mask,
 	struct rtrs_iu *ius, *iu;
 	int i;
 
-	WARN_ON(!queue_size);
 	ius = kcalloc(queue_size, sizeof(*ius), gfp_mask);
 	if (unlikely(!ius))
 		return NULL;
@@ -79,7 +78,7 @@ int rtrs_iu_post_recv(struct rtrs_con *con, struct rtrs_iu *iu)
 	list.length = iu->size;
 	list.lkey   = sess->dev->ib_pd->local_dma_lkey;
 
-	if (WARN_ON(list.length == 0)) {
+	if (list.length == 0) {
 		rtrs_wrn(con->sess,
 			  "Posting receive work request failed, sg list is empty\n");
 		return -EINVAL;
