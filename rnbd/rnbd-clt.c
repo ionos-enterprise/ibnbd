@@ -537,7 +537,7 @@ static void msg_sess_info_conf(struct work_struct *work)
 	struct rnbd_msg_sess_info_rsp *rsp = iu->buf;
 	struct rnbd_clt_session *sess = iu->sess;
 
-	if (likely(!iu->errno))
+	if (!iu->errno)
 		sess->ver = min_t(u8, rsp->ver, RNBD_PROTO_VER_MAJOR);
 
 	kfree(rsp);
@@ -887,7 +887,7 @@ again:
 			 */
 			continue;
 
-		if (likely(rnbd_clt_get_sess(sess))) {
+		if (rnbd_clt_get_sess(sess)) {
 			/*
 			 * Alive session is found, wait for RTRS connection.
 			 */
@@ -1618,7 +1618,7 @@ int rnbd_clt_remap_device(struct rnbd_clt_dev *dev)
 	int err;
 
 	mutex_lock(&dev->lock);
-	if (likely(dev->dev_state == DEV_STATE_MAPPED_DISCONNECTED))
+	if (dev->dev_state == DEV_STATE_MAPPED_DISCONNECTED)
 		err = 0;
 	else if (dev->dev_state == DEV_STATE_UNMAPPED)
 		err = -ENODEV;
@@ -1627,7 +1627,7 @@ int rnbd_clt_remap_device(struct rnbd_clt_dev *dev)
 	else
 		err = -EBUSY;
 	mutex_unlock(&dev->lock);
-	if (likely(!err)) {
+	if (!err) {
 		rnbd_clt_info(dev, "Remapping device.\n");
 		err = send_msg_open(dev, WAIT);
 		if (err)
