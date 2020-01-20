@@ -13,5 +13,3 @@ rnbd-server-y := rnbd-srv.o \
 
 obj-$(CONFIG_BLK_DEV_RNBD_CLIENT) += rnbd-client.o
 obj-$(CONFIG_BLK_DEV_RNBD_SERVER) += rnbd-server.o
-
--include $(src)/compat/compat.mk

@@ -13,5 +13,3 @@ rtrs-core-y := rtrs.o
 obj-$(CONFIG_INFINIBAND_RTRS)        += rtrs-core.o
 obj-$(CONFIG_INFINIBAND_RTRS_CLIENT) += rtrs-client.o
 obj-$(CONFIG_INFINIBAND_RTRS_SERVER) += rtrs-server.o
-
--include $(src)/compat/compat.mk
