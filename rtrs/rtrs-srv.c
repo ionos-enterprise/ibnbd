@@ -216,23 +216,23 @@ static int rtrs_srv_alloc_ops_ids(struct rtrs_srv_sess *sess)
 
 	sess->ops_ids = kcalloc(srv->queue_depth, sizeof(*sess->ops_ids),
 				GFP_KERNEL);
-	if (unlikely(!sess->ops_ids))
+	if (!sess->ops_ids)
 		goto err;
 
 	for (i = 0; i < srv->queue_depth; ++i) {
 		id = kzalloc(sizeof(*id), GFP_KERNEL);
-		if (unlikely(!id))
+		if (!id)
 			goto err;
 
 		sess->ops_ids[i] = id;
 		id->tx_wr = kcalloc(MAX_SG_COUNT, sizeof(*id->tx_wr),
 				    GFP_KERNEL);
-		if (unlikely(!id->tx_wr))
+		if (!id->tx_wr)
 			goto err;
 
 		id->tx_sg = kcalloc(MAX_SG_COUNT, sizeof(*id->tx_sg),
 				    GFP_KERNEL);
-		if (unlikely(!id->tx_sg))
+		if (!id->tx_sg)
 			goto err;
 	}
 	init_waitqueue_head(&sess->ids_waitq);
@@ -653,7 +653,7 @@ static int map_cont_bufs(struct rtrs_srv_sess *sess)
 	}
 
 	sess->mrs = kcalloc(mrs_num, sizeof(*sess->mrs), GFP_KERNEL);
-	if (unlikely(!sess->mrs))
+	if (!sess->mrs)
 		return -ENOMEM;
 
 	sess->mrs_num = mrs_num;
@@ -672,7 +672,7 @@ static int map_cont_bufs(struct rtrs_srv_sess *sess)
 					      srv->queue_depth - chunks);
 
 		err = sg_alloc_table(sgt, chunks_per_mr, GFP_KERNEL);
-		if (unlikely(err))
+		if (err)
 			goto err;
 
 		for_each_sg(sgt->sgl, s, chunks_per_mr, i)
@@ -681,7 +681,7 @@ static int map_cont_bufs(struct rtrs_srv_sess *sess)
 
 		nr = ib_dma_map_sg(sess->s.dev->ib_dev, sgt->sgl,
 				   sgt->nents, DMA_BIDIRECTIONAL);
-		if (unlikely(nr < sgt->nents)) {
+		if (nr < sgt->nents) {
 			err = nr < 0 ? nr : -EINVAL;
 			goto free_sg;
 		}
@@ -693,7 +693,7 @@ static int map_cont_bufs(struct rtrs_srv_sess *sess)
 		}
 		nr = ib_map_mr_sg(mr, sgt->sgl, sgt->nents,
 				  NULL, max_chunk_size);
-		if (unlikely(nr < sgt->nents)) {
+		if (nr < sgt->nents) {
 			err = nr < 0 ? nr : -EINVAL;
 			goto dereg_mr;
 		}
@@ -703,7 +703,7 @@ static int map_cont_bufs(struct rtrs_srv_sess *sess)
 						    sess->s.dev->ib_dev,
 						    DMA_TO_DEVICE,
 						    rtrs_srv_rdma_done);
-			if (unlikely(!srv_mr->iu)) {
+			if (!srv_mr->iu) {
 				rtrs_err(ss, "rtrs_iu_alloc(), err: %d\n",
 					  -ENOMEM);
 				goto free_iu;
@@ -1334,7 +1334,7 @@ static struct rtrs_srv *__alloc_srv(struct rtrs_srv_ctx *ctx,
 	int i;
 
 	srv = kzalloc(sizeof(*srv), GFP_KERNEL);
-	if  (unlikely(!srv))
+	if  (!srv)
 		return NULL;
 
 	refcount_set(&srv->refcount, 1);
@@ -1347,12 +1347,12 @@ static struct rtrs_srv *__alloc_srv(struct rtrs_srv_ctx *ctx,
 
 	srv->chunks = kcalloc(srv->queue_depth, sizeof(*srv->chunks),
 			      GFP_KERNEL);
-	if (unlikely(!srv->chunks))
+	if (!srv->chunks)
 		goto err_free_srv;
 
 	for (i = 0; i < srv->queue_depth; i++) {
 		srv->chunks[i] = mempool_alloc(chunk_pool, GFP_KERNEL);
-		if (unlikely(!srv->chunks[i])) {
+		if (!srv->chunks[i]) {
 			pr_err("mempool_alloc() failed\n");
 			goto err_free_chunks;
 		}
@@ -1612,7 +1612,7 @@ static int create_con(struct rtrs_srv_sess *sess,
 	int err, cq_vector;
 
 	con = kzalloc(sizeof(*con), GFP_KERNEL);
-	if (unlikely(!con)) {
+	if (!con) {
 		rtrs_err(s, "kzalloc() failed\n");
 		err = -ENOMEM;
 		goto err;
@@ -1652,13 +1652,13 @@ static int create_con(struct rtrs_srv_sess *sess,
 	/* TODO: SOFTIRQ can be faster, but be careful with softirq context */
 	err = rtrs_cq_qp_create(&sess->s, &con->c, 1, cq_vector, cq_size,
 				 wr_queue_size, IB_POLL_WORKQUEUE);
-	if (unlikely(err)) {
+	if (err) {
 		rtrs_err(s, "rtrs_cq_qp_create(), err: %d\n", err);
 		goto free_con;
 	}
 	if (con->c.cid == 0) {
 		err = post_recv_info_req(con);
-		if (unlikely(err))
+		if (err)
 			goto free_cqqp;
 	}
 	WARN_ON(sess->s.con[cid]);
@@ -1690,25 +1690,25 @@ static struct rtrs_srv_sess *__alloc_sess(struct rtrs_srv *srv,
 	struct rtrs_srv_sess *sess;
 	int err = -ENOMEM;
 
-	if (unlikely(srv->paths_num >= MAX_PATHS_NUM)) {
+	if (srv->paths_num >= MAX_PATHS_NUM) {
 		err = -ECONNRESET;
 		goto err;
 	}
-	if (unlikely(__is_path_w_addr_exists(srv, &cm_id->route.addr))) {
+	if (__is_path_w_addr_exists(srv, &cm_id->route.addr)) {
 		err = -EEXIST;
 		goto err;
 	}
 	sess = kzalloc(sizeof(*sess), GFP_KERNEL);
-	if (unlikely(!sess))
+	if (!sess)
 		goto err;
 
 	sess->dma_addr = kcalloc(srv->queue_depth, sizeof(*sess->dma_addr),
 				 GFP_KERNEL);
-	if (unlikely(!sess->dma_addr))
+	if (!sess->dma_addr)
 		goto err_free_sess;
 
 	sess->s.con = kcalloc(con_num, sizeof(*sess->s.con), GFP_KERNEL);
-	if (unlikely(!sess->s.con))
+	if (!sess->s.con)
 		goto err_free_dma_addr;
 
 	sess->state = RTRS_SRV_CONNECTING;
@@ -1724,16 +1724,16 @@ static struct rtrs_srv_sess *__alloc_sess(struct rtrs_srv *srv,
 	rtrs_srv_init_hb(sess);
 
 	sess->s.dev = rtrs_ib_dev_find_or_add(cm_id->device, &dev_pd);
-	if (unlikely(!sess->s.dev)) {
+	if (!sess->s.dev) {
 		err = -ENOMEM;
 		goto err_free_con;
 	}
 	err = map_cont_bufs(sess);
-	if (unlikely(err))
+	if (err)
 		goto err_put_dev;
 
 	err = rtrs_srv_alloc_ops_ids(sess);
-	if (unlikely(err))
+	if (err)
 		goto err_unmap_bufs;
 
 	__add_path_to_srv(srv, sess);
@@ -1767,35 +1767,35 @@ static int rtrs_rdma_connect(struct rdma_cm_id *cm_id,
 	u16 recon_cnt;
 	int err;
 
-	if (unlikely(len < sizeof(*msg))) {
+	if (len < sizeof(*msg)) {
 		pr_err("Invalid RTRS connection request\n");
 		goto reject_w_econnreset;
 	}
-	if (unlikely(le16_to_cpu(msg->magic) != RTRS_MAGIC)) {
+	if (le16_to_cpu(msg->magic) != RTRS_MAGIC) {
 		pr_err("Invalid RTRS magic\n");
 		goto reject_w_econnreset;
 	}
 	version = le16_to_cpu(msg->version);
-	if (unlikely(version >> 8 != RTRS_PROTO_VER_MAJOR)) {
+	if (version >> 8 != RTRS_PROTO_VER_MAJOR) {
 		pr_err("Unsupported major RTRS version: %d, expected %d\n",
 		       version >> 8, RTRS_PROTO_VER_MAJOR);
 		goto reject_w_econnreset;
 	}
 	con_num = le16_to_cpu(msg->cid_num);
-	if (unlikely(con_num > 4096)) {
+	if (con_num > 4096) {
 		/* Sanity check */
 		pr_err("Too many connections requested: %d\n", con_num);
 		goto reject_w_econnreset;
 	}
 	cid = le16_to_cpu(msg->cid);
-	if (unlikely(cid >= con_num)) {
+	if (cid >= con_num) {
 		/* Sanity check */
 		pr_err("Incorrect cid: %d >= %d\n", cid, con_num);
 		goto reject_w_econnreset;
 	}
 	recon_cnt = le16_to_cpu(msg->recon_cnt);
 	srv = get_or_create_srv(ctx, &msg->paths_uuid);
-	if (unlikely(!srv)) {
+	if (!srv) {
 		err = -ENOMEM;
 		goto reject_w_err;
 	}
@@ -1807,7 +1807,7 @@ static int rtrs_rdma_connect(struct rdma_cm_id *cm_id,
 		/* Session already holds a reference */
 		put_srv(srv);
 
-		if (unlikely(sess->state != RTRS_SRV_CONNECTING)) {
+		if (sess->state != RTRS_SRV_CONNECTING) {
 			rtrs_err(s, "Session in wrong state: %s\n",
 				  rtrs_srv_state_str(sess->state));
 			mutex_unlock(&srv->paths_mutex);
@@ -1816,14 +1816,13 @@ static int rtrs_rdma_connect(struct rdma_cm_id *cm_id,
 		/*
 		 * Sanity checks
 		 */
-		if (unlikely(con_num != sess->s.con_num ||
-			     cid >= sess->s.con_num)) {
+		if (con_num != sess->s.con_num || cid >= sess->s.con_num) {
 			rtrs_err(s, "Incorrect request: %d, %d\n",
 				  cid, con_num);
 			mutex_unlock(&srv->paths_mutex);
 			goto reject_w_econnreset;
 		}
-		if (unlikely(sess->s.con[cid])) {
+		if (sess->s.con[cid]) {
 			rtrs_err(s, "Connection already exists: %d\n",
 				  cid);
 			mutex_unlock(&srv->paths_mutex);
@@ -1840,7 +1839,7 @@ static int rtrs_rdma_connect(struct rdma_cm_id *cm_id,
 		}
 	}
 	err = create_con(sess, cm_id, cid);
-	if (unlikely(err)) {
+	if (err) {
 		(void)rtrs_rdma_do_reject(cm_id, err);
 		/*
 		 * Since session has other connections we follow normal way
@@ -1850,7 +1849,7 @@ static int rtrs_rdma_connect(struct rdma_cm_id *cm_id,
 		goto close_and_return_err;
 	}
 	err = rtrs_rdma_do_accept(sess, cm_id);
-	if (unlikely(err)) {
+	if (err) {
 		(void)rtrs_rdma_do_reject(cm_id, err);
 		/*
 		 * Since current connection was successfully added to the
@@ -2035,11 +2034,11 @@ struct rtrs_srv_ctx *rtrs_srv_open(rdma_ev_fn *rdma_ev, link_ev_fn *link_ev,
 	int err;
 
 	ctx = alloc_srv_ctx(rdma_ev, link_ev);
-	if (unlikely(!ctx))
+	if (!ctx)
 		return ERR_PTR(-ENOMEM);
 
 	err = rtrs_srv_rdma_init(ctx, port);
-	if (unlikely(err)) {
+	if (err) {
 		free_srv_ctx(ctx);
 		return ERR_PTR(err);
 	}
@@ -2130,7 +2129,7 @@ static int __init rtrs_server_init(void)
 	}
 	chunk_pool = mempool_create_page_pool(sess_queue_depth * CHUNK_POOL_SZ,
 					      get_order(max_chunk_size));
-	if (unlikely(!chunk_pool)) {
+	if (!chunk_pool) {
 		pr_err("Failed preallocate pool of chunks\n");
 		return -ENOMEM;
 	}
@@ -2141,7 +2140,7 @@ static int __init rtrs_server_init(void)
 		goto out_chunk_pool;
 	}
 	rtrs_wq = alloc_workqueue("rtrs_server_wq", WQ_MEM_RECLAIM, 0);
-	if (unlikely(!rtrs_wq)) {
+	if (!rtrs_wq) {
 		pr_err("Failed to load module, alloc rtrs_server_wq failed\n");
 		goto out_dev_class;
 	}

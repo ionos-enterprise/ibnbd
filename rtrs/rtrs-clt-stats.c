@@ -213,7 +213,7 @@ int rtrs_clt_reset_rdma_stats(struct rtrs_clt_stats *stats, bool enable)
 	struct rtrs_clt_stats_pcpu *s;
 	int cpu;
 
-	if (unlikely(!enable))
+	if (!enable)
 		return -EINVAL;
 
 	for_each_possible_cpu(cpu) {
@@ -248,7 +248,7 @@ int rtrs_clt_reset_cpu_migr_stats(struct rtrs_clt_stats *stats, bool enable)
 	struct rtrs_clt_stats_pcpu *s;
 	int cpu;
 
-	if (unlikely(!enable))
+	if (!enable)
 		return -EINVAL;
 
 	for_each_possible_cpu(cpu) {
@@ -261,7 +261,7 @@ int rtrs_clt_reset_cpu_migr_stats(struct rtrs_clt_stats *stats, bool enable)
 
 int rtrs_clt_reset_reconnects_stat(struct rtrs_clt_stats *stats, bool enable)
 {
-	if (unlikely(!enable))
+	if (!enable)
 		return -EINVAL;
 
 	memset(&stats->reconnects, 0, sizeof(stats->reconnects));
@@ -274,7 +274,7 @@ int rtrs_clt_reset_wc_comp_stats(struct rtrs_clt_stats *stats, bool enable)
 	struct rtrs_clt_stats_pcpu *s;
 	int cpu;
 
-	if (unlikely(!enable))
+	if (!enable)
 		return -EINVAL;
 
 	for_each_possible_cpu(cpu) {
@@ -326,7 +326,7 @@ int rtrs_clt_init_stats(struct rtrs_clt_stats *stats)
 {
 	stats->enable_rdma_lat = false;
 	stats->pcpu_stats = alloc_percpu(typeof(*stats->pcpu_stats));
-	if (unlikely(!stats->pcpu_stats))
+	if (!stats->pcpu_stats)
 		return -ENOMEM;
 
 	/*

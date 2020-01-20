@@ -113,7 +113,7 @@ rnbd_get_sess_dev(int dev_id, struct rnbd_srv_session *srv_sess)
 		ret = kref_get_unless_zero(&sess_dev->kref);
 	read_unlock(&srv_sess->index_lock);
 
-	if (unlikely(!sess_dev || !ret))
+	if (!sess_dev || !ret)
 		return ERR_PTR(-ENXIO);
 
 	return sess_dev;
@@ -131,7 +131,7 @@ static int process_rdma(struct rtrs_srv *sess,
 	int err;
 
 	priv = kmalloc(sizeof(*priv), GFP_KERNEL);
-	if (unlikely(!priv))
+	if (!priv)
 		return -ENOMEM;
 
 	dev_id = le32_to_cpu(msg->device_id);
@@ -264,7 +264,7 @@ static int create_sess(struct rtrs_srv *rtrs)
 	int err;
 
 	err = rtrs_srv_get_sess_name(rtrs, sessname, sizeof(sessname));
-	if (unlikely(err)) {
+	if (err) {
 		pr_err("rtrs_srv_get_sess_name(%s): %d\n", sessname, err);
 
 		return err;

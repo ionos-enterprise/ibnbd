@@ -286,8 +286,8 @@ static ssize_t rnbd_clt_unmap_dev_store(struct kobject *kobj,
 		goto out;
 	}
 	err = rnbd_clt_unmap_device(dev, force, &attr->attr);
-	if (unlikely(err)) {
-		if (unlikely(err != -EALREADY))
+	if (err) {
+		if (err != -EALREADY)
 			rnbd_clt_err(dev, "unmap_device: %d\n",  err);
 		goto module_put;
 	}
@@ -539,7 +539,7 @@ static ssize_t rnbd_clt_map_device_store(struct kobject *kobj,
 	}
 
 	ret = rnbd_clt_add_dev_kobj(dev);
-	if (unlikely(ret))
+	if (ret)
 		goto unmap_dev;
 
 	ret = rnbd_clt_add_dev_symlink(dev);
@@ -590,7 +590,7 @@ int rnbd_clt_create_sysfs_files(void)
 		goto cls_destroy;
 	}
 	rnbd_devs_kobj = kobject_create_and_add("devices", &rnbd_dev->kobj);
-	if (unlikely(!rnbd_devs_kobj)) {
+	if (!rnbd_devs_kobj) {
 		err = -ENOMEM;
 		goto dev_destroy;
 	}

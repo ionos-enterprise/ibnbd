@@ -187,7 +187,7 @@ int rnbd_srv_create_sysfs_files(void)
 		goto cls_destroy;
 	}
 	rnbd_devs_kobj = kobject_create_and_add("devices", &rnbd_dev->kobj);
-	if (unlikely(!rnbd_devs_kobj)) {
+	if (!rnbd_devs_kobj) {
 		err = -ENOMEM;
 		goto dev_destroy;
 	}

@@ -77,7 +77,7 @@ static int rnbd_clt_set_dev_attr(struct rnbd_clt_dev *dev,
 {
 	struct rnbd_clt_session *sess = dev->sess;
 
-	if (unlikely(!rsp->logical_block_size))
+	if (!rsp->logical_block_size)
 		return -EINVAL;
 
 	dev->device_id		    = le32_to_cpu(rsp->device_id);
@@ -143,7 +143,7 @@ static int process_msg_open_rsp(struct rnbd_clt_dev *dev,
 		rnbd_clt_info(dev, "Device online, device remapped successfully\n");
 	}
 	err = rnbd_clt_set_dev_attr(dev, rsp);
-	if (unlikely(err))
+	if (err)
 		goto out;
 	dev->dev_state = DEV_STATE_MAPPED;
 
@@ -478,7 +478,7 @@ static int send_msg_close(struct rnbd_clt_dev *dev, u32 device_id, bool wait)
 	int err, errno;
 
 	iu = rnbd_get_iu(sess, RTRS_USR_CON, RTRS_PERMIT_WAIT);
-	if (unlikely(!iu))
+	if (!iu)
 		return -ENOMEM;
 
 	iu->buf = NULL;
@@ -492,7 +492,7 @@ static int send_msg_close(struct rnbd_clt_dev *dev, u32 device_id, bool wait)
 	WARN_ON(!rnbd_clt_get_dev(dev));
 	err = send_usr_msg(sess->rtrs, WRITE, iu, &vec, 1, 0, NULL, 0,
 			   msg_close_conf, &errno, wait);
-	if (unlikely(err)) {
+	if (err) {
 		rnbd_clt_put_dev(dev);
 		rnbd_put_iu(sess, iu);
 	} else {
@@ -516,7 +516,7 @@ static void msg_open_conf(struct work_struct *work)
 			      errno);
 	} else {
 		errno = process_msg_open_rsp(dev, rsp);
-		if (unlikely(errno)) {
+		if (errno) {
 			u32 device_id = le32_to_cpu(rsp->device_id);
 			/*
 			 * If server thinks its fine, but we fail to process
@@ -559,11 +559,11 @@ static int send_msg_open(struct rnbd_clt_dev *dev, bool wait)
 	int err, errno;
 
 	rsp = kzalloc(sizeof(*rsp), GFP_KERNEL);
-	if (unlikely(!rsp))
+	if (!rsp)
 		return -ENOMEM;
 
 	iu = rnbd_get_iu(sess, RTRS_USR_CON, RTRS_PERMIT_WAIT);
-	if (unlikely(!iu)) {
+	if (!iu) {
 		kfree(rsp);
 		return -ENOMEM;
 	}
@@ -581,7 +581,7 @@ static int send_msg_open(struct rnbd_clt_dev *dev, bool wait)
 	err = send_usr_msg(sess->rtrs, READ, iu,
 			   &vec, 1, sizeof(*rsp), iu->sglist, 1,
 			   msg_open_conf, &errno, wait);
-	if (unlikely(err)) {
+	if (err) {
 		rnbd_clt_put_dev(dev);
 		rnbd_put_iu(sess, iu);
 		kfree(rsp);
@@ -605,11 +605,11 @@ static int send_msg_sess_info(struct rnbd_clt_session *sess, bool wait)
 	int err, errno;
 
 	rsp = kzalloc(sizeof(*rsp), GFP_KERNEL);
-	if (unlikely(!rsp))
+	if (!rsp)
 		return -ENOMEM;
 
 	iu = rnbd_get_iu(sess, RTRS_USR_CON, RTRS_PERMIT_WAIT);
-	if (unlikely(!iu)) {
+	if (!iu) {
 		kfree(rsp);
 		return -ENOMEM;
 	}
@@ -622,7 +622,7 @@ static int send_msg_sess_info(struct rnbd_clt_session *sess, bool wait)
 	msg.hdr.type = cpu_to_le16(RNBD_MSG_SESS_INFO);
 	msg.ver      = RNBD_PROTO_VER_MAJOR;
 
-	if (unlikely(!rnbd_clt_get_sess(sess))) {
+	if (!rnbd_clt_get_sess(sess)) {
 		/*
 		 * That can happen only in one case, when RTRS has restablished
 		 * the connection and link_ev() is called, but session is almost
@@ -635,7 +635,7 @@ static int send_msg_sess_info(struct rnbd_clt_session *sess, bool wait)
 	err = send_usr_msg(sess->rtrs, READ, iu,
 			   &vec, 1, sizeof(*rsp), iu->sglist, 1,
 			   msg_sess_info_conf, &errno, wait);
-	if (unlikely(err)) {
+	if (err) {
 		rnbd_clt_put_sess(sess);
 put_iu:
 		rnbd_put_iu(sess, iu);
@@ -682,7 +682,7 @@ static void remap_devs(struct rnbd_clt_session *sess)
 	 */
 
 	err = send_msg_sess_info(sess, NO_WAIT);
-	if (unlikely(err)) {
+	if (err) {
 		pr_err("send_msg_sess_info(\"%s\"): %d\n", sess->sessname, err);
 		return;
 	}
@@ -706,7 +706,7 @@ static void remap_devs(struct rnbd_clt_session *sess)
 
 		rnbd_clt_info(dev, "session reconnected, remapping device\n");
 		err = send_msg_open(dev, NO_WAIT);
-		if (unlikely(err)) {
+		if (err) {
 			rnbd_clt_err(dev, "send_msg_open(): %d\n", err);
 			break;
 		}
@@ -792,7 +792,7 @@ static struct rnbd_clt_session *alloc_sess(const char *sessname)
 	int err, cpu;
 
 	sess = kzalloc_node(sizeof(*sess), GFP_KERNEL, NUMA_NO_NODE);
-	if (unlikely(!sess)) {
+	if (!sess) {
 		pr_err("Failed to create session %s, allocating session struct failed\n",
 		       sessname);
 		return ERR_PTR(-ENOMEM);
@@ -807,7 +807,7 @@ static struct rnbd_clt_session *alloc_sess(const char *sessname)
 	refcount_set(&sess->refcount, 1);
 
 	sess->cpu_queues = alloc_percpu(struct rnbd_cpu_qlist);
-	if (unlikely(!sess->cpu_queues)) {
+	if (!sess->cpu_queues) {
 		pr_err("Failed to create session to %s, alloc of percpu var (cpu_queues) failed\n",
 		       sessname);
 		err = -ENOMEM;
@@ -821,7 +821,7 @@ static struct rnbd_clt_session *alloc_sess(const char *sessname)
 	 * to wake up queues in a round-robin manner.
 	 */
 	sess->cpu_rr = alloc_percpu(int);
-	if (unlikely(!sess->cpu_rr)) {
+	if (!sess->cpu_rr) {
 		pr_err("Failed to create session %s, alloc of percpu var (cpu_rr) failed\n",
 		       sessname);
 		err = -ENOMEM;
@@ -881,7 +881,7 @@ again:
 		if (strcmp(sessname, sess->sessname))
 			continue;
 
-		if (unlikely(sess->rtrs_ready && IS_ERR_OR_NULL(sess->rtrs)))
+		if (sess->rtrs_ready && IS_ERR_OR_NULL(sess->rtrs))
 			/*
 			 * No RTRS connection, session is dying.
 			 */
@@ -893,11 +893,11 @@ again:
 			 */
 			mutex_unlock(&sess_lock);
 			err = wait_for_rtrs_connection(sess);
-			if (unlikely(err))
+			if (err)
 				rnbd_clt_put_sess(sess);
 			mutex_lock(&sess_lock);
 
-			if (unlikely(err))
+			if (err)
 				/* Session is dying, repeat the loop */
 				goto again;
 
@@ -1198,7 +1198,7 @@ find_and_get_or_create_sess(const char *sessname,
 	bool first;
 
 	sess = find_or_create_sess(sessname, &first);
-	if (unlikely(sess == ERR_PTR(-ENOMEM)))
+	if (sess == ERR_PTR(-ENOMEM))
 		return ERR_PTR(-ENOMEM);
 	else if (!first)
 		return sess;
@@ -1220,11 +1220,11 @@ find_and_get_or_create_sess(const char *sessname,
 	sess->queue_depth = attrs.queue_depth;
 
 	err = setup_mq_tags(sess);
-	if (unlikely(err))
+	if (err)
 		goto close_rtrs;
 
 	err = send_msg_sess_info(sess, WAIT);
-	if (unlikely(err))
+	if (err)
 		goto close_rtrs;
 
 	wake_up_rtrs_waiters(sess);
@@ -1373,7 +1373,7 @@ static struct rnbd_clt_dev *init_dev(struct rnbd_clt_session *sess,
 
 	dev->hw_queues = kcalloc(nr_cpu_ids, sizeof(*dev->hw_queues),
 				 GFP_KERNEL);
-	if (unlikely(!dev->hw_queues)) {
+	if (!dev->hw_queues) {
 		pr_err("Failed to initialize device '%s' from session %s, allocating hw_queues failed.",
 		       pathname, sess->sessname);
 		ret = -ENOMEM;
@@ -1483,7 +1483,7 @@ struct rnbd_clt_dev *rnbd_clt_map_device(const char *sessname,
 	struct rnbd_clt_dev *dev;
 	int ret;
 
-	if (unlikely(exists_devpath(pathname)))
+	if (exists_devpath(pathname))
 		return ERR_PTR(-EEXIST);
 
 	sess = find_and_get_or_create_sess(sessname, paths, path_cnt);
@@ -1497,12 +1497,12 @@ struct rnbd_clt_dev *rnbd_clt_map_device(const char *sessname,
 		ret = PTR_ERR(dev);
 		goto put_sess;
 	}
-	if (unlikely(insert_dev_if_not_exists_devpath(pathname, sess, dev))) {
+	if (insert_dev_if_not_exists_devpath(pathname, sess, dev)) {
 		ret = -EEXIST;
 		goto put_dev;
 	}
 	ret = send_msg_open(dev, WAIT);
-	if (unlikely(ret)) {
+	if (ret) {
 		rnbd_clt_err(dev,
 			      "map_device: failed, can't open remote device, err: %d\n",
 			      ret);
@@ -1630,7 +1630,7 @@ int rnbd_clt_remap_device(struct rnbd_clt_dev *dev)
 	if (likely(!err)) {
 		rnbd_clt_info(dev, "Remapping device.\n");
 		err = send_msg_open(dev, WAIT);
-		if (unlikely(err))
+		if (err)
 			rnbd_clt_err(dev, "remap_device: %d\n", err);
 	}
 

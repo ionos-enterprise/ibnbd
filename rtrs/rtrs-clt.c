@@ -1227,7 +1227,7 @@ static int alloc_sess_reqs(struct rtrs_clt_sess *sess)
 
 	sess->reqs = kcalloc(sess->queue_depth, sizeof(*sess->reqs),
 			     GFP_KERNEL);
-	if (unlikely(!sess->reqs))
+	if (!sess->reqs)
 		return -ENOMEM;
 
 	for (i = 0; i < sess->queue_depth; ++i) {
@@ -1236,12 +1236,12 @@ static int alloc_sess_reqs(struct rtrs_clt_sess *sess)
 					 sess->s.dev->ib_dev,
 					 DMA_TO_DEVICE,
 					 rtrs_clt_rdma_done);
-		if (unlikely(!req->iu))
+		if (!req->iu)
 			goto out;
 
 		req->sge = kmalloc_array(clt->max_segments + 1,
 					 sizeof(*req->sge), GFP_KERNEL);
-		if (unlikely(!req->sge))
+		if (!req->sge)
 			goto out;
 
 		req->mr = ib_alloc_mr(sess->s.dev->ib_pd, IB_MR_TYPE_MEM_REG,
@@ -1272,12 +1272,12 @@ static int alloc_permits(struct rtrs_clt *clt)
 
 	clt->permits_map = kcalloc(BITS_TO_LONGS(clt->queue_depth),
 				   sizeof(long), GFP_KERNEL);
-	if (unlikely(!clt->permits_map)) {
+	if (!clt->permits_map) {
 		err = -ENOMEM;
 		goto out_err;
 	}
 	clt->permits = kcalloc(clt->queue_depth, PERMIT_SIZE(clt), GFP_KERNEL);
-	if (unlikely(!clt->permits)) {
+	if (!clt->permits) {
 		err = -ENOMEM;
 		goto err_map;
 	}
@@ -1389,14 +1389,14 @@ static struct rtrs_clt_sess *alloc_sess(struct rtrs_clt *clt,
 	int cpu;
 
 	sess = kzalloc(sizeof(*sess), GFP_KERNEL);
-	if (unlikely(!sess))
+	if (!sess)
 		goto err;
 
 	/* Extra connection for user messages */
 	con_num += 1;
 
 	sess->s.con = kcalloc(con_num, sizeof(*sess->s.con), GFP_KERNEL);
-	if (unlikely(!sess->s.con))
+	if (!sess->s.con)
 		goto err_free_sess;
 
 	mutex_init(&sess->init_mutex);
@@ -1424,14 +1424,14 @@ static struct rtrs_clt_sess *alloc_sess(struct rtrs_clt *clt,
 	rtrs_clt_init_hb(sess);
 
 	sess->mp_skip_entry = alloc_percpu(typeof(*sess->mp_skip_entry));
-	if (unlikely(!sess->mp_skip_entry))
+	if (!sess->mp_skip_entry)
 		goto err_free_con;
 
 	for_each_possible_cpu(cpu)
 		INIT_LIST_HEAD(per_cpu_ptr(sess->mp_skip_entry, cpu));
 
 	err = rtrs_clt_init_stats(&sess->stats);
-	if (unlikely(err))
+	if (err)
 		goto err_free_percpu;
 
 	return sess;
@@ -1460,7 +1460,7 @@ static int create_con(struct rtrs_clt_sess *sess, unsigned int cid)
 	struct rtrs_clt_con *con;
 
 	con = kzalloc(sizeof(*con), GFP_KERNEL);
-	if (unlikely(!con))
+	if (!con)
 		return -ENOMEM;
 
 	/* Map first two connections to the first CPU */
@@ -1517,7 +1517,7 @@ static int create_con_cq_qp(struct rtrs_clt_con *con)
 		 */
 		sess->s.dev = rtrs_ib_dev_find_or_add(con->c.cm_id->device,
 						       &dev_pd);
-		if (unlikely(!sess->s.dev)) {
+		if (!sess->s.dev) {
 			rtrs_wrn(sess->clt,
 				  "rtrs_ib_dev_find_get_or_add(): no memory\n");
 			return -ENOMEM;
@@ -1548,7 +1548,7 @@ static int create_con_cq_qp(struct rtrs_clt_con *con)
 					      GFP_KERNEL, sess->s.dev->ib_dev,
 					      DMA_FROM_DEVICE,
 					      rtrs_clt_rdma_done);
-		if (unlikely(!con->rsp_ius))
+		if (!con->rsp_ius)
 			return -ENOMEM;
 		con->queue_size = wr_queue_size;
 	}
@@ -1561,7 +1561,7 @@ static int create_con_cq_qp(struct rtrs_clt_con *con)
 	 * since destroy_con_cq_qp() must be called.
 	 */
 
-	if (unlikely(err))
+	if (err)
 		return err;
 	return err;
 }
@@ -1607,12 +1607,12 @@ static int rtrs_rdma_addr_resolved(struct rtrs_clt_con *con)
 	int err;
 
 	err = create_con_cq_qp(con);
-	if (unlikely(err)) {
+	if (err) {
 		rtrs_err(s, "create_con_cq_qp(), err: %d\n", err);
 		return err;
 	}
 	err = rdma_resolve_route(con->c.cm_id, RTRS_CONNECT_TIMEOUT_MS);
-	if (unlikely(err)) {
+	if (err) {
 		rtrs_err(s, "Resolving route failed, err: %d\n", err);
 		destroy_con_cq_qp(con);
 	}
@@ -1669,22 +1669,22 @@ static int rtrs_rdma_conn_established(struct rtrs_clt_con *con,
 
 	msg = ev->param.conn.private_data;
 	len = ev->param.conn.private_data_len;
-	if (unlikely(len < sizeof(*msg))) {
+	if (len < sizeof(*msg)) {
 		rtrs_err(clt, "Invalid RTRS connection response\n");
 		return -ECONNRESET;
 	}
-	if (unlikely(le16_to_cpu(msg->magic) != RTRS_MAGIC)) {
+	if (le16_to_cpu(msg->magic) != RTRS_MAGIC) {
 		rtrs_err(clt, "Invalid RTRS magic\n");
 		return -ECONNRESET;
 	}
 	version = le16_to_cpu(msg->version);
-	if (unlikely(version >> 8 != RTRS_PROTO_VER_MAJOR)) {
+	if (version >> 8 != RTRS_PROTO_VER_MAJOR) {
 		rtrs_err(clt, "Unsupported major RTRS version: %d, expected %d\n",
 			  version >> 8, RTRS_PROTO_VER_MAJOR);
 		return -ECONNRESET;
 	}
 	errno = le16_to_cpu(msg->errno);
-	if (unlikely(errno)) {
+	if (errno) {
 		rtrs_err(clt, "Invalid RTRS message: errno %d\n",
 			  errno);
 		return -ECONNRESET;
@@ -1701,7 +1701,7 @@ static int rtrs_rdma_conn_established(struct rtrs_clt_con *con,
 			kfree(sess->rbufs);
 			sess->rbufs = kcalloc(queue_depth, sizeof(*sess->rbufs),
 					      GFP_KERNEL);
-			if (unlikely(!sess->rbufs)) {
+			if (!sess->rbufs) {
 				rtrs_err(clt,
 					  "Failed to allocate queue_depth=%d\n",
 					  queue_depth);
@@ -1895,7 +1895,7 @@ static int create_cm(struct rtrs_clt_con *con)
 	err = rdma_resolve_addr(cm_id, (struct sockaddr *)&sess->s.src_addr,
 				(struct sockaddr *)&sess->s.dst_addr,
 				RTRS_CONNECT_TIMEOUT_MS);
-	if (unlikely(err)) {
+	if (err) {
 		rtrs_err(s, "Failed to resolve address, err: %d\n", err);
 		goto destroy_cm;
 	}
@@ -1908,17 +1908,17 @@ static int create_cm(struct rtrs_clt_con *con)
 			sess->state_wq,
 			con->cm_err || sess->state != RTRS_CLT_CONNECTING,
 			msecs_to_jiffies(RTRS_CONNECT_TIMEOUT_MS));
-	if (unlikely(err == 0 || err == -ERESTARTSYS)) {
+	if (err == 0 || err == -ERESTARTSYS) {
 		if (err == 0)
 			err = -ETIMEDOUT;
 		/* Timedout or interrupted */
 		goto errr;
 	}
-	if (unlikely(con->cm_err < 0)) {
+	if (con->cm_err < 0) {
 		err = con->cm_err;
 		goto errr;
 	}
-	if (unlikely(READ_ONCE(sess->state) != RTRS_CLT_CONNECTING)) {
+	if (READ_ONCE(sess->state) != RTRS_CLT_CONNECTING) {
 		/* Device removal */
 		err = -ECONNABORTED;
 		goto errr;
@@ -2199,17 +2199,17 @@ static int init_conns(struct rtrs_clt_sess *sess)
 	/* Establish all RDMA connections  */
 	for (cid = 0; cid < sess->s.con_num; cid++) {
 		err = create_con(sess, cid);
-		if (unlikely(err))
+		if (err)
 			goto destroy;
 
 		err = create_cm(to_clt_con(sess->s.con[cid]));
-		if (unlikely(err)) {
+		if (err) {
 			destroy_con(to_clt_con(sess->s.con[cid]));
 			goto destroy;
 		}
 	}
 	err = alloc_sess_reqs(sess);
-	if (unlikely(err))
+	if (err)
 		goto destroy;
 
 	rtrs_clt_start_hb(sess);
@@ -2456,12 +2456,12 @@ static int init_sess(struct rtrs_clt_sess *sess)
 
 	mutex_lock(&sess->init_mutex);
 	err = init_conns(sess);
-	if (unlikely(err)) {
+	if (err) {
 		rtrs_err(sess->clt, "init_conns(), err: %d\n", err);
 		goto out;
 	}
 	err = rtrs_send_sess_info(sess);
-	if (unlikely(err)) {
+	if (err) {
 		rtrs_err(sess->clt, "rtrs_send_sess_info(), err: %d\n", err);
 		goto out;
 	}
@@ -2499,7 +2499,7 @@ static void rtrs_clt_reconnect_work(struct work_struct *work)
 	rtrs_clt_change_state(sess, RTRS_CLT_CONNECTING);
 
 	err = init_sess(sess);
-	if (unlikely(err))
+	if (err)
 		goto reconnect_again;
 
 	return;
@@ -2530,18 +2530,18 @@ static struct rtrs_clt *alloc_clt(const char *sessname, size_t paths_num,
 	struct rtrs_clt *clt;
 	int err;
 
-	if (unlikely(!paths_num || paths_num > MAX_PATHS_NUM))
+	if (!paths_num || paths_num > MAX_PATHS_NUM)
 		return ERR_PTR(-EINVAL);
 
-	if (unlikely(strlen(sessname) >= sizeof(clt->sessname)))
+	if (strlen(sessname) >= sizeof(clt->sessname))
 		return ERR_PTR(-EINVAL);
 
 	clt = kzalloc(sizeof(*clt), GFP_KERNEL);
-	if (unlikely(!clt))
+	if (!clt)
 		return ERR_PTR(-ENOMEM);
 
 	clt->pcpu_path = alloc_percpu(typeof(*clt->pcpu_path));
-	if (unlikely(!clt->pcpu_path)) {
+	if (!clt->pcpu_path) {
 		kfree(clt);
 		return ERR_PTR(-ENOMEM);
 	}
@@ -2568,11 +2568,11 @@ static struct rtrs_clt *alloc_clt(const char *sessname, size_t paths_num,
 	dev_set_name(&clt->dev, "%s", sessname);
 
 	err = device_register(&clt->dev);
-	if (unlikely(err))
+	if (err)
 		goto percpu_free;
 
 	err = rtrs_clt_create_sysfs_root_folders(clt);
-	if (unlikely(err))
+	if (err)
 		goto dev_unregister;
 
 	return clt;
@@ -2638,20 +2638,20 @@ struct rtrs_clt *rtrs_clt_open(void *priv, link_clt_ev_fn *link_ev,
 		list_add_tail_rcu(&sess->s.entry, &clt->paths_list);
 
 		err = init_sess(sess);
-		if (unlikely(err))
+		if (err)
 			goto close_all_sess;
 
 		err = rtrs_clt_create_sess_files(sess);
-		if (unlikely(err))
+		if (err)
 			goto close_all_sess;
 	}
 	err = alloc_permits(clt);
-	if (unlikely(err)) {
+	if (err) {
 		rtrs_err(clt, "alloc_permits(), err: %d\n", err);
 		goto close_all_sess;
 	}
 	err = rtrs_clt_create_sysfs_root_files(clt);
-	if (unlikely(err))
+	if (err)
 		goto close_all_sess;
 
 	/*
@@ -2742,7 +2742,7 @@ int rtrs_clt_remove_path_from_sysfs(struct rtrs_clt_sess *sess,
 	 * That can happen only when userspace tries to remove path
 	 * very early, when rtrs_clt_open() is not yet finished.
 	 */
-	if (unlikely(!clt->opened))
+	if (!clt->opened)
 		return -EBUSY;
 
 	/*
@@ -2841,7 +2841,7 @@ EXPORT_SYMBOL(rtrs_clt_request);
 
 int rtrs_clt_query(struct rtrs_clt *clt, struct rtrs_attrs *attr)
 {
-	if (unlikely(!rtrs_clt_is_connected(clt)))
+	if (!rtrs_clt_is_connected(clt))
 		return -ECOMM;
 
 	attr->queue_depth      = clt->queue_depth;
@@ -2871,11 +2871,11 @@ int rtrs_clt_create_path_from_sysfs(struct rtrs_clt *clt,
 	rtrs_clt_add_path_to_arr(sess, addr);
 
 	err = init_sess(sess);
-	if (unlikely(err))
+	if (err)
 		goto close_sess;
 
 	err = rtrs_clt_create_sess_files(sess);
-	if (unlikely(err))
+	if (err)
 		goto close_sess;
 
 	return 0;
@@ -2916,7 +2916,7 @@ static int __init rtrs_client_init(void)
 		return PTR_ERR(rtrs_clt_dev_class);
 	}
 	rtrs_wq = alloc_workqueue("rtrs_client_wq", WQ_MEM_RECLAIM, 0);
-	if (unlikely(!rtrs_wq)) {
+	if (!rtrs_wq) {
 		pr_err("Failed to load module, alloc rtrs_client_wq failed\n");
 		class_destroy(rtrs_clt_dev_class);
 		return -ENOMEM;

@@ -39,13 +39,13 @@ static ssize_t max_reconnect_attempts_store(struct device *dev,
 	struct rtrs_clt *clt  = container_of(dev, struct rtrs_clt, dev);
 
 	ret = kstrtoint(buf, 10, &value);
-	if (unlikely(ret)) {
+	if (ret) {
 		rtrs_err(clt, "%s: failed to convert string '%s' to int\n",
 			  attr->attr.name, buf);
 		return ret;
 	}
-	if (unlikely(value > MAX_MAX_RECONN_ATT ||
-		     value < MIN_MAX_RECONN_ATT)) {
+	if (value > MAX_MAX_RECONN_ATT ||
+		     value < MIN_MAX_RECONN_ATT) {
 		rtrs_err(clt,
 			  "%s: invalid range (provided: '%s', accepted: min: %d, max: %d)\n",
 			  attr->attr.name, buf, MIN_MAX_RECONN_ATT,
@@ -139,11 +139,11 @@ static ssize_t add_path_store(struct device *dev,
 	else
 		len = count;
 	err = rtrs_addr_to_sockaddr(buf, len, clt->port, &addr);
-	if (unlikely(err))
+	if (err)
 		return -EINVAL;
 
 	err = rtrs_clt_create_path_from_sysfs(clt, &addr);
-	if (unlikely(err))
+	if (err)
 		return err;
 
 	return count;
@@ -188,7 +188,7 @@ static ssize_t rtrs_clt_reconnect_store(struct kobject *kobj,
 		return -EINVAL;
 	}
 	ret = rtrs_clt_reconnect_from_sysfs(sess);
-	if (unlikely(ret))
+	if (ret)
 		return ret;
 
 	return count;
@@ -220,7 +220,7 @@ static ssize_t rtrs_clt_disconnect_store(struct kobject *kobj,
 		return -EINVAL;
 	}
 	ret = rtrs_clt_disconnect_from_sysfs(sess);
-	if (unlikely(ret))
+	if (ret)
 		return ret;
 
 	return count;
@@ -252,7 +252,7 @@ static ssize_t rtrs_clt_remove_path_store(struct kobject *kobj,
 		return -EINVAL;
 	}
 	ret = rtrs_clt_remove_path_from_sysfs(sess, &attr->attr);
-	if (unlikely(ret))
+	if (ret)
 		return ret;
 
 	return count;
@@ -418,17 +418,17 @@ int rtrs_clt_create_sess_files(struct rtrs_clt_sess *sess)
 
 	err = kobject_init_and_add(&sess->kobj, &ktype, &clt->kobj_paths,
 				   "%s", str);
-	if (unlikely(err)) {
+	if (err) {
 		pr_err("kobject_init_and_add: %d\n", err);
 		return err;
 	}
 	err = sysfs_create_group(&sess->kobj, &rtrs_clt_sess_attr_group);
-	if (unlikely(err)) {
+	if (err) {
 		pr_err("sysfs_create_group(): %d\n", err);
 		goto put_kobj;
 	}
 	err = rtrs_clt_create_stats_files(&sess->kobj, &sess->kobj_stats);
-	if (unlikely(err))
+	if (err)
 		goto put_kobj;
 
 	return 0;

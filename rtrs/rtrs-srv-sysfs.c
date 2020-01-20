@@ -179,13 +179,13 @@ static int rtrs_srv_create_once_sysfs_root_folders(struct rtrs_srv_sess *sess)
 	dev_set_name(&srv->dev, "%s", sess->s.sessname);
 
 	err = device_register(&srv->dev);
-	if (unlikely(err)) {
+	if (err) {
 		pr_err("device_register(): %d\n", err);
 		goto unlock;
 	}
 	err = kobject_init_and_add(&srv->kobj_paths, &ktype,
 				   &srv->dev.kobj, "paths");
-	if (unlikely(err)) {
+	if (err) {
 		pr_err("kobject_init_and_add(): %d\n", err);
 		device_unregister(&srv->dev);
 		goto unlock;
@@ -217,13 +217,13 @@ static int rtrs_srv_create_stats_files(struct rtrs_srv_sess *sess)
 
 	err = kobject_init_and_add(&sess->kobj_stats, &ktype,
 				   &sess->kobj, "stats");
-	if (unlikely(err)) {
+	if (err) {
 		rtrs_err(s, "kobject_init_and_add(): %d\n", err);
 		return err;
 	}
 	err = sysfs_create_group(&sess->kobj_stats,
 				 &rtrs_srv_stats_attr_group);
-	if (unlikely(err)) {
+	if (err) {
 		rtrs_err(s, "sysfs_create_group(): %d\n", err);
 		goto err;
 	}
@@ -251,22 +251,22 @@ int rtrs_srv_create_sess_files(struct rtrs_srv_sess *sess)
 			str + cnt, sizeof(str) - cnt);
 
 	err = rtrs_srv_create_once_sysfs_root_folders(sess);
-	if (unlikely(err))
+	if (err)
 		return err;
 
 	err = kobject_init_and_add(&sess->kobj, &ktype, &srv->kobj_paths,
 				   "%s", str);
-	if (unlikely(err)) {
+	if (err) {
 		rtrs_err(s, "kobject_init_and_add(): %d\n", err);
 		goto destroy_root;
 	}
 	err = sysfs_create_group(&sess->kobj, &rtrs_srv_sess_attr_group);
-	if (unlikely(err)) {
+	if (err) {
 		rtrs_err(s, "sysfs_create_group(): %d\n", err);
 		goto put_kobj;
 	}
 	err = rtrs_srv_create_stats_files(sess);
-	if (unlikely(err))
+	if (err)
 		goto remove_group;
 
 	return 0;

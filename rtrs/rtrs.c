@@ -27,16 +27,16 @@ struct rtrs_iu *rtrs_iu_alloc(u32 queue_size, size_t size, gfp_t gfp_mask,
 	int i;
 
 	ius = kcalloc(queue_size, sizeof(*ius), gfp_mask);
-	if (unlikely(!ius))
+	if (!ius)
 		return NULL;
 	for (i = 0; i < queue_size; i++) {
 		iu = &ius[i];
 		iu->buf = kzalloc(size, gfp_mask);
-		if (unlikely(!iu->buf))
+		if (!iu->buf)
 			goto err;
 
 		iu->dma_addr = ib_dma_map_single(dma_dev, iu->buf, size, dir);
-		if (unlikely(ib_dma_mapping_error(dma_dev, iu->dma_addr)))
+		if (ib_dma_mapping_error(dma_dev, iu->dma_addr))
 			goto err;
 
 		iu->cqe.done  = done;
@@ -265,7 +265,7 @@ static int create_qp(struct rtrs_con *con, struct ib_pd *pd,
 	init_attr.sq_sig_type = IB_SIGNAL_REQ_WR;
 
 	ret = rdma_create_qp(cm_id, pd, &init_attr);
-	if (unlikely(ret)) {
+	if (ret) {
 		rtrs_err(con->sess, "Creating QP failed, err: %d\n", ret);
 		return ret;
 	}
@@ -281,11 +281,11 @@ int rtrs_cq_qp_create(struct rtrs_sess *sess, struct rtrs_con *con,
 	int err;
 
 	err = create_cq(con, cq_vector, cq_size, poll_ctx);
-	if (unlikely(err))
+	if (err)
 		return err;
 
 	err = create_qp(con, sess->dev->ib_pd, wr_queue_size, max_send_sge);
-	if (unlikely(err)) {
+	if (err) {
 		ib_free_cq(con->cq);
 		con->cq = NULL;
 		return err;
@@ -324,7 +324,7 @@ void rtrs_send_hb_ack(struct rtrs_sess *sess)
 	imm = rtrs_to_imm(RTRS_HB_ACK_IMM, 0);
 	err = rtrs_post_rdma_write_imm_empty(usr_con, sess->hb_cqe, imm,
 					      IB_SEND_SIGNALED, NULL);
-	if (unlikely(err)) {
+	if (err) {
 		sess->hb_err_handler(usr_con);
 		return;
 	}
@@ -353,7 +353,7 @@ static void hb_work(struct work_struct *work)
 	imm = rtrs_to_imm(RTRS_HB_MSG_IMM, 0);
 	err = rtrs_post_rdma_write_imm_empty(usr_con, sess->hb_cqe, imm,
 					      IB_SEND_SIGNALED, NULL);
-	if (unlikely(err)) {
+	if (err) {
 		sess->hb_err_handler(usr_con);
 		return;
 	}
