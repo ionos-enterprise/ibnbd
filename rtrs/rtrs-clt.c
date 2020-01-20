@@ -145,6 +145,18 @@ struct rtrs_clt_con *rtrs_permit_to_clt_con(struct rtrs_clt_sess *sess,
 	return to_clt_con(sess->s.con[id]);
 }
 
+/**
+ * __rtrs_clt_change_state() - change the session state through session state
+ * machine.
+ *
+ * @sess: client session to change the state of.
+ * @new_state: state to change to.
+ *
+ * returns true if successful, false if the requested state can not be set.
+ *
+ * Locks:
+ * state_wq lock must be hold.
+ */
 static bool __rtrs_clt_change_state(struct rtrs_clt_sess *sess,
 				     enum rtrs_clt_state new_state)
 {
