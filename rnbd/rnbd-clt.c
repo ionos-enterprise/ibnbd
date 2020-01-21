@@ -1083,7 +1083,7 @@ static inline bool rnbd_clt_dev_add_to_requeue(struct rnbd_clt_dev *dev,
 		need_set = !test_bit(cpu_q->cpu, sess->cpu_queues_bm);
 		if (need_set) {
 			set_bit(cpu_q->cpu, sess->cpu_queues_bm);
-			/* Paired with rnbd_put_permit().	 Set a bit first
+			/* Paired with rnbd_put_permit(). Set a bit first
 			 * and then observe the busy counter.
 			 */
 			smp_mb__before_atomic();
