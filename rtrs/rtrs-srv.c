@@ -785,7 +785,6 @@ static void rtrs_srv_info_rsp_done(struct ib_cq *cq, struct ib_wc *wc)
 		return;
 	}
 	WARN_ON(wc->opcode != IB_WC_SEND);
-	rtrs_srv_update_wc_stats(&sess->stats);
 }
 
 static void rtrs_srv_sess_up(struct rtrs_srv_sess *sess)
@@ -1213,7 +1212,6 @@ static void rtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 		}
 		return;
 	}
-	rtrs_srv_update_wc_stats(&sess->stats);
 
 	switch (wc->opcode) {
 	case IB_WC_RECV_RDMA_WITH_IMM:

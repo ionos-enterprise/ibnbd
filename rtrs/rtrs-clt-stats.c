@@ -51,8 +51,6 @@ void rtrs_clt_update_wc_stats(struct rtrs_clt_con *con)
 
 	cpu = raw_smp_processor_id();
 	s = this_cpu_ptr(stats->pcpu_stats);
-	s->wc_comp.cnt++;
-	s->wc_comp.total_cnt++;
 	if (unlikely(con->cpu != cpu)) {
 		s->cpu_migr.to++;
 
@@ -68,30 +66,6 @@ void rtrs_clt_inc_failover_cnt(struct rtrs_clt_stats *stats)
 
 	s = this_cpu_ptr(stats->pcpu_stats);
 	s->rdma.failover_cnt++;
-}
-
-static inline u32 rtrs_clt_stats_get_avg_wc_cnt(struct rtrs_clt_stats *stats)
-{
-	u32 cnt = 0;
-	u64 sum = 0;
-	int cpu;
-
-	for_each_possible_cpu(cpu) {
-		struct rtrs_clt_stats_pcpu *s;
-
-		s = per_cpu_ptr(stats->pcpu_stats, cpu);
-		sum += s->wc_comp.total_cnt;
-		cnt += s->wc_comp.cnt;
-	}
-
-	return cnt ? sum / cnt : 0;
-}
-
-int rtrs_clt_stats_wc_completion_to_str(struct rtrs_clt_stats *stats,
-					 char *buf, size_t len)
-{
-	return scnprintf(buf, len, "%u\n",
-			 rtrs_clt_stats_get_avg_wc_cnt(stats));
 }
 
 ssize_t rtrs_clt_stats_rdma_lat_distr_to_str(struct rtrs_clt_stats *stats,
@@ -269,22 +243,6 @@ int rtrs_clt_reset_reconnects_stat(struct rtrs_clt_stats *stats, bool enable)
 	return 0;
 }
 
-int rtrs_clt_reset_wc_comp_stats(struct rtrs_clt_stats *stats, bool enable)
-{
-	struct rtrs_clt_stats_pcpu *s;
-	int cpu;
-
-	if (!enable)
-		return -EINVAL;
-
-	for_each_possible_cpu(cpu) {
-		s = per_cpu_ptr(stats->pcpu_stats, cpu);
-		memset(&s->wc_comp, 0, sizeof(s->wc_comp));
-	}
-
-	return 0;
-}
-
 int rtrs_clt_reset_all_stats(struct rtrs_clt_stats *s, bool enable)
 {
 	if (enable) {
@@ -292,7 +250,6 @@ int rtrs_clt_reset_all_stats(struct rtrs_clt_stats *s, bool enable)
 		rtrs_clt_reset_rdma_lat_distr_stats(s, enable);
 		rtrs_clt_reset_cpu_migr_stats(s, enable);
 		rtrs_clt_reset_reconnects_stat(s, enable);
-		rtrs_clt_reset_wc_comp_stats(s, enable);
 		atomic_set(&s->inflight, 0);
 		return 0;
 	}

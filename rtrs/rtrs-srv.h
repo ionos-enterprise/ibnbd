@@ -24,11 +24,9 @@ enum rtrs_srv_state {
 	RTRS_SRV_CLOSED,
 };
 
-struct rtrs_stats_wc_comp {
-	atomic64_t	calls;
-	atomic64_t	total_wc_cnt;
-};
-
+/* stats for Read and write operation.
+ * see Documentation/ABI/testing/sysfs-class-rtrs-server for details
+ */
 struct rtrs_srv_stats_rdma_stats {
 	struct {
 		atomic64_t	cnt;
@@ -38,7 +36,6 @@ struct rtrs_srv_stats_rdma_stats {
 
 struct rtrs_srv_stats {
 	struct rtrs_srv_stats_rdma_stats	rdma_stats;
-	struct rtrs_stats_wc_comp		wc_comp;
 };
 
 struct rtrs_srv_con {
@@ -122,7 +119,6 @@ void close_sess(struct rtrs_srv_sess *sess);
 
 /* functions which are implemented in rtrs-srv-stats.c */
 void rtrs_srv_update_rdma_stats(struct rtrs_srv_stats *s, size_t size, int d);
-void rtrs_srv_update_wc_stats(struct rtrs_srv_stats *s);
 
 int rtrs_srv_reset_rdma_stats(struct rtrs_srv_stats *stats, bool enable);
 ssize_t rtrs_srv_stats_rdma_to_str(struct rtrs_srv_stats *stats,

@@ -18,12 +18,6 @@ void rtrs_srv_update_rdma_stats(struct rtrs_srv_stats *s,
 	atomic64_add(size, &s->rdma_stats.dir[d].size_total);
 }
 
-void rtrs_srv_update_wc_stats(struct rtrs_srv_stats *s)
-{
-	atomic64_inc(&s->wc_comp.calls);
-	atomic64_inc(&s->wc_comp.total_wc_cnt);
-}
-
 int rtrs_srv_reset_rdma_stats(struct rtrs_srv_stats *stats, bool enable)
 {
 	if (enable) {
@@ -52,25 +46,6 @@ ssize_t rtrs_srv_stats_rdma_to_str(struct rtrs_srv_stats *stats,
 			 atomic_read(&sess->ids_inflight));
 }
 
-int rtrs_srv_reset_wc_completion_stats(struct rtrs_srv_stats *stats,
-					bool enable)
-{
-	if (enable) {
-		memset(&stats->wc_comp, 0, sizeof(stats->wc_comp));
-		return 0;
-	}
-
-	return -EINVAL;
-}
-
-int rtrs_srv_stats_wc_completion_to_str(struct rtrs_srv_stats *stats,
-					 char *buf, size_t len)
-{
-	return snprintf(buf, len, "%lld %lld\n",
-			(s64)atomic64_read(&stats->wc_comp.total_wc_cnt),
-			(s64)atomic64_read(&stats->wc_comp.calls));
-}
-
 ssize_t rtrs_srv_reset_all_help(struct rtrs_srv_stats *stats,
 				 char *page, size_t len)
 {
@@ -80,7 +55,6 @@ ssize_t rtrs_srv_reset_all_help(struct rtrs_srv_stats *stats,
 int rtrs_srv_reset_all_stats(struct rtrs_srv_stats *stats, bool enable)
 {
 	if (enable) {
-		rtrs_srv_reset_wc_completion_stats(stats, enable);
 		rtrs_srv_reset_rdma_stats(stats, enable);
 		return 0;
 	}

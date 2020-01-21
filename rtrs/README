@@ -159,14 +159,6 @@ The format is:
   >= 65536 ms: <CNT-LAT-READ> <CNT-LAT-WRITE>
   maximum ms: <CNT-LAT-READ> <CNT-LAT-WRITE>
 
-wc_completion (RW)
-------------------
-
-Contains 2 unsigned int values, the first one records max number of work
-requests processed in work_completion in session lifetime, the second
-one records average number of work requests processed in work_completion
-in session lifetime.
-
 rdma (RW)
 ---------
 
@@ -241,17 +233,6 @@ Contains statistics regarding rdma operations and inflight operations.
 The output consists of 5 values:
 
 <read-count> <read-total-size> <write-count> <write-total-size> <inflights>
-
-wc_completion (RW)
-------------------
-
-Contains 3 values, the first one is int, records max number of work
-requests processed in work_completion in session lifetime, the second
-one long int records total number of work requests processed in
-work_completion in session lifetime and the 3rd one long int records
-total number of calls to the cq completion handler. Division of 2nd
-number through 3rd gives the average number of completions processed
-in completion handler.
 
 ==================
 Transport protocol

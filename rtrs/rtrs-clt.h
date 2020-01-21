@@ -38,12 +38,6 @@ struct rtrs_clt_stats_reconnects {
 };
 
 /* see Documentation/ABI/testing/sysfs-class-rtrs-client for details */
-struct rtrs_clt_stats_wc_comp {
-	u32 cnt;
-	u64 total_cnt;
-};
-
-/* see Documentation/ABI/testing/sysfs-class-rtrs-client for details */
 struct rtrs_clt_stats_cpu_migr {
 	atomic_t from;
 	int to;
@@ -75,7 +69,6 @@ struct rtrs_clt_stats_pcpu {
 	struct rtrs_clt_stats_rdma		rdma;
 	struct rtrs_clt_stats_rdma_lat		rdma_lat_distr[LOG_LAT_SZ];
 	struct rtrs_clt_stats_rdma_lat		rdma_lat_max;
-	struct rtrs_clt_stats_wc_comp		wc_comp;
 };
 
 struct rtrs_clt_stats {
