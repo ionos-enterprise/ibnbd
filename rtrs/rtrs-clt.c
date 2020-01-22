@@ -391,11 +391,6 @@ static void complete_rdma_req(struct rtrs_clt_io_req *req, int errno,
 		ib_dma_unmap_sg(sess->s.dev->ib_dev, req->sglist,
 				req->sg_cnt, req->dir);
 	}
-	if (sess->stats.enable_rdma_lat)
-		rtrs_clt_update_rdma_lat(&sess->stats,
-					  req->dir == DMA_FROM_DEVICE,
-					  jiffies_to_msecs(jiffies -
-							   req->start_jiffies));
 	rtrs_clt_decrease_inflight(&sess->stats);
 
 	req->in_use = false;
@@ -875,8 +870,6 @@ static void rtrs_clt_init_req(struct rtrs_clt_io_req *req,
 	WARN_ON(len != usr_len);
 
 	reinit_completion(&req->inv_comp);
-	if (sess->stats.enable_rdma_lat)
-		req->start_jiffies = jiffies;
 }
 
 static struct rtrs_clt_io_req *

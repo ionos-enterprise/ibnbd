@@ -270,10 +270,6 @@ STAT_ATTR(struct rtrs_clt_sess, reconnects,
 	  rtrs_clt_stats_reconnects_to_str,
 	  rtrs_clt_reset_reconnects_stat);
 
-STAT_ATTR(struct rtrs_clt_sess, rdma_lat,
-	  rtrs_clt_stats_rdma_lat_distr_to_str,
-	  rtrs_clt_reset_rdma_lat_distr_stats);
-
 STAT_ATTR(struct rtrs_clt_sess, rdma,
 	  rtrs_clt_stats_rdma_to_str,
 	  rtrs_clt_reset_rdma_stats);
@@ -285,7 +281,6 @@ STAT_ATTR(struct rtrs_clt_sess, reset_all,
 static struct attribute *rtrs_clt_stats_attrs[] = {
 	&cpu_migration_attr.attr,
 	&reconnects_attr.attr,
-	&rdma_lat_attr.attr,
 	&rdma_attr.attr,
 	&reset_all_attr.attr,
 	NULL,

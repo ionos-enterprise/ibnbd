@@ -144,21 +144,6 @@ Contains 2 unsigned int values, the first one records number of successful
 reconnects in the path lifetime, the second one records number of failed
 reconnects in the path lifetime.
 
-rdma_lat (RW)
--------------
-
-Latency distribution of RTRS requests.
-The format is:
-   1 ms: <CNT-LAT-READ> <CNT-LAT-WRITE>
-   2 ms: <CNT-LAT-READ> <CNT-LAT-WRITE>
-   4 ms: <CNT-LAT-READ> <CNT-LAT-WRITE>
-   8 ms: <CNT-LAT-READ> <CNT-LAT-WRITE>
-  16 ms: <CNT-LAT-READ> <CNT-LAT-WRITE>
-  ...
-  65536 ms: <CNT-LAT-READ> <CNT-LAT-WRITE>
-  >= 65536 ms: <CNT-LAT-READ> <CNT-LAT-WRITE>
-  maximum ms: <CNT-LAT-READ> <CNT-LAT-WRITE>
-
 rdma (RW)
 ---------
 

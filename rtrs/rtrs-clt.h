@@ -55,24 +55,12 @@ struct rtrs_clt_stats_rdma {
 	u64 failover_cnt;
 };
 
-struct rtrs_clt_stats_rdma_lat {
-	u64 read;
-	u64 write;
-};
-
-#define MAX_LOG_LAT 16
-#define MIN_LOG_LAT 0
-#define LOG_LAT_SZ (MAX_LOG_LAT - MIN_LOG_LAT + 2)
-
 struct rtrs_clt_stats_pcpu {
 	struct rtrs_clt_stats_cpu_migr		cpu_migr;
 	struct rtrs_clt_stats_rdma		rdma;
-	struct rtrs_clt_stats_rdma_lat		rdma_lat_distr[LOG_LAT_SZ];
-	struct rtrs_clt_stats_rdma_lat		rdma_lat_max;
 };
 
 struct rtrs_clt_stats {
-	bool					enable_rdma_lat;
 	struct rtrs_clt_stats_pcpu    __percpu	*pcpu_stats;
 	struct rtrs_clt_stats_reconnects	reconnects;
 	atomic_t				inflight;
@@ -222,8 +210,6 @@ void rtrs_clt_free_stats(struct rtrs_clt_stats *stats);
 void rtrs_clt_decrease_inflight(struct rtrs_clt_stats *s);
 void rtrs_clt_inc_failover_cnt(struct rtrs_clt_stats *s);
 
-void rtrs_clt_update_rdma_lat(struct rtrs_clt_stats *s, bool read,
-			       unsigned long ms);
 void rtrs_clt_update_wc_stats(struct rtrs_clt_con *con);
 void rtrs_clt_update_all_stats(struct rtrs_clt_io_req *req, int dir);
 

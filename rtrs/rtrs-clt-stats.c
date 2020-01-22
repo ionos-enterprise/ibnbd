@@ -11,32 +11,6 @@
 
 #include "rtrs-clt.h"
 
-static inline int rtrs_clt_ms_to_bin(unsigned long ms)
-{
-	int bin = ms ? ilog2(ms) - MIN_LOG_LAT + 1 : 0;
-
-	return clamp(bin, 0, LOG_LAT_SZ - 1);
-}
-
-void rtrs_clt_update_rdma_lat(struct rtrs_clt_stats *stats, bool read,
-			       unsigned long ms)
-{
-	struct rtrs_clt_stats_pcpu *s;
-	int bin;
-
-	bin = rtrs_clt_ms_to_bin(ms);
-	s = this_cpu_ptr(stats->pcpu_stats);
-	if (read) {
-		s->rdma_lat_distr[bin].read++;
-		if (s->rdma_lat_max.read < ms)
-			s->rdma_lat_max.read = ms;
-	} else {
-		s->rdma_lat_distr[bin].write++;
-		if (s->rdma_lat_max.write < ms)
-			s->rdma_lat_max.write = ms;
-	}
-}
-
 void rtrs_clt_decrease_inflight(struct rtrs_clt_stats *stats)
 {
 	atomic_dec(&stats->inflight);
@@ -66,51 +40,6 @@ void rtrs_clt_inc_failover_cnt(struct rtrs_clt_stats *stats)
 
 	s = this_cpu_ptr(stats->pcpu_stats);
 	s->rdma.failover_cnt++;
-}
-
-ssize_t rtrs_clt_stats_rdma_lat_distr_to_str(struct rtrs_clt_stats *stats,
-					      char *page, size_t len)
-{
-	struct rtrs_clt_stats_rdma_lat res[LOG_LAT_SZ];
-	struct rtrs_clt_stats_rdma_lat max;
-	struct rtrs_clt_stats_pcpu *s;
-
-	ssize_t cnt = 0;
-	int i, cpu;
-
-	max.write = 0;
-	max.read = 0;
-	for_each_possible_cpu(cpu) {
-		s = per_cpu_ptr(stats->pcpu_stats, cpu);
-
-		if (max.write < s->rdma_lat_max.write)
-			max.write = s->rdma_lat_max.write;
-		if (max.read < s->rdma_lat_max.read)
-			max.read = s->rdma_lat_max.read;
-	}
-	for (i = 0; i < ARRAY_SIZE(res); i++) {
-		res[i].write = 0;
-		res[i].read = 0;
-		for_each_possible_cpu(cpu) {
-			s = per_cpu_ptr(stats->pcpu_stats, cpu);
-
-			res[i].write += s->rdma_lat_distr[i].write;
-			res[i].read += s->rdma_lat_distr[i].read;
-		}
-	}
-
-	for (i = 0; i < ARRAY_SIZE(res) - 1; i++)
-		cnt += scnprintf(page + cnt, len - cnt,
-				 "< %6d ms: %llu %llu\n",
-				 1 << (i + MIN_LOG_LAT), res[i].read,
-				 res[i].write);
-	cnt += scnprintf(page + cnt, len - cnt, ">= %5d ms: %llu %llu\n",
-			 1 << (i - 1 + MIN_LOG_LAT), res[i].read,
-			 res[i].write);
-	cnt += scnprintf(page + cnt, len - cnt, " maximum ms: %llu %llu\n",
-			 max.read, max.write);
-
-	return cnt;
 }
 
 int rtrs_clt_stats_migration_cnt_to_str(struct rtrs_clt_stats *stats,
@@ -198,25 +127,6 @@ int rtrs_clt_reset_rdma_stats(struct rtrs_clt_stats *stats, bool enable)
 	return 0;
 }
 
-int rtrs_clt_reset_rdma_lat_distr_stats(struct rtrs_clt_stats *stats,
-					 bool enable)
-{
-	struct rtrs_clt_stats_pcpu *s;
-	int cpu;
-
-	if (enable) {
-		for_each_possible_cpu(cpu) {
-			s = per_cpu_ptr(stats->pcpu_stats, cpu);
-			memset(&s->rdma_lat_max, 0, sizeof(s->rdma_lat_max));
-			memset(&s->rdma_lat_distr, 0,
-			       sizeof(s->rdma_lat_distr));
-		}
-	}
-	stats->enable_rdma_lat = enable;
-
-	return 0;
-}
-
 int rtrs_clt_reset_cpu_migr_stats(struct rtrs_clt_stats *stats, bool enable)
 {
 	struct rtrs_clt_stats_pcpu *s;
@@ -247,7 +157,6 @@ int rtrs_clt_reset_all_stats(struct rtrs_clt_stats *s, bool enable)
 {
 	if (enable) {
 		rtrs_clt_reset_rdma_stats(s, enable);
-		rtrs_clt_reset_rdma_lat_distr_stats(s, enable);
 		rtrs_clt_reset_cpu_migr_stats(s, enable);
 		rtrs_clt_reset_reconnects_stat(s, enable);
 		atomic_set(&s->inflight, 0);
@@ -281,7 +190,6 @@ void rtrs_clt_update_all_stats(struct rtrs_clt_io_req *req, int dir)
 
 int rtrs_clt_init_stats(struct rtrs_clt_stats *stats)
 {
-	stats->enable_rdma_lat = false;
 	stats->pcpu_stats = alloc_percpu(typeof(*stats->pcpu_stats));
 	if (!stats->pcpu_stats)
 		return -ENOMEM;
