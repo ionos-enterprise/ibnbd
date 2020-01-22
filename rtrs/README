@@ -220,12 +220,6 @@ Entries under /sys/devices/virtual/rtrs-server/<session-name>/paths/<src@dst>/st
 When "0" is written to a file in this directory, the corresponding counters
 will be reset.
 
-reset_all (RW)
---------------
-
-Read will return usage help, write 0 will clear all the counters about
-stats.
-
 rdma (RW)
 ---------
 

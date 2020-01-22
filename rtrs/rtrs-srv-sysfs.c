@@ -134,13 +134,8 @@ STAT_ATTR(struct rtrs_srv_sess, rdma,
 	  rtrs_srv_stats_rdma_to_str,
 	  rtrs_srv_reset_rdma_stats);
 
-STAT_ATTR(struct rtrs_srv_sess, reset_all,
-	  rtrs_srv_reset_all_help,
-	  rtrs_srv_reset_all_stats);
-
 static struct attribute *rtrs_srv_stats_attrs[] = {
 	&rdma_attr.attr,
-	&reset_all_attr.attr,
 	NULL,
 };
 

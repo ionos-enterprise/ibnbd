@@ -45,19 +45,3 @@ ssize_t rtrs_srv_stats_rdma_to_str(struct rtrs_srv_stats *stats,
 			 (s64)atomic64_read(&r->dir[WRITE].size_total),
 			 atomic_read(&sess->ids_inflight));
 }
-
-ssize_t rtrs_srv_reset_all_help(struct rtrs_srv_stats *stats,
-				 char *page, size_t len)
-{
-	return scnprintf(page, PAGE_SIZE, "echo 1 to reset all statistics\n");
-}
-
-int rtrs_srv_reset_all_stats(struct rtrs_srv_stats *stats, bool enable)
-{
-	if (enable) {
-		rtrs_srv_reset_rdma_stats(stats, enable);
-		return 0;
-	}
-
-	return -EINVAL;
-}
