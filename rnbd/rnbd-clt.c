@@ -48,11 +48,6 @@ static void rnbd_clt_put_sess(struct rnbd_clt_session *sess)
 		free_sess(sess);
 }
 
-static inline bool rnbd_clt_dev_is_mapped(struct rnbd_clt_dev *dev)
-{
-	return dev->dev_state == DEV_STATE_MAPPED;
-}
-
 static void rnbd_clt_put_dev(struct rnbd_clt_dev *dev)
 {
 	might_sleep();
@@ -1133,7 +1128,7 @@ static blk_status_t rnbd_queue_rq(struct blk_mq_hw_ctx *hctx,
 	struct rnbd_iu *iu = blk_mq_rq_to_pdu(rq);
 	int err;
 
-	if (unlikely(!rnbd_clt_dev_is_mapped(dev)))
+	if (unlikely(dev->dev_state != DEV_STATE_MAPPED))
 		return BLK_STS_IOERR;
 
 	iu->permit = rnbd_get_permit(dev->sess, RTRS_IO_CON,
