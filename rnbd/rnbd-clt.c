@@ -251,20 +251,21 @@ static bool rnbd_rerun_if_needed(struct rnbd_clt_session *sess)
 	     cpu_q = rnbd_get_cpu_qlist(sess, nxt_cpu(cpu_q->cpu))) {
 		if (!spin_trylock_irqsave(&cpu_q->requeue_lock, flags))
 			continue;
-		if (likely(test_bit(cpu_q->cpu, sess->cpu_queues_bm))) {
-			q = list_first_entry_or_null(&cpu_q->requeue_list,
-						     typeof(*q), requeue_list);
-			if (WARN_ON(!q))
-				goto clear_bit;
-			list_del_init(&q->requeue_list);
-			clear_bit_unlock(0, &q->in_list);
+		if (unlikely(!test_bit(cpu_q->cpu, sess->cpu_queues_bm)))
+			goto unlock;
+		q = list_first_entry_or_null(&cpu_q->requeue_list,
+					     typeof(*q), requeue_list);
+		if (WARN_ON(!q))
+			goto clear_bit;
+		list_del_init(&q->requeue_list);
+		clear_bit_unlock(0, &q->in_list);
 
-			if (list_empty(&cpu_q->requeue_list)) {
-				/* Clear bit if nothing is left */
+		if (list_empty(&cpu_q->requeue_list)) {
+			/* Clear bit if nothing is left */
 clear_bit:
-				clear_bit(cpu_q->cpu, sess->cpu_queues_bm);
-			}
+			clear_bit(cpu_q->cpu, sess->cpu_queues_bm);
 		}
+unlock:
 		spin_unlock_irqrestore(&cpu_q->requeue_lock, flags);
 
 		if (q)
@@ -285,7 +286,7 @@ clear_bit:
 	if (q)
 		rnbd_clt_dev_requeue(q);
 
-	return !!q;
+	return q;
 }
 
 /**
