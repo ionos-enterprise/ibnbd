@@ -1448,8 +1448,7 @@ static void del_path_from_srv(struct rtrs_srv_sess *sess)
 }
 
 /* return true if addresses are the same, error other wise */
-static inline int sockaddr_cmp(const struct sockaddr *a,
-			       const struct sockaddr *b)
+static int sockaddr_cmp(const struct sockaddr *a, const struct sockaddr *b)
 {
 	switch (a->sa_family) {
 	case AF_IB:
@@ -1472,8 +1471,8 @@ static inline int sockaddr_cmp(const struct sockaddr *a,
 	}
 }
 
-static inline bool __is_path_w_addr_exists(struct rtrs_srv *srv,
-					   struct rdma_addr *addr)
+static bool __is_path_w_addr_exists(struct rtrs_srv *srv,
+				    struct rdma_addr *addr)
 {
 	struct rtrs_srv_sess *sess;
 

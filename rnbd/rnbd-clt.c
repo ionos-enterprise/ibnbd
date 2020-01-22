@@ -234,7 +234,7 @@ static inline int nxt_cpu(int cpu)
  * Context:
  *     Does not matter.
  */
-static inline bool rnbd_rerun_if_needed(struct rnbd_clt_session *sess)
+static bool rnbd_rerun_if_needed(struct rnbd_clt_session *sess)
 {
 	struct rnbd_queue *q = NULL;
 	struct rnbd_cpu_qlist *cpu_q;
@@ -313,7 +313,7 @@ clear_bit:
  * Context:
  *     Does not matter.
  */
-static inline void rnbd_rerun_all_if_idle(struct rnbd_clt_session *sess)
+static void rnbd_rerun_all_if_idle(struct rnbd_clt_session *sess)
 {
 	bool requeued;
 
@@ -1064,7 +1064,7 @@ static int rnbd_client_xfer_request(struct rnbd_clt_dev *dev,
  *     are freed.  If session is not doing anything - device is not added to
  *     the list and @false is returned.
  */
-static inline bool rnbd_clt_dev_add_to_requeue(struct rnbd_clt_dev *dev,
+static bool rnbd_clt_dev_add_to_requeue(struct rnbd_clt_dev *dev,
 						struct rnbd_queue *q)
 {
 	struct rnbd_clt_session *sess = dev->sess;

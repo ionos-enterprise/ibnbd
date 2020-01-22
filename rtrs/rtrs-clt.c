@@ -43,7 +43,7 @@ static inline bool rtrs_clt_is_connected(const struct rtrs_clt *clt)
 	return connected;
 }
 
-static inline struct rtrs_permit *
+static struct rtrs_permit *
 __rtrs_get_permit(struct rtrs_clt *clt, enum rtrs_clt_con_type con_type)
 {
 	size_t max_depth = clt->queue_depth;
@@ -845,7 +845,7 @@ static inline void path_it_deinit(struct path_it *it)
  * @data_len: length of the IO data
  * @dir: direction of the IO.
  */
-static inline void rtrs_clt_init_req(struct rtrs_clt_io_req *req,
+static void rtrs_clt_init_req(struct rtrs_clt_io_req *req,
 				     struct rtrs_clt_sess *sess,
 				     rtrs_conf_fn *conf,
 				     struct rtrs_permit *permit, void *priv,
@@ -879,7 +879,7 @@ static inline void rtrs_clt_init_req(struct rtrs_clt_io_req *req,
 		req->start_jiffies = jiffies;
 }
 
-static inline struct rtrs_clt_io_req *
+static struct rtrs_clt_io_req *
 rtrs_clt_get_req(struct rtrs_clt_sess *sess, rtrs_conf_fn *conf,
 		  struct rtrs_permit *permit, void *priv,
 		  const struct kvec *vec, size_t usr_len,
@@ -894,7 +894,7 @@ rtrs_clt_get_req(struct rtrs_clt_sess *sess, rtrs_conf_fn *conf,
 	return req;
 }
 
-static inline struct rtrs_clt_io_req *
+static struct rtrs_clt_io_req *
 rtrs_clt_get_copy_req(struct rtrs_clt_sess *alive_sess,
 		       struct rtrs_clt_io_req *fail_req)
 {
