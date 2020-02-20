@@ -11,11 +11,6 @@
 
 #include "rtrs-clt.h"
 
-void rtrs_clt_decrease_inflight(struct rtrs_clt_stats *stats)
-{
-	atomic_dec(&stats->inflight);
-}
-
 void rtrs_clt_update_wc_stats(struct rtrs_clt_con *con)
 {
 	struct rtrs_clt_sess *sess = to_clt_sess(con->c.sess);

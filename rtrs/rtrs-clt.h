@@ -207,7 +207,10 @@ int rtrs_clt_get_max_reconnect_attempts(const struct rtrs_clt *clt);
 int rtrs_clt_init_stats(struct rtrs_clt_stats *stats);
 void rtrs_clt_free_stats(struct rtrs_clt_stats *stats);
 
-void rtrs_clt_decrease_inflight(struct rtrs_clt_stats *s);
+static inline void rtrs_clt_decrease_inflight(struct rtrs_clt_stats *s)
+{
+	atomic_dec(&s->inflight);
+}
 void rtrs_clt_inc_failover_cnt(struct rtrs_clt_stats *s);
 
 void rtrs_clt_update_wc_stats(struct rtrs_clt_con *con);
