@@ -180,7 +180,8 @@ void rtrs_clt_update_all_stats(struct rtrs_clt_io_req *req, int dir)
 
 	len = req->usr_len + req->data_len;
 	rtrs_clt_update_rdma_stats(stats, len, dir);
-	atomic_inc(&stats->inflight);
+	if (sess->clt->mp_policy == MP_POLICY_MIN_INFLIGHT)
+		atomic_inc(&stats->inflight);
 }
 
 int rtrs_clt_init_stats(struct rtrs_clt_stats *stats)
