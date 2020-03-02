@@ -1542,17 +1542,17 @@ static int rtrs_rdma_do_accept(struct rtrs_srv_sess *sess,
 	int err;
 
 	param = (struct rdma_conn_param) {
-	.rnr_retry_count = 7,
-	.private_data = &msg,
-	.private_data_len = sizeof(msg),
+		.rnr_retry_count = 7,
+		.private_data = &msg,
+		.private_data_len = sizeof(msg),
 	};
 
 	msg = (struct rtrs_msg_conn_rsp) {
-	.magic = cpu_to_le16(RTRS_MAGIC),
-	.version = cpu_to_le16(RTRS_PROTO_VER),
-	.queue_depth = cpu_to_le16(srv->queue_depth),
-	.max_io_size = cpu_to_le32(max_chunk_size - MAX_HDR_SIZE),
-	.max_hdr_size = cpu_to_le32(MAX_HDR_SIZE),
+		.magic = cpu_to_le16(RTRS_MAGIC),
+		.version = cpu_to_le16(RTRS_PROTO_VER),
+		.queue_depth = cpu_to_le16(srv->queue_depth),
+		.max_io_size = cpu_to_le32(max_chunk_size - MAX_HDR_SIZE),
+		.max_hdr_size = cpu_to_le32(MAX_HDR_SIZE),
 	};
 
 	if (always_invalidate)
@@ -1571,9 +1571,9 @@ static int rtrs_rdma_do_reject(struct rdma_cm_id *cm_id, int errno)
 	int err;
 
 	msg = (struct rtrs_msg_conn_rsp) {
-	.magic = cpu_to_le16(RTRS_MAGIC),
-	.version = cpu_to_le16(RTRS_PROTO_VER),
-	.errno = cpu_to_le16(errno),
+		.magic = cpu_to_le16(RTRS_MAGIC),
+		.version = cpu_to_le16(RTRS_PROTO_VER),
+		.errno = cpu_to_le16(errno),
 	};
 
 	err = rdma_reject(cm_id, &msg, sizeof(msg));
