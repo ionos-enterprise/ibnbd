@@ -831,7 +831,12 @@ static int __init rnbd_srv_init_module(void)
 
 	pr_info("Loading module %s, proto %s\n",
 		KBUILD_MODNAME, RNBD_PROTO_VER_STRING);
-
+	BUILD_BUG_ON(sizeof(struct rnbd_msg_hdr) != 4);
+	BUILD_BUG_ON(sizeof(struct rnbd_msg_sess_info) != 36);
+	BUILD_BUG_ON(sizeof(struct rnbd_msg_sess_info_rsp) != 36);
+	BUILD_BUG_ON(sizeof(struct rnbd_msg_open) != 264);
+	BUILD_BUG_ON(sizeof(struct rnbd_msg_close) != 8);
+	BUILD_BUG_ON(sizeof(struct rnbd_msg_open_rsp) != 56);
 	rtrs_ctx = rtrs_srv_open(rnbd_srv_rdma_ev, rnbd_srv_link_ev,
 				   port_nr);
 	if (IS_ERR(rtrs_ctx)) {

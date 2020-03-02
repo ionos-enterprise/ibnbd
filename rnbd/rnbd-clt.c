@@ -1692,6 +1692,12 @@ static int __init rnbd_client_init(void)
 	pr_info("Loading module %s, proto %s:\n",
 		KBUILD_MODNAME, RNBD_PROTO_VER_STRING);
 
+	BUILD_BUG_ON(sizeof(struct rnbd_msg_hdr) != 4);
+	BUILD_BUG_ON(sizeof(struct rnbd_msg_sess_info) != 36);
+	BUILD_BUG_ON(sizeof(struct rnbd_msg_sess_info_rsp) != 36);
+	BUILD_BUG_ON(sizeof(struct rnbd_msg_open) != 264);
+	BUILD_BUG_ON(sizeof(struct rnbd_msg_close) != 8);
+	BUILD_BUG_ON(sizeof(struct rnbd_msg_open_rsp) != 56);
 	rnbd_client_major = register_blkdev(rnbd_client_major, "rnbd");
 	if (rnbd_client_major <= 0) {
 		pr_err("Failed to load module, block device registration failed\n");
