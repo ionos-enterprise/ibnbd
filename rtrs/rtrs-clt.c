@@ -392,7 +392,7 @@ static void complete_rdma_req(struct rtrs_clt_io_req *req, int errno,
 				req->sg_cnt, req->dir);
 	}
 	if (sess->clt->mp_policy == MP_POLICY_MIN_INFLIGHT)
-		rtrs_clt_decrease_inflight(&sess->stats);
+		atomic_dec(&sess->stats.inflight);
 
 	req->in_use = false;
 	req->con = NULL;
@@ -994,7 +994,7 @@ static int rtrs_clt_write_req(struct rtrs_clt_io_req *req)
 	if (unlikely(ret)) {
 		rtrs_err(s, "Write request failed: %d\n", ret);
 		if (sess->clt->mp_policy == MP_POLICY_MIN_INFLIGHT)
-			rtrs_clt_decrease_inflight(&sess->stats);
+			atomic_dec(&sess->stats.inflight);
 		if (req->sg_cnt)
 			ib_dma_unmap_sg(sess->s.dev->ib_dev, req->sglist,
 					req->sg_cnt, req->dir);
@@ -1125,7 +1125,7 @@ static int rtrs_clt_read_req(struct rtrs_clt_io_req *req)
 	if (unlikely(ret)) {
 		rtrs_err(s, "Read request failed: %d\n", ret);
 		if (sess->clt->mp_policy == MP_POLICY_MIN_INFLIGHT)
-			rtrs_clt_decrease_inflight(&sess->stats);
+			atomic_dec(&sess->stats.inflight);
 		req->need_inv = false;
 		if (req->sg_cnt)
 			ib_dma_unmap_sg(dev->ib_dev, req->sglist,
