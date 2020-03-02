@@ -151,11 +151,10 @@ struct rtrs_clt_sess {
 };
 
 struct rtrs_clt {
-	struct list_head   /* __rcu */ paths_list;
-	size_t			       paths_num;
+	struct list_head	paths_list; /* rcu protected list */
+	size_t			paths_num;
 	struct rtrs_clt_sess
-		      __rcu * __percpu *pcpu_path;
-
+	__rcu * __percpu	*pcpu_path;
 	bool			opened;
 	uuid_t			paths_uuid;
 	int			paths_up;
