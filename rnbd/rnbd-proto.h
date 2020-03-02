@@ -201,12 +201,12 @@ enum rnbd_io_flags {
 
 static inline u32 rnbd_op(u32 flags)
 {
-	return (flags & RNBD_OP_MASK);
+	return flags & RNBD_OP_MASK;
 }
 
 static inline u32 rnbd_flags(u32 flags)
 {
-	return (flags & ~RNBD_OP_MASK);
+	return flags & ~RNBD_OP_MASK;
 }
 
 static inline bool rnbd_flags_supported(u32 flags)
