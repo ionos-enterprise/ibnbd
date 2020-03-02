@@ -92,11 +92,11 @@ enum {
 /**
  * enum rtrs_clt_con_type() type of ib connection to use with a given
  * rtrs_permit
- * @USR_CON - use connection reserved for "service" messages
+ * @ADMIN_CON - use connection reserved for "service" messages
  * @IO_CON - use a connection reserved for IO
  */
 enum rtrs_clt_con_type {
-	RTRS_USR_CON,
+	RTRS_ADMIN_CON,
 	RTRS_IO_CON
 };
 

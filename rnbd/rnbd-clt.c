@@ -473,7 +473,7 @@ static int send_msg_close(struct rnbd_clt_dev *dev, u32 device_id, bool wait)
 	};
 	int err, errno;
 
-	iu = rnbd_get_iu(sess, RTRS_USR_CON, RTRS_PERMIT_WAIT);
+	iu = rnbd_get_iu(sess, RTRS_ADMIN_CON, RTRS_PERMIT_WAIT);
 	if (!iu)
 		return -ENOMEM;
 
@@ -558,7 +558,7 @@ static int send_msg_open(struct rnbd_clt_dev *dev, bool wait)
 	if (!rsp)
 		return -ENOMEM;
 
-	iu = rnbd_get_iu(sess, RTRS_USR_CON, RTRS_PERMIT_WAIT);
+	iu = rnbd_get_iu(sess, RTRS_ADMIN_CON, RTRS_PERMIT_WAIT);
 	if (!iu) {
 		kfree(rsp);
 		return -ENOMEM;
@@ -604,7 +604,7 @@ static int send_msg_sess_info(struct rnbd_clt_session *sess, bool wait)
 	if (!rsp)
 		return -ENOMEM;
 
-	iu = rnbd_get_iu(sess, RTRS_USR_CON, RTRS_PERMIT_WAIT);
+	iu = rnbd_get_iu(sess, RTRS_ADMIN_CON, RTRS_PERMIT_WAIT);
 	if (!iu) {
 		kfree(rsp);
 		return -ENOMEM;
