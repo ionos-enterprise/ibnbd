@@ -195,12 +195,12 @@ rnbd_get_cpu_qlist(struct rnbd_clt_session *sess, int cpu)
 {
 	int bit;
 
-	/* First half */
+	/* Search from cpu to nr_cpu_ids */
 	bit = find_next_bit(sess->cpu_queues_bm, nr_cpu_ids, cpu);
 	if (bit < nr_cpu_ids) {
 		return per_cpu_ptr(sess->cpu_queues, bit);
 	} else if (cpu != 0) {
-		/* Second half */
+		/* Search from 0 to cpu */
 		bit = find_next_bit(sess->cpu_queues_bm, cpu, 0);
 		if (bit < cpu)
 			return per_cpu_ptr(sess->cpu_queues, bit);
@@ -811,7 +811,7 @@ static struct rnbd_clt_session *alloc_sess(const char *sessname)
 	}
 	rnbd_init_cpu_qlists(sess->cpu_queues);
 
-	/**
+	/*
 	 * That is simple percpu variable which stores cpu indeces, which are
 	 * incremented on each access.  We need that for the sake of fairness
 	 * to wake up queues in a round-robin manner.
