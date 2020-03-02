@@ -847,7 +847,7 @@ static void wait_for_rtrs_disconnection(struct rnbd_clt_session *sess)
 	__releases(&sess_lock)
 	__acquires(&sess_lock)
 {
-	DEFINE_WAIT_FUNC(wait, autoremove_wake_function);
+	DEFINE_WAIT(wait);
 
 	prepare_to_wait(&sess->rtrs_waitq, &wait, TASK_UNINTERRUPTIBLE);
 	if (IS_ERR_OR_NULL(sess->rtrs)) {
