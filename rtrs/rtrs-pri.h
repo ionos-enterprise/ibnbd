@@ -35,7 +35,7 @@ enum rtrs_imm_type {
 	RTRS_IO_RSP_IMM       = 1, /* server to client */
 	RTRS_IO_RSP_W_INV_IMM = 2, /* server to client */
 
-	RTRS_HB_MSG_IMM = 8,
+	RTRS_HB_MSG_IMM = 8, /* HB: HeartBeat */
 	RTRS_HB_ACK_IMM = 9,
 
 	RTRS_LAST_IMM,
