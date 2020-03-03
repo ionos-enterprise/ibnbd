@@ -13,7 +13,7 @@
 #include "rnbd-log.h"
 
 struct rnbd_dev *rnbd_dev_open(const char *path, fmode_t flags,
-				 struct bio_set *bs, rnbd_dev_io_fn io_cb)
+			       rnbd_dev_io_fn io_cb)
 {
 	struct rnbd_dev *dev;
 	int ret;
@@ -31,7 +31,6 @@ struct rnbd_dev *rnbd_dev_open(const char *path, fmode_t flags,
 	dev->blk_open_flags	= flags;
 	dev->io_cb		= io_cb;
 	bdevname(dev->bdev, dev->name);
-	dev->ibd_bio_set	= bs;
 
 	return dev;
 
@@ -54,58 +53,6 @@ static void rnbd_dev_bi_end_io(struct bio *bio)
 	bio_put(bio);
 }
 
-/**
- *	rnbd_bio_map_kern	-	map kernel address into bio
- *	@q: the struct request_queue for the bio
- *	@data: pointer to buffer to map
- *	@bs: bio_set to use.
- *	@len: length in bytes
- *	@gfp_mask: allocation flags for bio allocation
- *
- *	Map the kernel address into a bio suitable for io to a block
- *	device. Returns an error pointer in case of error.
- */
-static struct bio *rnbd_bio_map_kern(struct request_queue *q, void *data,
-				      struct bio_set *bs,
-				      unsigned int len, gfp_t gfp_mask)
-{
-	unsigned long kaddr = (unsigned long)data;
-	unsigned long end = (kaddr + len + PAGE_SIZE - 1) >> PAGE_SHIFT;
-	unsigned long start = kaddr >> PAGE_SHIFT;
-	const int nr_pages = end - start;
-	int offset, i;
-	struct bio *bio;
-
-	bio = bio_alloc_bioset(gfp_mask, nr_pages, bs);
-	if (!bio)
-		return ERR_PTR(-ENOMEM);
-
-	offset = offset_in_page(kaddr);
-	for (i = 0; i < nr_pages; i++) {
-		unsigned int bytes = PAGE_SIZE - offset;
-
-		if (len <= 0)
-			break;
-
-		if (bytes > len)
-			bytes = len;
-
-		if (bio_add_pc_page(q, bio, virt_to_page(data), bytes,
-				    offset) < bytes) {
-			/* we don't support partial mappings */
-			bio_put(bio);
-			return ERR_PTR(-EINVAL);
-		}
-
-		data += bytes;
-		len -= bytes;
-		offset = 0;
-	}
-
-	bio->bi_end_io = bio_put;
-	return bio;
-}
-
 int rnbd_dev_submit_io(struct rnbd_dev *dev, sector_t sector, void *data,
 			size_t len, u32 bi_size, enum rnbd_io_flags flags,
 			short prio, void *priv)
@@ -119,7 +66,7 @@ int rnbd_dev_submit_io(struct rnbd_dev *dev, sector_t sector, void *data,
 		return -EINVAL;
 
 	/* Generate bio with pages pointing to the rdma buffer */
-	bio = rnbd_bio_map_kern(q, data, dev->ibd_bio_set, len, GFP_KERNEL);
+	bio = bio_map_kern(q, data, len, GFP_KERNEL);
 	if (IS_ERR(bio))
 		return PTR_ERR(bio);
 
