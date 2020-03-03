@@ -269,12 +269,6 @@ void rtrs_srv_resp_rdma(struct rtrs_srv_op *id, int errno);
 void rtrs_srv_set_sess_priv(struct rtrs_srv *sess, void *priv);
 
 /**
- * rtrs_srv_get_sess_qdepth() - Get rtrs_srv qdepth.
- * @sess:	Session
- */
-int rtrs_srv_get_queue_depth(struct rtrs_srv *sess);
-
-/**
  * rtrs_srv_get_sess_name() - Get rtrs_srv peer hostname.
  * @sess:	Session
  * @sessname:	Sessname buffer
