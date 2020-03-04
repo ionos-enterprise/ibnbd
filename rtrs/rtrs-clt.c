@@ -1698,12 +1698,8 @@ static int rtrs_rdma_conn_established(struct rtrs_clt_con *con,
 			kfree(sess->rbufs);
 			sess->rbufs = kcalloc(queue_depth, sizeof(*sess->rbufs),
 					      GFP_KERNEL);
-			if (!sess->rbufs) {
-				rtrs_err(clt,
-					  "Failed to allocate queue_depth=%d\n",
-					  queue_depth);
+			if (!sess->rbufs)
 				return -ENOMEM;
-			}
 		}
 		sess->queue_depth = queue_depth;
 		sess->max_hdr_size = le32_to_cpu(msg->max_hdr_size);
@@ -2389,7 +2385,6 @@ static int rtrs_send_sess_info(struct rtrs_clt_sess *sess)
 	rx_iu = rtrs_iu_alloc(1, rx_sz, GFP_KERNEL, sess->s.dev->ib_dev,
 			       DMA_FROM_DEVICE, rtrs_clt_info_rsp_done);
 	if (unlikely(!tx_iu || !rx_iu)) {
-		rtrs_err(sess->clt, "rtrs_iu_alloc(): no memory\n");
 		err = -ENOMEM;
 		goto out;
 	}
@@ -2630,7 +2625,6 @@ struct rtrs_clt *rtrs_clt_open(struct rtrs_clt_ops *ops,
 				  max_segments);
 		if (IS_ERR(sess)) {
 			err = PTR_ERR(sess);
-			rtrs_err(clt, "alloc_sess(), err: %d\n", err);
 			goto close_all_sess;
 		}
 		list_add_tail_rcu(&sess->s.entry, &clt->paths_list);
@@ -2644,10 +2638,8 @@ struct rtrs_clt *rtrs_clt_open(struct rtrs_clt_ops *ops,
 			goto close_all_sess;
 	}
 	err = alloc_permits(clt);
-	if (err) {
-		rtrs_err(clt, "alloc_permits(), err: %d\n", err);
+	if (err)
 		goto close_all_sess;
-	}
 	err = rtrs_clt_create_sysfs_root_files(clt);
 	if (err)
 		goto close_all_sess;
@@ -2916,7 +2908,6 @@ static int __init rtrs_client_init(void)
 	}
 	rtrs_wq = alloc_workqueue("rtrs_client_wq", WQ_MEM_RECLAIM, 0);
 	if (!rtrs_wq) {
-		pr_err("Failed to load module, alloc rtrs_client_wq failed\n");
 		class_destroy(rtrs_clt_dev_class);
 		return -ENOMEM;
 	}

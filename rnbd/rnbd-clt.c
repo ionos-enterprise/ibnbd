@@ -793,11 +793,8 @@ static struct rnbd_clt_session *alloc_sess(const char *sessname)
 	int err, cpu;
 
 	sess = kzalloc_node(sizeof(*sess), GFP_KERNEL, NUMA_NO_NODE);
-	if (!sess) {
-		pr_err("Failed to create session %s, allocating session struct failed\n",
-		       sessname);
+	if (!sess)
 		return ERR_PTR(-ENOMEM);
-	}
 	strlcpy(sess->sessname, sessname, sizeof(sess->sessname));
 	atomic_set(&sess->busy, 0);
 	mutex_init(&sess->lock);
@@ -809,8 +806,6 @@ static struct rnbd_clt_session *alloc_sess(const char *sessname)
 
 	sess->cpu_queues = alloc_percpu(struct rnbd_cpu_qlist);
 	if (!sess->cpu_queues) {
-		pr_err("Failed to create session to %s, alloc of percpu var (cpu_queues) failed\n",
-		       sessname);
 		err = -ENOMEM;
 		goto err;
 	}
@@ -823,8 +818,6 @@ static struct rnbd_clt_session *alloc_sess(const char *sessname)
 	 */
 	sess->cpu_rr = alloc_percpu(int);
 	if (!sess->cpu_rr) {
-		pr_err("Failed to create session %s, alloc of percpu var (cpu_rr) failed\n",
-		       sessname);
 		err = -ENOMEM;
 		goto err;
 	}
@@ -1361,7 +1354,6 @@ static int rnbd_client_setup_device(struct rnbd_clt_session *sess,
 
 	dev->gd = alloc_disk_node(1 << RNBD_PART_BITS,	NUMA_NO_NODE);
 	if (!dev->gd) {
-		rnbd_clt_err(dev, "Failed to allocate disk node\n");
 		blk_cleanup_queue(dev->queue);
 		return -ENOMEM;
 	}
@@ -1385,8 +1377,6 @@ static struct rnbd_clt_dev *init_dev(struct rnbd_clt_session *sess,
 	dev->hw_queues = kcalloc(nr_cpu_ids, sizeof(*dev->hw_queues),
 				 GFP_KERNEL);
 	if (!dev->hw_queues) {
-		pr_err("Failed to initialize device '%s' from session %s, allocating hw_queues failed.",
-		       pathname, sess->sessname);
 		ret = -ENOMEM;
 		goto out_alloc;
 	}

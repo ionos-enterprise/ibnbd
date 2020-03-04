@@ -788,10 +788,8 @@ static int process_info_req(struct rtrs_srv_con *con,
 		return err;
 	}
 	rwr = kcalloc(sess->mrs_num, sizeof(*rwr), GFP_KERNEL);
-	if (unlikely(!rwr)) {
-		rtrs_err(s, "No memory\n");
+	if (unlikely(!rwr))
 		return -ENOMEM;
-	}
 	strlcpy(sess->s.sessname, msg->sessname, sizeof(sess->s.sessname));
 
 	tx_sz  = sizeof(*rsp);
@@ -799,7 +797,6 @@ static int process_info_req(struct rtrs_srv_con *con,
 	tx_iu = rtrs_iu_alloc(1, tx_sz, GFP_KERNEL, sess->s.dev->ib_dev,
 			       DMA_TO_DEVICE, rtrs_srv_info_rsp_done);
 	if (unlikely(!tx_iu)) {
-		rtrs_err(s, "rtrs_iu_alloc(), err: %d\n", -ENOMEM);
 		err = -ENOMEM;
 		goto rwr_free;
 	}
@@ -915,10 +912,8 @@ static int post_recv_info_req(struct rtrs_srv_con *con)
 	rx_iu = rtrs_iu_alloc(1, sizeof(struct rtrs_msg_info_req),
 			       GFP_KERNEL, sess->s.dev->ib_dev,
 			       DMA_FROM_DEVICE, rtrs_srv_info_req_done);
-	if (unlikely(!rx_iu)) {
-		rtrs_err(s, "rtrs_iu_alloc(): no memory\n");
+	if (unlikely(!rx_iu))
 		return -ENOMEM;
-	}
 	/* Prepare for getting info response */
 	err = rtrs_iu_post_recv(&con->c, rx_iu);
 	if (unlikely(err)) {
@@ -1293,10 +1288,8 @@ static struct rtrs_srv *__alloc_srv(struct rtrs_srv_ctx *ctx,
 
 	for (i = 0; i < srv->queue_depth; i++) {
 		srv->chunks[i] = mempool_alloc(chunk_pool, GFP_KERNEL);
-		if (!srv->chunks[i]) {
-			pr_err("mempool_alloc() failed\n");
+		if (!srv->chunks[i])
 			goto err_free_chunks;
-		}
 	}
 	list_add(&srv->ctx_list, &ctx->srv_list);
 
@@ -1553,7 +1546,6 @@ static int create_con(struct rtrs_srv_sess *sess,
 
 	con = kzalloc(sizeof(*con), GFP_KERNEL);
 	if (!con) {
-		rtrs_err(s, "kzalloc() failed\n");
 		err = -ENOMEM;
 		goto err;
 	}
@@ -2063,21 +2055,16 @@ static int __init rtrs_server_init(void)
 	}
 	chunk_pool = mempool_create_page_pool(sess_queue_depth * CHUNK_POOL_SZ,
 					      get_order(max_chunk_size));
-	if (!chunk_pool) {
-		pr_err("Failed preallocate pool of chunks\n");
+	if (!chunk_pool)
 		return -ENOMEM;
-	}
 	rtrs_dev_class = class_create(THIS_MODULE, "rtrs-server");
 	if (IS_ERR(rtrs_dev_class)) {
-		pr_err("Failed to create rtrs-server dev class\n");
 		err = PTR_ERR(rtrs_dev_class);
 		goto out_chunk_pool;
 	}
 	rtrs_wq = alloc_workqueue("rtrs_server_wq", WQ_MEM_RECLAIM, 0);
-	if (!rtrs_wq) {
-		pr_err("Failed to load module, alloc rtrs_server_wq failed\n");
+	if (!rtrs_wq)
 		goto out_dev_class;
-	}
 
 	return 0;
 
