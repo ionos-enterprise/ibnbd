@@ -37,7 +37,7 @@ static inline bool rtrs_clt_is_connected(const struct rtrs_clt *clt)
 
 	rcu_read_lock();
 	list_for_each_entry_rcu(sess, &clt->paths_list, s.entry)
-		connected |= (READ_ONCE(sess->state) == RTRS_CLT_CONNECTED);
+		connected |= READ_ONCE(sess->state) == RTRS_CLT_CONNECTED;
 	rcu_read_unlock();
 
 	return connected;
@@ -58,7 +58,6 @@ __rtrs_get_permit(struct rtrs_clt *clt, enum rtrs_clt_con_type con_type)
 			put_cpu();
 			return NULL;
 		}
-
 	} while (unlikely(test_and_set_bit_lock(bit, clt->permits_map)));
 	put_cpu();
 
@@ -111,8 +110,11 @@ void rtrs_clt_put_permit(struct rtrs_clt *clt, struct rtrs_permit *permit)
 	__rtrs_put_permit(clt, permit);
 
 	/*
-	 * Putting a permit is a barrier, so we will observe
-	 * new entry in the wait list, no worries.
+	 * rtrs_clt_get_permit() adds itself to the &clt->permits_wait list
+	 * before calling schedule(). So if rtrs_clt_get_permit() is sleeping
+	 * it must have added itself to &clt->permits_wait before
+	 * __rtrs_put_permit() finished.
+	 * Hence it is safe to guard wake_up() with a waitqueue_active() test.
 	 */
 	if (waitqueue_active(&clt->permits_wait))
 		wake_up(&clt->permits_wait);
@@ -1071,15 +1073,14 @@ static int rtrs_clt_read_req(struct rtrs_clt_io_req *req)
 					req->dir);
 			return ret;
 		}
-		memset(&rwr, 0, sizeof(rwr));
-		rwr.wr.next = NULL;
-		rwr.wr.opcode = IB_WR_REG_MR;
-		rwr.wr.wr_cqe = &fast_reg_cqe;
-		rwr.wr.num_sge = 0;
-		rwr.mr = req->mr;
-		rwr.key = req->mr->rkey;
-		rwr.access = (IB_ACCESS_LOCAL_WRITE |
-			      IB_ACCESS_REMOTE_WRITE);
+		rwr = (struct ib_reg_wr) {
+			.wr.opcode = IB_WR_REG_MR,
+			.wr.wr_cqe = &fast_reg_cqe,
+			.mr = req->mr,
+			.key = req->mr->rkey,
+			.access = (IB_ACCESS_LOCAL_WRITE |
+				   IB_ACCESS_REMOTE_WRITE),
+		};
 		wr = &rwr.wr;
 
 		msg->sg_cnt = cpu_to_le16(1);
@@ -1626,24 +1627,20 @@ static int rtrs_rdma_route_resolved(struct rtrs_clt_con *con)
 
 	int err;
 
-	memset(&param, 0, sizeof(param));
-	param.retry_count = 7;
-	param.rnr_retry_count = 7;
-	param.private_data = &msg;
-	param.private_data_len = sizeof(msg);
+	param = (struct rdma_conn_param) {
+		.retry_count = 7,
+		.rnr_retry_count = 7,
+		.private_data = &msg,
+		.private_data_len = sizeof(msg),
+	};
 
-	/*
-	 * Those two are the part of struct cma_hdr which is shared
-	 * with private_data in case of AF_IB, so put zeroes to avoid
-	 * wrong validation inside cma.c on receiver side.
-	 */
-	msg.__cma_version = 0;
-	msg.__ip_version = 0;
-	msg.magic = cpu_to_le16(RTRS_MAGIC);
-	msg.version = cpu_to_le16(RTRS_PROTO_VER);
-	msg.cid = cpu_to_le16(con->c.cid);
-	msg.cid_num = cpu_to_le16(sess->s.con_num);
-	msg.recon_cnt = cpu_to_le16(sess->s.recon_cnt);
+	msg = (struct rtrs_msg_conn_req) {
+		.magic = cpu_to_le16(RTRS_MAGIC),
+		.version = cpu_to_le16(RTRS_PROTO_VER),
+		.cid = cpu_to_le16(con->c.cid),
+		.cid_num = cpu_to_le16(sess->s.con_num),
+		.recon_cnt = cpu_to_le16(sess->s.recon_cnt),
+	};
 	uuid_copy(&msg.sess_uuid, &sess->s.uuid);
 	uuid_copy(&msg.paths_uuid, &clt->paths_uuid);
 
@@ -2043,7 +2040,7 @@ static inline bool xchg_sessions(struct rtrs_clt_sess __rcu **rcu_ppcpu_path,
 
 	/* Call cmpxchg() without sparse warnings */
 	ppcpu_path = (typeof(ppcpu_path))rcu_ppcpu_path;
-	return (sess == cmpxchg(ppcpu_path, sess, next));
+	return sess == cmpxchg(ppcpu_path, sess, next);
 }
 
 static void rtrs_clt_remove_path_from_arr(struct rtrs_clt_sess *sess)
@@ -2507,7 +2504,7 @@ reconnect_again:
 
 static void rtrs_clt_dev_release(struct device *dev)
 {
-	struct rtrs_clt *clt  = container_of(dev, struct rtrs_clt, dev);
+	struct rtrs_clt *clt = container_of(dev, struct rtrs_clt, dev);
 
 	kfree(clt);
 }
