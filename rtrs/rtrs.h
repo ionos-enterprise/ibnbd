@@ -40,13 +40,21 @@ struct rtrs_addr {
 	struct sockaddr_storage *dst;
 };
 
-typedef void (link_clt_ev_fn)(void *priv, enum rtrs_clt_link_ev ev);
 /**
- * rtrs_clt_open() - Open a session to an RTRS server
+ * rtrs_clt_ops - it holds the link event callback and private pointer.
  * @priv: User supplied private data.
  * @link_ev: Event notification callback function for connection state changes
  *	@priv: User supplied data that was passed to rtrs_clt_open()
  *	@ev: Occurred event
+ */
+struct rtrs_clt_ops {
+	void	*priv;
+	void	(*link_ev)(void *priv, enum rtrs_clt_link_ev ev);
+};
+
+/**
+ * rtrs_clt_open() - Open a session to an RTRS server
+ * @ops: holds the link event callback and the private pointer.
  * @sessname: name of the session
  * @paths: Paths to be established defined by their src and dst addresses
  * @path_cnt: Number of elements in the @paths array
@@ -63,7 +71,7 @@ typedef void (link_clt_ev_fn)(void *priv, enum rtrs_clt_link_ev ev);
  *
  * Return a valid pointer on success otherwise PTR_ERR.
  */
-struct rtrs_clt *rtrs_clt_open(void *priv, link_clt_ev_fn *link_ev,
+struct rtrs_clt *rtrs_clt_open(struct rtrs_clt_ops *ops,
 				 const char *sessname,
 				 const struct rtrs_addr *paths,
 				 size_t path_cnt, u16 port,
@@ -128,7 +136,20 @@ struct rtrs_permit *rtrs_clt_get_permit(struct rtrs_clt *sess,
  */
 void rtrs_clt_put_permit(struct rtrs_clt *sess, struct rtrs_permit *permit);
 
-typedef void (rtrs_conf_fn)(void *priv, int errno);
+/**
+ * rtrs_clt_req_ops - it holds the request confirmation callback
+ * and a private pointer.
+ * @priv: User supplied private data.
+ * @conf_fn:	callback function to be called as confirmation
+ *	@priv:	User provided data, passed back with corresponding
+ *		@(conf) confirmation.
+ *	@errno: error number.
+ */
+struct rtrs_clt_req_ops {
+	void	*priv;
+	void	(*conf_fn)(void *priv, int errno);
+};
+
 /**
  * rtrs_clt_request() - Request data transfer to/from server via RDMA.
  *
@@ -136,8 +157,6 @@ typedef void (rtrs_conf_fn)(void *priv, int errno);
  * @conf:	callback function to be called as confirmation
  * @sess:	Session
  * @permit:	Preallocated permit
- * @priv:	User provided data, passed back with corresponding
- *		@(conf) confirmation.
  * @vec:	Message that is sent to server together with the request.
  *		Sum of len of all @vec elements limited to <= IO_MSG_SIZE.
  *		Since the msg is copied internally it can be allocated on stack.
@@ -155,10 +174,10 @@ typedef void (rtrs_conf_fn)(void *priv, int errno);
  * the user receives an %RTRS_CLT_RDMA_EV_RDMA_REQUEST_WRITE_COMPL event.
  * On dir=WRITE rtrs client will rdma write data in sg to server side.
  */
-int rtrs_clt_request(int dir, rtrs_conf_fn *conf, struct rtrs_clt *sess,
-		      struct rtrs_permit *permit, void *priv,
-		      const struct kvec *vec, size_t nr, size_t len,
-		      struct scatterlist *sg, unsigned int sg_cnt);
+int rtrs_clt_request(int dir, struct rtrs_clt_req_ops *ops,
+		     struct rtrs_clt *sess, struct rtrs_permit *permit,
+		     const struct kvec *vec, size_t nr, size_t len,
+		     struct scatterlist *sg, unsigned int sg_cnt);
 
 /**
  * rtrs_attrs - RTRS session attributes
@@ -194,52 +213,53 @@ enum rtrs_srv_link_ev {
 	RTRS_SRV_LINK_EV_DISCONNECTED,
 };
 
-/**
- * rdma_ev_fn():	Event notification for RDMA operations
- *			If the callback returns a value != 0, an error message
- *			for the data transfer will be sent to the client.
+struct rtrs_srv_ops {
+	/**
+	 * rdma_ev():		Event notification for RDMA operations
+	 *			If the callback returns a value != 0, an error message
+	 *			for the data transfer will be sent to the client.
 
- *	@sess:		Session
- *	@priv:		Private data set by rtrs_srv_set_sess_priv()
- *	@id:		internal RTRS operation id
- *	@dir:		READ/WRITE
- *	@data:		Pointer to (bidirectional) rdma memory area:
- *			- in case of %RTRS_SRV_RDMA_EV_RECV contains
- *			data sent by the client
- *			- in case of %RTRS_SRV_RDMA_EV_WRITE_REQ points to the
- *			memory area where the response is to be written to
- *	@datalen:	Size of the memory area in @data
- *	@usr:		The extra user message sent by the client (%vec)
- *	@usrlen:	Size of the user message
- */
-typedef int (rdma_ev_fn)(struct rtrs_srv *sess, void *priv,
-			 struct rtrs_srv_op *id, int dir,
-			 void *data, size_t datalen, const void *usr,
-			 size_t usrlen);
-
-/**
- * link_ev_fn():	Events about connectivity state changes
- *			If the callback returns != 0 and the event
- *			%RTRS_SRV_LINK_EV_CONNECTED the corresponding session
- *			will be destroyed.
- *	@sess:		Session
- *	@ev:		event
- *	@priv:		Private data from user if previously set with
- *			rtrs_srv_set_sess_priv()
- */
-typedef int (link_ev_fn)(struct rtrs_srv *sess, enum rtrs_srv_link_ev ev,
-			 void *priv);
+	 *	@sess:		Session
+	 *	@priv:		Private data set by rtrs_srv_set_sess_priv()
+	 *	@id:		internal RTRS operation id
+	 *	@dir:		READ/WRITE
+	 *	@data:		Pointer to (bidirectional) rdma memory area:
+	 *			- in case of %RTRS_SRV_RDMA_EV_RECV contains
+	 *			data sent by the client
+	 *			- in case of %RTRS_SRV_RDMA_EV_WRITE_REQ points to the
+	 *			memory area where the response is to be written to
+	 *	@datalen:	Size of the memory area in @data
+	 *	@usr:		The extra user message sent by the client (%vec)
+	 *	@usrlen:	Size of the user message
+	 */
+	int (*rdma_ev)(struct rtrs_srv *sess, void *priv,
+		       struct rtrs_srv_op *id, int dir,
+		       void *data, size_t datalen, const void *usr,
+		       size_t usrlen);
+	/**
+	 * link_ev():		Events about connectivity state changes
+	 *			If the callback returns != 0 and the event
+	 *			%RTRS_SRV_LINK_EV_CONNECTED the corresponding session
+	 *			will be destroyed.
+	 *	@sess:		Session
+	 *	@ev:		event
+	 *	@priv:		Private data from user if previously set with
+	 *			rtrs_srv_set_sess_priv()
+	 */
+	int (*link_ev)(struct rtrs_srv *sess, enum rtrs_srv_link_ev ev,
+		       void *priv);
+};
 
 /**
  * rtrs_srv_open() - open RTRS server context
  * @ops:		callback functions
+ * @port:               port to listen on
  *
  * Creates server context with specified callbacks.
  *
  * Return a valid pointer on success otherwise PTR_ERR.
  */
-struct rtrs_srv_ctx *rtrs_srv_open(rdma_ev_fn *rdma_ev, link_ev_fn *link_ev,
-				     unsigned int port);
+struct rtrs_srv_ctx *rtrs_srv_open(struct rtrs_srv_ops *ops, unsigned int port);
 
 /**
  * rtrs_srv_close() - close RTRS server context

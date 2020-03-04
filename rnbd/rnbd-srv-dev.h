@@ -12,13 +12,11 @@
 #include <linux/fs.h>
 #include "rnbd-proto.h"
 
-typedef void rnbd_dev_io_fn(void *priv, int error);
-
 struct rnbd_dev {
 	struct block_device	*bdev;
 	fmode_t			blk_open_flags;
 	char			name[BDEVNAME_SIZE];
-	rnbd_dev_io_fn		*io_cb;
+	void (*io_cb)(void *priv, int error);
 };
 
 struct rnbd_dev_blk_io {
@@ -32,7 +30,7 @@ struct rnbd_dev_blk_io {
  * @io_cb:	is called when I/O finished
  */
 struct rnbd_dev *rnbd_dev_open(const char *path, fmode_t flags,
-			       rnbd_dev_io_fn io_cb);
+			       void (*io_cb)(void *priv, int error));
 
 /**
  * rnbd_dev_close() - Close a device

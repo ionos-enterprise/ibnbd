@@ -13,7 +13,7 @@
 #include "rnbd-log.h"
 
 struct rnbd_dev *rnbd_dev_open(const char *path, fmode_t flags,
-			       rnbd_dev_io_fn io_cb)
+			       void (*io_cb)(void *priv, int error))
 {
 	struct rnbd_dev *dev;
 	int ret;

@@ -362,9 +362,9 @@ static void hb_work(struct work_struct *work)
 }
 
 void rtrs_init_hb(struct rtrs_sess *sess, struct ib_cqe *cqe,
-		   unsigned int interval_ms, unsigned int missed_max,
-		   rtrs_hb_handler_t *err_handler,
-		   struct workqueue_struct *wq)
+		  unsigned int interval_ms, unsigned int missed_max,
+		  void (*err_handler)(struct rtrs_con *con),
+		  struct workqueue_struct *wq)
 {
 	sess->hb_cqe = cqe;
 	sess->hb_interval_ms = interval_ms;

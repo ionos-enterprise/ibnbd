@@ -105,8 +105,7 @@ struct rtrs_srv {
 };
 
 struct rtrs_srv_ctx {
-	rdma_ev_fn *rdma_ev;
-	link_ev_fn *link_ev;
+	struct rtrs_srv_ops ops;
 	struct rdma_cm_id *cm_id_ip;
 	struct rdma_cm_id *cm_id_ib;
 	struct mutex srv_mutex;

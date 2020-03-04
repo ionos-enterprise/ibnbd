@@ -842,12 +842,12 @@ static inline void path_it_deinit(struct path_it *it)
  * @dir: direction of the IO.
  */
 static void rtrs_clt_init_req(struct rtrs_clt_io_req *req,
-				     struct rtrs_clt_sess *sess,
-				     rtrs_conf_fn *conf,
-				     struct rtrs_permit *permit, void *priv,
-				     const struct kvec *vec, size_t usr_len,
-				     struct scatterlist *sg, size_t sg_cnt,
-				     size_t data_len, int dir)
+			      struct rtrs_clt_sess *sess,
+			      void (*conf)(void *priv, int errno),
+			      struct rtrs_permit *permit, void *priv,
+			      const struct kvec *vec, size_t usr_len,
+			      struct scatterlist *sg, size_t sg_cnt,
+			      size_t data_len, int dir)
 {
 	struct iov_iter iter;
 	size_t len;
@@ -874,11 +874,12 @@ static void rtrs_clt_init_req(struct rtrs_clt_io_req *req,
 }
 
 static struct rtrs_clt_io_req *
-rtrs_clt_get_req(struct rtrs_clt_sess *sess, rtrs_conf_fn *conf,
-		  struct rtrs_permit *permit, void *priv,
-		  const struct kvec *vec, size_t usr_len,
-		  struct scatterlist *sg, size_t sg_cnt,
-		  size_t data_len, int dir)
+rtrs_clt_get_req(struct rtrs_clt_sess *sess,
+		 void (*conf)(void *priv, int errno),
+		 struct rtrs_permit *permit, void *priv,
+		 const struct kvec *vec, size_t usr_len,
+		 struct scatterlist *sg, size_t sg_cnt,
+		 size_t data_len, int dir)
 {
 	struct rtrs_clt_io_req *req;
 
@@ -2517,8 +2518,8 @@ static void rtrs_clt_dev_release(struct device *dev)
 }
 
 static struct rtrs_clt *alloc_clt(const char *sessname, size_t paths_num,
-				  short port, size_t pdu_sz,
-				  void *priv, link_clt_ev_fn *link_ev,
+				  short port, size_t pdu_sz, void *priv,
+				  void	(*link_ev)(void *priv, enum rtrs_clt_link_ev ev),
 				  unsigned int max_segments,
 				  unsigned int reconnect_delay_sec,
 				  unsigned int max_reconnect_attempts)
@@ -2601,7 +2602,7 @@ static void free_clt(struct rtrs_clt *clt)
 	device_unregister(&clt->dev);
 }
 
-struct rtrs_clt *rtrs_clt_open(void *priv, link_clt_ev_fn *link_ev,
+struct rtrs_clt *rtrs_clt_open(struct rtrs_clt_ops *ops,
 				 const char *sessname,
 				 const struct rtrs_addr *paths,
 				 size_t paths_num,
@@ -2614,7 +2615,8 @@ struct rtrs_clt *rtrs_clt_open(void *priv, link_clt_ev_fn *link_ev,
 	struct rtrs_clt *clt;
 	int err, i;
 
-	clt = alloc_clt(sessname, paths_num, port, pdu_sz, priv, link_ev,
+	clt = alloc_clt(sessname, paths_num, port, pdu_sz, ops->priv,
+			ops->link_ev,
 			max_segments, reconnect_delay_sec,
 			max_reconnect_attempts);
 	if (IS_ERR(clt)) {
@@ -2779,8 +2781,8 @@ int rtrs_clt_get_max_reconnect_attempts(const struct rtrs_clt *clt)
 	return (int)clt->max_reconnect_attempts;
 }
 
-int rtrs_clt_request(int dir, rtrs_conf_fn *conf, struct rtrs_clt *clt,
-		      struct rtrs_permit *permit, void *priv,
+int rtrs_clt_request(int dir, struct rtrs_clt_req_ops *ops,
+		     struct rtrs_clt *clt, struct rtrs_permit *permit,
 		      const struct kvec *vec, size_t nr, size_t data_len,
 		      struct scatterlist *sg, unsigned int sg_cnt)
 {
@@ -2817,8 +2819,9 @@ int rtrs_clt_request(int dir, rtrs_conf_fn *conf, struct rtrs_clt *clt,
 			err = -EMSGSIZE;
 			break;
 		}
-		req = rtrs_clt_get_req(sess, conf, permit, priv, vec, usr_len,
-					sg, sg_cnt, data_len, dma_dir);
+		req = rtrs_clt_get_req(sess, ops->conf_fn, permit, ops->priv,
+				       vec, usr_len, sg, sg_cnt, data_len,
+				       dma_dir);
 		if (dir == READ)
 			err = rtrs_clt_read_req(req);
 		else

@@ -812,6 +812,7 @@ reject:
 
 static struct rtrs_srv_ctx *rtrs_ctx;
 
+static struct rtrs_srv_ops rtrs_ops;
 static int __init rnbd_srv_init_module(void)
 {
 	int err;
@@ -824,8 +825,11 @@ static int __init rnbd_srv_init_module(void)
 	BUILD_BUG_ON(sizeof(struct rnbd_msg_open) != 264);
 	BUILD_BUG_ON(sizeof(struct rnbd_msg_close) != 8);
 	BUILD_BUG_ON(sizeof(struct rnbd_msg_open_rsp) != 56);
-	rtrs_ctx = rtrs_srv_open(rnbd_srv_rdma_ev, rnbd_srv_link_ev,
-				   port_nr);
+	rtrs_ops = (struct rtrs_srv_ops) {
+		.rdma_ev = rnbd_srv_rdma_ev,
+		.link_ev = rnbd_srv_link_ev,
+	};
+	rtrs_ctx = rtrs_srv_open(&rtrs_ops, port_nr);
 	if (IS_ERR(rtrs_ctx)) {
 		err = PTR_ERR(rtrs_ctx);
 		pr_err("rtrs_srv_open(), err: %d\n", err);

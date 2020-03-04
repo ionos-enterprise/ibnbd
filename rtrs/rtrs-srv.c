@@ -745,7 +745,7 @@ static void rtrs_srv_sess_up(struct rtrs_srv_sess *sess)
 	mutex_lock(&srv->paths_ev_mutex);
 	up = ++srv->paths_up;
 	if (up == 1)
-		ctx->link_ev(srv, RTRS_SRV_LINK_EV_CONNECTED, NULL);
+		ctx->ops.link_ev(srv, RTRS_SRV_LINK_EV_CONNECTED, NULL);
 	mutex_unlock(&srv->paths_ev_mutex);
 
 	/* Mark session as established */
@@ -764,7 +764,7 @@ static void rtrs_srv_sess_down(struct rtrs_srv_sess *sess)
 	mutex_lock(&srv->paths_ev_mutex);
 	WARN_ON(!srv->paths_up);
 	if (--srv->paths_up == 0)
-		ctx->link_ev(srv, RTRS_SRV_LINK_EV_DISCONNECTED, srv->priv);
+		ctx->ops.link_ev(srv, RTRS_SRV_LINK_EV_DISCONNECTED, srv->priv);
 	mutex_unlock(&srv->paths_ev_mutex);
 }
 
@@ -996,7 +996,7 @@ static void process_read(struct rtrs_srv_con *con,
 	usr_len = le16_to_cpu(msg->usr_len);
 	data_len = off - usr_len;
 	data = page_address(srv->chunks[buf_id]);
-	ret = ctx->rdma_ev(srv, srv->priv, id, READ, data, data_len,
+	ret = ctx->ops.rdma_ev(srv, srv->priv, id, READ, data, data_len,
 			   data + data_len, usr_len);
 
 	if (unlikely(ret)) {
@@ -1049,7 +1049,7 @@ static void process_write(struct rtrs_srv_con *con,
 	usr_len = le16_to_cpu(req->usr_len);
 	data_len = off - usr_len;
 	data = page_address(srv->chunks[buf_id]);
-	ret = ctx->rdma_ev(srv, srv->priv, id, WRITE, data, data_len,
+	ret = ctx->ops.rdma_ev(srv, srv->priv, id, WRITE, data, data_len,
 			   data + data_len, usr_len);
 	if (unlikely(ret)) {
 		rtrs_err_rl(s,
@@ -1944,8 +1944,7 @@ free_cm_ip:
 	return ret;
 }
 
-static struct rtrs_srv_ctx *alloc_srv_ctx(rdma_ev_fn *rdma_ev,
-					   link_ev_fn *link_ev)
+static struct rtrs_srv_ctx *alloc_srv_ctx(struct rtrs_srv_ops *ops)
 {
 	struct rtrs_srv_ctx *ctx;
 
@@ -1953,8 +1952,7 @@ static struct rtrs_srv_ctx *alloc_srv_ctx(rdma_ev_fn *rdma_ev,
 	if (!ctx)
 		return NULL;
 
-	ctx->rdma_ev = rdma_ev;
-	ctx->link_ev = link_ev;
+	ctx->ops = *ops;
 	mutex_init(&ctx->srv_mutex);
 	INIT_LIST_HEAD(&ctx->srv_list);
 
@@ -1967,13 +1965,12 @@ static void free_srv_ctx(struct rtrs_srv_ctx *ctx)
 	kfree(ctx);
 }
 
-struct rtrs_srv_ctx *rtrs_srv_open(rdma_ev_fn *rdma_ev, link_ev_fn *link_ev,
-				     unsigned int port)
+struct rtrs_srv_ctx *rtrs_srv_open(struct rtrs_srv_ops *ops, unsigned int port)
 {
 	struct rtrs_srv_ctx *ctx;
 	int err;
 
-	ctx = alloc_srv_ctx(rdma_ev, link_ev);
+	ctx = alloc_srv_ctx(ops);
 	if (!ctx)
 		return ERR_PTR(-ENOMEM);
 

@@ -93,8 +93,6 @@ struct rtrs_con {
 	unsigned int		cid;
 };
 
-typedef void (rtrs_hb_handler_t)(struct rtrs_con *con);
-
 struct rtrs_sess {
 	struct list_head	entry;
 	struct sockaddr_storage dst_addr;
@@ -107,7 +105,7 @@ struct rtrs_sess {
 	struct rtrs_ib_dev	*dev;
 	int			dev_ref;
 	struct ib_cqe		*hb_cqe;
-	rtrs_hb_handler_t	*hb_err_handler;
+	void			(*hb_err_handler)(struct rtrs_con *con);
 	struct workqueue_struct *hb_wq;
 	struct delayed_work	hb_dwork;
 	unsigned int		hb_interval_ms;
@@ -313,7 +311,7 @@ void rtrs_cq_qp_destroy(struct rtrs_con *con);
 
 void rtrs_init_hb(struct rtrs_sess *sess, struct ib_cqe *cqe,
 		  unsigned int interval_ms, unsigned int missed_max,
-		  rtrs_hb_handler_t *err_handler,
+		  void (*err_handler)(struct rtrs_con *con),
 		  struct workqueue_struct *wq);
 void rtrs_start_hb(struct rtrs_sess *sess);
 void rtrs_stop_hb(struct rtrs_sess *sess);

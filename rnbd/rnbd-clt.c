@@ -438,10 +438,15 @@ static int send_usr_msg(struct rtrs_clt *rtrs, int dir,
 			int *errno, bool wait)
 {
 	int err;
+	struct rtrs_clt_req_ops req_ops;
 
 	INIT_WORK(&iu->work, conf);
-	err = rtrs_clt_request(dir, msg_conf, rtrs, iu->permit,
-				iu, vec, nr, len, sg, sg_len);
+	req_ops = (struct rtrs_clt_req_ops) {
+		.priv = iu,
+		.conf_fn = msg_conf,
+	};
+	err = rtrs_clt_request(dir, &req_ops, rtrs, iu->permit,
+				vec, nr, len, sg, sg_len);
 	if (!err && wait) {
 		wait_event(iu->comp.wait, iu->comp.errno != INT_MAX);
 		*errno = iu->comp.errno;
@@ -1008,6 +1013,7 @@ static int rnbd_client_xfer_request(struct rnbd_clt_dev *dev,
 	struct rtrs_clt *rtrs = dev->sess->rtrs;
 	struct rtrs_permit *permit = iu->permit;
 	struct rnbd_msg_io msg;
+	struct rtrs_clt_req_ops req_ops;
 	unsigned int sg_cnt = 0;
 	struct kvec vec;
 	size_t size;
@@ -1039,8 +1045,12 @@ static int rnbd_client_xfer_request(struct rnbd_clt_dev *dev,
 		.iov_len  = sizeof(msg)
 	};
 	size = rnbd_clt_get_sg_size(iu->sglist, sg_cnt);
-	err = rtrs_clt_request(rq_data_dir(rq), msg_io_conf, rtrs, permit,
-			       iu, &vec, 1, size, iu->sglist, sg_cnt);
+	req_ops = (struct rtrs_clt_req_ops) {
+		.priv = iu,
+		.conf_fn = msg_io_conf,
+	};
+	err = rtrs_clt_request(rq_data_dir(rq), &req_ops, rtrs, permit,
+			       &vec, 1, size, iu->sglist, sg_cnt);
 	if (unlikely(err)) {
 		rnbd_clt_err_rl(dev, "RTRS failed to transfer IO, err: %d\n",
 				 err);
@@ -1192,6 +1202,7 @@ find_and_get_or_create_sess(const char *sessname,
 	struct rtrs_attrs attrs;
 	int err;
 	bool first;
+	struct rtrs_clt_ops rtrs_ops;
 
 	sess = find_or_create_sess(sessname, &first);
 	if (sess == ERR_PTR(-ENOMEM))
@@ -1199,10 +1210,14 @@ find_and_get_or_create_sess(const char *sessname,
 	else if (!first)
 		return sess;
 
+	rtrs_ops = (struct rtrs_clt_ops) {
+		.priv = sess,
+		.link_ev = rnbd_clt_link_ev,
+	};
 	/*
 	 * Nothing was found, establish rtrs connection and proceed further.
 	 */
-	sess->rtrs = rtrs_clt_open(sess, rnbd_clt_link_ev, sessname,
+	sess->rtrs = rtrs_clt_open(&rtrs_ops, sessname,
 				     paths, path_cnt, RTRS_PORT,
 				     sizeof(struct rnbd_iu),
 				     RECONNECT_DELAY, BMAX_SEGMENTS,

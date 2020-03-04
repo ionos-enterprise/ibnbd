@@ -104,7 +104,7 @@ struct rtrs_clt_io_req {
 	struct ib_sge		*sge;
 	struct rtrs_permit	*permit;
 	enum dma_data_direction dir;
-	rtrs_conf_fn		*conf;
+	void			(*conf)(void *priv, int errno);
 	unsigned long		start_jiffies;
 
 	struct ib_mr		*mr;
@@ -172,7 +172,7 @@ struct rtrs_clt {
 	wait_queue_head_t	permits_wait;
 	size_t			pdu_sz;
 	void			*priv;
-	link_clt_ev_fn		*link_ev;
+	void			(*link_ev)(void *priv, enum rtrs_clt_link_ev ev);
 	struct device		dev;
 	struct kobject		kobj_paths;
 	enum rtrs_mp_policy	mp_policy;
