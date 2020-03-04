@@ -31,19 +31,14 @@ static char dev_search_path[PATH_MAX] = DEFAULT_DEV_SEARCH_PATH;
 
 static int dev_search_path_set(const char *val, const struct kernel_param *kp)
 {
-	char *dup;
+	const char *p = strrchr(val, '\n') ? : val + strlen(val);
 
 	if (strlen(val) >= sizeof(dev_search_path))
 		return -EINVAL;
 
-	dup = kstrdup(val, GFP_KERNEL);
+        snprintf(dev_search_path, sizeof(dev_search_path), "%.*s",
+                (int)(p - val), val);
 
-	if (dup[strlen(dup) - 1] == '\n')
-		dup[strlen(dup) - 1] = '\0';
-
-	strlcpy(dev_search_path, dup, sizeof(dev_search_path));
-
-	kfree(dup);
 	pr_info("dev_search_path changed to '%s'\n", dev_search_path);
 
 	return 0;
