@@ -41,30 +41,14 @@ struct rnbd_dev *rnbd_dev_open(const char *path, fmode_t flags,
  */
 void rnbd_dev_close(struct rnbd_dev *dev);
 
-static inline int rnbd_dev_get_logical_bsize(const struct rnbd_dev *dev)
-{
-	return bdev_logical_block_size(dev->bdev);
-}
-
-static inline int rnbd_dev_get_phys_bsize(const struct rnbd_dev *dev)
-{
-	return bdev_physical_block_size(dev->bdev);
-}
-
 static inline int rnbd_dev_get_max_segs(const struct rnbd_dev *dev)
 {
-	return queue_max_segments(bdev_get_queue(dev->bdev));
+       return queue_max_segments(bdev_get_queue(dev->bdev));
 }
 
 static inline int rnbd_dev_get_max_hw_sects(const struct rnbd_dev *dev)
 {
 	return queue_max_hw_sectors(bdev_get_queue(dev->bdev));
-}
-
-static inline int
-rnbd_dev_get_max_write_same_sects(const struct rnbd_dev *dev)
-{
-	return bdev_write_same(dev->bdev);
 }
 
 static inline int rnbd_dev_get_secure_discard(const struct rnbd_dev *dev)

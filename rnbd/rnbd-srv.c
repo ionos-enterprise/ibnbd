@@ -537,15 +537,15 @@ static void rnbd_srv_fill_msg_open_rsp(struct rnbd_msg_open_rsp *rsp,
 	rsp->nsectors =
 		cpu_to_le64(get_capacity(rnbd_dev->bdev->bd_disk));
 	rsp->logical_block_size	=
-		cpu_to_le16(rnbd_dev_get_logical_bsize(rnbd_dev));
+		cpu_to_le16(bdev_logical_block_size(rnbd_dev->bdev));
 	rsp->physical_block_size =
-		cpu_to_le16(rnbd_dev_get_phys_bsize(rnbd_dev));
+		cpu_to_le16(bdev_physical_block_size(rnbd_dev->bdev));
 	rsp->max_segments =
 		cpu_to_le16(rnbd_dev_get_max_segs(rnbd_dev));
 	rsp->max_hw_sectors =
 		cpu_to_le32(rnbd_dev_get_max_hw_sects(rnbd_dev));
 	rsp->max_write_same_sectors =
-		cpu_to_le32(rnbd_dev_get_max_write_same_sects(rnbd_dev));
+		cpu_to_le32(bdev_write_same(rnbd_dev->bdev));
 	rsp->max_discard_sectors =
 		cpu_to_le32(rnbd_dev_get_max_discard_sects(rnbd_dev));
 	rsp->discard_granularity =
