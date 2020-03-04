@@ -2743,10 +2743,10 @@ int rtrs_clt_remove_path_from_sysfs(struct rtrs_clt_sess *sess,
 	 */
 	do {
 		rtrs_clt_close_conns(sess, true);
-	} while (!(changed = rtrs_clt_change_state_get_old(sess,
-							    RTRS_CLT_DEAD,
-							    &old_state)) &&
-		   old_state != RTRS_CLT_DEAD);
+		changed = rtrs_clt_change_state_get_old(sess,
+							RTRS_CLT_DEAD,
+							&old_state);
+	} while (!changed && old_state != RTRS_CLT_DEAD);
 
 	/*
 	 * If state was successfully changed to DEAD, commit suicide.
