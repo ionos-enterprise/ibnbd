@@ -84,9 +84,9 @@ int rtrs_iu_post_recv(struct rtrs_con *con, struct rtrs_iu *iu)
 		return -EINVAL;
 	}
 	wr = (struct ib_recv_wr) {
-	.wr_cqe  = &iu->cqe,
-	.sg_list = &list,
-	.num_sge = 1,
+		.wr_cqe  = &iu->cqe,
+		.sg_list = &list,
+		.num_sge = 1,
 	};
 
 	return ib_post_recv(con->qp, &wr, NULL);
@@ -98,7 +98,7 @@ int rtrs_post_recv_empty(struct rtrs_con *con, struct ib_cqe *cqe)
 	struct ib_recv_wr wr;
 
 	wr = (struct ib_recv_wr) {
-	.wr_cqe  = cqe,
+		.wr_cqe  = cqe,
 	};
 
 	return ib_post_recv(con->qp, &wr, NULL);
@@ -120,11 +120,11 @@ int rtrs_iu_post_send(struct rtrs_con *con, struct rtrs_iu *iu, size_t size,
 	list.lkey   = sess->dev->ib_pd->local_dma_lkey;
 
 	wr = (struct ib_send_wr) {
-	.wr_cqe     = &iu->cqe,
-	.sg_list    = &list,
-	.num_sge    = 1,
-	.opcode     = IB_WR_SEND,
-	.send_flags = IB_SEND_SIGNALED,
+		.wr_cqe     = &iu->cqe,
+		.sg_list    = &list,
+		.num_sge    = 1,
+		.opcode     = IB_WR_SEND,
+		.send_flags = IB_SEND_SIGNALED,
 	};
 
 	if (head) {
@@ -151,18 +151,18 @@ int rtrs_iu_post_rdma_write_imm(struct rtrs_con *con, struct rtrs_iu *iu,
 	int i;
 
 	wr = (struct ib_rdma_wr) {
-	.wr.wr_cqe	  = &iu->cqe,
-	.wr.sg_list	  = sge,
-	.wr.num_sge	  = num_sge,
-	.rkey		  = rkey,
-	.remote_addr	  = rdma_addr,
-	.wr.opcode	  = IB_WR_RDMA_WRITE_WITH_IMM,
-	.wr.ex.imm_data = cpu_to_be32(imm_data),
-	.wr.send_flags  = flags,
+		.wr.wr_cqe	  = &iu->cqe,
+		.wr.sg_list	  = sge,
+		.wr.num_sge	  = num_sge,
+		.rkey		  = rkey,
+		.remote_addr	  = rdma_addr,
+		.wr.opcode	  = IB_WR_RDMA_WRITE_WITH_IMM,
+		.wr.ex.imm_data = cpu_to_be32(imm_data),
+		.wr.send_flags  = flags,
 	};
 
 	/*
-	 * If one of the sges has 0 size, the operation will fail with an
+	 * If one of the sges has 0 size, the operation will fail with a
 	 * length error
 	 */
 	for (i = 0; i < num_sge; i++)
@@ -190,10 +190,10 @@ int rtrs_post_rdma_write_imm_empty(struct rtrs_con *con, struct ib_cqe *cqe,
 	struct ib_send_wr wr;
 
 	wr = (struct ib_send_wr) {
-	.wr_cqe	= cqe,
-	.send_flags	= flags,
-	.opcode	= IB_WR_RDMA_WRITE_WITH_IMM,
-	.ex.imm_data	= cpu_to_be32(imm_data),
+		.wr_cqe	= cqe,
+		.send_flags	= flags,
+		.opcode	= IB_WR_RDMA_WRITE_WITH_IMM,
+		.ex.imm_data	= cpu_to_be32(imm_data),
 	};
 
 	if (head) {
@@ -451,25 +451,19 @@ static int rtrs_str_to_sockaddr(const char *addr, size_t len,
 
 int sockaddr_to_str(const struct sockaddr *addr, char *buf, size_t len)
 {
-	int cnt;
 
 	switch (addr->sa_family) {
 	case AF_IB:
-		cnt = scnprintf(buf, len, "gid:%pI6",
+		return scnprintf(buf, len, "gid:%pI6",
 			&((struct sockaddr_ib *)addr)->sib_addr.sib_raw);
-		return cnt;
 	case AF_INET:
-		cnt = scnprintf(buf, len, "ip:%pI4",
+		return scnprintf(buf, len, "ip:%pI4",
 			&((struct sockaddr_in *)addr)->sin_addr);
-		return cnt;
 	case AF_INET6:
-		cnt = scnprintf(buf, len, "ip:%pI6c",
+		return scnprintf(buf, len, "ip:%pI6c",
 			  &((struct sockaddr_in6 *)addr)->sin6_addr);
-		return cnt;
 	}
-	cnt = scnprintf(buf, len, "<invalid address family>");
-	pr_err("Invalid address family\n");
-	return cnt;
+	return scnprintf(buf, len, "<invalid address family>");
 }
 EXPORT_SYMBOL(sockaddr_to_str);
 
