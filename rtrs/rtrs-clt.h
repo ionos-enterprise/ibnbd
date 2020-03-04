@@ -188,8 +188,15 @@ static inline struct rtrs_clt_sess *to_clt_sess(struct rtrs_sess *s)
 	return container_of(s, struct rtrs_clt_sess, s);
 }
 
-#define PERMIT_SIZE(clt) (sizeof(struct rtrs_permit) + (clt)->pdu_sz)
-#define GET_PERMIT(clt, idx) ((clt)->permits + PERMIT_SIZE(clt) * (idx))
+static inline int permit_size(struct rtrs_clt *clt)
+{
+	return sizeof(struct rtrs_permit) + clt->pdu_sz;
+}
+
+static inline struct rtrs_permit *get_permit(struct rtrs_clt *clt, int idx)
+{
+	return (struct rtrs_permit *)(clt->permits + permit_size(clt) * idx);
+}
 
 int rtrs_clt_reconnect_from_sysfs(struct rtrs_clt_sess *sess);
 int rtrs_clt_disconnect_from_sysfs(struct rtrs_clt_sess *sess);

@@ -61,7 +61,7 @@ __rtrs_get_permit(struct rtrs_clt *clt, enum rtrs_clt_con_type con_type)
 	} while (unlikely(test_and_set_bit_lock(bit, clt->permits_map)));
 	put_cpu();
 
-	permit = GET_PERMIT(clt, bit);
+	permit = get_permit(clt, bit);
 	WARN_ON(permit->mem_id != bit);
 	permit->cpu_id = cpu;
 	permit->con_type = con_type;
@@ -1274,7 +1274,7 @@ static int alloc_permits(struct rtrs_clt *clt)
 		err = -ENOMEM;
 		goto out_err;
 	}
-	clt->permits = kcalloc(clt->queue_depth, PERMIT_SIZE(clt), GFP_KERNEL);
+	clt->permits = kcalloc(clt->queue_depth, permit_size(clt), GFP_KERNEL);
 	if (!clt->permits) {
 		err = -ENOMEM;
 		goto err_map;
@@ -1283,7 +1283,7 @@ static int alloc_permits(struct rtrs_clt *clt)
 	for (i = 0; i < clt->queue_depth; i++) {
 		struct rtrs_permit *permit;
 
-		permit = GET_PERMIT(clt, i);
+		permit = get_permit(clt, i);
 		permit->mem_id = i;
 		permit->mem_off = i << (MAX_IMM_PAYL_BITS - chunk_bits);
 	}
