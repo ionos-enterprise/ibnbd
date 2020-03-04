@@ -51,6 +51,7 @@ static void rnbd_dev_bi_end_io(struct bio *bio)
 
 	io->dev->io_cb(io->priv, blk_status_to_errno(bio->bi_status));
 	bio_put(bio);
+	kfree(io);
 }
 
 int rnbd_dev_submit_io(struct rnbd_dev *dev, sector_t sector, void *data,
@@ -70,7 +71,11 @@ int rnbd_dev_submit_io(struct rnbd_dev *dev, sector_t sector, void *data,
 	if (IS_ERR(bio))
 		return PTR_ERR(bio);
 
-	io = container_of(bio, struct rnbd_dev_blk_io, bio);
+	io = kmalloc(sizeof(*io), GFP_KERNEL);
+	if (unlikely(!io)) {
+		bio_put(bio);
+		return -ENOMEM;
+	}
 
 	io->dev		= dev;
 	io->priv	= priv;
