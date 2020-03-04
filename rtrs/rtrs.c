@@ -552,6 +552,7 @@ rtrs_ib_dev_find_or_add(struct ib_device *ib_dev,
 		    rtrs_ib_dev_get(dev))
 			goto out_unlock;
 	}
+	mutex_unlock(&pool->mutex);
 	if (pool->ops && pool->ops->alloc)
 		dev = pool->ops->alloc();
 	else
@@ -569,6 +570,7 @@ rtrs_ib_dev_find_or_add(struct ib_device *ib_dev,
 	if (pool->ops && pool->ops->init && pool->ops->init(dev))
 		goto out_free_pd;
 
+	mutex_lock(&pool->mutex);
 	list_add(&dev->entry, &pool->list);
 out_unlock:
 	mutex_unlock(&pool->mutex);
@@ -582,7 +584,6 @@ out_free_dev:
 	else
 		kfree(dev);
 out_err:
-	mutex_unlock(&pool->mutex);
 	return NULL;
 }
 EXPORT_SYMBOL(rtrs_ib_dev_find_or_add);
