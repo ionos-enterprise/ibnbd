@@ -52,58 +52,7 @@ MODULE_PARM_DESC(sess_queue_depth,
 		 __stringify(MAX_SESS_QUEUE_DEPTH) " (default: "
 		 __stringify(DEFAULT_SESS_QUEUE_DEPTH) ")");
 
-static char cq_affinity_list[256];
 static cpumask_t cq_affinity_mask = { CPU_BITS_ALL };
-
-static void init_cq_affinity(void)
-{
-	sprintf(cq_affinity_list, "0-%d", nr_cpu_ids - 1);
-}
-
-static int cq_affinity_list_set(const char *val, const struct kernel_param *kp)
-{
-	int ret = 0, len = strlen(val);
-	cpumask_var_t new_value;
-
-	init_cq_affinity();
-
-	if (len >= sizeof(cq_affinity_list))
-		return -EINVAL;
-	if (!alloc_cpumask_var(&new_value, GFP_KERNEL))
-		return -ENOMEM;
-
-	ret = cpulist_parse(val, new_value);
-	if (ret) {
-		pr_err("Can't set cq_affinity_list \"%s\": %d\n", val,
-		       ret);
-		goto free_cpumask;
-	}
-
-	strlcpy(cq_affinity_list, val, sizeof(cq_affinity_list));
-	*strchrnul(cq_affinity_list, '\n') = '\0';
-	cpumask_copy(&cq_affinity_mask, new_value);
-
-	pr_info("cq_affinity_list changed to %*pbl\n",
-		cpumask_pr_args(&cq_affinity_mask));
-free_cpumask:
-	free_cpumask_var(new_value);
-	return ret;
-}
-
-static struct kparam_string cq_affinity_list_kparam_str = {
-	.maxlen	= sizeof(cq_affinity_list),
-	.string	= cq_affinity_list
-};
-
-static const struct kernel_param_ops cq_affinity_list_ops = {
-	.set	= cq_affinity_list_set,
-	.get	= param_get_string,
-};
-
-module_param_cb(cq_affinity_list, &cq_affinity_list_ops,
-		&cq_affinity_list_kparam_str, 0644);
-MODULE_PARM_DESC(cq_affinity_list,
-		 "Sets the list of cpus to use as cq vectors. (default: use all possible CPUs)");
 
 static struct workqueue_struct *rtrs_wq;
 
@@ -2102,12 +2051,9 @@ static int __init rtrs_server_init(void)
 {
 	int err;
 
-	init_cq_affinity();
-
-	pr_info("Loading module %s, proto %s: (cq_affinity_list: %s, max_chunk_size: %d (pure IO %ld, headers %ld) , sess_queue_depth: %d, always_invalidate: %d)\n",
+	pr_info("Loading module %s, proto %s: (max_chunk_size: %d (pure IO %ld, headers %ld) , sess_queue_depth: %d, always_invalidate: %d)\n",
 		KBUILD_MODNAME, RTRS_PROTO_VER_STRING,
-		cq_affinity_list, max_chunk_size,
-		max_chunk_size - MAX_HDR_SIZE, MAX_HDR_SIZE,
+		max_chunk_size, max_chunk_size - MAX_HDR_SIZE, MAX_HDR_SIZE,
 		sess_queue_depth, always_invalidate);
 
 	rtrs_rdma_dev_pd_init(0, &dev_pd);
