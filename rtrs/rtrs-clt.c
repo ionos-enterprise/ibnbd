@@ -50,7 +50,13 @@ __rtrs_get_permit(struct rtrs_clt *clt, enum rtrs_clt_con_type con_type)
 	struct rtrs_permit *permit;
 	int cpu, bit;
 
-	/* Combined with cq_vector, we pin the IO to the the cpu it comes */
+	/*
+	 * disable preemption only, callers from different cpus may
+	 * grab the same bit, since find_first_zero_bit is not atomic.
+	 * But then the test_and_set_bit_lock will fail for all the
+	 * callers but one, so that they will loop again.
+	 * This way an explicit spinlock is not required.
+	 */
 	cpu = get_cpu();
 	do {
 		bit = find_first_zero_bit(clt->permits_map, max_depth);
