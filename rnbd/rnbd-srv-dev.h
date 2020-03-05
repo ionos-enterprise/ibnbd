@@ -39,7 +39,7 @@ void rnbd_dev_close(struct rnbd_dev *dev);
 
 static inline int rnbd_dev_get_max_segs(const struct rnbd_dev *dev)
 {
-       return queue_max_segments(bdev_get_queue(dev->bdev));
+	return queue_max_segments(bdev_get_queue(dev->bdev));
 }
 
 static inline int rnbd_dev_get_max_hw_sects(const struct rnbd_dev *dev)
