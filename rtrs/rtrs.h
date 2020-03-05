@@ -216,8 +216,9 @@ enum rtrs_srv_link_ev {
 struct rtrs_srv_ops {
 	/**
 	 * rdma_ev():		Event notification for RDMA operations
-	 *			If the callback returns a value != 0, an error message
-	 *			for the data transfer will be sent to the client.
+	 *			If the callback returns a value != 0, an error
+	 *			message for the data transfer will be sent to
+	 *			the client.
 
 	 *	@sess:		Session
 	 *	@priv:		Private data set by rtrs_srv_set_sess_priv()
@@ -226,8 +227,9 @@ struct rtrs_srv_ops {
 	 *	@data:		Pointer to (bidirectional) rdma memory area:
 	 *			- in case of %RTRS_SRV_RDMA_EV_RECV contains
 	 *			data sent by the client
-	 *			- in case of %RTRS_SRV_RDMA_EV_WRITE_REQ points to the
-	 *			memory area where the response is to be written to
+	 *			- in case of %RTRS_SRV_RDMA_EV_WRITE_REQ points
+	 *			to the memory area where the response is to be
+	 *			written to
 	 *	@datalen:	Size of the memory area in @data
 	 *	@usr:		The extra user message sent by the client (%vec)
 	 *	@usrlen:	Size of the user message
@@ -239,8 +241,8 @@ struct rtrs_srv_ops {
 	/**
 	 * link_ev():		Events about connectivity state changes
 	 *			If the callback returns != 0 and the event
-	 *			%RTRS_SRV_LINK_EV_CONNECTED the corresponding session
-	 *			will be destroyed.
+	 *			%RTRS_SRV_LINK_EV_CONNECTED the corresponding
+	 *			session will be destroyed.
 	 *	@sess:		Session
 	 *	@ev:		event
 	 *	@priv:		Private data from user if previously set with
