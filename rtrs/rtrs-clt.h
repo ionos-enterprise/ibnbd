@@ -172,7 +172,8 @@ struct rtrs_clt {
 	wait_queue_head_t	permits_wait;
 	size_t			pdu_sz;
 	void			*priv;
-	void			(*link_ev)(void *priv, enum rtrs_clt_link_ev ev);
+	void			(*link_ev)(void *priv,
+					   enum rtrs_clt_link_ev ev);
 	struct device		dev;
 	struct kobject		kobj_paths;
 	enum rtrs_mp_policy	mp_policy;

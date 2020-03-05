@@ -48,7 +48,7 @@ __rtrs_get_permit(struct rtrs_clt *clt, enum rtrs_clt_con_type con_type)
 {
 	size_t max_depth = clt->queue_depth;
 	struct rtrs_permit *permit;
-	int cpu, bit;
+	int bit;
 
 	/*
 	 * From null_blk get_tag(), Callers from different cpus may
