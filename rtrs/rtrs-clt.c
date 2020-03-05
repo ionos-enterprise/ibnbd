@@ -51,25 +51,22 @@ __rtrs_get_permit(struct rtrs_clt *clt, enum rtrs_clt_con_type con_type)
 	int cpu, bit;
 
 	/*
-	 * disable preemption only, callers from different cpus may
+	 * From null_blk get_tag(), Callers from different cpus may
 	 * grab the same bit, since find_first_zero_bit is not atomic.
 	 * But then the test_and_set_bit_lock will fail for all the
 	 * callers but one, so that they will loop again.
 	 * This way an explicit spinlock is not required.
 	 */
-	cpu = get_cpu();
 	do {
 		bit = find_first_zero_bit(clt->permits_map, max_depth);
 		if (unlikely(bit >= max_depth)) {
-			put_cpu();
 			return NULL;
 		}
 	} while (unlikely(test_and_set_bit_lock(bit, clt->permits_map)));
-	put_cpu();
 
 	permit = get_permit(clt, bit);
 	WARN_ON(permit->mem_id != bit);
-	permit->cpu_id = cpu;
+	permit->cpu_id = raw_smp_processor_id();
 	permit->con_type = con_type;
 
 	return permit;
