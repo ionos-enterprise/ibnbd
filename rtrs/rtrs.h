@@ -183,10 +183,10 @@ int rtrs_clt_request(int dir, struct rtrs_clt_req_ops *ops,
  * rtrs_attrs - RTRS session attributes
  */
 struct rtrs_attrs {
-	u32	queue_depth;
-	u32	max_io_size;
-	u8	sessname[NAME_MAX];
-	struct kobject *sess_kobj;
+	u32		queue_depth;
+	u32		max_io_size;
+	u8		sessname[NAME_MAX];
+	struct kobject	*sess_kobj;
 };
 
 /**
@@ -311,7 +311,7 @@ int rtrs_srv_get_sess_name(struct rtrs_srv *sess, char *sessname, size_t len);
  * Returns zero if conversion successful. Non-zero otherwise.
  */
 int rtrs_addr_to_sockaddr(const char *str, size_t len, short port,
-			   struct rtrs_addr *addr);
+			  struct rtrs_addr *addr);
 
 /**
  * sockaddr_to_str() - convert sockaddr to a string.
