@@ -36,8 +36,8 @@ static int dev_search_path_set(const char *val, const struct kernel_param *kp)
 	if (strlen(val) >= sizeof(dev_search_path))
 		return -EINVAL;
 
-        snprintf(dev_search_path, sizeof(dev_search_path), "%.*s",
-                (int)(p - val), val);
+	snprintf(dev_search_path, sizeof(dev_search_path), "%.*s",
+		 (int)(p - val), val);
 
 	pr_info("dev_search_path changed to '%s'\n", dev_search_path);
 
