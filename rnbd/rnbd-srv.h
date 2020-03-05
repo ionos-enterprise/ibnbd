@@ -20,9 +20,8 @@
 struct rnbd_srv_session {
 	/* Entry inside global sess_list */
 	struct list_head        list;
-	struct rtrs_srv	*rtrs;
+	struct rtrs_srv		*rtrs;
 	char			sessname[NAME_MAX];
-
 	rwlock_t                index_lock ____cacheline_aligned;
 	struct idr              index_idr;
 	/* List of struct rnbd_srv_sess_dev */
@@ -50,8 +49,8 @@ struct rnbd_srv_sess_dev {
 	struct list_head		dev_list;
 	/* Entry inside rnbd_srv_session struct */
 	struct list_head		sess_list;
-	struct rnbd_dev		*rnbd_dev;
-	struct rnbd_srv_session        *sess;
+	struct rnbd_dev			*rnbd_dev;
+	struct rnbd_srv_session		*sess;
 	struct rnbd_srv_dev		*dev;
 	struct kobject                  kobj;
 	struct completion		*sysfs_release_compl;
@@ -66,8 +65,8 @@ struct rnbd_srv_sess_dev {
 /* rnbd-srv-sysfs.c */
 
 int rnbd_srv_create_dev_sysfs(struct rnbd_srv_dev *dev,
-			       struct block_device *bdev,
-			       const char *dir_name);
+			      struct block_device *bdev,
+			      const char *dir_name);
 void rnbd_srv_destroy_dev_sysfs(struct rnbd_srv_dev *dev);
 int rnbd_srv_create_dev_session_sysfs(struct rnbd_srv_sess_dev *sess_dev);
 void rnbd_srv_destroy_dev_session_sysfs(struct rnbd_srv_sess_dev *sess_dev);
