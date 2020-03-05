@@ -51,7 +51,7 @@ __rtrs_get_permit(struct rtrs_clt *clt, enum rtrs_clt_con_type con_type)
 	int bit;
 
 	/*
-	 * From null_blk get_tag(), Callers from different cpus may
+	 * Adapted from null_blk get_tag(). Callers from different cpus may
 	 * grab the same bit, since find_first_zero_bit is not atomic.
 	 * But then the test_and_set_bit_lock will fail for all the
 	 * callers but one, so that they will loop again.
@@ -59,9 +59,8 @@ __rtrs_get_permit(struct rtrs_clt *clt, enum rtrs_clt_con_type con_type)
 	 */
 	do {
 		bit = find_first_zero_bit(clt->permits_map, max_depth);
-		if (unlikely(bit >= max_depth)) {
+		if (unlikely(bit >= max_depth))
 			return NULL;
-		}
 	} while (unlikely(test_and_set_bit_lock(bit, clt->permits_map)));
 
 	permit = get_permit(clt, bit);
