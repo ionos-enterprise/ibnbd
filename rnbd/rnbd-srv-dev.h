@@ -16,7 +16,7 @@ struct rnbd_dev {
 	struct block_device	*bdev;
 	fmode_t			blk_open_flags;
 	char			name[BDEVNAME_SIZE];
-	void (*io_cb)(void *priv, int error);
+	void			(*io_cb)(void *priv, int error);
 };
 
 struct rnbd_dev_blk_io {
