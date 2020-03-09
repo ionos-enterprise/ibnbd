@@ -41,6 +41,9 @@ struct rtrs_srv_stats {
 struct rtrs_srv_con {
 	struct rtrs_con		c;
 	atomic_t		wr_cnt;
+	atomic_t		sq_wr_avail;
+	struct list_head	rsp_wr_wait_list;
+	spinlock_t		rsp_wr_wait_lock;
 };
 
 /* IO context in rtrs_srv, each io has one */
@@ -51,6 +54,10 @@ struct rtrs_srv_op {
 	struct rtrs_msg_rdma_read	*rd_msg;
 	struct ib_rdma_wr		*tx_wr;
 	struct ib_sge			*tx_sg;
+	struct list_head		wait_list;
+	int				status;
+	int				send_wr_cnt;
+	struct ib_cqe			send_cqe;
 };
 
 /*

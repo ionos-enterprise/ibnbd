@@ -157,6 +157,12 @@ static void rtrs_srv_free_ops_ids(struct rtrs_srv_sess *sess)
 	}
 }
 
+static void rtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc);
+
+static struct ib_cqe io_comp_cqe = {
+	.done = rtrs_srv_rdma_done
+};
+
 static int rtrs_srv_alloc_ops_ids(struct rtrs_srv_sess *sess)
 {
 	struct rtrs_srv *srv = sess->srv;
@@ -172,6 +178,8 @@ static int rtrs_srv_alloc_ops_ids(struct rtrs_srv_sess *sess)
 		id = kzalloc(sizeof(*id), GFP_KERNEL);
 		if (!id)
 			goto err;
+
+		id->send_cqe = io_comp_cqe;
 
 		sess->ops_ids[i] = id;
 		id->tx_wr = kcalloc(MAX_SG_COUNT, sizeof(*id->tx_wr),
@@ -210,11 +218,6 @@ static void rtrs_srv_wait_ops_ids(struct rtrs_srv_sess *sess)
 	wait_event(sess->ids_waitq, !atomic_read(&sess->ids_inflight));
 }
 
-static void rtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc);
-
-static struct ib_cqe io_comp_cqe = {
-	.done = rtrs_srv_rdma_done
-};
 
 static void rtrs_srv_reg_mr_done(struct ib_cq *cq, struct ib_wc *wc)
 {
@@ -361,6 +364,7 @@ static int rdma_write_sg(struct rtrs_srv_op *id)
 	imm_wr.ex.imm_data = cpu_to_be32(rtrs_to_io_rsp_imm(id->msg_id,
 							     0, need_inval));
 
+	imm_wr.wr_cqe   = &id->send_cqe;
 	ib_dma_sync_single_for_device(sess->s.dev->ib_dev, dma_addr,
 				      offset, DMA_BIDIRECTIONAL);
 
@@ -477,6 +481,8 @@ static int send_io_resp_imm(struct rtrs_srv_con *con, struct rtrs_srv_op *id,
 		imm_wr.opcode = IB_WR_RDMA_WRITE_WITH_IMM;
 	}
 	imm_wr.send_flags = flags;
+	imm_wr.wr_cqe = &id->send_cqe;
+
 	imm_wr.ex.imm_data = cpu_to_be32(imm);
 
 	err = ib_post_send(id->con->c.qp, wr, NULL);
@@ -518,7 +524,7 @@ static inline const char *rtrs_srv_state_str(enum rtrs_srv_state state)
  *
  * Context: any
  */
-void rtrs_srv_resp_rdma(struct rtrs_srv_op *id, int status)
+bool rtrs_srv_resp_rdma(struct rtrs_srv_op *id, int status)
 {
 	struct rtrs_srv_con *con = id->con;
 	struct rtrs_sess *s = con->c.sess;
@@ -526,7 +532,9 @@ void rtrs_srv_resp_rdma(struct rtrs_srv_op *id, int status)
 	int err;
 
 	if (WARN_ON(!id))
-		return;
+		return true;
+
+	id->status = status;
 
 	if (unlikely(sess->state != RTRS_SRV_CONNECTED)) {
 		rtrs_err_rl(s,
@@ -539,16 +547,28 @@ void rtrs_srv_resp_rdma(struct rtrs_srv_op *id, int status)
 
 		ib_update_fast_reg_key(mr->mr, ib_inc_rkey(mr->mr->rkey));
 	}
+	if (unlikely(atomic_sub_return(id->send_wr_cnt,
+				       &con->sq_wr_avail) < 0)) {
+		pr_debug("IB send queue full\n");
+		atomic_add(id->send_wr_cnt, &con->sq_wr_avail);
+		spin_lock(&con->rsp_wr_wait_lock);
+		list_add_tail(&id->wait_list, &con->rsp_wr_wait_list);
+		spin_unlock(&con->rsp_wr_wait_lock);
+		return false;
+	}
+
 	if (status || id->dir == WRITE || !id->rd_msg->sg_cnt)
 		err = send_io_resp_imm(con, id, status);
 	else
 		err = rdma_write_sg(id);
+
 	if (unlikely(err)) {
 		rtrs_err_rl(s, "IO response failed: %d\n", err);
 		close_sess(sess);
 	}
 out:
 	rtrs_srv_put_ops_ids(sess);
+	return true;
 }
 EXPORT_SYMBOL(rtrs_srv_resp_rdma);
 
@@ -988,6 +1008,7 @@ static void process_read(struct rtrs_srv_con *con,
 	id->dir		= READ;
 	id->msg_id	= buf_id;
 	id->rd_msg	= msg;
+	id->send_wr_cnt = msg->sg_cnt;
 	usr_len = le16_to_cpu(msg->usr_len);
 	data_len = off - usr_len;
 	data = page_address(srv->chunks[buf_id]);
@@ -1040,6 +1061,7 @@ static void process_write(struct rtrs_srv_con *con,
 	id->con    = con;
 	id->dir    = WRITE;
 	id->msg_id = buf_id;
+	id->send_wr_cnt = 1;
 
 	usr_len = le16_to_cpu(req->usr_len);
 	data_len = off - usr_len;
@@ -1137,12 +1159,36 @@ static int rtrs_srv_inv_rkey(struct rtrs_srv_con *con,
 	return ib_post_send(con->c.qp, &wr, NULL);
 }
 
+static void rtrs_rdma_process_wr_wait_list(struct rtrs_srv_con *con)
+{
+	spin_lock(&con->rsp_wr_wait_lock);
+	while (!list_empty(&con->rsp_wr_wait_list)) {
+		struct rtrs_srv_op *id;
+		int ret;
+
+		id = list_entry(con->rsp_wr_wait_list.next,
+				struct rtrs_srv_op, wait_list);
+		list_del(&id->wait_list);
+
+		spin_unlock(&con->rsp_wr_wait_lock);
+		ret = rtrs_srv_resp_rdma(id, id->status);
+		spin_lock(&con->rsp_wr_wait_lock);
+
+		if (!ret) {
+			list_add(&id->wait_list, &con->rsp_wr_wait_list);
+			break;
+		}
+	}
+	spin_unlock(&con->rsp_wr_wait_lock);
+}
+
 static void rtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 {
 	struct rtrs_srv_con *con = cq->cq_context;
 	struct rtrs_sess *s = con->c.sess;
 	struct rtrs_srv_sess *sess = to_srv_sess(s);
 	struct rtrs_srv *srv = sess->srv;
+	struct rtrs_srv_op *id;
 	u32 imm_type, imm_payload;
 	int err;
 
@@ -1218,6 +1264,13 @@ static void rtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 		 * post_send() RDMA write completions of IO reqs (read/write)
 		 * and hb
 		 */
+		id = container_of(wc->wr_cqe, struct rtrs_srv_op, send_cqe);
+
+		atomic_add(id->send_wr_cnt, &con->sq_wr_avail);
+
+		if (unlikely(!list_empty_careful(&con->rsp_wr_wait_list)))
+			rtrs_rdma_process_wr_wait_list(con);
+
 		break;
 	default:
 		rtrs_wrn(s, "Unexpected WC type: %d\n", wc->opcode);
@@ -1550,6 +1603,8 @@ static int create_con(struct rtrs_srv_sess *sess,
 		goto err;
 	}
 
+	spin_lock_init(&con->rsp_wr_wait_lock);
+	INIT_LIST_HEAD(&con->rsp_wr_wait_list);
 	con->c.cm_id = cm_id;
 	con->c.sess = &sess->s;
 	con->c.cid = cid;
@@ -1578,7 +1633,7 @@ static int create_con(struct rtrs_srv_sess *sess,
 		 */
 		wr_queue_size = sess->s.dev->ib_dev->attrs.max_qp_wr / 3;
 	}
-
+	atomic_set(&con->sq_wr_avail, wr_queue_size);
 	cq_vector = rtrs_srv_get_next_cq_vector(sess);
 
 	/* TODO: SOFTIRQ can be faster, but be careful with softirq context */

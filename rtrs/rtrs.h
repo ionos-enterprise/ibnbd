@@ -281,7 +281,7 @@ void rtrs_srv_close(struct rtrs_srv_ctx *ctx);
  * Finish a RDMA operation. A message is sent to the client and the
  * corresponding memory areas will be released.
  */
-void rtrs_srv_resp_rdma(struct rtrs_srv_op *id, int errno);
+bool rtrs_srv_resp_rdma(struct rtrs_srv_op *id, int errno);
 
 /**
  * rtrs_srv_set_sess_priv() - Set private pointer in rtrs_srv.
