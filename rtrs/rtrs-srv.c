@@ -314,8 +314,7 @@ static int rdma_write_sg(struct rtrs_srv_op *id)
 	 * From time to time we have to post signaled sends,
 	 * or send queue will fill up and only QP reset can help.
 	 */
-	flags = atomic_inc_return(&id->con->wr_cnt) % srv->queue_depth ?
-			0 : IB_SEND_SIGNALED;
+	flags = IB_SEND_SIGNALED;
 
 	if (need_inval) {
 		inv_wr.wr_cqe = &io_comp_cqe;
@@ -442,8 +441,7 @@ static int send_io_resp_imm(struct rtrs_srv_con *con, struct rtrs_srv_op *id,
 	 * From time to time we have to post signalled sends,
 	 * or send queue will fill up and only QP reset can help.
 	 */
-	flags = atomic_inc_return(&con->wr_cnt) % srv->queue_depth ?
-			0 : IB_SEND_SIGNALED;
+	flags = IB_SEND_SIGNALED;
 	imm = rtrs_to_io_rsp_imm(id->msg_id, errno, need_inval);
 	imm_wr.next = NULL;
 	imm_wr.wr_cqe = &io_comp_cqe;
@@ -549,7 +547,7 @@ bool rtrs_srv_resp_rdma(struct rtrs_srv_op *id, int status)
 	}
 	if (unlikely(atomic_sub_return(id->send_wr_cnt,
 				       &con->sq_wr_avail) < 0)) {
-		pr_debug("IB send queue full\n");
+		pr_err("IB send queue full\n");
 		atomic_add(id->send_wr_cnt, &con->sq_wr_avail);
 		spin_lock(&con->rsp_wr_wait_lock);
 		list_add_tail(&id->wait_list, &con->rsp_wr_wait_list);
