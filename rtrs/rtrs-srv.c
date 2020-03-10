@@ -1488,7 +1488,6 @@ static void rtrs_srv_close_work(struct work_struct *work)
 			continue;
 		con = to_srv_con(sess->s.con[i]);
 		rdma_disconnect(con->c.cm_id);
-		ib_drain_qp(con->c.qp);
 	}
 	/* Wait for all inflights */
 	rtrs_srv_wait_ops_ids(sess);
@@ -1497,16 +1496,17 @@ static void rtrs_srv_close_work(struct work_struct *work)
 	rtrs_srv_sess_down(sess);
 
 	unmap_cont_bufs(sess);
-	rtrs_srv_free_ops_ids(sess);
 
 	for (i = 0; i < sess->s.con_num; i++) {
 		if (!sess->s.con[i])
 			continue;
 		con = to_srv_con(sess->s.con[i]);
-		rtrs_cq_qp_destroy(&con->c);
+		ib_drain_qp(con->c.qp);
 		rdma_destroy_id(con->c.cm_id);
+		rtrs_cq_qp_destroy(&con->c);
 		kfree(con);
 	}
+	rtrs_srv_free_ops_ids(sess);
 	rtrs_ib_dev_put(sess->s.dev);
 
 	del_path_from_srv(sess);
