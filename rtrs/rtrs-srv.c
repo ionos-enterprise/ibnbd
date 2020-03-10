@@ -1263,8 +1263,7 @@ static void rtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 		if (id->dir == READ)
 			atomic_add(id->send_wr_cnt, &con->sq_wr_avail);
 		else
-			atomic_add(id->send_wr_cnt * srv->queue_depth,
-				   &con->sq_wr_avail);
+			atomic_add(srv->queue_depth, &con->sq_wr_avail);
 
 		if (unlikely(!list_empty_careful(&con->rsp_wr_wait_list)))
 			rtrs_rdma_process_wr_wait_list(con);
