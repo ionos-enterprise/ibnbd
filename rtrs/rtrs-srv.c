@@ -277,7 +277,6 @@ static int rdma_write_sg(struct rtrs_srv_op *id)
 		list->lkey = sess->s.dev->ib_pd->local_dma_lkey;
 		offset += list->length;
 
-		wr->wr.wr_cqe	= &io_comp_cqe;
 		wr->wr.sg_list	= list;
 		wr->wr.num_sge	= 1;
 		wr->remote_addr	= le64_to_cpu(id->rd_msg->desc[i].addr);
@@ -316,7 +315,6 @@ static int rdma_write_sg(struct rtrs_srv_op *id)
 	flags = IB_SEND_SIGNALED;
 
 	if (need_inval) {
-		inv_wr.wr_cqe = &io_comp_cqe;
 		inv_wr.sg_list = NULL;
 		inv_wr.num_sge = 0;
 		inv_wr.opcode = IB_WR_SEND_WITH_INV;
@@ -408,7 +406,6 @@ static int send_io_resp_imm(struct rtrs_srv_con *con, struct rtrs_srv_op *id,
 
 		if (need_inval) {
 			if (likely(sg_cnt)) {
-				inv_wr.wr_cqe = &io_comp_cqe;
 				inv_wr.sg_list = NULL;
 				inv_wr.num_sge = 0;
 				inv_wr.opcode = IB_WR_SEND_WITH_INV;
@@ -452,7 +449,6 @@ static int send_io_resp_imm(struct rtrs_srv_con *con, struct rtrs_srv_op *id,
 		srv_mr = &sess->mrs[id->msg_id];
 		rwr.wr.next = &imm_wr;
 		rwr.wr.opcode = IB_WR_REG_MR;
-		rwr.wr.wr_cqe = &local_reg_cqe;
 		rwr.wr.num_sge = 0;
 		rwr.wr.send_flags = 0;
 		rwr.mr = srv_mr->mr;
