@@ -123,9 +123,14 @@ extern struct class *rtrs_dev_class;
 
 void close_sess(struct rtrs_srv_sess *sess);
 
-/* functions which are implemented in rtrs-srv-stats.c */
-void rtrs_srv_update_rdma_stats(struct rtrs_srv_stats *s, size_t size, int d);
+static inline void rtrs_srv_update_rdma_stats(struct rtrs_srv_stats *s,
+					      size_t size, int d)
+{
+	atomic64_inc(&s->rdma_stats.dir[d].cnt);
+	atomic64_add(size, &s->rdma_stats.dir[d].size_total);
+}
 
+/* functions which are implemented in rtrs-srv-stats.c */
 int rtrs_srv_reset_rdma_stats(struct rtrs_srv_stats *stats, bool enable);
 ssize_t rtrs_srv_stats_rdma_to_str(struct rtrs_srv_stats *stats,
 				    char *page, size_t len);

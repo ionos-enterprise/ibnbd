@@ -11,13 +11,6 @@
 
 #include "rtrs-srv.h"
 
-void rtrs_srv_update_rdma_stats(struct rtrs_srv_stats *s,
-				 size_t size, int d)
-{
-	atomic64_inc(&s->rdma_stats.dir[d].cnt);
-	atomic64_add(size, &s->rdma_stats.dir[d].size_total);
-}
-
 int rtrs_srv_reset_rdma_stats(struct rtrs_srv_stats *stats, bool enable)
 {
 	if (enable) {
