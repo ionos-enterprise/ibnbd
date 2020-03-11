@@ -202,12 +202,12 @@ err:
 	return -ENOMEM;
 }
 
-static void rtrs_srv_get_ops_ids(struct rtrs_srv_sess *sess)
+static inline void rtrs_srv_get_ops_ids(struct rtrs_srv_sess *sess)
 {
 	atomic_inc(&sess->ids_inflight);
 }
 
-static void rtrs_srv_put_ops_ids(struct rtrs_srv_sess *sess)
+static inline void rtrs_srv_put_ops_ids(struct rtrs_srv_sess *sess)
 {
 	if (atomic_dec_and_test(&sess->ids_inflight))
 		wake_up(&sess->ids_waitq);
