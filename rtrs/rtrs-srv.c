@@ -230,6 +230,7 @@ static int rdma_write_sg(struct rtrs_srv_op *id)
 	struct rtrs_srv_sess *sess = to_srv_sess(s);
 	dma_addr_t dma_addr = sess->dma_addr[id->msg_id];
 	struct rtrs_srv_mr *srv_mr;
+	struct rtrs_srv *srv = sess->srv;
 	struct ib_send_wr inv_wr, imm_wr;
 	struct ib_rdma_wr *wr = NULL;
 	enum ib_send_flags flags;
@@ -294,7 +295,8 @@ static int rdma_write_sg(struct rtrs_srv_op *id)
 	 * From time to time we have to post signaled sends,
 	 * or send queue will fill up and only QP reset can help.
 	 */
-	flags = IB_SEND_SIGNALED;
+	flags = atomic_inc_return(&id->con->wr_cnt) % srv->queue_depth ?
+		0 : IB_SEND_SIGNALED;
 
 	if (need_inval) {
 		inv_wr.sg_list = NULL;
@@ -1253,10 +1255,7 @@ static void rtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 		 */
 		id = container_of(wc->wr_cqe, struct rtrs_srv_op, send_cqe);
 
-		if (id->dir == READ)
-			atomic_add(id->send_wr_cnt, &con->sq_wr_avail);
-		else
-			atomic_add(srv->queue_depth, &con->sq_wr_avail);
+		atomic_add(srv->queue_depth, &con->sq_wr_avail);
 
 		if (unlikely(!list_empty_careful(&con->rsp_wr_wait_list)))
 			rtrs_rdma_process_wr_wait_list(con);
