@@ -323,14 +323,12 @@ static int rdma_write_sg(struct rtrs_srv_op *id)
 	}
 
 	imm_wr.next = NULL;
-	imm_wr.wr_cqe = &io_comp_cqe;
 	if (always_invalidate) {
 		struct ib_sge list;
 		struct rtrs_msg_rkey_rsp *msg;
 
 		srv_mr = &sess->mrs[id->msg_id];
 		rwr.wr.opcode = IB_WR_REG_MR;
-		rwr.wr.wr_cqe = &local_reg_cqe;
 		rwr.wr.num_sge = 0;
 		rwr.mr = srv_mr->mr;
 		rwr.wr.send_flags = 0;
@@ -441,7 +439,6 @@ static int send_io_resp_imm(struct rtrs_srv_con *con, struct rtrs_srv_op *id,
 		0 : IB_SEND_SIGNALED;
 	imm = rtrs_to_io_rsp_imm(id->msg_id, errno, need_inval);
 	imm_wr.next = NULL;
-	imm_wr.wr_cqe = &io_comp_cqe;
 	if (always_invalidate) {
 		struct ib_sge list;
 		struct rtrs_msg_rkey_rsp *msg;
@@ -1143,8 +1140,6 @@ static int rtrs_srv_inv_rkey(struct rtrs_srv_con *con,
 	struct ib_send_wr wr = {
 		.opcode		    = IB_WR_LOCAL_INV,
 		.wr_cqe		    = &mr->inv_cqe,
-		.next		    = NULL,
-		.num_sge	    = 0,
 		.send_flags	    = IB_SEND_SIGNALED,
 		.ex.invalidate_rkey = mr->mr->rkey,
 	};
