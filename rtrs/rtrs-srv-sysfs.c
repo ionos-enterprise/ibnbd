@@ -166,12 +166,14 @@ static int rtrs_srv_create_once_sysfs_root_folders(struct rtrs_srv_sess *sess)
 	}
 	srv->dev.class = rtrs_dev_class;
 	srv->dev.release = rtrs_srv_dev_release;
-	dev_set_name(&srv->dev, "%s", sess->s.sessname);
+	err = dev_set_name(&srv->dev, "%s", sess->s.sessname);
+	if (err)
+		goto unlock;
 
 	err = device_register(&srv->dev);
 	if (err) {
 		pr_err("device_register(): %d\n", err);
-		goto unlock;
+		goto put;
 	}
 	err = kobject_init_and_add(&srv->kobj_paths, &ktype,
 				   &srv->dev.kobj, "paths");
@@ -180,6 +182,8 @@ static int rtrs_srv_create_once_sysfs_root_folders(struct rtrs_srv_sess *sess)
 		device_unregister(&srv->dev);
 		goto unlock;
 	}
+put:
+	put_device(&srv->dev);
 unlock:
 	mutex_unlock(&srv->paths_mutex);
 
