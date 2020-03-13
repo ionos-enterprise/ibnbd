@@ -56,8 +56,6 @@ struct rtrs_srv_op {
 	struct ib_sge			tx_sg;
 	struct list_head		wait_list;
 	int				status;
-	int				send_wr_cnt;
-	struct ib_cqe			send_cqe;
 };
 
 /*

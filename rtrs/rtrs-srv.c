@@ -175,8 +175,6 @@ static int rtrs_srv_alloc_ops_ids(struct rtrs_srv_sess *sess)
 		if (!id)
 			goto err;
 
-		id->send_cqe = io_comp_cqe;
-
 		sess->ops_ids[i] = id;
 	}
 	init_waitqueue_head(&sess->ids_waitq);
@@ -342,7 +340,7 @@ static int rdma_write_sg(struct rtrs_srv_op *id)
 	imm_wr.ex.imm_data = cpu_to_be32(rtrs_to_io_rsp_imm(id->msg_id,
 							     0, need_inval));
 
-	imm_wr.wr_cqe   = &id->send_cqe;
+	imm_wr.wr_cqe   = &io_comp_cqe;
 	ib_dma_sync_single_for_device(sess->s.dev->ib_dev, dma_addr,
 				      offset, DMA_BIDIRECTIONAL);
 
@@ -456,7 +454,7 @@ static int send_io_resp_imm(struct rtrs_srv_con *con, struct rtrs_srv_op *id,
 		imm_wr.opcode = IB_WR_RDMA_WRITE_WITH_IMM;
 	}
 	imm_wr.send_flags = flags;
-	imm_wr.wr_cqe = &id->send_cqe;
+	imm_wr.wr_cqe   = &io_comp_cqe;
 
 	imm_wr.ex.imm_data = cpu_to_be32(imm);
 
@@ -528,10 +526,10 @@ bool rtrs_srv_resp_rdma(struct rtrs_srv_op *id, int status)
 
 		ib_update_fast_reg_key(mr->mr, ib_inc_rkey(mr->mr->rkey));
 	}
-	if (unlikely(atomic_sub_return(id->send_wr_cnt,
+	if (unlikely(atomic_sub_return(1,
 				       &con->sq_wr_avail) < 0)) {
 		pr_err("IB send queue full\n");
-		atomic_add(id->send_wr_cnt, &con->sq_wr_avail);
+		atomic_add(1, &con->sq_wr_avail);
 		spin_lock(&con->rsp_wr_wait_lock);
 		list_add_tail(&id->wait_list, &con->rsp_wr_wait_list);
 		spin_unlock(&con->rsp_wr_wait_lock);
@@ -999,7 +997,6 @@ static void process_read(struct rtrs_srv_con *con,
 	id->dir		= READ;
 	id->msg_id	= buf_id;
 	id->rd_msg	= msg;
-	id->send_wr_cnt = 1;
 	usr_len = le16_to_cpu(msg->usr_len);
 	data_len = off - usr_len;
 	data = page_address(srv->chunks[buf_id]);
@@ -1052,7 +1049,6 @@ static void process_write(struct rtrs_srv_con *con,
 	id->con    = con;
 	id->dir    = WRITE;
 	id->msg_id = buf_id;
-	id->send_wr_cnt = 1;
 
 	usr_len = le16_to_cpu(req->usr_len);
 	data_len = off - usr_len;
@@ -1177,7 +1173,6 @@ static void rtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 	struct rtrs_sess *s = con->c.sess;
 	struct rtrs_srv_sess *sess = to_srv_sess(s);
 	struct rtrs_srv *srv = sess->srv;
-	struct rtrs_srv_op *id;
 	u32 imm_type, imm_payload;
 	int err;
 
@@ -1253,8 +1248,6 @@ static void rtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 		 * post_send() RDMA write completions of IO reqs (read/write)
 		 * and hb
 		 */
-		id = container_of(wc->wr_cqe, struct rtrs_srv_op, send_cqe);
-
 		atomic_add(srv->queue_depth, &con->sq_wr_avail);
 
 		if (unlikely(!list_empty_careful(&con->rsp_wr_wait_list)))
