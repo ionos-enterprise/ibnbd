@@ -199,9 +199,11 @@ rtrs_srv_destroy_once_sysfs_root_folders(struct rtrs_srv_sess *sess)
 	if (!--srv->dev_ref) {
 		kobject_del(&srv->kobj_paths);
 		kobject_put(&srv->kobj_paths);
+		mutex_unlock(&srv->paths_mutex);
 		device_unregister(&srv->dev);
+	} else {
+		mutex_unlock(&srv->paths_mutex);
 	}
-	mutex_unlock(&srv->paths_mutex);
 }
 
 static int rtrs_srv_create_stats_files(struct rtrs_srv_sess *sess)
