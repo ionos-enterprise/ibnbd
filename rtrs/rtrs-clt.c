@@ -2104,7 +2104,8 @@ static void rtrs_clt_remove_path_from_arr(struct rtrs_clt_sess *sess)
 		struct rtrs_clt_sess __rcu **ppcpu_path;
 
 		ppcpu_path = per_cpu_ptr(clt->pcpu_path, cpu);
-		if (rcu_dereference(*ppcpu_path) != sess)
+		if (rcu_dereference_protected(*ppcpu_path,
+			lockdep_is_held(&clt->paths_mutex)) != sess)
 			/*
 			 * synchronize_rcu() was called just after deleting
 			 * entry from the list, thus IO code path cannot
