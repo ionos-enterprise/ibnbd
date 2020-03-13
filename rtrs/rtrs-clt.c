@@ -2093,8 +2093,10 @@ static void rtrs_clt_remove_path_from_arr(struct rtrs_clt_sess *sess)
 	 * Get @next connection from current @sess which is going to be
 	 * removed.  If @sess is the last element, then @next is NULL.
 	 */
+	rcu_read_lock();
 	next = list_next_or_null_rr_rcu(&clt->paths_list, &sess->s.entry,
 					typeof(*next), s.entry);
+	rcu_read_unlock();
 
 	/*
 	 * @pcpu paths can still point to the path which is going to be
