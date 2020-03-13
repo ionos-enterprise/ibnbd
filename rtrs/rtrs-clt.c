@@ -1031,12 +1031,11 @@ static int rtrs_clt_read_req(struct rtrs_clt_io_req *req)
 	struct rtrs_clt_sess *sess = to_clt_sess(s);
 	struct rtrs_msg_rdma_read *msg;
 	struct rtrs_ib_dev *dev;
-	struct scatterlist *sg;
 
 	struct ib_reg_wr rwr;
 	struct ib_send_wr *wr = NULL;
 
-	int i, ret, count = 0;
+	int ret, count = 0;
 	u32 imm, buf_id;
 
 	const size_t tsize = sizeof(*msg) + req->data_len + req->usr_len;
@@ -1096,15 +1095,8 @@ static int rtrs_clt_read_req(struct rtrs_clt_io_req *req)
 		req->need_inv = !!RTRS_MSG_NEED_INVAL_F;
 
 	} else {
-		msg->sg_cnt = cpu_to_le16(count);
+		msg->sg_cnt = 0;
 		msg->flags = 0;
-
-		for_each_sg(req->sglist, sg, req->sg_cnt, i) {
-			msg->desc[i].addr = cpu_to_le64(sg_dma_address(sg));
-			msg->desc[i].key =
-				cpu_to_le32(dev->ib_pd->unsafe_global_rkey);
-			msg->desc[i].len = cpu_to_le32(sg_dma_len(sg));
-		}
 	}
 	/*
 	 * rtrs message will be after the space reserved for disk data and
