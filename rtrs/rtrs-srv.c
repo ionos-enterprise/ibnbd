@@ -23,8 +23,6 @@ MODULE_LICENSE("GPL");
 #define DEFAULT_MAX_CHUNK_SIZE (128 << 10)
 #define DEFAULT_SESS_QUEUE_DEPTH 512
 #define MAX_HDR_SIZE PAGE_SIZE
-#define MAX_SG_COUNT ((MAX_HDR_SIZE - sizeof(struct rtrs_msg_rdma_read)) \
-		      / sizeof(struct rtrs_sg_desc))
 
 /* We guarantee to serve 10 paths at least */
 #define CHUNK_POOL_SZ 10
@@ -138,8 +136,6 @@ static void free_id(struct rtrs_srv_op *id)
 {
 	if (!id)
 		return;
-	kfree(id->tx_wr);
-	kfree(id->tx_sg);
 	kfree(id);
 }
 
@@ -182,15 +178,6 @@ static int rtrs_srv_alloc_ops_ids(struct rtrs_srv_sess *sess)
 		id->send_cqe = io_comp_cqe;
 
 		sess->ops_ids[i] = id;
-		id->tx_wr = kcalloc(MAX_SG_COUNT, sizeof(*id->tx_wr),
-				    GFP_KERNEL);
-		if (!id->tx_wr)
-			goto err;
-
-		id->tx_sg = kcalloc(MAX_SG_COUNT, sizeof(*id->tx_sg),
-				    GFP_KERNEL);
-		if (!id->tx_sg)
-			goto err;
 	}
 	init_waitqueue_head(&sess->ids_waitq);
 	atomic_set(&sess->ids_inflight, 0);
@@ -247,53 +234,48 @@ static int rdma_write_sg(struct rtrs_srv_op *id)
 	struct ib_rdma_wr *wr = NULL;
 	enum ib_send_flags flags;
 	size_t sg_cnt;
-	int err, i, offset;
+	int err, offset;
 	bool need_inval;
 	u32 rkey = 0;
 	struct ib_reg_wr rwr;
+	struct ib_sge *list;
 
 	sg_cnt = le16_to_cpu(id->rd_msg->sg_cnt);
 	need_inval = le16_to_cpu(id->rd_msg->flags) & RTRS_MSG_NEED_INVAL_F;
-	if (unlikely(!sg_cnt))
+	if (unlikely(sg_cnt != 1))
 		return -EINVAL;
 
 	offset = 0;
-	for (i = 0; i < sg_cnt; i++) {
-		struct ib_sge *list;
 
-		wr		= &id->tx_wr[i];
-		list		= &id->tx_sg[i];
-		list->addr	= dma_addr + offset;
-		list->length	= le32_to_cpu(id->rd_msg->desc[i].len);
+	wr		= &id->tx_wr;
+	list		= &id->tx_sg;
+	list->addr	= dma_addr + offset;
+	list->length	= le32_to_cpu(id->rd_msg->desc[0].len);
 
-		/* WR will fail with length error
-		 * if this is 0
-		 */
-		if (unlikely(list->length == 0)) {
-			rtrs_err(s, "Invalid RDMA-Write sg list length 0\n");
-			return -EINVAL;
-		}
-
-		list->lkey = sess->s.dev->ib_pd->local_dma_lkey;
-		offset += list->length;
-
-		wr->wr.sg_list	= list;
-		wr->wr.num_sge	= 1;
-		wr->remote_addr	= le64_to_cpu(id->rd_msg->desc[i].addr);
-		wr->rkey	= le32_to_cpu(id->rd_msg->desc[i].key);
-		if (rkey == 0)
-			rkey = wr->rkey;
-		else
-			/* Only one key is actually used */
-			WARN_ON_ONCE(rkey != wr->rkey);
-
-		if (i < (sg_cnt - 1))
-			wr->wr.next = &id->tx_wr[i + 1].wr;
-
-		wr->wr.opcode = IB_WR_RDMA_WRITE;
-		wr->wr.ex.imm_data = 0;
-		wr->wr.send_flags  = 0;
+	/* WR will fail with length error
+	 * if this is 0
+	 */
+	if (unlikely(list->length == 0)) {
+		rtrs_err(s, "Invalid RDMA-Write sg list length 0\n");
+		return -EINVAL;
 	}
+
+	list->lkey = sess->s.dev->ib_pd->local_dma_lkey;
+	offset += list->length;
+
+	wr->wr.sg_list	= list;
+	wr->wr.num_sge	= 1;
+	wr->remote_addr	= le64_to_cpu(id->rd_msg->desc[0].addr);
+	wr->rkey	= le32_to_cpu(id->rd_msg->desc[0].key);
+	if (rkey == 0)
+		rkey = wr->rkey;
+	else
+		/* Only one key is actually used */
+		WARN_ON_ONCE(rkey != wr->rkey);
+
+	wr->wr.opcode = IB_WR_RDMA_WRITE;
+	wr->wr.ex.imm_data = 0;
+	wr->wr.send_flags  = 0;
 
 	if (need_inval && always_invalidate) {
 		wr->wr.next = &rwr.wr;
@@ -362,7 +344,7 @@ static int rdma_write_sg(struct rtrs_srv_op *id)
 	ib_dma_sync_single_for_device(sess->s.dev->ib_dev, dma_addr,
 				      offset, DMA_BIDIRECTIONAL);
 
-	err = ib_post_send(id->con->c.qp, &id->tx_wr[0].wr, NULL);
+	err = ib_post_send(id->con->c.qp, &id->tx_wr.wr, NULL);
 	if (unlikely(err))
 		rtrs_err(s,
 			  "Posting RDMA-Write-Request to QP failed, err: %d\n",
@@ -1003,6 +985,11 @@ static void process_read(struct rtrs_srv_con *con,
 			     rtrs_srv_state_str(sess->state));
 		return;
 	}
+	if (unlikely(msg->sg_cnt != 1 && msg->sg_cnt != 0)) {
+		rtrs_err_rl(s,
+			    "Processing read request failed, invalid mesage\n");
+		return;
+	}
 	rtrs_srv_get_ops_ids(sess);
 	rtrs_srv_update_rdma_stats(&sess->stats, off, READ);
 	id = sess->ops_ids[buf_id];
@@ -1010,7 +997,7 @@ static void process_read(struct rtrs_srv_con *con,
 	id->dir		= READ;
 	id->msg_id	= buf_id;
 	id->rd_msg	= msg;
-	id->send_wr_cnt = msg->sg_cnt;
+	id->send_wr_cnt = 1;
 	usr_len = le16_to_cpu(msg->usr_len);
 	data_len = off - usr_len;
 	data = page_address(srv->chunks[buf_id]);
