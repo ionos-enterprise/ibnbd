@@ -1516,8 +1516,8 @@ static void rtrs_srv_close_work(struct work_struct *work)
 			continue;
 		con = to_srv_con(sess->s.con[i]);
 		ib_drain_qp(con->c.qp);
-		rdma_destroy_id(con->c.cm_id);
 		rtrs_cq_qp_destroy(&con->c);
+		rdma_destroy_id(con->c.cm_id);
 		kfree(con);
 	}
 	rtrs_srv_free_ops_ids(sess);
