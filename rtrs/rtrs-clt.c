@@ -2557,11 +2557,13 @@ static struct rtrs_clt *alloc_clt(const char *sessname, size_t paths_num,
 
 	clt->dev.class = rtrs_clt_dev_class;
 	clt->dev.release = rtrs_clt_dev_release;
-	dev_set_name(&clt->dev, "%s", sessname);
+	err = dev_set_name(&clt->dev, "%s", sessname);
+	if (err)
+		goto percpu_free;
 
 	err = device_register(&clt->dev);
 	if (err)
-		goto percpu_free;
+		goto put;
 
 	err = rtrs_clt_create_sysfs_root_folders(clt);
 	if (err)
@@ -2574,6 +2576,11 @@ dev_unregister:
 percpu_free:
 	free_percpu(clt->pcpu_path);
 	kfree(clt);
+	return ERR_PTR(err);
+put:
+	free_percpu(clt->pcpu_path);
+	/* release callback will free clt in last put */
+	put_device(&clt->dev);
 	return ERR_PTR(err);
 }
 
