@@ -812,8 +812,6 @@ static int __init rnbd_srv_init_module(void)
 {
 	int err;
 
-	pr_info("Loading module %s, proto %s\n",
-		KBUILD_MODNAME, RNBD_PROTO_VER_STRING);
 	BUILD_BUG_ON(sizeof(struct rnbd_msg_hdr) != 4);
 	BUILD_BUG_ON(sizeof(struct rnbd_msg_sess_info) != 36);
 	BUILD_BUG_ON(sizeof(struct rnbd_msg_sess_info_rsp) != 36);
@@ -846,7 +844,6 @@ static void __exit rnbd_srv_cleanup_module(void)
 	rtrs_srv_close(rtrs_ctx);
 	WARN_ON(!list_empty(&sess_list));
 	rnbd_srv_destroy_sysfs_files();
-	pr_info("Module unloaded\n");
 }
 
 module_init(rnbd_srv_init_module);

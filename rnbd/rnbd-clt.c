@@ -1694,9 +1694,6 @@ static int __init rnbd_client_init(void)
 {
 	int err = 0;
 
-	pr_info("Loading module %s, proto %s:\n",
-		KBUILD_MODNAME, RNBD_PROTO_VER_STRING);
-
 	BUILD_BUG_ON(sizeof(struct rnbd_msg_hdr) != 4);
 	BUILD_BUG_ON(sizeof(struct rnbd_msg_sess_info) != 36);
 	BUILD_BUG_ON(sizeof(struct rnbd_msg_sess_info_rsp) != 36);
@@ -1721,11 +1718,9 @@ static int __init rnbd_client_init(void)
 
 static void __exit rnbd_client_exit(void)
 {
-	pr_info("Unloading module\n");
 	rnbd_destroy_sessions();
 	unregister_blkdev(rnbd_client_major, "rnbd");
 	ida_destroy(&index_ida);
-	pr_info("Module unloaded\n");
 }
 
 module_init(rnbd_client_init);

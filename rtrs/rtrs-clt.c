@@ -2897,9 +2897,6 @@ static const struct rtrs_rdma_dev_pd_ops dev_pd_ops = {
 
 static int __init rtrs_client_init(void)
 {
-	pr_info("Loading module %s, proto %s\n",
-		KBUILD_MODNAME, RTRS_PROTO_VER_STRING);
-
 	rtrs_rdma_dev_pd_init(0, &dev_pd);
 
 	rtrs_clt_dev_class = class_create(THIS_MODULE, "rtrs-client");
