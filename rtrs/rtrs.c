@@ -449,6 +449,15 @@ static int rtrs_str_to_sockaddr(const char *addr, size_t len,
 	return -EPROTONOSUPPORT;
 }
 
+/**
+ * sockaddr_to_str() - convert sockaddr to a string.
+ * @addr:	the sockadddr structure to be converted.
+ * @buf:	string containing socket addr.
+ * @len:	string length.
+ *
+ * The return value is the number of characters written into buf not
+ * including the trailing '\0'. If len is == 0 the function returns 0..
+ */
 int sockaddr_to_str(const struct sockaddr *addr, char *buf, size_t len)
 {
 
@@ -467,6 +476,18 @@ int sockaddr_to_str(const struct sockaddr *addr, char *buf, size_t len)
 }
 EXPORT_SYMBOL(sockaddr_to_str);
 
+/**
+ * rtrs_addr_to_sockaddr() - convert path string "src,dst" to sockaddreses
+ * @str:	string containing source and destination addr of a path
+ *		separated by comma. I.e. "ip:1.1.1.1,ip:1.1.1.2". If str
+ *		contains only one address it's considered to be destination.
+ * @len:	string length
+ * @port:	will be set to port.
+ * @addr:	will be set to the source/destination address or to NULL
+ *		if str doesn't contain any sorce address.
+ *
+ * Returns zero if conversion successful. Non-zero otherwise.
+ */
 int rtrs_addr_to_sockaddr(const char *str, size_t len, short port,
 			   struct rtrs_addr *addr)
 {

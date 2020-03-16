@@ -510,10 +510,16 @@ static inline const char *rtrs_srv_state_str(enum rtrs_srv_state state)
 	}
 }
 
-/*
- * rtrs_srv_resp_rdma() - sends response to the client.
+/**
+ * rtrs_srv_resp_rdma() - Finish an RDMA request
  *
+ * @id:		Internal RTRS operation identifier
+ * @status:	Response Code sent to the other side for this operation.
+ *		0 = success, <=0 error
  * Context: any
+ *
+ * Finish a RDMA operation. A message is sent to the client and the
+ * corresponding memory areas will be released.
  */
 bool rtrs_srv_resp_rdma(struct rtrs_srv_op *id, int status)
 {
@@ -563,6 +569,11 @@ out:
 }
 EXPORT_SYMBOL(rtrs_srv_resp_rdma);
 
+/**
+ * rtrs_srv_set_sess_priv() - Set private pointer in rtrs_srv.
+ * @srv:	Session pointer
+ * @priv:	The private pointer that is associated with the session.
+ */
 void rtrs_srv_set_sess_priv(struct rtrs_srv *srv, void *priv)
 {
 	srv->priv = priv;
@@ -1270,6 +1281,12 @@ static void rtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 	}
 }
 
+/**
+ * rtrs_srv_get_sess_name() - Get rtrs_srv peer hostname.
+ * @srv:	Session
+ * @sessname:	Sessname buffer
+ * @len:	Length of sessname buffer
+ */
 int rtrs_srv_get_sess_name(struct rtrs_srv *srv, char *sessname, size_t len)
 {
 	struct rtrs_srv_sess *sess;
@@ -2004,6 +2021,15 @@ static void free_srv_ctx(struct rtrs_srv_ctx *ctx)
 	kfree(ctx);
 }
 
+/**
+ * rtrs_srv_open() - open RTRS server context
+ * @ops:		callback functions
+ * @port:               port to listen on
+ *
+ * Creates server context with specified callbacks.
+ *
+ * Return a valid pointer on success otherwise PTR_ERR.
+ */
 struct rtrs_srv_ctx *rtrs_srv_open(struct rtrs_srv_ops *ops, unsigned int port)
 {
 	struct rtrs_srv_ctx *ctx;
@@ -2046,6 +2072,12 @@ static void close_ctx(struct rtrs_srv_ctx *ctx)
 	flush_workqueue(rtrs_wq);
 }
 
+/**
+ * rtrs_srv_close() - close RTRS server context
+ * @ctx: pointer to server context
+ *
+ * Closes RTRS server context with all client sessions.
+ */
 void rtrs_srv_close(struct rtrs_srv_ctx *ctx)
 {
 	rdma_destroy_id(ctx->cm_id_ip);

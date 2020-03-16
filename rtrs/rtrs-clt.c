@@ -77,6 +77,20 @@ static inline void __rtrs_put_permit(struct rtrs_clt *clt,
 	clear_bit_unlock(permit->mem_id, clt->permits_map);
 }
 
+/**
+ * rtrs_clt_get_permit() - allocates permit for future RDMA operation
+ * @clt:	Current session
+ * @con_type:	Type of connection to use with the permit
+ * @can_wait:	Wait type
+ *
+ * Description:
+ *    Allocates permit for the following RDMA operation.  Permit is used
+ *    to preallocate all resources and to propagate memory pressure
+ *    up earlier.
+ *
+ * Context:
+ *    Can sleep if @wait == RTRS_TAG_WAIT
+ */
 struct rtrs_permit *rtrs_clt_get_permit(struct rtrs_clt *clt,
 					  enum rtrs_clt_con_type con_type,
 					  int can_wait)
@@ -104,6 +118,14 @@ struct rtrs_permit *rtrs_clt_get_permit(struct rtrs_clt *clt,
 }
 EXPORT_SYMBOL(rtrs_clt_get_permit);
 
+/**
+ * rtrs_clt_put_permit() - puts allocated permit
+ * @clt:	Current session
+ * @permit:	Permit to be freed
+ *
+ * Context:
+ *    Does not matter
+ */
 void rtrs_clt_put_permit(struct rtrs_clt *clt, struct rtrs_permit *permit)
 {
 	if (WARN_ON(!test_bit(permit->mem_id, clt->permits_map)))
@@ -2598,6 +2620,24 @@ static void free_clt(struct rtrs_clt *clt)
 	device_unregister(&clt->dev);
 }
 
+/**
+ * rtrs_clt_open() - Open a session to an RTRS server
+ * @ops: holds the link event callback and the private pointer.
+ * @sessname: name of the session
+ * @paths: Paths to be established defined by their src and dst addresses
+ * @paths_num: Number of elements in the @paths array
+ * @port: port to be used by the RTRS session
+ * @pdu_sz: Size of extra payload which can be accessed after permit allocation.
+ * @reconnect_delay_sec: time between reconnect tries
+ * @max_segments: Max. number of segments per IO request
+ * @max_reconnect_attempts: Number of times to reconnect on error before giving
+ *			    up, 0 for * disabled, -1 for forever
+ *
+ * Starts session establishment with the rtrs_server. The function can block
+ * up to ~2000ms before it returns.
+ *
+ * Return a valid pointer on success otherwise PTR_ERR.
+ */
 struct rtrs_clt *rtrs_clt_open(struct rtrs_clt_ops *ops,
 				 const char *sessname,
 				 const struct rtrs_addr *paths,
@@ -2670,6 +2710,10 @@ out:
 }
 EXPORT_SYMBOL(rtrs_clt_open);
 
+/**
+ * rtrs_clt_close() - Close a session
+ * @clt: Session handle. Session is freed upon return.
+ */
 void rtrs_clt_close(struct rtrs_clt *clt)
 {
 	struct rtrs_clt_sess *sess, *tmp;
@@ -2774,6 +2818,30 @@ int rtrs_clt_get_max_reconnect_attempts(const struct rtrs_clt *clt)
 	return (int)clt->max_reconnect_attempts;
 }
 
+/**
+ * rtrs_clt_request() - Request data transfer to/from server via RDMA.
+ *
+ * @dir:	READ/WRITE
+ * @ops:	callback function to be called as confirmation, and the pointer.
+ * @clt:	Session
+ * @permit:	Preallocated permit
+ * @vec:	Message that is sent to server together with the request.
+ *		Sum of len of all @vec elements limited to <= IO_MSG_SIZE.
+ *		Since the msg is copied internally it can be allocated on stack.
+ * @nr:		Number of elements in @vec.
+ * @data_len:	length of data sent to/from server
+ * @sg:		Pages to be sent/received to/from server.
+ * @sg_cnt:	Number of elements in the @sg
+ *
+ * Return:
+ * 0:		Success
+ * <0:		Error
+ *
+ * On dir=READ rtrs client will request a data transfer from Server to client.
+ * The data that the server will respond with will be stored in @sg when
+ * the user receives an %RTRS_CLT_RDMA_EV_RDMA_REQUEST_WRITE_COMPL event.
+ * On dir=WRITE rtrs client will rdma write data in sg to server side.
+ */
 int rtrs_clt_request(int dir, struct rtrs_clt_req_ops *ops,
 		     struct rtrs_clt *clt, struct rtrs_permit *permit,
 		      const struct kvec *vec, size_t nr, size_t data_len,
@@ -2831,6 +2899,14 @@ int rtrs_clt_request(int dir, struct rtrs_clt_req_ops *ops,
 }
 EXPORT_SYMBOL(rtrs_clt_request);
 
+/**
+ * rtrs_clt_query() - queries RTRS session attributes
+ *@clt: session pointer
+ *@attr: query results for session attributes.
+ * Returns:
+ *    0 on success
+ *    -ECOMM		no connection to the server
+ */
 int rtrs_clt_query(struct rtrs_clt *clt, struct rtrs_attrs *attr)
 {
 	if (!rtrs_clt_is_connected(clt))
