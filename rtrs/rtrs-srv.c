@@ -2026,8 +2026,6 @@ struct rtrs_srv_ctx *rtrs_srv_open(struct rtrs_srv_ops *ops, unsigned int port)
 		free_srv_ctx(ctx);
 		return ERR_PTR(err);
 	}
-	/* Do not let module be unloaded if server context is alive */
-	__module_get(THIS_MODULE);
 
 	return ctx;
 }
@@ -2066,7 +2064,6 @@ void rtrs_srv_close(struct rtrs_srv_ctx *ctx)
 	rdma_destroy_id(ctx->cm_id_ib);
 	close_ctx(ctx);
 	free_srv_ctx(ctx);
-	module_put(THIS_MODULE);
 }
 EXPORT_SYMBOL(rtrs_srv_close);
 

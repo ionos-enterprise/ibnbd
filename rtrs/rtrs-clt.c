@@ -2698,9 +2698,6 @@ struct rtrs_clt *rtrs_clt_open(struct rtrs_clt_ops *ops,
 	 */
 	clt->opened = true;
 
-	/* Do not let module be unloaded if client is alive */
-	__module_get(THIS_MODULE);
-
 	return clt;
 
 close_all_sess:
@@ -2735,7 +2732,6 @@ void rtrs_clt_close(struct rtrs_clt *clt)
 		free_sess(sess);
 	}
 	free_clt(clt);
-	module_put(THIS_MODULE);
 }
 EXPORT_SYMBOL(rtrs_clt_close);
 
