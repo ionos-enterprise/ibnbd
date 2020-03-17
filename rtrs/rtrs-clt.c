@@ -2576,7 +2576,11 @@ static struct rtrs_clt *alloc_clt(const char *sessname, size_t paths_num,
 	err = dev_set_name(&clt->dev, "%s", sessname);
 	if (err)
 		goto percpu_free;
-
+	/*
+	 * Suppress user space notification until
+	 * sysfs files are created
+	 */
+	dev_set_uevent_suppress(&clt->dev, true);
 	err = device_register(&clt->dev);
 	if (err)
 		goto put;
@@ -2584,6 +2588,8 @@ static struct rtrs_clt *alloc_clt(const char *sessname, size_t paths_num,
 	err = rtrs_clt_create_sysfs_root_folders(clt);
 	if (err)
 		goto dev_unregister;
+	dev_set_uevent_suppress(&clt->dev, false);
+	kobject_uevent(&clt->dev.kobj, KOBJ_ADD);
 
 	return clt;
 
