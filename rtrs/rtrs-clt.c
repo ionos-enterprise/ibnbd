@@ -1464,6 +1464,7 @@ static void free_sess(struct rtrs_clt_sess *sess)
 {
 	rtrs_clt_free_stats(&sess->stats);
 	free_percpu(sess->mp_skip_entry);
+	mutex_destroy(&sess->init_mutex);
 	kfree(sess->s.con);
 	kfree(sess->rbufs);
 	kfree(sess);
@@ -2619,6 +2620,8 @@ static void free_clt(struct rtrs_clt *clt)
 	wait_for_inflight_permits(clt);
 	free_permits(clt);
 	free_percpu(clt->pcpu_path);
+	mutex_destroy(&clt->paths_ev_mutex);
+	mutex_destroy(&clt->paths_mutex);
 	/* release callback will free clt in last put */
 	device_unregister(&clt->dev);
 }

@@ -181,6 +181,7 @@ static void destroy_device(struct rnbd_srv_dev *dev)
 		 */
 		rnbd_srv_destroy_dev_sysfs(dev);
 
+	mutex_destroy(&dev->lock);
 	kfree(dev);
 }
 
@@ -248,6 +249,7 @@ out:
 	list_del(&srv_sess->list);
 	mutex_unlock(&sess_lock);
 
+	mutex_destroy(&srv_sess->lock);
 	kfree(srv_sess);
 }
 

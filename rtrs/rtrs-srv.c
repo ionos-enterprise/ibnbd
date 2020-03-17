@@ -1376,6 +1376,8 @@ static void free_srv(struct rtrs_srv *srv)
 	for (i = 0; i < srv->queue_depth; i++)
 		mempool_free(srv->chunks[i], chunk_pool);
 	kfree(srv->chunks);
+	mutex_destroy(&srv->paths_mutex);
+	mutex_destroy(&srv->paths_ev_mutex);
 	/* last put to release the srv structure */
 	put_device(&srv->dev);
 }
@@ -2018,6 +2020,7 @@ static struct rtrs_srv_ctx *alloc_srv_ctx(struct rtrs_srv_ops *ops)
 static void free_srv_ctx(struct rtrs_srv_ctx *ctx)
 {
 	WARN_ON(!list_empty(&ctx->srv_list));
+	mutex_destroy(&ctx->srv_mutex);
 	kfree(ctx);
 }
 

@@ -58,6 +58,7 @@ static void rnbd_clt_put_dev(struct rnbd_clt_dev *dev)
 		mutex_unlock(&ida_lock);
 		kfree(dev->hw_queues);
 		rnbd_clt_put_sess(dev->sess);
+		mutex_destroy(&dev->lock);
 		kfree(dev);
 	}
 }
@@ -784,6 +785,7 @@ static void free_sess(struct rnbd_clt_session *sess)
 	}
 	free_percpu(sess->cpu_queues);
 	free_percpu(sess->cpu_rr);
+	mutex_destroy(&sess->lock);
 	kfree(sess);
 }
 
