@@ -2574,36 +2574,33 @@ static struct rtrs_clt *alloc_clt(const char *sessname, size_t paths_num,
 	clt->dev.class = rtrs_clt_dev_class;
 	clt->dev.release = rtrs_clt_dev_release;
 	err = dev_set_name(&clt->dev, "%s", sessname);
-	if (err)
-		goto percpu_free;
+	if (err) {
+		free_percpu(clt->pcpu_path);
+		kfree(clt);
+		return ERR_PTR(err);
+	}
 	/*
 	 * Suppress user space notification until
 	 * sysfs files are created
 	 */
 	dev_set_uevent_suppress(&clt->dev, true);
 	err = device_register(&clt->dev);
-	if (err)
-		goto put;
+	if (err) {
+		free_percpu(clt->pcpu_path);
+		put_device(&clt->dev);
+		return ERR_PTR(err);
+	}
 
 	err = rtrs_clt_create_sysfs_root_folders(clt);
-	if (err)
-		goto dev_unregister;
+	if (err) {
+		free_percpu(clt->pcpu_path);
+		device_unregister(&clt->dev);
+		return ERR_PTR(err);
+	}
 	dev_set_uevent_suppress(&clt->dev, false);
 	kobject_uevent(&clt->dev.kobj, KOBJ_ADD);
 
 	return clt;
-
-dev_unregister:
-	device_unregister(&clt->dev);
-percpu_free:
-	free_percpu(clt->pcpu_path);
-	kfree(clt);
-	return ERR_PTR(err);
-put:
-	free_percpu(clt->pcpu_path);
-	/* release callback will free clt in last put */
-	put_device(&clt->dev);
-	return ERR_PTR(err);
 }
 
 static void wait_for_inflight_permits(struct rtrs_clt *clt)
