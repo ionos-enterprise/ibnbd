@@ -158,9 +158,7 @@ static int rtrs_srv_create_once_sysfs_root_folders(struct rtrs_srv_sess *sess)
 	mutex_lock(&srv->paths_mutex);
 	if (srv->dev_ref++) {
 		/*
-		 * Just increase device reference.  We can't use get_device()
-		 * because we need to unregister device when ref goes to 0,
-		 * not just to put it.
+		 * Device needs to be registered only on the first session
 		 */
 		goto unlock;
 	}
