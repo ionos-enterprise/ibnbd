@@ -2751,7 +2751,6 @@ int rtrs_clt_disconnect_from_sysfs(struct rtrs_clt_sess *sess)
 int rtrs_clt_remove_path_from_sysfs(struct rtrs_clt_sess *sess,
 				     const struct attribute *sysfs_self)
 {
-	struct rtrs_clt *clt = sess->clt;
 	enum rtrs_clt_state old_state;
 	bool changed;
 
