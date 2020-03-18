@@ -2691,13 +2691,6 @@ struct rtrs_clt *rtrs_clt_open(struct rtrs_clt_ops *ops,
 	if (err)
 		goto close_all_sess;
 
-	/*
-	 * There is a race if someone decides to completely remove just
-	 * newly created path using sysfs entry.  To avoid the race we
-	 * use simple 'opened' flag, see rtrs_clt_remove_path_from_sysfs().
-	 */
-	clt->opened = true;
-
 	return clt;
 
 close_all_sess:
@@ -2776,13 +2769,6 @@ int rtrs_clt_remove_path_from_sysfs(struct rtrs_clt_sess *sess,
 	bool changed;
 
 	/*
-	 * That can happen only when userspace tries to remove path
-	 * very early, when rtrs_clt_open() is not yet finished.
-	 */
-	if (!clt->opened)
-		return -EBUSY;
-
-	/*
 	 * Continue stopping path till state was changed to DEAD or
 	 * state was observed as DEAD:
 	 * 1. State was changed to DEAD - we were fast and nobody
@@ -2798,9 +2784,6 @@ int rtrs_clt_remove_path_from_sysfs(struct rtrs_clt_sess *sess,
 							&old_state);
 	} while (!changed && old_state != RTRS_CLT_DEAD);
 
-	/*
-	 * If state was successfully changed to DEAD, commit suicide.
-	 */
 	if (likely(changed)) {
 		rtrs_clt_destroy_sess_files(sess, sysfs_self);
 		rtrs_clt_remove_path_from_arr(sess);

@@ -155,7 +155,6 @@ struct rtrs_clt {
 	size_t			paths_num;
 	struct rtrs_clt_sess
 	__rcu * __percpu	*pcpu_path;
-	bool			opened;
 	uuid_t			paths_uuid;
 	int			paths_up;
 	struct mutex		paths_mutex;
