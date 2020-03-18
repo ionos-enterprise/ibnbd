@@ -2176,20 +2176,7 @@ static void rtrs_clt_close_work(struct work_struct *work)
 
 	sess = container_of(work, struct rtrs_clt_sess, close_work);
 
-	cancel_delayed_work_sync(&sess->reconnect_dwork);
 	rtrs_clt_stop_and_destroy_conns(sess);
-	/*
-	 * Sounds stupid, huh?  No, it is not.  Consider this sequence:
-	 *
-	 *   #CPU0                              #CPU1
-	 *   1.  CONNECTED->RECONNECTING
-	 *   2.                                 RECONNECTING->CLOSING
-	 *   3.  queue_work(&reconnect_dwork)
-	 *   4.                                 queue_work(&close_work);
-	 *   5.  reconnect_work();              close_work();
-	 *
-	 * To avoid that case do cancel twice: before and after.
-	 */
 	cancel_delayed_work_sync(&sess->reconnect_dwork);
 	rtrs_clt_change_state(sess, RTRS_CLT_CLOSED);
 }
