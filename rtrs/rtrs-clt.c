@@ -2158,14 +2158,6 @@ static void rtrs_clt_add_path_to_arr(struct rtrs_clt_sess *sess,
 	mutex_lock(&clt->paths_mutex);
 	clt->paths_num++;
 
-	/*
-	 * Firstly increase paths_num, wait for GP and then
-	 * add path to the list.  Why?  Since we add path with
-	 * !CONNECTED state explanation is similar to what has
-	 * been written in rtrs_clt_remove_path_from_arr().
-	 */
-	synchronize_rcu();
-
 	list_add_tail_rcu(&sess->s.entry, &clt->paths_list);
 	mutex_unlock(&clt->paths_mutex);
 }
