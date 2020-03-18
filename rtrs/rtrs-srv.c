@@ -1673,6 +1673,7 @@ static struct rtrs_srv_sess *__alloc_sess(struct rtrs_srv *srv,
 	}
 	if (__is_path_w_addr_exists(srv, &cm_id->route.addr)) {
 		err = -EEXIST;
+		pr_err("Path with same addr exists\n");
 		goto err;
 	}
 	sess = kzalloc(sizeof(*sess), GFP_KERNEL);
