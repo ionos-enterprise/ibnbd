@@ -102,11 +102,11 @@ rnbd_get_sess_dev(int dev_id, struct rnbd_srv_session *srv_sess)
 	struct rnbd_srv_sess_dev *sess_dev;
 	int ret = 0;
 
-	read_lock(&srv_sess->index_lock);
+	rcu_read_lock();
 	sess_dev = idr_find(&srv_sess->index_idr, dev_id);
 	if (likely(sess_dev))
 		ret = kref_get_unless_zero(&sess_dev->kref);
-	read_unlock(&srv_sess->index_lock);
+	rcu_read_unlock();
 
 	if (!sess_dev || !ret)
 		return ERR_PTR(-ENXIO);
@@ -201,10 +201,10 @@ void rnbd_destroy_sess_dev(struct rnbd_srv_sess_dev *sess_dev)
 {
 	DECLARE_COMPLETION_ONSTACK(dc);
 
-	write_lock(&sess_dev->sess->index_lock);
+	spin_lock(&sess_dev->sess->index_lock);
 	idr_remove(&sess_dev->sess->index_idr, sess_dev->device_id);
-	write_unlock(&sess_dev->sess->index_lock);
-
+	spin_unlock(&sess_dev->sess->index_lock);
+	synchronize_rcu();
 	sess_dev->destroy_comp = &dc;
 	rnbd_put_sess_dev(sess_dev);
 	wait_for_completion(&dc); /* wait for inflights to drop to zero */
@@ -278,7 +278,7 @@ static int create_sess(struct rtrs_srv *rtrs)
 	}
 
 	idr_init(&srv_sess->index_idr);
-	rwlock_init(&srv_sess->index_lock);
+	spin_lock_init(&srv_sess->index_lock);
 	INIT_LIST_HEAD(&srv_sess->sess_dev_list);
 	mutex_init(&srv_sess->lock);
 	mutex_lock(&sess_lock);
@@ -398,7 +398,7 @@ static struct rnbd_srv_sess_dev
 		return ERR_PTR(-ENOMEM);
 
 	idr_preload(GFP_KERNEL);
-	write_lock(&srv_sess->index_lock);
+	spin_lock(&srv_sess->index_lock);
 
 	error = idr_alloc(&srv_sess->index_idr, sess_dev, 0, -1, GFP_NOWAIT);
 	if (error < 0) {
@@ -410,7 +410,7 @@ static struct rnbd_srv_sess_dev
 	error = 0;
 
 out_unlock:
-	write_unlock(&srv_sess->index_lock);
+	spin_unlock(&srv_sess->index_lock);
 	idr_preload_end();
 	if (error) {
 		kfree(sess_dev);
@@ -795,9 +795,10 @@ fill_response:
 	return 0;
 
 free_srv_sess_dev:
-	write_lock(&srv_sess->index_lock);
+	spin_lock(&srv_sess->index_lock);
 	idr_remove(&srv_sess->index_idr, srv_sess_dev->device_id);
-	write_unlock(&srv_sess->index_lock);
+	spin_unlock(&srv_sess->index_lock);
+	synchronize_rcu();
 	kfree(srv_sess_dev);
 srv_dev_put:
 	if (open_msg->access_mode != RNBD_ACCESS_RO) {
