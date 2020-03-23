@@ -114,6 +114,7 @@ install:
 	echo "$(HEADERS_PKG) binary: unstripped-binary-or-object" > $(CURDIR)/debian/$(HEADERS_PKG).lintian-overrides
 	echo "$(HEADERS_PKG) binary: statically-linked-binary" >> $(CURDIR)/debian/$(HEADERS_PKG).lintian-overrides
 	echo "$(HEADERS_PKG) binary: shlib-without-PT_GNU_STACK-section" >> $(CURDIR)/debian/$(HEADERS_PKG).lintian-overrides
+	echo "$(HEADERS_PKG) binary: binary-is-wrong-architecture" >> $(CURDIR)/debian/$(HEADERS_PKG).lintian-overrides
 	#
 	# prepare postinst
 	#
