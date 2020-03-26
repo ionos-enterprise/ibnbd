@@ -2168,8 +2168,8 @@ static void rtrs_clt_close_work(struct work_struct *work)
 
 	sess = container_of(work, struct rtrs_clt_sess, close_work);
 
-	rtrs_clt_stop_and_destroy_conns(sess);
 	cancel_delayed_work_sync(&sess->reconnect_dwork);
+	rtrs_clt_stop_and_destroy_conns(sess);
 	rtrs_clt_change_state(sess, RTRS_CLT_CLOSED);
 }
 
@@ -2484,11 +2484,11 @@ static void rtrs_clt_reconnect_work(struct work_struct *work)
 
 	/* Stop everything */
 	rtrs_clt_stop_and_destroy_conns(sess);
-	rtrs_clt_change_state(sess, RTRS_CLT_CONNECTING);
-
-	err = init_sess(sess);
-	if (err)
-		goto reconnect_again;
+	if (rtrs_clt_change_state(sess, RTRS_CLT_CONNECTING)) {
+		err = init_sess(sess);
+		if (err)
+			goto reconnect_again;
+	}
 
 	return;
 
