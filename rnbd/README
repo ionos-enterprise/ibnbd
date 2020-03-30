@@ -7,7 +7,7 @@ Introduction
 
 RNBD (RDMA Network Block Device) is a pair of kernel modules
 (client and server) that allow for remote access of a block device on
-the server over RTRS protocol using the RDMA (InfiniBand, RoCE, iWarp)
+the server over RTRS protocol using the RDMA (InfiniBand, RoCE, iWARP)
 transport. After being mapped, the remote block devices can be accessed
 on the client side as local block devices.
 
@@ -266,7 +266,7 @@ and the "device_path" that was specified in the map_device operation.
 The default dev_search_path is: "/".
 
 dev_search_path option can also contain %SESSNAME% in order to provide
-different deviec namespaces for different sessions.  See "device_path"
+different device namespaces for different sessions.  See "device_path"
 option for details.
 
 ============================
