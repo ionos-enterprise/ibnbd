@@ -23,6 +23,7 @@ struct rnbd_srv_session {
 	struct rtrs_srv		*rtrs;
 	char			sessname[NAME_MAX];
 	int			queue_depth;
+	struct bio_set		sess_bio_set;
 
 	rwlock_t                index_lock ____cacheline_aligned;
 	struct idr              index_idr;

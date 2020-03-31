@@ -14,6 +14,7 @@
 
 struct rnbd_dev {
 	struct block_device	*bdev;
+	struct bio_set		*ibd_bio_set;
 	fmode_t			blk_open_flags;
 	char			name[BDEVNAME_SIZE];
 	void			(*io_cb)(void *priv, int error);
@@ -29,9 +30,11 @@ struct rnbd_dev_blk_io {
 /**
  * rnbd_dev_open() - Open a device
  * @flags:	open flags
+ * @bs:		bio_set to use during block io,
  * @io_cb:	is called when I/O finished
  */
 struct rnbd_dev *rnbd_dev_open(const char *path, fmode_t flags,
+			       struct bio_set *bs,
 			       void (*io_cb)(void *priv, int error));
 
 /**

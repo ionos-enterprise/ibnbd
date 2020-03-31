@@ -242,6 +242,7 @@ static void destroy_sess(struct rnbd_srv_session *srv_sess)
 
 out:
 	idr_destroy(&srv_sess->index_idr);
+	bioset_exit(&srv_sess->sess_bio_set);
 
 	pr_info("RTRS Session %s disconnected\n", srv_sess->sessname);
 
@@ -270,6 +271,16 @@ static int create_sess(struct rtrs_srv *rtrs)
 		return -ENOMEM;
 
 	srv_sess->queue_depth = rtrs_srv_get_queue_depth(rtrs);
+	err = bioset_init(&srv_sess->sess_bio_set, srv_sess->queue_depth,
+			  offsetof(struct rnbd_dev_blk_io, bio),
+			  BIOSET_NEED_BVECS);
+	if (err) {
+		pr_err("Allocating srv_session for session %s failed\n",
+		       sessname);
+		kfree(srv_sess);
+		return err;
+	}
+
 	idr_init(&srv_sess->index_idr);
 	rwlock_init(&srv_sess->index_lock);
 	INIT_LIST_HEAD(&srv_sess->sess_dev_list);
@@ -720,7 +731,8 @@ static int process_msg_open(struct rtrs_srv *rtrs,
 		goto reject;
 	}
 
-	rnbd_dev = rnbd_dev_open(full_path, open_flags, rnbd_endio);
+	rnbd_dev = rnbd_dev_open(full_path, open_flags,
+				   &srv_sess->sess_bio_set, rnbd_endio);
 	if (IS_ERR(rnbd_dev)) {
 		pr_err("Opening device '%s' on session %s failed, failed to open the block device, err: %ld\n",
 		       full_path, srv_sess->sessname, PTR_ERR(rnbd_dev));
