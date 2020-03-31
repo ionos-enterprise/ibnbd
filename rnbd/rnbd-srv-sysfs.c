@@ -76,8 +76,8 @@ static ssize_t read_only_show(struct kobject *kobj, struct kobj_attribute *attr,
 
 	sess_dev = container_of(kobj, struct rnbd_srv_sess_dev, kobj);
 
-	return scnprintf(page, PAGE_SIZE, "%s\n",
-			 (sess_dev->open_flags & FMODE_WRITE) != 0);
+	return scnprintf(page, PAGE_SIZE, "%d\n",
+			 !(sess_dev->open_flags & FMODE_WRITE));
 }
 
 static struct kobj_attribute rnbd_srv_dev_session_ro_attr =
