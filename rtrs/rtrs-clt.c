@@ -2509,7 +2509,7 @@ static void rtrs_clt_dev_release(struct device *dev)
 }
 
 static struct rtrs_clt *alloc_clt(const char *sessname, size_t paths_num,
-				  short port, size_t pdu_sz, void *priv,
+				  u16 port, size_t pdu_sz, void *priv,
 				  void	(*link_ev)(void *priv, enum rtrs_clt_link_ev ev),
 				  unsigned int max_segments,
 				  unsigned int reconnect_delay_sec,

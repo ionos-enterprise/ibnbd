@@ -176,7 +176,7 @@ struct rtrs_srv_ops {
 		       void *priv);
 };
 
-struct rtrs_srv_ctx *rtrs_srv_open(struct rtrs_srv_ops *ops, unsigned int port);
+struct rtrs_srv_ctx *rtrs_srv_open(struct rtrs_srv_ops *ops, u16 port);
 
 void rtrs_srv_close(struct rtrs_srv_ctx *ctx);
 
@@ -186,7 +186,7 @@ void rtrs_srv_set_sess_priv(struct rtrs_srv *sess, void *priv);
 
 int rtrs_srv_get_sess_name(struct rtrs_srv *sess, char *sessname, size_t len);
 
-int rtrs_addr_to_sockaddr(const char *str, size_t len, short port,
+int rtrs_addr_to_sockaddr(const char *str, size_t len, u16 port,
 			  struct rtrs_addr *addr);
 
 int sockaddr_to_str(const struct sockaddr *addr, char *buf, size_t len);

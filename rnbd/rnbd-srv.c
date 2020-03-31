@@ -18,11 +18,11 @@
 MODULE_DESCRIPTION("RDMA Network Block Device Server");
 MODULE_LICENSE("GPL");
 
-static int __read_mostly port_nr = RTRS_PORT;
+static u16 port_nr = RTRS_PORT;
 
-module_param_named(port_nr, port_nr, int, 0444);
+module_param_named(port_nr, port_nr, ushort, 0444);
 MODULE_PARM_DESC(port_nr,
-		 "The port number server is listening on (default: "
+		 "The port number the server is listening on (default: "
 		 __stringify(RTRS_PORT)")");
 
 #define DEFAULT_DEV_SEARCH_PATH "/"

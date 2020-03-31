@@ -482,14 +482,14 @@ EXPORT_SYMBOL(sockaddr_to_str);
  *		separated by comma. I.e. "ip:1.1.1.1,ip:1.1.1.2". If str
  *		contains only one address it's considered to be destination.
  * @len:	string length
- * @port:	will be set to port.
+ * @port:	Destination port number.
  * @addr:	will be set to the source/destination address or to NULL
  *		if str doesn't contain any sorce address.
  *
  * Returns zero if conversion successful. Non-zero otherwise.
  */
-int rtrs_addr_to_sockaddr(const char *str, size_t len, short port,
-			   struct rtrs_addr *addr)
+int rtrs_addr_to_sockaddr(const char *str, size_t len, u16 port,
+			  struct rtrs_addr *addr)
 {
 	const char *d;
 

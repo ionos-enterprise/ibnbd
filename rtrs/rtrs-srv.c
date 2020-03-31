@@ -1939,7 +1939,7 @@ err_out:
 	return ERR_PTR(ret);
 }
 
-static int rtrs_srv_rdma_init(struct rtrs_srv_ctx *ctx, unsigned int port)
+static int rtrs_srv_rdma_init(struct rtrs_srv_ctx *ctx, u16 port)
 {
 	struct sockaddr_in6 sin = {
 		.sin6_family	= AF_INET6,
@@ -2013,7 +2013,7 @@ static void free_srv_ctx(struct rtrs_srv_ctx *ctx)
  *
  * Return a valid pointer on success otherwise PTR_ERR.
  */
-struct rtrs_srv_ctx *rtrs_srv_open(struct rtrs_srv_ops *ops, unsigned int port)
+struct rtrs_srv_ctx *rtrs_srv_open(struct rtrs_srv_ops *ops, u16 port)
 {
 	struct rtrs_srv_ctx *ctx;
 	int err;

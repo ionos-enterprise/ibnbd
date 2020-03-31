@@ -160,7 +160,7 @@ struct rtrs_clt {
 	struct mutex		paths_mutex;
 	struct mutex		paths_ev_mutex;
 	char			sessname[NAME_MAX];
-	short			port;
+	u16			port;
 	unsigned int		max_reconnect_attempts;
 	unsigned int		reconnect_delay_sec;
 	unsigned int		max_segments;
