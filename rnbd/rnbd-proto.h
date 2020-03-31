@@ -20,9 +20,7 @@
 #define RNBD_PROTO_VER_MAJOR 2
 #define RNBD_PROTO_VER_MINOR 0
 
-#define RNBD_PROTO_VER_STRING __stringify(RNBD_PROTO_VER_MAJOR) "." \
-			       __stringify(RNBD_PROTO_VER_MINOR)
-
+/* The default port number the RTRS server is listening on. */
 #define RTRS_PORT 1234
 
 /**
