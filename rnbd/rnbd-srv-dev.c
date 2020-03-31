@@ -28,9 +28,9 @@ struct rnbd_dev *rnbd_dev_open(const char *path, fmode_t flags,
 	if (ret)
 		goto err;
 
-	dev->blk_open_flags	= flags;
+	dev->blk_open_flags = flags;
 	bdevname(dev->bdev, dev->name);
-	dev->ibd_bio_set	= bs;
+	dev->ibd_bio_set = bs;
 
 	return dev;
 
@@ -117,14 +117,14 @@ int rnbd_dev_submit_io(struct rnbd_dev *dev, sector_t sector, void *data,
 
 	io = container_of(bio, struct rnbd_dev_blk_io, bio);
 
-	io->dev		= dev;
-	io->priv	= priv;
+	io->dev	= dev;
+	io->priv = priv;
 
-	bio->bi_end_io		= rnbd_dev_bi_end_io;
-	bio->bi_private		= io;
-	bio->bi_opf		= rnbd_to_bio_flags(flags);
-	bio->bi_iter.bi_sector	= sector;
-	bio->bi_iter.bi_size	= bi_size;
+	bio->bi_end_io = rnbd_dev_bi_end_io;
+	bio->bi_private	= io;
+	bio->bi_opf = rnbd_to_bio_flags(flags);
+	bio->bi_iter.bi_sector = sector;
+	bio->bi_iter.bi_size = bi_size;
 	bio_set_prio(bio, prio);
 	bio_set_dev(bio, dev->bdev);
 
