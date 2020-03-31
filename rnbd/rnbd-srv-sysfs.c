@@ -44,7 +44,7 @@ int rnbd_srv_create_dev_sysfs(struct rnbd_srv_dev *dev,
 				   &ktype,
 				   &dev->dev_kobj, "sessions");
 	if (ret)
-		goto put_dev_kojb;
+		goto put_dev_kobj;
 
 	bdev_kobj = &disk_to_dev(bdev->bd_disk)->kobj;
 	ret = sysfs_create_link(&dev->dev_kobj, bdev_kobj, "block_dev");
@@ -55,7 +55,7 @@ int rnbd_srv_create_dev_sysfs(struct rnbd_srv_dev *dev,
 
 put_sess_kobj:
 	kobject_put(&dev->dev_sessions_kobj);
-put_dev_kojb:
+put_dev_kobj:
 	kobject_put(&dev->dev_kobj);
 	return ret;
 }
