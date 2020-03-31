@@ -612,7 +612,7 @@ static char *rnbd_srv_get_full_path(struct rnbd_srv_session *srv_sess,
 		len = snprintf(full_path, PATH_MAX, "%.*s/%s/%s", len,
 			       dev_search_path, srv_sess->sessname, dev_name);
 		if (len >= PATH_MAX) {
-			pr_err("Tooooo looong path: %s, %s, %s\n",
+			pr_err("Too long path: %s, %s, %s\n",
 			       dev_search_path, srv_sess->sessname, dev_name);
 			kfree(full_path);
 			return ERR_PTR(-EINVAL);
