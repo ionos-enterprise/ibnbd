@@ -185,7 +185,6 @@ static inline void rnbd_clt_dev_requeue(struct rnbd_queue *q)
 }
 
 enum {
-	RNBD_DELAY_10ms   = 10,
 	RNBD_DELAY_IFBUSY = -1,
 };
 
@@ -1130,7 +1129,7 @@ static void rnbd_clt_dev_kick_mq_queue(struct rnbd_clt_dev *dev,
 		 * If session is not busy we have to restart
 		 * the queue ourselves.
 		 */
-		blk_mq_delay_run_hw_queue(hctx, RNBD_DELAY_10ms);
+		blk_mq_delay_run_hw_queue(hctx, 10/*ms*/);
 }
 
 static blk_status_t rnbd_queue_rq(struct blk_mq_hw_ctx *hctx,
@@ -1156,7 +1155,7 @@ static blk_status_t rnbd_queue_rq(struct blk_mq_hw_ctx *hctx,
 	if (likely(err == 0))
 		return BLK_STS_OK;
 	if (unlikely(err == -EAGAIN || err == -ENOMEM)) {
-		rnbd_clt_dev_kick_mq_queue(dev, hctx, RNBD_DELAY_10ms);
+		rnbd_clt_dev_kick_mq_queue(dev, hctx, 10/*ms*/);
 		rnbd_put_permit(dev->sess, iu->permit);
 		return BLK_STS_RESOURCE;
 	}
