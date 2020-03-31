@@ -44,18 +44,18 @@ int rnbd_srv_create_dev_sysfs(struct rnbd_srv_dev *dev,
 				   &ktype,
 				   &dev->dev_kobj, "sessions");
 	if (ret)
-		goto err;
+		goto put_dev_kojb;
 
 	bdev_kobj = &disk_to_dev(bdev->bd_disk)->kobj;
 	ret = sysfs_create_link(&dev->dev_kobj, bdev_kobj, "block_dev");
 	if (ret)
-		goto err2;
+		goto put_sess_kobj;
 
 	return 0;
 
-err2:
+put_sess_kobj:
 	kobject_put(&dev->dev_sessions_kobj);
-err:
+put_dev_kojb:
 	kobject_put(&dev->dev_kobj);
 	return ret;
 }
@@ -77,7 +77,7 @@ static ssize_t read_only_show(struct kobject *kobj, struct kobj_attribute *attr,
 	sess_dev = container_of(kobj, struct rnbd_srv_sess_dev, kobj);
 
 	return scnprintf(page, PAGE_SIZE, "%s\n",
-			 (sess_dev->open_flags & FMODE_WRITE) ? "0" : "1");
+			 (sess_dev->open_flags & FMODE_WRITE) != 0);
 }
 
 static struct kobj_attribute rnbd_srv_dev_session_ro_attr =
