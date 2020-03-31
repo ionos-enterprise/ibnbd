@@ -59,15 +59,16 @@ static void rnbd_clt_put_dev(struct rnbd_clt_dev *dev)
 {
 	might_sleep();
 
-	if (refcount_dec_and_test(&dev->refcount)) {
-		mutex_lock(&ida_lock);
-		ida_simple_remove(&index_ida, dev->clt_device_id);
-		mutex_unlock(&ida_lock);
-		kfree(dev->hw_queues);
-		rnbd_clt_put_sess(dev->sess);
-		mutex_destroy(&dev->lock);
-		kfree(dev);
-	}
+	if (!refcount_dec_and_test(&dev->refcount))
+		return;
+
+	mutex_lock(&ida_lock);
+	ida_simple_remove(&index_ida, dev->clt_device_id);
+	mutex_unlock(&ida_lock);
+	kfree(dev->hw_queues);
+	rnbd_clt_put_sess(dev->sess);
+	mutex_destroy(&dev->lock);
+	kfree(dev);
 }
 
 static inline bool rnbd_clt_get_dev(struct rnbd_clt_dev *dev)
