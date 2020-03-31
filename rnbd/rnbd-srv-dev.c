@@ -13,8 +13,7 @@
 #include "rnbd-log.h"
 
 struct rnbd_dev *rnbd_dev_open(const char *path, fmode_t flags,
-			       struct bio_set *bs,
-			       void (*io_cb)(void *priv, int error))
+			       struct bio_set *bs)
 {
 	struct rnbd_dev *dev;
 	int ret;
@@ -30,7 +29,6 @@ struct rnbd_dev *rnbd_dev_open(const char *path, fmode_t flags,
 		goto err;
 
 	dev->blk_open_flags	= flags;
-	dev->io_cb		= io_cb;
 	bdevname(dev->bdev, dev->name);
 	dev->ibd_bio_set	= bs;
 
@@ -51,7 +49,7 @@ static void rnbd_dev_bi_end_io(struct bio *bio)
 {
 	struct rnbd_dev_blk_io *io = bio->bi_private;
 
-	io->dev->io_cb(io->priv, blk_status_to_errno(bio->bi_status));
+	rnbd_endio(io->priv, blk_status_to_errno(bio->bi_status));
 	bio_put(bio);
 }
 

@@ -84,7 +84,7 @@ static inline void rnbd_put_sess_dev(struct rnbd_srv_sess_dev *sess_dev)
 	kref_put(&sess_dev->kref, rnbd_sess_dev_release);
 }
 
-static void rnbd_endio(void *priv, int error)
+void rnbd_endio(void *priv, int error)
 {
 	struct rnbd_io_private *rnbd_priv = priv;
 	struct rnbd_srv_sess_dev *sess_dev = rnbd_priv->sess_dev;
@@ -732,7 +732,7 @@ static int process_msg_open(struct rtrs_srv *rtrs,
 	}
 
 	rnbd_dev = rnbd_dev_open(full_path, open_flags,
-				   &srv_sess->sess_bio_set, rnbd_endio);
+				 &srv_sess->sess_bio_set);
 	if (IS_ERR(rnbd_dev)) {
 		pr_err("Opening device '%s' on session %s failed, failed to open the block device, err: %ld\n",
 		       full_path, srv_sess->sessname, PTR_ERR(rnbd_dev));
