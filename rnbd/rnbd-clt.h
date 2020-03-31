@@ -20,8 +20,16 @@
 #include "rnbd-proto.h"
 #include "rnbd-log.h"
 
+/* Max. number of segments per IO request, Mellanox Connect X ~ Connect X5,
+ * choose minimial 30 for all, minus 1 for internal protocol, so 29.
+ */
 #define BMAX_SEGMENTS 29
+/*  time in seconds between reconnect tries, default to 30 s */
 #define RECONNECT_DELAY 30
+/*
+ * Number of times to reconnect on error before giving up, 0 for * disabled,
+ * -1 for forever
+ */
 #define MAX_RECONNECTS -1
 
 enum rnbd_clt_dev_state {
