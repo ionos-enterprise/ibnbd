@@ -31,6 +31,7 @@ enum {
 	RNBD_OPT_ERR		= 0,
 	RNBD_OPT_PATH		= 1 << 0,
 	RNBD_OPT_DEV_PATH	= 1 << 1,
+	RNBD_OPT_DEST_PORT	= 1 << 2,
 	RNBD_OPT_ACCESS_MODE	= 1 << 3,
 	RNBD_OPT_SESSNAME	= 1 << 6,
 };
@@ -44,6 +45,7 @@ static const unsigned int rnbd_opt_mandatory[] = {
 static const match_table_t rnbd_opt_tokens = {
 	{RNBD_OPT_PATH,		"path=%s"	},
 	{RNBD_OPT_DEV_PATH,	"device_path=%s"},
+	{RNBD_OPT_DEV_PATH,	"dest_port=%s"},
 	{RNBD_OPT_ACCESS_MODE,	"access_mode=%s"},
 	{RNBD_OPT_SESSNAME,	"sessname=%s"	},
 	{RNBD_OPT_ERR,		NULL		},
@@ -138,6 +140,15 @@ static int rnbd_clt_parse_map_options(const char *buf, size_t max_path_cnt,
 			}
 			strlcpy(opt->pathname, p, NAME_MAX);
 			kfree(p);
+			break;
+
+		case RNBD_OPT_DEST_PORT:
+			if (match_int(args, &token) || token < 1) {
+				pr_err("bad destination port number parameter '%s'\n",
+				       p);
+				goto out;
+			}
+			srv_port_nr = token;
 			break;
 
 		case RNBD_OPT_ACCESS_MODE:
