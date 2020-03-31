@@ -22,6 +22,8 @@ struct rnbd_dev {
 struct rnbd_dev_blk_io {
 	struct rnbd_dev *dev;
 	void		 *priv;
+	/* have to be last member for front_pad usage of bioset_init */
+	struct bio	bio;
 };
 
 /**
