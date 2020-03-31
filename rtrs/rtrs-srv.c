@@ -1286,6 +1286,16 @@ int rtrs_srv_get_sess_name(struct rtrs_srv *srv, char *sessname, size_t len)
 }
 EXPORT_SYMBOL(rtrs_srv_get_sess_name);
 
+/**
+ * rtrs_srv_get_sess_qdepth() - Get rtrs_srv qdepth.
+ * @srv:	Session
+ */
+int rtrs_srv_get_queue_depth(struct rtrs_srv *srv)
+{
+	return srv->queue_depth;
+}
+EXPORT_SYMBOL(rtrs_srv_get_queue_depth);
+
 static int find_next_bit_ring(struct rtrs_srv_sess *sess)
 {
 	struct ib_device *ib_dev = sess->s.dev->ib_dev;

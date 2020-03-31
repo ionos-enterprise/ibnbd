@@ -186,6 +186,8 @@ void rtrs_srv_set_sess_priv(struct rtrs_srv *sess, void *priv);
 
 int rtrs_srv_get_sess_name(struct rtrs_srv *sess, char *sessname, size_t len);
 
+int rtrs_srv_get_queue_depth(struct rtrs_srv *sess);
+
 int rtrs_addr_to_sockaddr(const char *str, size_t len, u16 port,
 			  struct rtrs_addr *addr);
 

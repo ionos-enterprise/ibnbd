@@ -269,6 +269,7 @@ static int create_sess(struct rtrs_srv *rtrs)
 	if (!srv_sess)
 		return -ENOMEM;
 
+	srv_sess->queue_depth = rtrs_srv_get_queue_depth(rtrs);
 	idr_init(&srv_sess->index_idr);
 	rwlock_init(&srv_sess->index_lock);
 	INIT_LIST_HEAD(&srv_sess->sess_dev_list);
