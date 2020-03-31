@@ -165,9 +165,9 @@ err:
 
 static void destroy_device(struct rnbd_srv_dev *dev)
 {
-	WARN(!list_empty(&dev->sess_dev_list),
-	     "Device %s is being destroyed but still in use!\n",
-	     dev->id);
+	WARN_ONCE(!list_empty(&dev->sess_dev_list),
+		  "Device %s is being destroyed but still in use!\n",
+		  dev->id);
 
 	spin_lock(&dev_lock);
 	list_del(&dev->list);
@@ -307,7 +307,7 @@ static int rnbd_srv_link_ev(struct rtrs_srv *rtrs,
 		return create_sess(rtrs);
 
 	case RTRS_SRV_LINK_EV_DISCONNECTED:
-		if (WARN_ON(!srv_sess))
+		if (WARN_ON_ONCE(!srv_sess))
 			return -EINVAL;
 
 		destroy_sess(srv_sess);
@@ -361,7 +361,7 @@ static int rnbd_srv_rdma_ev(struct rtrs_srv *rtrs, void *priv,
 	int ret = 0;
 	u16 type;
 
-	if (WARN_ON(!srv_sess))
+	if (WARN_ON_ONCE(!srv_sess))
 		return -ENODEV;
 
 	type = le16_to_cpu(hdr->type);
