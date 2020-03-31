@@ -966,14 +966,14 @@ static void rnbd_client_release(struct gendisk *gen, fmode_t mode)
 }
 
 static int rnbd_client_getgeo(struct block_device *block_device,
-			       struct hd_geometry *geo)
+			      struct hd_geometry *geo)
 {
 	u64 size;
 	struct rnbd_clt_dev *dev;
 
 	dev = block_device->bd_disk->private_data;
 	size = dev->size * (dev->logical_block_size / SECTOR_SIZE);
-	geo->cylinders	= (size & ~0x3f) >> 6;	/* size/64 */
+	geo->cylinders	= size >> 6;	/* size/64 */
 	geo->heads	= 4;
 	geo->sectors	= 16;
 	geo->start	= 0;
