@@ -435,7 +435,7 @@ static void msg_conf(void *priv, int errno)
 	schedule_work(&iu->work);
 }
 
-enum {
+enum wait_type {
 	NO_WAIT = 0,
 	WAIT    = 1
 };
@@ -444,7 +444,7 @@ static int send_usr_msg(struct rtrs_clt *rtrs, int dir,
 			struct rnbd_iu *iu, struct kvec *vec, size_t nr,
 			size_t len, struct scatterlist *sg, unsigned int sg_len,
 			void (*conf)(struct work_struct *work),
-			int *errno, bool wait)
+			int *errno, enum wait_type wait)
 {
 	int err;
 	struct rtrs_clt_req_ops req_ops;
