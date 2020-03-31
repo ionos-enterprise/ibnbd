@@ -109,13 +109,8 @@ int rnbd_dev_submit_io(struct rnbd_dev *dev, sector_t sector, void *data,
 		       size_t len, u32 bi_size, enum rnbd_io_flags flags,
 		       short prio, void *priv)
 {
-	struct request_queue *q = bdev_get_queue(dev->bdev);
 	struct rnbd_dev_blk_io *io;
 	struct bio *bio;
-
-	/* check if the buffer is suitable for bdev */
-	if (WARN_ON(!blk_rq_aligned(q, (unsigned long)data, len)))
-		return -EINVAL;
 
 	/* Generate bio with pages pointing to the rdma buffer */
 	bio = rnbd_bio_map_kern(data, dev->ibd_bio_set, len, GFP_KERNEL);
