@@ -111,7 +111,7 @@ static int rnbd_clt_parse_map_options(const char *buf, size_t max_path_cnt,
 				goto out;
 			}
 
-			ret = rtrs_addr_to_sockaddr(p, strlen(p), RTRS_PORT,
+			ret = rtrs_addr_to_sockaddr(p, strlen(p), srv_port_nr,
 						     &opt->paths[p_cnt]);
 			if (ret) {
 				pr_err("Can't parse path %s: %d\n", p, ret);

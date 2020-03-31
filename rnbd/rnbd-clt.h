@@ -123,6 +123,7 @@ struct rnbd_clt_dev {
 	struct work_struct	unmap_on_rmmod_work;
 };
 
+extern u16 srv_port_nr;
 /* rnbd-clt.c */
 
 struct rnbd_clt_dev *rnbd_clt_map_device(const char *sessname,

@@ -21,6 +21,13 @@
 MODULE_DESCRIPTION("RDMA Network Block Device Client");
 MODULE_LICENSE("GPL");
 
+u16 srv_port_nr = RTRS_PORT;
+
+module_param_named(srv_port_nr, srv_port_nr, ushort, 0444);
+MODULE_PARM_DESC(srv_port_nr,
+		 "The port number the server is listening on (default: "
+		 __stringify(RTRS_PORT)")");
+
 static int rnbd_client_major;
 static DEFINE_IDA(index_ida);
 static DEFINE_MUTEX(ida_lock);
@@ -1213,10 +1220,10 @@ find_and_get_or_create_sess(const char *sessname,
 	 * Nothing was found, establish rtrs connection and proceed further.
 	 */
 	sess->rtrs = rtrs_clt_open(&rtrs_ops, sessname,
-				     paths, path_cnt, RTRS_PORT,
-				     sizeof(struct rnbd_iu),
-				     RECONNECT_DELAY, BMAX_SEGMENTS,
-				     MAX_RECONNECTS);
+				   paths, path_cnt, srv_port_nr,
+				   sizeof(struct rnbd_iu),
+				   RECONNECT_DELAY, BMAX_SEGMENTS,
+				   MAX_RECONNECTS);
 	if (IS_ERR(sess->rtrs)) {
 		err = PTR_ERR(sess->rtrs);
 		goto wake_up_and_put;
