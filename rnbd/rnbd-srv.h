@@ -37,7 +37,7 @@ struct rnbd_srv_dev {
 	/* Entry inside global dev_list */
 	struct list_head                list;
 	struct kobject                  dev_kobj;
-	struct kobject                  dev_sessions_kobj;
+	struct kobject                  *dev_sessions_kobj;
 	struct kref                     kref;
 	char				id[NAME_MAX];
 	/* List of rnbd_srv_sess_dev structs */

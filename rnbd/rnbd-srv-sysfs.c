@@ -25,7 +25,7 @@ static struct class *rnbd_dev_class;
 static struct kobject *rnbd_devs_kobj;
 
 static struct kobj_type ktype = {
-	.sysfs_ops	= &kobj_sysfs_ops,
+	.sysfs_ops = &kobj_sysfs_ops,
 };
 
 int rnbd_srv_create_dev_sysfs(struct rnbd_srv_dev *dev,
@@ -40,10 +40,9 @@ int rnbd_srv_create_dev_sysfs(struct rnbd_srv_dev *dev,
 	if (ret)
 		return ret;
 
-	ret = kobject_init_and_add(&dev->dev_sessions_kobj,
-				   &ktype,
-				   &dev->dev_kobj, "sessions");
-	if (ret)
+	dev->dev_sessions_kobj = kobject_create_and_add("sessions",
+							&dev->dev_kobj);
+	if (!dev->dev_sessions_kobj)
 		goto put_dev_kobj;
 
 	bdev_kobj = &disk_to_dev(bdev->bd_disk)->kobj;
@@ -54,7 +53,7 @@ int rnbd_srv_create_dev_sysfs(struct rnbd_srv_dev *dev,
 	return 0;
 
 put_sess_kobj:
-	kobject_put(&dev->dev_sessions_kobj);
+	kobject_put(dev->dev_sessions_kobj);
 put_dev_kobj:
 	kobject_put(&dev->dev_kobj);
 	return ret;
@@ -63,8 +62,8 @@ put_dev_kobj:
 void rnbd_srv_destroy_dev_sysfs(struct rnbd_srv_dev *dev)
 {
 	sysfs_remove_link(&dev->dev_kobj, "block_dev");
-	kobject_del(&dev->dev_sessions_kobj);
-	kobject_put(&dev->dev_sessions_kobj);
+	kobject_del(dev->dev_sessions_kobj);
+	kobject_put(dev->dev_sessions_kobj);
 	kobject_del(&dev->dev_kobj);
 	kobject_put(&dev->dev_kobj);
 }
@@ -154,7 +153,7 @@ int rnbd_srv_create_dev_session_sysfs(struct rnbd_srv_sess_dev *sess_dev)
 	int ret;
 
 	ret = kobject_init_and_add(&sess_dev->kobj, &rnbd_srv_sess_dev_ktype,
-				   &sess_dev->dev->dev_sessions_kobj, "%s",
+				   sess_dev->dev->dev_sessions_kobj, "%s",
 				   sess_dev->sess->sessname);
 	if (ret)
 		return ret;
