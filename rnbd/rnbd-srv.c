@@ -173,16 +173,14 @@ static void destroy_device(struct rnbd_srv_dev *dev)
 	list_del(&dev->list);
 	spin_unlock(&dev_lock);
 
+	mutex_destroy(&dev->lock);
 	if (dev->dev_kobj.state_in_sysfs)
 		/*
 		 * Destroy kobj only if it was really created.
-		 * The following call should be sync, because
-		 *  we free the memory afterwards.
 		 */
 		rnbd_srv_destroy_dev_sysfs(dev);
-
-	mutex_destroy(&dev->lock);
-	kfree(dev);
+	else
+		kfree(dev);
 }
 
 static void destroy_device_cb(struct kref *kref)

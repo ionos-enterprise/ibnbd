@@ -24,19 +24,29 @@ static struct device *rnbd_dev;
 static struct class *rnbd_dev_class;
 static struct kobject *rnbd_devs_kobj;
 
-static struct kobj_type ktype = {
+static void rnbd_srv_dev_release(struct kobject *kobj)
+{
+	struct rnbd_srv_dev *dev;
+
+	dev = container_of(kobj, struct rnbd_srv_dev, dev_kobj);
+
+	kfree(dev);
+}
+
+static struct kobj_type dev_ktype = {
 	.sysfs_ops = &kobj_sysfs_ops,
+	.release = rnbd_srv_dev_release
 };
 
 int rnbd_srv_create_dev_sysfs(struct rnbd_srv_dev *dev,
 			       struct block_device *bdev,
-			       const char *dir_name)
+			       const char *dev_name)
 {
 	struct kobject *bdev_kobj;
 	int ret;
 
-	ret = kobject_init_and_add(&dev->dev_kobj, &ktype,
-				   rnbd_devs_kobj, dir_name);
+	ret = kobject_init_and_add(&dev->dev_kobj, &dev_ktype,
+				   rnbd_devs_kobj, dev_name);
 	if (ret)
 		return ret;
 
