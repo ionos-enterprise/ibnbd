@@ -133,15 +133,11 @@ static struct attribute_group rnbd_srv_default_dev_session_attr_group = {
 
 void rnbd_srv_destroy_dev_session_sysfs(struct rnbd_srv_sess_dev *sess_dev)
 {
-	DECLARE_COMPLETION_ONSTACK(sysfs_compl);
-
 	sysfs_remove_group(&sess_dev->kobj,
 			   &rnbd_srv_default_dev_session_attr_group);
 
-	sess_dev->sysfs_release_compl = &sysfs_compl;
 	kobject_del(&sess_dev->kobj);
 	kobject_put(&sess_dev->kobj);
-	wait_for_completion(&sysfs_compl);
 }
 
 static void rnbd_srv_sess_dev_release(struct kobject *kobj)
@@ -149,8 +145,7 @@ static void rnbd_srv_sess_dev_release(struct kobject *kobj)
 	struct rnbd_srv_sess_dev *sess_dev;
 
 	sess_dev = container_of(kobj, struct rnbd_srv_sess_dev, kobj);
-	if (sess_dev->sysfs_release_compl)
-		complete_all(sess_dev->sysfs_release_compl);
+	rnbd_destroy_sess_dev(sess_dev);
 }
 
 static struct kobj_type rnbd_srv_sess_dev_ktype = {

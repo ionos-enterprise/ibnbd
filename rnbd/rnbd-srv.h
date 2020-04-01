@@ -56,7 +56,6 @@ struct rnbd_srv_sess_dev {
 	struct rnbd_srv_session		*sess;
 	struct rnbd_srv_dev		*dev;
 	struct kobject                  kobj;
-	struct completion		*sysfs_release_compl;
 	u32                             device_id;
 	fmode_t                         open_flags;
 	struct kref			kref;
@@ -75,5 +74,6 @@ int rnbd_srv_create_dev_session_sysfs(struct rnbd_srv_sess_dev *sess_dev);
 void rnbd_srv_destroy_dev_session_sysfs(struct rnbd_srv_sess_dev *sess_dev);
 int rnbd_srv_create_sysfs_files(void);
 void rnbd_srv_destroy_sysfs_files(void);
+void rnbd_destroy_sess_dev(struct rnbd_srv_sess_dev *sess_dev);
 
 #endif /* RNBD_SRV_H */

@@ -197,7 +197,7 @@ static void rnbd_put_srv_dev(struct rnbd_srv_dev *dev)
 	kref_put(&dev->kref, destroy_device_cb);
 }
 
-static void rnbd_destroy_sess_dev(struct rnbd_srv_sess_dev *sess_dev)
+void rnbd_destroy_sess_dev(struct rnbd_srv_sess_dev *sess_dev)
 {
 	DECLARE_COMPLETION_ONSTACK(dc);
 
@@ -207,7 +207,7 @@ static void rnbd_destroy_sess_dev(struct rnbd_srv_sess_dev *sess_dev)
 
 	sess_dev->destroy_comp = &dc;
 	rnbd_put_sess_dev(sess_dev);
-	wait_for_completion(&dc);
+	wait_for_completion(&dc); /* wait for inflights to drop to zero */
 
 	rnbd_dev_close(sess_dev->rnbd_dev);
 	list_del(&sess_dev->sess_list);
@@ -232,10 +232,8 @@ static void destroy_sess(struct rnbd_srv_session *srv_sess)
 
 	mutex_lock(&srv_sess->lock);
 	list_for_each_entry_safe(sess_dev, tmp, &srv_sess->sess_dev_list,
-				 sess_list) {
+				 sess_list)
 		rnbd_srv_destroy_dev_session_sysfs(sess_dev);
-		rnbd_destroy_sess_dev(sess_dev);
-	}
 	mutex_unlock(&srv_sess->lock);
 
 out:
@@ -331,10 +329,9 @@ static int process_msg_close(struct rtrs_srv *rtrs,
 	if (IS_ERR(sess_dev))
 		return 0;
 
-	rnbd_srv_destroy_dev_session_sysfs(sess_dev);
 	rnbd_put_sess_dev(sess_dev);
 	mutex_lock(&srv_sess->lock);
-	rnbd_destroy_sess_dev(sess_dev);
+	rnbd_srv_destroy_dev_session_sysfs(sess_dev);
 	mutex_unlock(&srv_sess->lock);
 	return 0;
 }
