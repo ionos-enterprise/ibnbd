@@ -418,7 +418,7 @@ static void complete_rdma_req(struct rtrs_clt_io_req *req, int errno,
 				req->sg_cnt, req->dir);
 	}
 	if (sess->clt->mp_policy == MP_POLICY_MIN_INFLIGHT)
-		atomic_dec(&sess->stats.inflight);
+		atomic_dec(&sess->stats->inflight);
 
 	req->in_use = false;
 	req->con = NULL;
@@ -807,7 +807,7 @@ static struct rtrs_clt_sess *get_next_path_min_inflight(struct path_it *it)
 		if (unlikely(!list_empty(raw_cpu_ptr(sess->mp_skip_entry))))
 			continue;
 
-		inflight = atomic_read(&sess->stats.inflight);
+		inflight = atomic_read(&sess->stats->inflight);
 
 		if (inflight < min_inflight) {
 			min_inflight = inflight;
@@ -1021,7 +1021,7 @@ static int rtrs_clt_write_req(struct rtrs_clt_io_req *req)
 	if (unlikely(ret)) {
 		rtrs_err(s, "Write request failed: %d\n", ret);
 		if (sess->clt->mp_policy == MP_POLICY_MIN_INFLIGHT)
-			atomic_dec(&sess->stats.inflight);
+			atomic_dec(&sess->stats->inflight);
 		if (req->sg_cnt)
 			ib_dma_unmap_sg(sess->s.dev->ib_dev, req->sglist,
 					req->sg_cnt, req->dir);
@@ -1143,7 +1143,7 @@ static int rtrs_clt_read_req(struct rtrs_clt_io_req *req)
 	if (unlikely(ret)) {
 		rtrs_err(s, "Read request failed: %d\n", ret);
 		if (sess->clt->mp_policy == MP_POLICY_MIN_INFLIGHT)
-			atomic_dec(&sess->stats.inflight);
+			atomic_dec(&sess->stats->inflight);
 		req->need_inv = false;
 		if (req->sg_cnt)
 			ib_dma_unmap_sg(dev->ib_dev, req->sglist,
@@ -1180,7 +1180,7 @@ static int rtrs_clt_failover_req(struct rtrs_clt *clt,
 			continue;
 		}
 		/* Success path */
-		rtrs_clt_inc_failover_cnt(&alive_sess->stats);
+		rtrs_clt_inc_failover_cnt(alive_sess->stats);
 		break;
 	} while_each_path(&it);
 
@@ -1413,6 +1413,10 @@ static struct rtrs_clt_sess *alloc_sess(struct rtrs_clt *clt,
 	if (!sess->s.con)
 		goto err_free_sess;
 
+	sess->stats = kzalloc(sizeof(*sess->stats), GFP_KERNEL);
+	if (!sess->stats)
+		goto err_free_con;
+
 	mutex_init(&sess->init_mutex);
 	uuid_gen(&sess->s.uuid);
 	memcpy(&sess->s.dst_addr, path->dst,
@@ -1439,12 +1443,12 @@ static struct rtrs_clt_sess *alloc_sess(struct rtrs_clt *clt,
 
 	sess->mp_skip_entry = alloc_percpu(typeof(*sess->mp_skip_entry));
 	if (!sess->mp_skip_entry)
-		goto err_free_con;
+		goto err_free_stats;
 
 	for_each_possible_cpu(cpu)
 		INIT_LIST_HEAD(per_cpu_ptr(sess->mp_skip_entry, cpu));
 
-	err = rtrs_clt_init_stats(&sess->stats);
+	err = rtrs_clt_init_stats(sess->stats);
 	if (err)
 		goto err_free_percpu;
 
@@ -1452,6 +1456,8 @@ static struct rtrs_clt_sess *alloc_sess(struct rtrs_clt *clt,
 
 err_free_percpu:
 	free_percpu(sess->mp_skip_entry);
+err_free_stats:
+	kfree(sess->stats);
 err_free_con:
 	kfree(sess->s.con);
 err_free_sess:
@@ -1462,7 +1468,7 @@ err:
 
 static void free_sess(struct rtrs_clt_sess *sess)
 {
-	rtrs_clt_free_stats(&sess->stats);
+	rtrs_clt_free_stats(sess->stats);
 	free_percpu(sess->mp_skip_entry);
 	mutex_destroy(&sess->init_mutex);
 	kfree(sess->s.con);
@@ -1971,7 +1977,7 @@ static void rtrs_clt_sess_up(struct rtrs_clt_sess *sess)
 	/* Mark session as established */
 	sess->established = true;
 	sess->reconnect_attempts = 0;
-	sess->stats.reconnects.successful_cnt++;
+	sess->stats->reconnects.successful_cnt++;
 }
 
 static void rtrs_clt_sess_down(struct rtrs_clt_sess *sess)
@@ -2494,7 +2500,7 @@ static void rtrs_clt_reconnect_work(struct work_struct *work)
 
 reconnect_again:
 	if (rtrs_clt_change_state(sess, RTRS_CLT_RECONNECTING)) {
-		sess->stats.reconnects.fail_cnt++;
+		sess->stats->reconnects.fail_cnt++;
 		delay_ms = clt->reconnect_delay_sec * 1000;
 		queue_delayed_work(rtrs_wq, &sess->reconnect_dwork,
 				   msecs_to_jiffies(delay_ms));

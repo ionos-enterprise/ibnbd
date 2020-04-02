@@ -369,12 +369,12 @@ static ssize_t set_value##_store(struct kobject *kobj,			\
 			     const char *buf, size_t count)		\
 {									\
 	int ret = -EINVAL;						\
-	type *sess = container_of(kobj, type, kobj_stats);		\
+	type *stats = container_of(kobj, type, kobj_stats);		\
 									\
 	if (sysfs_streq(buf, "1"))					\
-		ret = reset(&sess->stats, true);			\
+		ret = reset(stats, true);			\
 	else if (sysfs_streq(buf, "0"))					\
-		ret = reset(&sess->stats, false);			\
+		ret = reset(stats, false);			\
 	if (ret)							\
 		return ret;						\
 									\
@@ -386,9 +386,9 @@ static ssize_t get_value##_show(struct kobject *kobj,			\
 			   struct kobj_attribute *attr,			\
 			   char *page)					\
 {									\
-	type *sess = container_of(kobj, type, kobj_stats);		\
+	type *stats = container_of(kobj, type, kobj_stats);		\
 									\
-	return print(&sess->stats, page, PAGE_SIZE);			\
+	return print(stats, page, PAGE_SIZE);			\
 }
 
 #define STAT_ATTR(type, stat, print, reset)				\

@@ -61,6 +61,7 @@ struct rtrs_clt_stats_pcpu {
 };
 
 struct rtrs_clt_stats {
+	struct kobject				kobj_stats;
 	struct rtrs_clt_stats_pcpu    __percpu	*pcpu_stats;
 	struct rtrs_clt_stats_reconnects	reconnects;
 	atomic_t				inflight;
@@ -141,8 +142,7 @@ struct rtrs_clt_sess {
 	int			max_send_sge;
 	u32			flags;
 	struct kobject		kobj;
-	struct kobject		kobj_stats;
-	struct rtrs_clt_stats  stats;
+	struct rtrs_clt_stats	*stats;
 	/* cache hca_port and hca_name to display in sysfs */
 	u8			hca_port;
 	char                    hca_name[IB_DEVICE_NAME_MAX];

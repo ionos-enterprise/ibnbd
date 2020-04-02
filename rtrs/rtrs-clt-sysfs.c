@@ -20,6 +20,20 @@ static struct kobj_type ktype = {
 	.sysfs_ops = &kobj_sysfs_ops,
 };
 
+static void rtrs_clt_sess_stats_release(struct kobject *kobj)
+{
+	struct rtrs_clt_stats *stats;
+
+	stats = container_of(kobj, struct rtrs_clt_stats, kobj_stats);
+
+	kfree(stats);
+}
+
+static struct kobj_type ktype_stats = {
+	.sysfs_ops = &kobj_sysfs_ops,
+	.release = rtrs_clt_sess_stats_release,
+};
+
 static ssize_t max_reconnect_attempts_show(struct device *dev,
 					   struct device_attribute *attr,
 					   char *page)
@@ -262,19 +276,19 @@ static struct kobj_attribute rtrs_clt_remove_path_attr =
 	__ATTR(remove_path, 0644, rtrs_clt_remove_path_show,
 	       rtrs_clt_remove_path_store);
 
-STAT_ATTR(struct rtrs_clt_sess, cpu_migration,
+STAT_ATTR(struct rtrs_clt_stats, cpu_migration,
 	  rtrs_clt_stats_migration_cnt_to_str,
 	  rtrs_clt_reset_cpu_migr_stats);
 
-STAT_ATTR(struct rtrs_clt_sess, reconnects,
+STAT_ATTR(struct rtrs_clt_stats, reconnects,
 	  rtrs_clt_stats_reconnects_to_str,
 	  rtrs_clt_reset_reconnects_stat);
 
-STAT_ATTR(struct rtrs_clt_sess, rdma,
+STAT_ATTR(struct rtrs_clt_stats, rdma,
 	  rtrs_clt_stats_rdma_to_str,
 	  rtrs_clt_reset_rdma_stats);
 
-STAT_ATTR(struct rtrs_clt_sess, reset_all,
+STAT_ATTR(struct rtrs_clt_stats, reset_all,
 	  rtrs_clt_reset_all_help,
 	  rtrs_clt_reset_all_stats);
 
@@ -283,40 +297,12 @@ static struct attribute *rtrs_clt_stats_attrs[] = {
 	&reconnects_attr.attr,
 	&rdma_attr.attr,
 	&reset_all_attr.attr,
-	NULL,
+	NULL
 };
 
 static struct attribute_group rtrs_clt_stats_attr_group = {
 	.attrs = rtrs_clt_stats_attrs,
 };
-
-static int rtrs_clt_create_stats_files(struct kobject *kobj,
-					struct kobject *kobj_stats)
-{
-	int ret;
-
-	ret = kobject_init_and_add(kobj_stats, &ktype, kobj, "stats");
-	if (ret) {
-		pr_err("Failed to init and add stats kobject, err: %d\n",
-		       ret);
-		return ret;
-	}
-
-	ret = sysfs_create_group(kobj_stats, &rtrs_clt_stats_attr_group);
-	if (ret) {
-		pr_err("failed to create stats sysfs group, err: %d\n",
-		       ret);
-		goto err;
-	}
-
-	return 0;
-
-err:
-	kobject_del(kobj_stats);
-	kobject_put(kobj_stats);
-
-	return ret;
-}
 
 static ssize_t rtrs_clt_hca_port_show(struct kobject *kobj,
 				       struct kobj_attribute *attr,
@@ -417,12 +403,27 @@ int rtrs_clt_create_sess_files(struct rtrs_clt_sess *sess)
 		pr_err("sysfs_create_group(): %d\n", err);
 		goto put_kobj;
 	}
-	err = rtrs_clt_create_stats_files(&sess->kobj, &sess->kobj_stats);
-	if (err)
-		goto put_kobj;
+	err = kobject_init_and_add(&sess->stats->kobj_stats, &ktype_stats,
+				   &sess->kobj, "stats");
+	if (err) {
+		pr_err("kobject_init_and_add: %d\n", err);
+		goto remove_group;
+	}
+
+	err = sysfs_create_group(&sess->stats->kobj_stats,
+				 &rtrs_clt_stats_attr_group);
+	if (err) {
+		pr_err("failed to create stats sysfs group, err: %d\n", err);
+		goto put_kobj_stats;
+	}
 
 	return 0;
 
+put_kobj_stats:
+	kobject_del(&sess->stats->kobj_stats);
+	kobject_put(&sess->stats->kobj_stats);
+remove_group:
+	sysfs_remove_group(&sess->kobj, &rtrs_clt_sess_attr_group);
 put_kobj:
 	kobject_del(&sess->kobj);
 	kobject_put(&sess->kobj);
@@ -434,8 +435,8 @@ void rtrs_clt_destroy_sess_files(struct rtrs_clt_sess *sess,
 				  const struct attribute *sysfs_self)
 {
 	if (sess->kobj.state_in_sysfs) {
-		kobject_del(&sess->kobj_stats);
-		kobject_put(&sess->kobj_stats);
+		kobject_del(&sess->stats->kobj_stats);
+		kobject_put(&sess->stats->kobj_stats);
 		if (sysfs_self)
 			/* To avoid deadlock firstly commit suicide */
 			sysfs_remove_file_self(&sess->kobj, sysfs_self);
