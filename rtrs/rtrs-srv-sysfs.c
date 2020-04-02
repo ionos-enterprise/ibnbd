@@ -178,10 +178,9 @@ static int rtrs_srv_create_once_sysfs_root_folders(struct rtrs_srv_sess *sess)
 		pr_err("device_register(): %d\n", err);
 		goto put;
 	}
-	err = kobject_init_and_add(&srv->kobj_paths, &ktype,
-				   &srv->dev.kobj, "paths");
-	if (err) {
-		pr_err("kobject_init_and_add(): %d\n", err);
+	srv->kobj_paths = kobject_create_and_add("paths", &srv->dev.kobj);
+	if (!srv->kobj_paths) {
+		pr_err("kobject_create_and_add(): %d\n", err);
 		device_unregister(&srv->dev);
 		goto unlock;
 	}
@@ -204,8 +203,8 @@ rtrs_srv_destroy_once_sysfs_root_folders(struct rtrs_srv_sess *sess)
 
 	mutex_lock(&srv->paths_mutex);
 	if (!--srv->dev_ref) {
-		kobject_del(&srv->kobj_paths);
-		kobject_put(&srv->kobj_paths);
+		kobject_del(srv->kobj_paths);
+		kobject_put(srv->kobj_paths);
 		mutex_unlock(&srv->paths_mutex);
 		device_unregister(&srv->dev);
 	} else {
@@ -271,7 +270,7 @@ int rtrs_srv_create_sess_files(struct rtrs_srv_sess *sess)
 	if (err)
 		return err;
 
-	err = kobject_init_and_add(&sess->kobj, &ktype, &srv->kobj_paths,
+	err = kobject_init_and_add(&sess->kobj, &ktype, srv->kobj_paths,
 				   "%s", str);
 	if (err) {
 		rtrs_err(s, "kobject_init_and_add(): %d\n", err);

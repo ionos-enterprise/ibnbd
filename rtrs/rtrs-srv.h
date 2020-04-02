@@ -107,7 +107,7 @@ struct rtrs_srv {
 	struct page		**chunks;
 	struct device		dev;
 	unsigned int		dev_ref;
-	struct kobject		kobj_paths;
+	struct kobject		*kobj_paths;
 };
 
 struct rtrs_srv_ctx {
