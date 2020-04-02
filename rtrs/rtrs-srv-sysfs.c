@@ -13,8 +13,17 @@
 #include "rtrs-srv.h"
 #include "rtrs-log.h"
 
+static void rtrs_srv_release(struct kobject *kobj)
+{
+	struct rtrs_srv_sess *sess;
+
+	sess = container_of(kobj, struct rtrs_srv_sess, kobj);
+	kfree(sess);
+}
+
 static struct kobj_type ktype = {
 	.sysfs_ops	= &kobj_sysfs_ops,
+	.release	= rtrs_srv_release,
 };
 
 static ssize_t rtrs_srv_disconnect_show(struct kobject *kobj,

@@ -834,6 +834,7 @@ static int process_info_req(struct rtrs_srv_con *con,
 	err = rtrs_srv_create_sess_files(sess);
 	if (unlikely(err))
 		goto iu_free;
+	kobject_get(&sess->kobj);
 	get_device(&sess->srv->dev);
 	rtrs_srv_change_state(sess, RTRS_SRV_CONNECTED);
 	rtrs_srv_start_hb(sess);
@@ -1519,7 +1520,7 @@ static void rtrs_srv_close_work(struct work_struct *work)
 
 	kfree(sess->dma_addr);
 	kfree(sess->s.con);
-	kfree(sess);
+	kobject_put(&sess->kobj);
 }
 
 static int rtrs_rdma_do_accept(struct rtrs_srv_sess *sess,
