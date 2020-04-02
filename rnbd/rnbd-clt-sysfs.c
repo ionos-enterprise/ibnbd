@@ -29,9 +29,9 @@ static struct kobject *rnbd_devs_kobj;
 
 enum {
 	RNBD_OPT_ERR		= 0,
-	RNBD_OPT_PATH		= 1 << 0,
-	RNBD_OPT_DEV_PATH	= 1 << 1,
-	RNBD_OPT_DEST_PORT	= 1 << 2,
+	RNBD_OPT_DEST_PORT	= 1 << 0,
+	RNBD_OPT_PATH		= 1 << 1,
+	RNBD_OPT_DEV_PATH	= 1 << 2,
 	RNBD_OPT_ACCESS_MODE	= 1 << 3,
 	RNBD_OPT_SESSNAME	= 1 << 6,
 };
@@ -45,7 +45,7 @@ static const unsigned int rnbd_opt_mandatory[] = {
 static const match_table_t rnbd_opt_tokens = {
 	{RNBD_OPT_PATH,		"path=%s"	},
 	{RNBD_OPT_DEV_PATH,	"device_path=%s"},
-	{RNBD_OPT_DEV_PATH,	"dest_port=%s"},
+	{RNBD_OPT_DEST_PORT,	"dest_port=%d"  },
 	{RNBD_OPT_ACCESS_MODE,	"access_mode=%s"},
 	{RNBD_OPT_SESSNAME,	"sessname=%s"	},
 	{RNBD_OPT_ERR,		NULL		},
@@ -144,8 +144,8 @@ static int rnbd_clt_parse_map_options(const char *buf, size_t max_path_cnt,
 
 		case RNBD_OPT_DEST_PORT:
 			if (match_int(args, &token) || token < 1) {
-				pr_err("bad destination port number parameter '%s'\n",
-				       p);
+				pr_err("bad destination port number parameter '%d'\n",
+				       token);
 				goto out;
 			}
 			srv_port_nr = token;
@@ -456,7 +456,7 @@ static ssize_t rnbd_clt_map_device_show(struct kobject *kobj,
 					 char *page)
 {
 	return scnprintf(page, PAGE_SIZE,
-			 "Usage: echo \"sessname=<name of the rtrs session> path=<[srcaddr@]dstaddr> [path=<[srcaddr@]dstaddr>] device_path=<full path on remote side> [access_mode=<ro|rw|migration>]\" > %s\n\naddr ::= [ ip:<ipv4> | ip:<ipv6> | gid:<gid> ]\n",
+			 "Usage: echo \"[dest_port=server port number] sessname=<name of the rtrs session> path=<[srcaddr@]dstaddr> [path=<[srcaddr@]dstaddr>] device_path=<full path on remote side> [access_mode=<ro|rw|migration>]\" > %s\n\naddr ::= [ ip:<ipv4> | ip:<ipv6> | gid:<gid> ]\n",
 			 attr->attr.name);
 }
 
