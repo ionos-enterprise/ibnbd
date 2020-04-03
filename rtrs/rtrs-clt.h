@@ -174,7 +174,7 @@ struct rtrs_clt {
 	void			(*link_ev)(void *priv,
 					   enum rtrs_clt_link_ev ev);
 	struct device		dev;
-	struct kobject		kobj_paths;
+	struct kobject		*kobj_paths;
 	enum rtrs_mp_policy	mp_policy;
 };
 

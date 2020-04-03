@@ -2577,9 +2577,17 @@ static struct rtrs_clt *alloc_clt(const char *sessname, size_t paths_num,
 		return ERR_PTR(err);
 	}
 
-	err = rtrs_clt_create_sysfs_root_folders(clt);
+	clt->kobj_paths = kobject_create_and_add("paths", &clt->dev.kobj);
+	if (!clt->kobj_paths) {
+		free_percpu(clt->pcpu_path);
+		device_unregister(&clt->dev);
+		return NULL;
+	}
+	err = rtrs_clt_create_sysfs_root_files(clt);
 	if (err) {
 		free_percpu(clt->pcpu_path);
+		kobject_del(clt->kobj_paths);
+		kobject_put(clt->kobj_paths);
 		device_unregister(&clt->dev);
 		return ERR_PTR(err);
 	}
@@ -2601,7 +2609,6 @@ static void wait_for_inflight_permits(struct rtrs_clt *clt)
 
 static void free_clt(struct rtrs_clt *clt)
 {
-	rtrs_clt_destroy_sysfs_root_folders(clt);
 	wait_for_inflight_permits(clt);
 	free_permits(clt);
 	free_percpu(clt->pcpu_path);
@@ -2672,9 +2679,6 @@ struct rtrs_clt *rtrs_clt_open(struct rtrs_clt_ops *ops,
 	err = alloc_permits(clt);
 	if (err)
 		goto close_all_sess;
-	err = rtrs_clt_create_sysfs_root_files(clt);
-	if (err)
-		goto close_all_sess;
 
 	return clt;
 
@@ -2684,6 +2688,8 @@ close_all_sess:
 		rtrs_clt_close_conns(sess, true);
 		free_sess(sess);
 	}
+	rtrs_clt_destroy_sysfs_root_files(clt);
+	rtrs_clt_destroy_sysfs_root_folders(clt);
 	free_clt(clt);
 
 out:

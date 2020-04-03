@@ -392,7 +392,7 @@ int rtrs_clt_create_sess_files(struct rtrs_clt_sess *sess)
 	sockaddr_to_str((struct sockaddr *)&sess->s.dst_addr,
 			str + cnt, sizeof(str) - cnt);
 
-	err = kobject_init_and_add(&sess->kobj, &ktype, &clt->kobj_paths,
+	err = kobject_init_and_add(&sess->kobj, &ktype, clt->kobj_paths,
 				   "%s", str);
 	if (err) {
 		pr_err("kobject_init_and_add: %d\n", err);
@@ -456,12 +456,6 @@ static struct attribute_group rtrs_clt_attr_group = {
 	.attrs = rtrs_clt_attrs,
 };
 
-int rtrs_clt_create_sysfs_root_folders(struct rtrs_clt *clt)
-{
-	return kobject_init_and_add(&clt->kobj_paths, &ktype,
-				    &clt->dev.kobj, "paths");
-}
-
 int rtrs_clt_create_sysfs_root_files(struct rtrs_clt *clt)
 {
 	return sysfs_create_group(&clt->dev.kobj, &rtrs_clt_attr_group);
@@ -469,9 +463,9 @@ int rtrs_clt_create_sysfs_root_files(struct rtrs_clt *clt)
 
 void rtrs_clt_destroy_sysfs_root_folders(struct rtrs_clt *clt)
 {
-	if (clt->kobj_paths.state_in_sysfs) {
-		kobject_del(&clt->kobj_paths);
-		kobject_put(&clt->kobj_paths);
+	if (clt->kobj_paths->state_in_sysfs) {
+		kobject_del(clt->kobj_paths);
+		kobject_put(clt->kobj_paths);
 	}
 }
 
