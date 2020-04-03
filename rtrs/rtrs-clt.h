@@ -211,7 +211,6 @@ int rtrs_clt_get_max_reconnect_attempts(const struct rtrs_clt *clt);
 /* rtrs-clt-stats.c */
 
 int rtrs_clt_init_stats(struct rtrs_clt_stats *stats);
-void rtrs_clt_free_stats(struct rtrs_clt_stats *stats);
 
 void rtrs_clt_inc_failover_cnt(struct rtrs_clt_stats *s);
 

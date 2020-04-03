@@ -198,8 +198,3 @@ int rtrs_clt_init_stats(struct rtrs_clt_stats *stats)
 
 	return 0;
 }
-
-void rtrs_clt_free_stats(struct rtrs_clt_stats *stats)
-{
-	free_percpu(stats->pcpu_stats);
-}
