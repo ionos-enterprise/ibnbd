@@ -35,7 +35,9 @@ struct rtrs_srv_stats_rdma_stats {
 };
 
 struct rtrs_srv_stats {
+	struct kobject		kobj_stats;
 	struct rtrs_srv_stats_rdma_stats	rdma_stats;
+	struct rtrs_srv_sess 			*sess;
 };
 
 struct rtrs_srv_con {
@@ -87,8 +89,7 @@ struct rtrs_srv_sess {
 	bool			established;
 	unsigned int		mem_bits;
 	struct kobject		kobj;
-	struct kobject		kobj_stats;
-	struct rtrs_srv_stats	stats;
+	struct rtrs_srv_stats	*stats;
 };
 
 struct rtrs_srv {

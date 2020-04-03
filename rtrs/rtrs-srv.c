@@ -991,7 +991,7 @@ static void process_read(struct rtrs_srv_con *con,
 		return;
 	}
 	rtrs_srv_get_ops_ids(sess);
-	rtrs_srv_update_rdma_stats(&sess->stats, off, READ);
+	rtrs_srv_update_rdma_stats(sess->stats, off, READ);
 	id = sess->ops_ids[buf_id];
 	id->con		= con;
 	id->dir		= READ;
@@ -1044,7 +1044,7 @@ static void process_write(struct rtrs_srv_con *con,
 		return;
 	}
 	rtrs_srv_get_ops_ids(sess);
-	rtrs_srv_update_rdma_stats(&sess->stats, off, WRITE);
+	rtrs_srv_update_rdma_stats(sess->stats, off, WRITE);
 	id = sess->ops_ids[buf_id];
 	id->con    = con;
 	id->dir    = WRITE;
@@ -1690,10 +1690,16 @@ static struct rtrs_srv_sess *__alloc_sess(struct rtrs_srv *srv,
 	if (!sess)
 		goto err;
 
+	sess->stats = kzalloc(sizeof(*sess->stats), GFP_KERNEL);
+	if (!sess->stats)
+		goto err_free_sess;
+
+	sess->stats->sess = sess;
+
 	sess->dma_addr = kcalloc(srv->queue_depth, sizeof(*sess->dma_addr),
 				 GFP_KERNEL);
 	if (!sess->dma_addr)
-		goto err_free_sess;
+		goto err_free_stats;
 
 	sess->s.con = kcalloc(con_num, sizeof(*sess->s.con), GFP_KERNEL);
 	if (!sess->s.con)
@@ -1736,9 +1742,10 @@ err_free_con:
 	kfree(sess->s.con);
 err_free_dma_addr:
 	kfree(sess->dma_addr);
+err_free_stats:
+	kfree(sess->stats);
 err_free_sess:
 	kfree(sess);
-
 err:
 	return ERR_PTR(err);
 }

@@ -130,7 +130,7 @@ static struct attribute_group rtrs_srv_sess_attr_group = {
 	.attrs = rtrs_srv_sess_attrs,
 };
 
-STAT_ATTR(struct rtrs_srv_sess, rdma,
+STAT_ATTR(struct rtrs_srv_stats, rdma,
 	  rtrs_srv_stats_rdma_to_str,
 	  rtrs_srv_reset_rdma_stats);
 
@@ -213,18 +213,32 @@ rtrs_srv_destroy_once_sysfs_root_folders(struct rtrs_srv_sess *sess)
 	}
 }
 
+static void rtrs_srv_sess_stats_release(struct kobject *kobj)
+{
+	struct rtrs_srv_stats *stats;
+
+	stats = container_of(kobj, struct rtrs_srv_stats, kobj_stats);
+
+	kfree(stats);
+}
+
+static struct kobj_type ktype_stats = {
+	.sysfs_ops = &kobj_sysfs_ops,
+	.release = rtrs_srv_sess_stats_release,
+};
+
 static int rtrs_srv_create_stats_files(struct rtrs_srv_sess *sess)
 {
 	int err;
 	struct rtrs_sess *s = &sess->s;
 
-	err = kobject_init_and_add(&sess->kobj_stats, &ktype,
+	err = kobject_init_and_add(&sess->stats->kobj_stats, &ktype_stats,
 				   &sess->kobj, "stats");
 	if (err) {
 		rtrs_err(s, "kobject_init_and_add(): %d\n", err);
 		return err;
 	}
-	err = sysfs_create_group(&sess->kobj_stats,
+	err = sysfs_create_group(&sess->stats->kobj_stats,
 				 &rtrs_srv_stats_attr_group);
 	if (err) {
 		rtrs_err(s, "sysfs_create_group(): %d\n", err);
@@ -234,8 +248,8 @@ static int rtrs_srv_create_stats_files(struct rtrs_srv_sess *sess)
 	return 0;
 
 err:
-	kobject_del(&sess->kobj_stats);
-	kobject_put(&sess->kobj_stats);
+	kobject_del(&sess->stats->kobj_stats);
+	kobject_put(&sess->stats->kobj_stats);
 
 	return err;
 }
@@ -288,8 +302,8 @@ destroy_root:
 void rtrs_srv_destroy_sess_files(struct rtrs_srv_sess *sess)
 {
 	if (sess->kobj.state_in_sysfs) {
-		kobject_del(&sess->kobj_stats);
-		kobject_put(&sess->kobj_stats);
+		kobject_del(&sess->stats->kobj_stats);
+		kobject_put(&sess->stats->kobj_stats);
 		kobject_del(&sess->kobj);
 		kobject_put(&sess->kobj);
 
