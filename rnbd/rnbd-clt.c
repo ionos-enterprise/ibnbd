@@ -21,8 +21,6 @@
 MODULE_DESCRIPTION("RDMA Network Block Device Client");
 MODULE_LICENSE("GPL");
 
-u16 srv_port_nr = RTRS_PORT;
-
 static int rnbd_client_major;
 static DEFINE_IDA(index_ida);
 static DEFINE_MUTEX(ida_lock);
@@ -1193,7 +1191,7 @@ static int setup_mq_tags(struct rnbd_clt_session *sess)
 static struct rnbd_clt_session *
 find_and_get_or_create_sess(const char *sessname,
 			    const struct rtrs_addr *paths,
-			    size_t path_cnt)
+			    size_t path_cnt, u16 port_nr)
 {
 	struct rnbd_clt_session *sess;
 	struct rtrs_attrs attrs;
@@ -1215,7 +1213,7 @@ find_and_get_or_create_sess(const char *sessname,
 	 * Nothing was found, establish rtrs connection and proceed further.
 	 */
 	sess->rtrs = rtrs_clt_open(&rtrs_ops, sessname,
-				   paths, path_cnt, srv_port_nr,
+				   paths, path_cnt, port_nr,
 				   sizeof(struct rnbd_iu),
 				   RECONNECT_DELAY, BMAX_SEGMENTS,
 				   MAX_RECONNECTS);
@@ -1480,7 +1478,7 @@ static void delete_dev(struct rnbd_clt_dev *dev)
 
 struct rnbd_clt_dev *rnbd_clt_map_device(const char *sessname,
 					   struct rtrs_addr *paths,
-					   size_t path_cnt,
+					   size_t path_cnt, u16 port_nr,
 					   const char *pathname,
 					   enum rnbd_access_mode access_mode)
 {
@@ -1491,7 +1489,7 @@ struct rnbd_clt_dev *rnbd_clt_map_device(const char *sessname,
 	if (exists_devpath(pathname))
 		return ERR_PTR(-EEXIST);
 
-	sess = find_and_get_or_create_sess(sessname, paths, path_cnt);
+	sess = find_and_get_or_create_sess(sessname, paths, path_cnt, port_nr);
 	if (IS_ERR(sess))
 		return ERR_CAST(sess);
 

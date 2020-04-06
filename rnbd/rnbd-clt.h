@@ -131,12 +131,11 @@ struct rnbd_clt_dev {
 	struct work_struct	unmap_on_rmmod_work;
 };
 
-extern u16 srv_port_nr;
 /* rnbd-clt.c */
 
 struct rnbd_clt_dev *rnbd_clt_map_device(const char *sessname,
 					   struct rtrs_addr *paths,
-					   size_t path_cnt,
+					   size_t path_cnt, u16 port_nr,
 					   const char *pathname,
 					   enum rnbd_access_mode access_mode);
 int rnbd_clt_unmap_device(struct rnbd_clt_dev *dev, bool force,

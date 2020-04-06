@@ -56,6 +56,7 @@ struct rnbd_map_options {
 	struct rtrs_addr *paths;
 	size_t *path_cnt;
 	char *pathname;
+	u16 *dest_port;
 	enum rnbd_access_mode *access_mode;
 };
 
@@ -68,7 +69,7 @@ static int rnbd_clt_parse_map_options(const char *buf, size_t max_path_cnt,
 	int opt_mask = 0;
 	int token;
 	int ret = -EINVAL;
-	int i;
+	int i, dest_port;
 	int p_cnt = 0;
 
 	options = kstrdup(buf, GFP_KERNEL);
@@ -113,8 +114,9 @@ static int rnbd_clt_parse_map_options(const char *buf, size_t max_path_cnt,
 				goto out;
 			}
 
-			ret = rtrs_addr_to_sockaddr(p, strlen(p), srv_port_nr,
-						     &opt->paths[p_cnt]);
+			ret = rtrs_addr_to_sockaddr(p, strlen(p),
+						    *opt->dest_port,
+						    &opt->paths[p_cnt]);
 			if (ret) {
 				pr_err("Can't parse path %s: %d\n", p, ret);
 				kfree(p);
@@ -143,12 +145,14 @@ static int rnbd_clt_parse_map_options(const char *buf, size_t max_path_cnt,
 			break;
 
 		case RNBD_OPT_DEST_PORT:
-			if (match_int(args, &token) || token < 1) {
+			if (match_int(args, &dest_port) || dest_port < 0 ||
+			    dest_port > 65535) {
 				pr_err("bad destination port number parameter '%d'\n",
-				       token);
+				       dest_port);
+				ret = -EINVAL;
 				goto out;
 			}
-			srv_port_nr = token;
+			*opt->dest_port = dest_port;
 			break;
 
 		case RNBD_OPT_ACCESS_MODE:
@@ -515,6 +519,7 @@ static ssize_t rnbd_clt_map_device_store(struct kobject *kobj,
 	char pathname[NAME_MAX];
 	char sessname[NAME_MAX];
 	enum rnbd_access_mode access_mode = RNBD_ACCESS_RW;
+	u16 port_nr = RTRS_PORT;
 
 	struct sockaddr_storage *addrs;
 	struct rtrs_addr paths[6];
@@ -524,6 +529,7 @@ static ssize_t rnbd_clt_map_device_store(struct kobject *kobj,
 	opt.paths = paths;
 	opt.path_cnt = &path_cnt;
 	opt.pathname = pathname;
+	opt.dest_port = &port_nr;
 	opt.access_mode = &access_mode;
 	addrs = kcalloc(ARRAY_SIZE(paths) * 2, sizeof(*addrs), GFP_KERNEL);
 	if (!addrs)
@@ -542,8 +548,8 @@ static ssize_t rnbd_clt_map_device_store(struct kobject *kobj,
 		pathname, sessname,
 		rnbd_access_mode_str(access_mode));
 
-	dev = rnbd_clt_map_device(sessname, paths, path_cnt, pathname,
-				   access_mode);
+	dev = rnbd_clt_map_device(sessname, paths, path_cnt, port_nr, pathname,
+				  access_mode);
 	if (IS_ERR(dev)) {
 		ret = PTR_ERR(dev);
 		goto out;
