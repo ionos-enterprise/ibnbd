@@ -444,13 +444,11 @@ put_kobj:
 void rtrs_clt_destroy_sess_files(struct rtrs_clt_sess *sess,
 				  const struct attribute *sysfs_self)
 {
-	if (sess->kobj.state_in_sysfs) {
-		kobject_del(&sess->stats->kobj_stats);
-		kobject_put(&sess->stats->kobj_stats);
-		if (sysfs_self)
-			sysfs_remove_file_self(&sess->kobj, sysfs_self);
-		kobject_del(&sess->kobj);
-	}
+	kobject_del(&sess->stats->kobj_stats);
+	kobject_put(&sess->stats->kobj_stats);
+	if (sysfs_self)
+		sysfs_remove_file_self(&sess->kobj, sysfs_self);
+	kobject_del(&sess->kobj);
 }
 
 static struct attribute *rtrs_clt_attrs[] = {

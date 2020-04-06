@@ -2679,7 +2679,6 @@ struct rtrs_clt *rtrs_clt_open(struct rtrs_clt_ops *ops,
 			list_del_rcu(&sess->s.entry);
 			rtrs_clt_close_conns(sess, true);
 			free_sess(sess);
-
 			goto close_all_sess;
 		}
 	}
