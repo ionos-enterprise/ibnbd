@@ -1406,7 +1406,6 @@ static void put_srv(struct rtrs_srv *srv)
 		struct rtrs_srv_ctx *ctx = srv->ctx;
 
 		WARN_ON(srv->dev.kobj.state_in_sysfs);
-		WARN_ON(srv->kobj_paths->state_in_sysfs);
 
 		mutex_lock(&ctx->srv_mutex);
 		list_del(&srv->ctx_list);
