@@ -16,8 +16,18 @@
 #define MIN_MAX_RECONN_ATT -1
 #define MAX_MAX_RECONN_ATT 9999
 
-static struct kobj_type ktype = {
+static void rtrs_clt_sess_release(struct kobject *kobj)
+{
+	struct rtrs_clt_sess *sess;
+
+	sess = container_of(kobj, struct rtrs_clt_sess, kobj);
+
+	free_sess(sess);
+}
+
+static struct kobj_type ktype_sess = {
 	.sysfs_ops = &kobj_sysfs_ops,
+	.release = rtrs_clt_sess_release
 };
 
 static void rtrs_clt_sess_stats_release(struct kobject *kobj)
@@ -392,7 +402,7 @@ int rtrs_clt_create_sess_files(struct rtrs_clt_sess *sess)
 	sockaddr_to_str((struct sockaddr *)&sess->s.dst_addr,
 			str + cnt, sizeof(str) - cnt);
 
-	err = kobject_init_and_add(&sess->kobj, &ktype, clt->kobj_paths,
+	err = kobject_init_and_add(&sess->kobj, &ktype_sess, clt->kobj_paths,
 				   "%s", str);
 	if (err) {
 		pr_err("kobject_init_and_add: %d\n", err);
@@ -438,10 +448,8 @@ void rtrs_clt_destroy_sess_files(struct rtrs_clt_sess *sess,
 		kobject_del(&sess->stats->kobj_stats);
 		kobject_put(&sess->stats->kobj_stats);
 		if (sysfs_self)
-			/* To avoid deadlock firstly commit suicide */
 			sysfs_remove_file_self(&sess->kobj, sysfs_self);
 		kobject_del(&sess->kobj);
-		kobject_put(&sess->kobj);
 	}
 }
 

@@ -1466,7 +1466,7 @@ err:
 	return ERR_PTR(err);
 }
 
-static void free_sess(struct rtrs_clt_sess *sess)
+void free_sess(struct rtrs_clt_sess *sess)
 {
 	free_percpu(sess->stats->pcpu_stats);
 	free_percpu(sess->mp_skip_entry);
@@ -2638,8 +2638,7 @@ static void free_clt(struct rtrs_clt *clt)
 struct rtrs_clt *rtrs_clt_open(struct rtrs_clt_ops *ops,
 				 const char *sessname,
 				 const struct rtrs_addr *paths,
-				 size_t paths_num,
-				 u16 port,
+				 size_t paths_num, u16 port,
 				 size_t pdu_sz, u8 reconnect_delay_sec,
 				 u16 max_segments,
 				 s16 max_reconnect_attempts)
@@ -2668,12 +2667,21 @@ struct rtrs_clt *rtrs_clt_open(struct rtrs_clt_ops *ops,
 		list_add_tail_rcu(&sess->s.entry, &clt->paths_list);
 
 		err = init_sess(sess);
-		if (err)
+		if (err) {
+			list_del_rcu(&sess->s.entry);
+			rtrs_clt_close_conns(sess, true);
+			free_sess(sess);
 			goto close_all_sess;
+		}
 
 		err = rtrs_clt_create_sess_files(sess);
-		if (err)
+		if (err) {
+			list_del_rcu(&sess->s.entry);
+			rtrs_clt_close_conns(sess, true);
+			free_sess(sess);
+
 			goto close_all_sess;
+		}
 	}
 	err = alloc_permits(clt);
 	if (err)
@@ -2685,7 +2693,7 @@ close_all_sess:
 	list_for_each_entry_safe(sess, tmp, &clt->paths_list, s.entry) {
 		rtrs_clt_destroy_sess_files(sess, NULL);
 		rtrs_clt_close_conns(sess, true);
-		free_sess(sess);
+		kobject_put(&sess->kobj);
 	}
 	rtrs_clt_destroy_sysfs_root_files(clt);
 	rtrs_clt_destroy_sysfs_root_folders(clt);
@@ -2712,7 +2720,7 @@ void rtrs_clt_close(struct rtrs_clt *clt)
 	list_for_each_entry_safe(sess, tmp, &clt->paths_list, s.entry) {
 		rtrs_clt_destroy_sess_files(sess, NULL);
 		rtrs_clt_close_conns(sess, true);
-		free_sess(sess);
+		kobject_put(&sess->kobj);
 	}
 	free_clt(clt);
 }
@@ -2776,7 +2784,7 @@ int rtrs_clt_remove_path_from_sysfs(struct rtrs_clt_sess *sess,
 	if (likely(changed)) {
 		rtrs_clt_destroy_sess_files(sess, sysfs_self);
 		rtrs_clt_remove_path_from_arr(sess);
-		free_sess(sess);
+		kobject_put(&sess->kobj);
 	}
 
 	return 0;
