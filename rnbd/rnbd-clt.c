@@ -23,11 +23,6 @@ MODULE_LICENSE("GPL");
 
 u16 srv_port_nr = RTRS_PORT;
 
-module_param_named(srv_port_nr, srv_port_nr, ushort, 0444);
-MODULE_PARM_DESC(srv_port_nr,
-		 "The port number the server is listening on (default: "
-		 __stringify(RTRS_PORT)")");
-
 static int rnbd_client_major;
 static DEFINE_IDA(index_ida);
 static DEFINE_MUTEX(ida_lock);
