@@ -2477,8 +2477,7 @@ static void rtrs_clt_reconnect_work(struct work_struct *work)
 			    reconnect_dwork);
 	clt = sess->clt;
 
-	if (READ_ONCE(sess->state) == RTRS_CLT_CLOSING)
-		/* User requested closing */
+	if (READ_ONCE(sess->state) != RTRS_CLT_RECONNECTING)
 		return;
 
 	if (sess->reconnect_attempts >= clt->max_reconnect_attempts) {
