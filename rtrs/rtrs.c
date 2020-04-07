@@ -429,7 +429,7 @@ static int rtrs_str_gid_to_sockaddr(const char *addr, size_t len,
  * Returns 0 if conversion successful. Non-zero on error.
  */
 static int rtrs_str_to_sockaddr(const char *addr, size_t len,
-				 short port, struct sockaddr_storage *dst)
+				u16 port, struct sockaddr_storage *dst)
 {
 	if (strncmp(addr, "gid:", 4) == 0) {
 		return rtrs_str_gid_to_sockaddr(addr + 4, len - 4, port, dst);
