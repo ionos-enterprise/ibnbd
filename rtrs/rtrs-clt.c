@@ -18,6 +18,12 @@
 #include "rtrs-log.h"
 
 #define RTRS_CONNECT_TIMEOUT_MS 30000
+/*
+ * Wait a bit before trying to reconnect after a failure
+ * in order to give server time to finish clean up which
+ * leads to "false positives" failed reconnect attempts
+ */
+#define RTRS_RECONNECT_BACKOFF 1000
 
 MODULE_DESCRIPTION("RDMA Transport Client");
 MODULE_LICENSE("GPL");
@@ -1808,6 +1814,7 @@ static inline void flag_error_on_conn(struct rtrs_clt_con *con, int cm_err)
 
 		sess = to_clt_sess(con->c.sess);
 		if (atomic_dec_and_test(&sess->connected_cnt))
+
 			wake_up(&sess->state_wq);
 	}
 	con->cm_err = cm_err;
@@ -2489,6 +2496,7 @@ static void rtrs_clt_reconnect_work(struct work_struct *work)
 
 	/* Stop everything */
 	rtrs_clt_stop_and_destroy_conns(sess);
+	msleep(RTRS_RECONNECT_BACKOFF);
 	if (rtrs_clt_change_state(sess, RTRS_CLT_CONNECTING)) {
 		err = init_sess(sess);
 		if (err)
