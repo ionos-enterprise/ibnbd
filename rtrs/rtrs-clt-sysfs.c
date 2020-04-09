@@ -469,7 +469,7 @@ int rtrs_clt_create_sysfs_root_files(struct rtrs_clt *clt)
 
 void rtrs_clt_destroy_sysfs_root_folders(struct rtrs_clt *clt)
 {
-	if (clt->kobj_paths->state_in_sysfs) {
+	if (clt->kobj_paths) {
 		kobject_del(clt->kobj_paths);
 		kobject_put(clt->kobj_paths);
 	}
