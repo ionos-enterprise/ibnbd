@@ -299,10 +299,15 @@ static void rtrs_rdma_error_recovery(struct rtrs_clt_con *con)
 	if (rtrs_clt_change_state_from_to(sess,
 					   RTRS_CLT_CONNECTED,
 					   RTRS_CLT_RECONNECTING)) {
+		struct rtrs_clt *clt = sess->clt;
+		unsigned int delay_ms;
+
 		/*
 		 * Normal scenario, reconnect if we were successfully connected
 		 */
-		queue_delayed_work(rtrs_wq, &sess->reconnect_dwork, 0);
+		delay_ms = clt->reconnect_delay_sec * 1000;
+		queue_delayed_work(rtrs_wq, &sess->reconnect_dwork,
+				   msecs_to_jiffies(delay_ms));
 	} else {
 		/*
 		 * Error can happen just on establishing new connection,
