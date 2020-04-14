@@ -1475,6 +1475,14 @@ static bool __is_path_w_addr_exists(struct rtrs_srv *srv,
 	return false;
 }
 
+static void free_sess(struct rtrs_srv_sess *sess)
+{
+	if (sess->kobj.state_in_sysfs)
+		kobject_put(&sess->kobj);
+	else
+		kfree(sess);
+}
+
 static void rtrs_srv_close_work(struct work_struct *work)
 {
 	struct rtrs_srv_sess *sess;
@@ -1519,7 +1527,7 @@ static void rtrs_srv_close_work(struct work_struct *work)
 
 	kfree(sess->dma_addr);
 	kfree(sess->s.con);
-	kobject_put(&sess->kobj);
+	free_sess(sess);
 }
 
 static int rtrs_rdma_do_accept(struct rtrs_srv_sess *sess,
