@@ -207,7 +207,7 @@ int rtrs_clt_remove_path_from_sysfs(struct rtrs_clt_sess *sess,
 
 void rtrs_clt_set_max_reconnect_attempts(struct rtrs_clt *clt, int value);
 int rtrs_clt_get_max_reconnect_attempts(const struct rtrs_clt *clt);
-void free_sess(struct rtrs_clt_sess *);
+void free_sess(struct rtrs_clt_sess *sess);
 
 /* rtrs-clt-stats.c */
 
