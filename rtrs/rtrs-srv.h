@@ -35,9 +35,9 @@ struct rtrs_srv_stats_rdma_stats {
 };
 
 struct rtrs_srv_stats {
-	struct kobject		kobj_stats;
+	struct kobject				kobj_stats;
 	struct rtrs_srv_stats_rdma_stats	rdma_stats;
-	struct rtrs_srv_sess 			*sess;
+	struct rtrs_srv_sess			*sess;
 };
 
 struct rtrs_srv_con {
