@@ -77,7 +77,7 @@ static bool __rtrs_srv_change_state(struct rtrs_srv_sess *sess,
 		switch (old_state) {
 		case RTRS_SRV_CONNECTING:
 			changed = true;
-			/* FALLTHRU */
+			fallthrough;
 		default:
 			break;
 		}
@@ -87,7 +87,7 @@ static bool __rtrs_srv_change_state(struct rtrs_srv_sess *sess,
 		case RTRS_SRV_CONNECTING:
 		case RTRS_SRV_CONNECTED:
 			changed = true;
-			/* FALLTHRU */
+			fallthrough;
 		default:
 			break;
 		}
@@ -96,7 +96,7 @@ static bool __rtrs_srv_change_state(struct rtrs_srv_sess *sess,
 		switch (old_state) {
 		case RTRS_SRV_CLOSING:
 			changed = true;
-			/* FALLTHRU */
+			fallthrough;
 		default:
 			break;
 		}
@@ -988,7 +988,7 @@ static void process_read(struct rtrs_srv_con *con,
 	}
 	if (unlikely(msg->sg_cnt != 1 && msg->sg_cnt != 0)) {
 		rtrs_err_rl(s,
-			    "Processing read request failed, invalid mesage\n");
+			    "Processing read request failed, invalid message\n");
 		return;
 	}
 	rtrs_srv_get_ops_ids(sess);
@@ -1445,16 +1445,19 @@ static int sockaddr_cmp(const struct sockaddr *a, const struct sockaddr *b)
 			      &((struct sockaddr_ib *)b)->sib_addr,
 			      sizeof(struct ib_addr)) &&
 			(b->sa_family == AF_IB);
+		fallthrough;
 	case AF_INET:
 		return memcmp(&((struct sockaddr_in *)a)->sin_addr,
 			      &((struct sockaddr_in *)b)->sin_addr,
 			      sizeof(struct in_addr)) &&
 			(b->sa_family == AF_INET);
+		fallthrough;
 	case AF_INET6:
 		return memcmp(&((struct sockaddr_in6 *)a)->sin6_addr,
 			      &((struct sockaddr_in6 *)b)->sin6_addr,
 			      sizeof(struct in6_addr)) &&
 			(b->sa_family == AF_INET6);
+		fallthrough;
 	default:
 		return -ENOENT;
 	}
