@@ -477,7 +477,8 @@ int sockaddr_to_str(const struct sockaddr *addr, char *buf, size_t len)
 EXPORT_SYMBOL(sockaddr_to_str);
 
 /**
- * rtrs_addr_to_sockaddr() - convert path string "src,dst" or "src@dst" to sockaddreses
+ * rtrs_addr_to_sockaddr() - convert path string "src,dst" or "src@dst"
+ * to sockaddreses
  * @str:	string containing source and destination addr of a path
  *		separated by ',' or '@' I.e. "ip:1.1.1.1,ip:1.1.1.2" or
  *		"ip:1.1.1.1@ip:1.1.1.2". If str contains only one address it's
