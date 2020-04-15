@@ -203,7 +203,7 @@ static bool __rtrs_clt_change_state(struct rtrs_clt_sess *sess,
 		switch (old_state) {
 		case RTRS_CLT_RECONNECTING:
 			changed = true;
-			/* FALLTHRU */
+			fallthrough;
 		default:
 			break;
 		}
@@ -214,7 +214,7 @@ static bool __rtrs_clt_change_state(struct rtrs_clt_sess *sess,
 		case RTRS_CLT_CONNECTING_ERR:
 		case RTRS_CLT_CLOSED:
 			changed = true;
-			/* FALLTHRU */
+			fallthrough;
 		default:
 			break;
 		}
@@ -223,7 +223,7 @@ static bool __rtrs_clt_change_state(struct rtrs_clt_sess *sess,
 		switch (old_state) {
 		case RTRS_CLT_CONNECTING:
 			changed = true;
-			/* FALLTHRU */
+			fallthrough;
 		default:
 			break;
 		}
@@ -232,7 +232,7 @@ static bool __rtrs_clt_change_state(struct rtrs_clt_sess *sess,
 		switch (old_state) {
 		case RTRS_CLT_CONNECTING:
 			changed = true;
-			/* FALLTHRU */
+			fallthrough;
 		default:
 			break;
 		}
@@ -244,7 +244,7 @@ static bool __rtrs_clt_change_state(struct rtrs_clt_sess *sess,
 		case RTRS_CLT_RECONNECTING:
 		case RTRS_CLT_CONNECTED:
 			changed = true;
-			/* FALLTHRU */
+			fallthrough;
 		default:
 			break;
 		}
@@ -253,7 +253,7 @@ static bool __rtrs_clt_change_state(struct rtrs_clt_sess *sess,
 		switch (old_state) {
 		case RTRS_CLT_CLOSING:
 			changed = true;
-			/* FALLTHRU */
+			fallthrough;
 		default:
 			break;
 		}
@@ -262,7 +262,7 @@ static bool __rtrs_clt_change_state(struct rtrs_clt_sess *sess,
 		switch (old_state) {
 		case RTRS_CLT_CLOSED:
 			changed = true;
-			/* FALLTHRU */
+			fallthrough;
 		default:
 			break;
 		}
@@ -2528,7 +2528,8 @@ static void rtrs_clt_dev_release(struct device *dev)
 
 static struct rtrs_clt *alloc_clt(const char *sessname, size_t paths_num,
 				  u16 port, size_t pdu_sz, void *priv,
-				  void	(*link_ev)(void *priv, enum rtrs_clt_link_ev ev),
+				  void	(*link_ev)(void *priv,
+						   enum rtrs_clt_link_ev ev),
 				  unsigned int max_segments,
 				  unsigned int reconnect_delay_sec,
 				  unsigned int max_reconnect_attempts)
