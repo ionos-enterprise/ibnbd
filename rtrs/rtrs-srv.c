@@ -293,7 +293,7 @@ static int rdma_write_sg(struct rtrs_srv_op *id)
 	 * From time to time we have to post signaled sends,
 	 * or send queue will fill up and only QP reset can help.
 	 */
-	flags = atomic_inc_return(&id->con->wr_cnt) % srv->queue_depth ?
+	flags = (atomic_inc_return(&id->con->wr_cnt) % srv->queue_depth) ?
 		0 : IB_SEND_SIGNALED;
 
 	if (need_inval) {
@@ -417,7 +417,7 @@ static int send_io_resp_imm(struct rtrs_srv_con *con, struct rtrs_srv_op *id,
 	 * From time to time we have to post signalled sends,
 	 * or send queue will fill up and only QP reset can help.
 	 */
-	flags = atomic_inc_return(&con->wr_cnt) % srv->queue_depth ?
+	flags = (atomic_inc_return(&con->wr_cnt) % srv->queue_depth) ?
 		0 : IB_SEND_SIGNALED;
 	imm = rtrs_to_io_rsp_imm(id->msg_id, errno, need_inval);
 	imm_wr.next = NULL;
@@ -505,13 +505,17 @@ static inline const char *rtrs_srv_state_str(enum rtrs_srv_state state)
  */
 bool rtrs_srv_resp_rdma(struct rtrs_srv_op *id, int status)
 {
-	struct rtrs_srv_con *con = id->con;
-	struct rtrs_sess *s = con->c.sess;
-	struct rtrs_srv_sess *sess = to_srv_sess(s);
+	struct rtrs_srv_sess *sess;
+	struct rtrs_srv_con *con;
+	struct rtrs_sess *s;
 	int err;
 
 	if (WARN_ON(!id))
 		return true;
+
+	con = id->con;
+	s = con->c.sess;
+	sess = to_srv_sess(s);
 
 	id->status = status;
 
@@ -617,7 +621,6 @@ static int map_cont_bufs(struct rtrs_srv_sess *sess)
 		struct scatterlist *s;
 		struct ib_mr *mr;
 		int nr, chunks;
-		struct rtrs_msg_rkey_rsp *rsp;
 
 		chunks = chunks_per_mr * mri;
 		if (!always_invalidate)
@@ -652,10 +655,10 @@ static int map_cont_bufs(struct rtrs_srv_sess *sess)
 		}
 
 		if (always_invalidate) {
-			srv_mr->iu = rtrs_iu_alloc(1, sizeof(*rsp), GFP_KERNEL,
-						    sess->s.dev->ib_dev,
-						    DMA_TO_DEVICE,
-						    rtrs_srv_rdma_done);
+			srv_mr->iu = rtrs_iu_alloc(1,
+					sizeof(struct rtrs_msg_rkey_rsp),
+					GFP_KERNEL, sess->s.dev->ib_dev,
+					DMA_TO_DEVICE, rtrs_srv_rdma_done);
 			if (!srv_mr->iu) {
 				rtrs_err(ss, "rtrs_iu_alloc(), err: %d\n",
 					  -ENOMEM);
@@ -1445,19 +1448,16 @@ static int sockaddr_cmp(const struct sockaddr *a, const struct sockaddr *b)
 			      &((struct sockaddr_ib *)b)->sib_addr,
 			      sizeof(struct ib_addr)) &&
 			(b->sa_family == AF_IB);
-		fallthrough;
 	case AF_INET:
 		return memcmp(&((struct sockaddr_in *)a)->sin_addr,
 			      &((struct sockaddr_in *)b)->sin_addr,
 			      sizeof(struct in_addr)) &&
 			(b->sa_family == AF_INET);
-		fallthrough;
 	case AF_INET6:
 		return memcmp(&((struct sockaddr_in6 *)a)->sin6_addr,
 			      &((struct sockaddr_in6 *)b)->sin6_addr,
 			      sizeof(struct in6_addr)) &&
 			(b->sa_family == AF_INET6);
-		fallthrough;
 	default:
 		return -ENOENT;
 	}
