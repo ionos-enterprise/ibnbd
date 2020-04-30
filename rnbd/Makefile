@@ -3,13 +3,13 @@
 ccflags-y := -Idrivers/infiniband/ulp/rtrs
 
 rnbd-client-y := rnbd-clt.o \
-		  rnbd-common.o \
-		  rnbd-clt-sysfs.o
+		  rnbd-clt-sysfs.o \
+		  rnbd-common.o
 
 rnbd-server-y := rnbd-srv.o \
-		  rnbd-common.o \
 		  rnbd-srv-dev.o \
-		  rnbd-srv-sysfs.o
+		  rnbd-srv-sysfs.o \
+		  rnbd-common.o
 
 obj-$(CONFIG_BLK_DEV_RNBD_CLIENT) += rnbd-client.o
 obj-$(CONFIG_BLK_DEV_RNBD_SERVER) += rnbd-server.o
