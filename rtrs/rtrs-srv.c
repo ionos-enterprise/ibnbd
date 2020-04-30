@@ -237,7 +237,8 @@ static int rdma_write_sg(struct rtrs_srv_op *id)
 	bool need_inval;
 	u32 rkey = 0;
 	struct ib_reg_wr rwr;
-	struct ib_sge *list;
+	struct ib_sge *plist;
+	struct ib_sge list;
 
 	sg_cnt = le16_to_cpu(id->rd_msg->sg_cnt);
 	need_inval = le16_to_cpu(id->rd_msg->flags) & RTRS_MSG_NEED_INVAL_F;
@@ -247,22 +248,22 @@ static int rdma_write_sg(struct rtrs_srv_op *id)
 	offset = 0;
 
 	wr		= &id->tx_wr;
-	list		= &id->tx_sg;
-	list->addr	= dma_addr + offset;
-	list->length	= le32_to_cpu(id->rd_msg->desc[0].len);
+	plist		= &id->tx_sg;
+	plist->addr	= dma_addr + offset;
+	plist->length	= le32_to_cpu(id->rd_msg->desc[0].len);
 
 	/* WR will fail with length error
 	 * if this is 0
 	 */
-	if (unlikely(list->length == 0)) {
+	if (unlikely(plist->length == 0)) {
 		rtrs_err(s, "Invalid RDMA-Write sg list length 0\n");
 		return -EINVAL;
 	}
 
-	list->lkey = sess->s.dev->ib_pd->local_dma_lkey;
-	offset += list->length;
+	plist->lkey = sess->s.dev->ib_pd->local_dma_lkey;
+	offset += plist->length;
 
-	wr->wr.sg_list	= list;
+	wr->wr.sg_list	= plist;
 	wr->wr.num_sge	= 1;
 	wr->remote_addr	= le64_to_cpu(id->rd_msg->desc[0].addr);
 	wr->rkey	= le32_to_cpu(id->rd_msg->desc[0].key);
@@ -306,7 +307,6 @@ static int rdma_write_sg(struct rtrs_srv_op *id)
 
 	imm_wr.next = NULL;
 	if (always_invalidate) {
-		struct ib_sge list;
 		struct rtrs_msg_rkey_rsp *msg;
 
 		srv_mr = &sess->mrs[id->msg_id];
