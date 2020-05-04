@@ -25,7 +25,6 @@ struct rnbd_srv_session {
 	int			queue_depth;
 	struct bio_set		sess_bio_set;
 
-	spinlock_t              index_lock ____cacheline_aligned;
 	struct xarray		index_idr;
 	/* List of struct rnbd_srv_sess_dev */
 	struct list_head        sess_dev_list;

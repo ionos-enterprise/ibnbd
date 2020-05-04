@@ -201,9 +201,7 @@ void rnbd_destroy_sess_dev(struct rnbd_srv_sess_dev *sess_dev)
 {
 	DECLARE_COMPLETION_ONSTACK(dc);
 
-	spin_lock(&sess_dev->sess->index_lock);
 	xa_erase(&sess_dev->sess->index_idr, sess_dev->device_id);
-	spin_unlock(&sess_dev->sess->index_lock);
 	synchronize_rcu();
 	sess_dev->destroy_comp = &dc;
 	rnbd_put_sess_dev(sess_dev);
@@ -278,7 +276,6 @@ static int create_sess(struct rtrs_srv *rtrs)
 	}
 
 	xa_init_flags(&srv_sess->index_idr, XA_FLAGS_ALLOC);
-	spin_lock_init(&srv_sess->index_lock);
 	INIT_LIST_HEAD(&srv_sess->sess_dev_list);
 	mutex_init(&srv_sess->lock);
 	mutex_lock(&sess_lock);
@@ -397,19 +394,10 @@ static struct rnbd_srv_sess_dev
 	if (!sess_dev)
 		return ERR_PTR(-ENOMEM);
 
-	spin_lock(&srv_sess->index_lock);
-
-	error = xa_alloc(&srv_sess->index_idr, &sess_dev->device_id, sess_dev, xa_limit_32b, GFP_NOWAIT);
+	error = xa_alloc(&srv_sess->index_idr, &sess_dev->device_id, sess_dev,
+			 xa_limit_32b, GFP_NOWAIT);
 	if (error < 0) {
 		pr_warn("Allocating idr failed, err: %d\n", error);
-		goto out_unlock;
-	}
-
-	error = 0;
-
-out_unlock:
-	spin_unlock(&srv_sess->index_lock);
-	if (error) {
 		kfree(sess_dev);
 		return ERR_PTR(error);
 	}
@@ -792,9 +780,7 @@ fill_response:
 	return 0;
 
 free_srv_sess_dev:
-	spin_lock(&srv_sess->index_lock);
 	xa_erase(&srv_sess->index_idr, srv_sess_dev->device_id);
-	spin_unlock(&srv_sess->index_lock);
 	synchronize_rcu();
 	kfree(srv_sess_dev);
 srv_dev_put:
