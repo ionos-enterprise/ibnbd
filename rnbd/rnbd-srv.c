@@ -103,7 +103,7 @@ rnbd_get_sess_dev(int dev_id, struct rnbd_srv_session *srv_sess)
 	int ret = 0;
 
 	rcu_read_lock();
-	sess_dev = idr_find(&srv_sess->index_idr, dev_id);
+	sess_dev = xa_load(&srv_sess->index_idr, dev_id);
 	if (likely(sess_dev))
 		ret = kref_get_unless_zero(&sess_dev->kref);
 	rcu_read_unlock();
@@ -202,7 +202,7 @@ void rnbd_destroy_sess_dev(struct rnbd_srv_sess_dev *sess_dev)
 	DECLARE_COMPLETION_ONSTACK(dc);
 
 	spin_lock(&sess_dev->sess->index_lock);
-	idr_remove(&sess_dev->sess->index_idr, sess_dev->device_id);
+	xa_erase(&sess_dev->sess->index_idr, sess_dev->device_id);
 	spin_unlock(&sess_dev->sess->index_lock);
 	synchronize_rcu();
 	sess_dev->destroy_comp = &dc;
@@ -237,7 +237,7 @@ static void destroy_sess(struct rnbd_srv_session *srv_sess)
 	mutex_unlock(&srv_sess->lock);
 
 out:
-	idr_destroy(&srv_sess->index_idr);
+	xa_destroy(&srv_sess->index_idr);
 	bioset_exit(&srv_sess->sess_bio_set);
 
 	pr_info("RTRS Session %s disconnected\n", srv_sess->sessname);
@@ -277,7 +277,7 @@ static int create_sess(struct rtrs_srv *rtrs)
 		return err;
 	}
 
-	idr_init(&srv_sess->index_idr);
+	xa_init_flags(&srv_sess->index_idr, XA_FLAGS_ALLOC);
 	spin_lock_init(&srv_sess->index_lock);
 	INIT_LIST_HEAD(&srv_sess->sess_dev_list);
 	mutex_init(&srv_sess->lock);
@@ -397,21 +397,18 @@ static struct rnbd_srv_sess_dev
 	if (!sess_dev)
 		return ERR_PTR(-ENOMEM);
 
-	idr_preload(GFP_KERNEL);
 	spin_lock(&srv_sess->index_lock);
 
-	error = idr_alloc(&srv_sess->index_idr, sess_dev, 0, -1, GFP_NOWAIT);
+	error = xa_alloc(&srv_sess->index_idr, &sess_dev->device_id, sess_dev, xa_limit_32b, GFP_NOWAIT);
 	if (error < 0) {
 		pr_warn("Allocating idr failed, err: %d\n", error);
 		goto out_unlock;
 	}
 
-	sess_dev->device_id = error;
 	error = 0;
 
 out_unlock:
 	spin_unlock(&srv_sess->index_lock);
-	idr_preload_end();
 	if (error) {
 		kfree(sess_dev);
 		return ERR_PTR(error);
@@ -796,7 +793,7 @@ fill_response:
 
 free_srv_sess_dev:
 	spin_lock(&srv_sess->index_lock);
-	idr_remove(&srv_sess->index_idr, srv_sess_dev->device_id);
+	xa_erase(&srv_sess->index_idr, srv_sess_dev->device_id);
 	spin_unlock(&srv_sess->index_lock);
 	synchronize_rcu();
 	kfree(srv_sess_dev);
