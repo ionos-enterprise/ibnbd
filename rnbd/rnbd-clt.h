@@ -16,7 +16,7 @@
 #include <linux/blk-mq.h>
 #include <linux/refcount.h>
 
-#include "rtrs.h"
+#include <rtrs.h>
 #include "rnbd-proto.h"
 #include "rnbd-log.h"
 

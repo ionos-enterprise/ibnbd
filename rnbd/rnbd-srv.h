@@ -13,7 +13,7 @@
 #include <linux/idr.h>
 #include <linux/kref.h>
 
-#include "rtrs.h"
+#include <rtrs.h>
 #include "rnbd-proto.h"
 #include "rnbd-log.h"
 
