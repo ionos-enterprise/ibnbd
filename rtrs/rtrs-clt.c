@@ -1479,7 +1479,6 @@ err:
 
 void free_sess(struct rtrs_clt_sess *sess)
 {
-	free_percpu(sess->stats->pcpu_stats);
 	free_percpu(sess->mp_skip_entry);
 	mutex_destroy(&sess->init_mutex);
 	kfree(sess->s.con);
